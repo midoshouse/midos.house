@@ -1,2 +1,1 @@
-# midos.house
-Private main source of the midos.house website
+This is the source code for <https://midos.house/>.
