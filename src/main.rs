@@ -2,7 +2,10 @@
 #![forbid(unsafe_code)]
 
 use {
-    std::time::Duration,
+    std::{
+        io,
+        time::Duration,
+    },
     anyhow::Result,
     horrorshow::{
         RenderOnce,
@@ -15,6 +18,7 @@ use {
     },
     rocket::{
         config::SecretKey,
+        fs::NamedFile,
         uri,
     },
     rocket_oauth2::{
@@ -75,6 +79,12 @@ fn index(user: Option<User>) -> HtmlResult {
     })
 }
 
+#[rocket::get("/favicon.ico")]
+async fn favicon() -> io::Result<NamedFile> {
+    //TODO random chest configurations based on current RSL weights except CSMC is replaced with CTMC?
+    NamedFile::open("assets/favicon.ico").await
+}
+
 #[derive(StructOpt)]
 struct Args {
     #[structopt(long = "dev")]
@@ -91,6 +101,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
     })
     .mount("/", rocket::routes![
         index,
+        favicon,
         auth::login,
         auth::racetime_login,
         auth::racetime_callback,
