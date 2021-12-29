@@ -57,19 +57,21 @@ fn page(user: &Option<User>, title: &str, content: impl RenderOnce) -> HtmlResul
                 nav {
                     div(id = "login") { //TODO hide if already on /login?
                         @if let Some(user) = user {
-                            p : format!("signed in as {}", user.display_name);
-                            //TODO display profile/preferences/logout menu
+                            : format!("signed in as {}", user.display_name);
+                            br;
+                            //TODO links to profile and preferences
+                            a(href = uri!(auth::logout).to_string()) : "Sign out";
                         } else {
                             a(href = uri!(auth::login).to_string()) : "Sign in / Create account";
                         }
                     }
-                    a(href = uri!(index).to_string()) { //TODO don't link to index if already on index
+                    a(href = uri!(index).to_string()) {
                         //TODO randomize chest textures/sizes depending on page
                         //TODO get 128px images, use those (with 256 as a 2x srcset)
-                        img(class = "small-chest", src = "/static/chest/s256.png");
-                        img(class = "small-chest", src = "/static/chest/s256.png");
-                        img(class = "small-chest", src = "/static/chest/s256.png");
-                        img(class = "small-chest", src = "/static/chest/s256.png");
+                        img(class = "small-chest", src = "/static/chest/n256.png");
+                        img(class = "small-chest", src = "/static/chest/n256.png");
+                        img(class = "small-chest", src = "/static/chest/n256.png");
+                        img(class = "small-chest", src = "/static/chest/n256.png");
                         h1 : "Mido's House";
                     }
                 }

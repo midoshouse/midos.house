@@ -2,23 +2,42 @@ body {
     font-family: system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
+nav {
+    background: linear-gradient(0, transparent 0%, transparent 15%, black 15%, black 25%, transparent 25%, transparent 100%);
+}
+
+nav a {
+    color: black;
+}
+
+nav > a,
+a:hover {
+    text-decoration: none;
+}
+
 .small-chest {
-    width: 128px;
-    height: 128px;
-    margin-top: 128px;
-    margin-left: 64px;
-    margin-right: 64px;
-    margin-bottom: 0;
+    width: 32px;
+    height: 32px;
+    padding-top: 32px;
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 0;
 }
 
 .big-chest {
-    width: 256px;
-    height: 256px;
-    margin: 0;
+    width: 64px;
+    height: 64px;
+    padding: 0;
+}
+
+nav h1 {
+    display: inline;
+    font-size: 64px;
 }
 
 #login {
     float: right;
+    text-align: right;
 }
 
 footer,
@@ -29,6 +48,14 @@ footer a {
 @media (prefers-color-scheme: dark) {
     body {
         background-color: black;
-        color: #bbb;
+        color: white;
+    }
+
+    nav {
+        background: linear-gradient(0, transparent 0%, transparent 15%, white 15%, white 25%, transparent 25%, transparent 100%);
+    }
+
+    nav a {
+        color: white;
     }
 }
