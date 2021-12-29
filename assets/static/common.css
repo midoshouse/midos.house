@@ -1,0 +1,34 @@
+body {
+    font-family: system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+.small-chest {
+    width: 128px;
+    height: 128px;
+    margin-top: 128px;
+    margin-left: 64px;
+    margin-right: 64px;
+    margin-bottom: 0;
+}
+
+.big-chest {
+    width: 256px;
+    height: 256px;
+    margin: 0;
+}
+
+#login {
+    float: right;
+}
+
+footer,
+footer a {
+    color: gray;
+}
+
+@media (prefers-color-scheme: dark) {
+    body {
+        background-color: black;
+        color: #bbb;
+    }
+}

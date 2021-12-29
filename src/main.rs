@@ -47,13 +47,11 @@ fn page(user: &Option<User>, title: &str, content: impl RenderOnce) -> HtmlResul
                 meta(charset = "utf-8");
                 meta(name = "viewport", content = "width=device-width, initial-scale=1, shrink-to-fit=no");
                 title : title;
-                //TODO description, favicon, stylesheet
+                //TODO description, favicon
+                link(rel = "stylesheet", href = "/static/common.css");
             }
             body {
                 nav {
-                    h1 {
-                        a(href = uri!(index).to_string()) : "Mido's House"; //TODO don't link to index if already on index
-                    }
                     div(id = "login") { //TODO hide if already on /login?
                         @if let Some(user) = user {
                             p : format!("signed in as {}", user.display_name);
@@ -62,10 +60,19 @@ fn page(user: &Option<User>, title: &str, content: impl RenderOnce) -> HtmlResul
                             a(href = uri!(auth::login).to_string()) : "Sign in / Create account";
                         }
                     }
+                    a(href = uri!(index).to_string()) { //TODO don't link to index if already on index
+                        //TODO randomize chest textures/sizes depending on page
+                        //TODO get 128px images, use those (with 256 as a 2x srcset)
+                        img(class = "small-chest", src = "/static/chest/s256.png");
+                        img(class = "small-chest", src = "/static/chest/s256.png");
+                        img(class = "small-chest", src = "/static/chest/s256.png");
+                        img(class = "small-chest", src = "/static/chest/s256.png");
+                        h1 : "Mido's House";
+                    }
                 }
                 : content;
                 footer {
-                    a(href = uri!("https://fenhl.net/disc").to_string()) : "disclaimer / Impressum"; //TODO class = "muted"?
+                    a(href = uri!("https://fenhl.net/disc").to_string()) : "disclaimer / Impressum";
                 }
             }
         }
