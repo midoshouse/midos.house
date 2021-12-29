@@ -18,7 +18,10 @@ use {
     },
     rocket::{
         config::SecretKey,
-        fs::NamedFile,
+        fs::{
+            FileServer,
+            NamedFile,
+        },
         uri,
     },
     rocket_oauth2::{
@@ -137,6 +140,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
         .https_only(true)
         .build()?
     )
+    .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))
     .launch().await?;
     Ok(())
 }
