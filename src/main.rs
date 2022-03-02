@@ -56,6 +56,15 @@ fn page(user: &Option<User>, title: &str, content: impl RenderOnce) -> HtmlResul
             }
             body {
                 nav {
+                    a(href = uri!(index).to_string()) {
+                        //TODO get 128px images, use those (with 256 as a 2x srcset)
+                        div(class = "logo") {
+                            @for chest in appearances.0 {
+                                img(class = "chest", src = format!("/static/chest/{}256.png", char::from(chest.texture)));
+                            }
+                        }
+                        h1 : "Mido's House";
+                    }
                     div(id = "login") { //TODO hide if already on /login?
                         @if let Some(user) = user {
                             : format!("signed in as {}", user.display_name);
@@ -65,14 +74,6 @@ fn page(user: &Option<User>, title: &str, content: impl RenderOnce) -> HtmlResul
                         } else {
                             a(href = uri!(auth::login).to_string()) : "Sign in / Create account";
                         }
-                    }
-                    a(href = uri!(index).to_string()) {
-                        //TODO use the randomize chest appearances
-                        //TODO get 128px images, use those (with 256 as a 2x srcset)
-                        @for chest in appearances.0 {
-                            img(class = if chest.big { "big-chest" } else { "small-chest" }, src = format!("/static/chest/{}256.png", char::from(chest.texture)));
-                        }
-                        h1 : "Mido's House";
                     }
                 }
                 : content;

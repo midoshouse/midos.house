@@ -76,7 +76,7 @@ impl From<ChestTexture> for char {
 #[derive(Clone, Copy, Deserialize)]
 pub(crate) struct ChestAppearance {
     pub(crate) texture: ChestTexture,
-    pub(crate) big: bool,
+    #[allow(unused)] big: bool,
 }
 
 #[derive(Clone, Copy, Deserialize)]
