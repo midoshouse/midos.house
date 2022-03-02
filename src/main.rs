@@ -92,6 +92,16 @@ fn index(user: Option<User>) -> HtmlResult {
     })
 }
 
+#[rocket::catch(404)]
+fn not_found() -> HtmlResult {
+    page(&None, "Not Found — Mido's House", html! { //TODO render “login status unknown” as opposed to “not signed in”
+        h1 : "Error 404: Not Found";
+        div(class = "banner") {
+            img(src = "https://cdn.discordapp.com/attachments/512048482677424138/905673263005433866/unknown.png");
+        }
+    })
+}
+
 #[derive(clap::Parser)]
 struct Args {
     #[clap(long = "dev")]
@@ -116,6 +126,8 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
         auth::register_racetime,
         auth::logout,
     ])
+    .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))
+    .register("/", rocket::catchers![not_found])
     .attach(OAuth2::<auth::RaceTime>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
         rocket_oauth2::StaticProvider {
             auth_uri: "https://racetime.gg/o/authorize".into(),
@@ -138,7 +150,6 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
         .https_only(true)
         .build()?
     )
-    .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))
     .launch().await?;
     Ok(())
 }

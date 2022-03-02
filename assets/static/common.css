@@ -39,6 +39,11 @@ nav h1 {
     text-align: right;
 }
 
+.banner img {
+    max-width: 100%;
+    text-align: center;
+}
+
 footer,
 footer a {
     color: gray;
