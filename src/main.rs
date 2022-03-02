@@ -32,7 +32,6 @@ use {
         PgPool,
         postgres::PgConnectOptions,
     },
-    structopt::StructOpt,
     crate::{
         auth::User,
         config::Config,
@@ -97,9 +96,9 @@ async fn favicon() -> io::Result<NamedFile> {
     NamedFile::open("assets/favicon.ico").await
 }
 
-#[derive(StructOpt)]
+#[derive(clap::Parser)]
 struct Args {
-    #[structopt(long = "dev")]
+    #[clap(long = "dev")]
     is_dev: bool,
 }
 

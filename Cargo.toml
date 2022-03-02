@@ -12,6 +12,10 @@ rocket_oauth2 = "0.5.0-rc.1"
 serde_json = "1"
 xdg = "2"
 
+[dependencies.clap]
+version = "3"
+features = ["derive"]
+
 [dependencies.horrorshow]
 git = "https://github.com/fenhl/horrorshow-rs"
 branch = "rocket"
@@ -30,10 +34,6 @@ features = ["derive"]
 version = "0.5"
 default-features = false
 features = ["macros", "postgres", "runtime-tokio-rustls"]
-
-[dependencies.structopt]
-version = "0.3"
-features = ["paw"]
 
 [dependencies.tokio]
 version = "1"
