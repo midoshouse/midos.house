@@ -2,32 +2,27 @@
 #![forbid(unsafe_code)]
 
 use {
-    std::{
-        io,
-        time::Duration,
-    },
+    std::time::Duration,
     anyhow::Result,
     horrorshow::{
         RenderOnce,
         helper::doctype,
         html,
-        rocket::{
+        rocket::{ //TODO use rocket_util wrappers instead?
             Result as HtmlResult,
             TemplateExt as _,
         },
     },
     rocket::{
         config::SecretKey,
-        fs::{
-            FileServer,
-            NamedFile,
-        },
+        fs::FileServer,
         uri,
     },
     rocket_oauth2::{
         OAuth2,
         OAuthConfig,
     },
+    rocket_util::Suffix,
     sqlx::{
         PgPool,
         postgres::PgConnectOptions,
@@ -35,11 +30,16 @@ use {
     crate::{
         auth::User,
         config::Config,
+        favicon::{
+            ChestTexture,
+            ChestTextures,
+        },
     },
 };
 
 mod auth;
 mod config;
+mod favicon;
 
 fn page(user: &Option<User>, title: &str, content: impl RenderOnce) -> HtmlResult {
     html! {
@@ -49,7 +49,9 @@ fn page(user: &Option<User>, title: &str, content: impl RenderOnce) -> HtmlResul
                 meta(charset = "utf-8");
                 meta(name = "viewport", content = "width=device-width, initial-scale=1, shrink-to-fit=no");
                 title : title;
-                //TODO description, favicon
+                //TODO randomize chest textures depending on page
+                link(rel = "icon", sizes = "512x512", type = "image/png", href = uri!(favicon::favicon_png(ChestTextures([ChestTexture::Normal; 4]), Suffix(512, "png"))).to_string());
+                link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(ChestTextures([ChestTexture::Normal; 4]), Suffix(1024, "png"))).to_string());
                 link(rel = "stylesheet", href = "/static/common.css");
             }
             body {
@@ -90,12 +92,6 @@ fn index(user: Option<User>) -> HtmlResult {
     })
 }
 
-#[rocket::get("/favicon.ico")]
-async fn favicon() -> io::Result<NamedFile> {
-    //TODO random chest configurations based on current RSL weights except CSMC is replaced with CTMC?
-    NamedFile::open("assets/favicon.ico").await
-}
-
 #[derive(clap::Parser)]
 struct Args {
     #[clap(long = "dev")]
@@ -112,7 +108,8 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
     })
     .mount("/", rocket::routes![
         index,
-        favicon,
+        favicon::favicon_ico,
+        favicon::favicon_png,
         auth::login,
         auth::racetime_login,
         auth::racetime_callback,
