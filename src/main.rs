@@ -31,7 +31,7 @@ use {
         auth::User,
         config::Config,
         favicon::{
-            ChestTexture,
+            ChestAppearances,
             ChestTextures,
         },
     },
@@ -42,6 +42,7 @@ mod config;
 mod favicon;
 
 fn page(user: &Option<User>, title: &str, content: impl RenderOnce) -> HtmlResult {
+    let appearances = ChestAppearances::random(); //TODO change based on page (tournament settings, seed spoiler log)
     html! {
         : doctype::HTML;
         html {
@@ -49,9 +50,8 @@ fn page(user: &Option<User>, title: &str, content: impl RenderOnce) -> HtmlResul
                 meta(charset = "utf-8");
                 meta(name = "viewport", content = "width=device-width, initial-scale=1, shrink-to-fit=no");
                 title : title;
-                //TODO randomize chest textures depending on page
-                link(rel = "icon", sizes = "512x512", type = "image/png", href = uri!(favicon::favicon_png(ChestTextures([ChestTexture::Normal; 4]), Suffix(512, "png"))).to_string());
-                link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(ChestTextures([ChestTexture::Normal; 4]), Suffix(1024, "png"))).to_string());
+                link(rel = "icon", sizes = "512x512", type = "image/png", href = uri!(favicon::favicon_png(appearances.textures(), Suffix(512, "png"))).to_string());
+                link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(appearances.textures(), Suffix(1024, "png"))).to_string());
                 link(rel = "stylesheet", href = "/static/common.css");
             }
             body {
@@ -67,12 +67,11 @@ fn page(user: &Option<User>, title: &str, content: impl RenderOnce) -> HtmlResul
                         }
                     }
                     a(href = uri!(index).to_string()) {
-                        //TODO randomize chest textures/sizes depending on page
+                        //TODO use the randomize chest appearances
                         //TODO get 128px images, use those (with 256 as a 2x srcset)
-                        img(class = "small-chest", src = "/static/chest/n256.png");
-                        img(class = "small-chest", src = "/static/chest/n256.png");
-                        img(class = "small-chest", src = "/static/chest/n256.png");
-                        img(class = "small-chest", src = "/static/chest/n256.png");
+                        @for chest in appearances.0 {
+                            img(class = if chest.big { "big-chest" } else { "small-chest" }, src = format!("/static/chest/{}256.png", char::from(chest.texture)));
+                        }
                         h1 : "Mido's House";
                     }
                 }

@@ -13,6 +13,8 @@ use {
         io::Reader as ImageReader,
     },
     itertools::Itertools as _,
+    once_cell::sync::Lazy,
+    rand::prelude::*,
     rocket::{
         fs::NamedFile,
         http::{
@@ -31,9 +33,11 @@ use {
         Response,
         Suffix,
     },
+    serde::Deserialize,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) enum ChestTexture {
     Normal,
     Major,
@@ -69,6 +73,30 @@ impl From<ChestTexture> for char {
     }
 }
 
+#[derive(Clone, Copy, Deserialize)]
+pub(crate) struct ChestAppearance {
+    pub(crate) texture: ChestTexture,
+    pub(crate) big: bool,
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(transparent)]
+pub(crate) struct ChestAppearances(pub(crate) [ChestAppearance; 4]);
+
+impl ChestAppearances {
+    pub(crate) fn random() -> Self {
+        static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../assets/chests-rsl-da4dae5.json")).expect("failed to parse chest weights"));
+
+        WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
+    }
+
+    pub(crate) fn textures(self) -> ChestTextures {
+        ChestTextures(self.0.map(|ChestAppearance { texture, .. }| texture))
+    }
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(transparent)]
 pub(crate) struct ChestTextures(pub(crate) [ChestTexture; 4]);
 
 #[derive(Debug, From)]
