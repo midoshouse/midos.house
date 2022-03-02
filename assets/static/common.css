@@ -9,7 +9,7 @@ nav > a {
     flex-grow: 1;
 }
 
-nav a {
+a {
     color: black;
 }
 
@@ -39,9 +39,12 @@ nav h1 {
     text-align: right;
 }
 
+.banner {
+    text-align: center;
+}
+
 .banner img {
     max-width: 100%;
-    text-align: center;
 }
 
 footer,
@@ -76,7 +79,7 @@ footer a {
         color: white;
     }
 
-    nav a {
+    a {
         color: white;
     }
 }
