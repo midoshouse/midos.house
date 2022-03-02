@@ -14,6 +14,7 @@ use {
         },
     },
     rocket::{
+        Request,
         config::SecretKey,
         fs::FileServer,
         uri,
@@ -93,8 +94,9 @@ fn index(user: Option<User>) -> HtmlResult {
 }
 
 #[rocket::catch(404)]
-fn not_found() -> HtmlResult {
-    page(&None, "Not Found — Mido's House", html! { //TODO render “login status unknown” as opposed to “not signed in”
+async fn not_found(request: &Request<'_>) -> HtmlResult {
+    let user = request.guard::<User>().await.succeeded();
+    page(&user, "Not Found — Mido's House", html! {
         h1 : "Error 404: Not Found";
         div(class = "banner") {
             img(src = "https://cdn.discordapp.com/attachments/512048482677424138/905673263005433866/unknown.png");
