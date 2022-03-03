@@ -75,32 +75,39 @@ fn page(user: &Option<User>, header: HeaderStyle, title: &str, content: impl Ren
                 link(rel = "stylesheet", href = "/static/common.css");
             }
             body {
-                nav(class? = matches!(header.page, HeaderPage::Index).then(|| "index")) {
-                    a(href = uri!(index).to_string()) {
-                        //TODO get 128px images, use those (with 256 as a 2x srcset)
-                        div(class = "logo") {
-                            @for chest in header.chests.0 {
-                                img(class = "chest", src = format!("/static/chest/{}256.png", char::from(chest.texture)));
+                div {
+                    nav(class? = matches!(header.page, HeaderPage::Index).then(|| "index")) {
+                        a(href = uri!(index).to_string()) {
+                            //TODO get 128px images, use those (with 256 as a 2x srcset)
+                            div(class = "logo") {
+                                @for chest in header.chests.0 {
+                                    img(class = "chest", src = format!("/static/chest/{}256.png", char::from(chest.texture)));
+                                }
+                            }
+                            h1 : "Mido's House";
+                        }
+                        @if !matches!(header.page, HeaderPage::Login) {
+                            div(id = "login") {
+                                @if let Some(user) = user {
+                                    : format!("signed in as {}", user.display_name);
+                                    br;
+                                    //TODO links to profile and preferences
+                                    a(href = uri!(auth::logout).to_string()) : "Sign out";
+                                } else {
+                                    a(href = uri!(auth::login).to_string()) : "Sign in / Create account";
+                                }
                             }
                         }
-                        h1 : "Mido's House";
                     }
-                    @if !matches!(header.page, HeaderPage::Login) {
-                        div(id = "login") {
-                            @if let Some(user) = user {
-                                : format!("signed in as {}", user.display_name);
-                                br;
-                                //TODO links to profile and preferences
-                                a(href = uri!(auth::logout).to_string()) : "Sign out";
-                            } else {
-                                a(href = uri!(auth::login).to_string()) : "Sign in / Create account";
-                            }
-                        }
-                    }
+                    : content;
                 }
-                : content;
                 footer {
-                    a(href = uri!("https://fenhl.net/disc").to_string()) : "disclaimer / Impressum";
+                    : "hosted by ";
+                    a(href = "https://fenhl.net/") : "Fenhl";
+                    : " • ";
+                    a(href = "https://fenhl.net/disc") : "disclaimer";
+                    : " • ";
+                    a(href = "https://github.com/midoshouse/midos.house") : "source code";
                 }
             }
         }

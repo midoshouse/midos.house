@@ -1,4 +1,9 @@
 body {
+    min-height: 100vh;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
     font-family: system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
@@ -38,6 +43,15 @@ nav h1 {
 
 #login {
     text-align: right;
+}
+
+body > div,
+footer {
+    margin: 8px;
+}
+
+body > div {
+    flex-grow: 0;
 }
 
 .button-row {
