@@ -77,7 +77,7 @@ fn page(user: &Option<User>, header: HeaderStyle, title: &str, content: impl Ren
             body {
                 div {
                     nav(class? = matches!(header.page, HeaderPage::Index).then(|| "index")) {
-                        a(href = uri!(index).to_string()) {
+                        a(href? = (!matches!(header.page, HeaderPage::Index)).then(|| uri!(index).to_string())) {
                             //TODO get 128px images, use those (with 256 as a 2x srcset)
                             div(class = "logo") {
                                 @for chest in header.chests.0 {
