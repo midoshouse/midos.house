@@ -5,7 +5,9 @@ use {
     std::time::Duration,
     anyhow::Result,
     horrorshow::{
+        RenderBox,
         RenderOnce,
+        box_html,
         helper::doctype,
         html,
         rocket::{ //TODO use rocket_util wrappers instead?
@@ -129,20 +131,39 @@ fn index(user: Option<User>) -> HtmlResult {
     })
 }
 
+enum Tab {
+    Info,
+    Enter,
+}
+
+fn event_header(tab: Tab) -> Box<dyn RenderBox> {
+    box_html! {
+        h1 : "1st Random Settings Pictionary Spoiler Log Race";
+        h2 : "Saturday, May 14, 2021 • 20:00 CEST • 18:00 UTC • 2PM EDT";
+        div(class = "button-row") {
+            @if let Tab::Info = tab {
+                span(class = "button selected") : "Info";
+            } else {
+                a(class = "button", href = uri!(pictionary_random_settings()).to_string()) : "Info";
+            }
+            //TODO if participating, replace “Enter” with “My Status” and “Resign”
+            @if let Tab::Enter = tab {
+                span(class = "button selected") : "Enter";
+            } else {
+                a(class = "button", href = uri!(pictionary_random_settings_enter()).to_string()) : "Enter";
+            }
+            //a(class = "button") : "Find Teammates"; //TODO
+            //a(class = "button") : "Volunteer"; //TODO
+            //a(class = "button") : "Watch"; //TODO
+        }
+    }
+}
+
 #[rocket::get("/event/pic/rs1")]
 fn pictionary_random_settings(user: Option<User>) -> HtmlResult {
     page(&user, HeaderStyle { chests: ChestAppearances::VANILLA, ..HeaderStyle::default() }, "1st Random Settings Pictionary Spoiler Log Race", html! {
         main {
-            h1 : "1st Random Settings Pictionary Spoiler Log Race";
-            h2 : "Saturday, May 14, 2021 • 20:00 CEST • 18:00 UTC • 2PM EDT";
-            div(class = "button-row") {
-                span(class = "button selected") : "Info";
-                //a(class = "button") : "Enter"; //TODO
-                //TODO if participating, replace “Enter” with “My Status” and “Resign”
-                //a(class = "button") : "Find Teammates"; //TODO
-                //a(class = "button") : "Volunteer"; //TODO
-                //a(class = "button") : "Watch"; //TODO
-            }
+            : event_header(Tab::Info);
             article {
                 h2 : "What is a Pictionary Spoiler Log Race?";
                 p : "Each team consists of one Runner and one Spoiler Log Pilot who is drawing. The pilot has to figure out a way through the seed and how to tell their runner in drawing what checks they need to do. Hints are obviously disabled.";
@@ -272,6 +293,24 @@ fn pictionary_random_settings(user: Option<User>) -> HtmlResult {
     })
 }
 
+#[rocket::get("/event/pic/rs1/enter")]
+fn pictionary_random_settings_enter(user: Option<User>) -> HtmlResult {
+    page(&user, HeaderStyle { chests: ChestAppearances::VANILLA, ..HeaderStyle::default() }, "1st Random Settings Pictionary Spoiler Log Race", html! {
+        main {
+            : event_header(Tab::Enter);
+            article {
+                p { //TODO signup form
+                    : "Race signups will be opening soon. Keep an eye on the #pictionary-spoiler-log channel (";
+                    a(href = "https://discord.gg/m8z8ZqtN8H") : "invite link";
+                    : " • ";
+                    a(href = "https://discord.com/channels/663207960432082944/865206020015128586") : "direct channel link";
+                    : ") for an announcement!";
+                }
+            }
+        }
+    })
+}
+
 #[rocket::catch(404)]
 async fn not_found(request: &Request<'_>) -> HtmlResult {
     let user = request.guard::<User>().await.succeeded();
@@ -300,6 +339,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
     .mount("/", rocket::routes![
         index,
         pictionary_random_settings,
+        pictionary_random_settings_enter,
         favicon::favicon_ico,
         favicon::favicon_png,
         auth::login,
