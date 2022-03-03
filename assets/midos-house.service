@@ -1,0 +1,15 @@
+[Unit]
+Description=Web server for midos.house
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Restart=always
+ExecStartPre=/usr/bin/git pull
+ExecStart=/home/fenhl/.cargo/bin/cargo run --release
+User=fenhl
+Group=fenhl
+WorkingDirectory=/opt/git/github.com/midoshouse/midos.house/master
+
+[Install]
+WantedBy=multi-user.target
