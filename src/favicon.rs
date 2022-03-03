@@ -79,11 +79,20 @@ pub(crate) struct ChestAppearance {
     #[allow(unused)] big: bool,
 }
 
+impl ChestAppearance {
+    const VANILLA: Self = Self {
+        texture: ChestTexture::Normal,
+        big: false,
+    };
+}
+
 #[derive(Clone, Copy, Deserialize)]
 #[serde(transparent)]
 pub(crate) struct ChestAppearances(pub(crate) [ChestAppearance; 4]);
 
 impl ChestAppearances {
+    pub(crate) const VANILLA: Self = Self([ChestAppearance::VANILLA; 4]);
+
     pub(crate) fn random() -> Self {
         static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../assets/chests-rsl-da4dae5.json")).expect("failed to parse chest weights"));
 

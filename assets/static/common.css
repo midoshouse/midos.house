@@ -14,6 +14,7 @@ a {
 }
 
 nav > a,
+a.button,
 a:hover {
     text-decoration: none;
 }
@@ -39,6 +40,43 @@ nav h1 {
     text-align: right;
 }
 
+.button-row {
+    display: flex;
+    flex-flow: row wrap;
+    padding: 0 16px;
+}
+
+.button {
+    border: 1px solid black;
+    padding: 8px;
+}
+
+.button:nth-child(1) {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+.button:nth-last-child(1) {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+.button.selected,
+.button:hover {
+    background-color: black;
+    color: white;
+}
+
+article {
+    border: 1px solid black;
+    margin: 8px;
+    padding: 8px;
+}
+
+.button-row + article {
+    margin-top: -16px;
+}
+
 .banner {
     text-align: center;
 }
@@ -57,22 +95,28 @@ footer a {
 }
 
 @media (min-width: 448px) {
-    .logo {
+    nav.index .logo {
         grid-template-columns: 64px 64px;
     }
 
-    .chest {
+    nav.index .chest {
         width: 64px;
         height: 64px;
     }
 
+    nav.index h1 {
+        font-size: 64px;
+    }
+}
+
+@media (min-width: 768px) {
     nav h1 {
         font-size: 64px;
     }
 }
 
 @media (min-width: 1152px) {
-    nav h1 {
+    nav.index h1 {
         font-size: 128px;
     }
 }
@@ -85,5 +129,19 @@ footer a {
 
     a {
         color: white;
+    }
+
+    .button {
+        border-color: white;
+    }
+
+    .button.selected,
+    .button:hover {
+        background-color: white;
+        color: black;
+    }
+
+    article {
+        border-color: white;
     }
 }

@@ -40,7 +40,11 @@ use {
     },
     serde::Deserialize,
     sqlx::PgPool,
-    crate::page,
+    crate::{
+        HeaderPage,
+        HeaderStyle,
+        page,
+    },
 };
 
 pub(crate) struct User {
@@ -105,7 +109,7 @@ pub(crate) struct RaceTimeUser {
 
 #[rocket::get("/login")]
 pub(crate) fn login(user: Option<User>) -> HtmlResult {
-    page(&user, "Login — Mido's House", if user.is_some() {
+    page(&user, HeaderStyle { page: HeaderPage::Login, ..HeaderStyle::default() }, "Login — Mido's House", if user.is_some() {
         (box_html! {
             p : "You are already signed in.";
             ul {
@@ -156,7 +160,7 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, client: &State<reqwe
     Ok(if User::from_racetime(pool, &racetime_user.id).await.map_err(Error::from)?.is_some() {
         RaceTimeCallbackResponse::Redirect(Redirect::to(uri!(crate::index))) //TODO redirect to original page
     } else {
-        RaceTimeCallbackResponse::Content(page(&None, "Create account — Mido's House", html! {
+        RaceTimeCallbackResponse::Content(page(&None, HeaderStyle { page: HeaderPage::Login, ..HeaderStyle::default() }, "Create account — Mido's House", html! {
             p : "This racetime.gg account is not associated with a Mido's House account.";
             ul {
                 li {
