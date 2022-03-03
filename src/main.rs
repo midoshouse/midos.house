@@ -102,12 +102,15 @@ fn page(user: &Option<User>, header: HeaderStyle, title: &str, content: impl Ren
                     : content;
                 }
                 footer {
-                    : "hosted by ";
-                    a(href = "https://fenhl.net/") : "Fenhl";
-                    : " • ";
-                    a(href = "https://fenhl.net/disc") : "disclaimer";
-                    : " • ";
-                    a(href = "https://github.com/midoshouse/midos.house") : "source code";
+                    p {
+                        : "hosted by ";
+                        a(href = "https://fenhl.net/") : "Fenhl";
+                        : " • ";
+                        a(href = "https://fenhl.net/disc") : "disclaimer";
+                        : " • ";
+                        a(href = "https://github.com/midoshouse/midos.house") : "source code";
+                    }
+                    p : "Special thanks to Maplestar for the chest icons used in the logo!";
                 }
             }
         }
