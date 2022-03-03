@@ -99,7 +99,7 @@ async fn not_found(request: &Request<'_>) -> HtmlResult {
     page(&user, "Not Found — Mido's House", html! {
         h1 : "Error 404: Not Found";
         div(class = "banner") {
-            img(src = "https://cdn.discordapp.com/attachments/512048482677424138/905673263005433866/unknown.png");
+            img(class = "nearest-neighbor", src = "https://cdn.discordapp.com/attachments/512048482677424138/905673263005433866/unknown.png");
         }
     })
 }

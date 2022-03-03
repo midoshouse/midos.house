@@ -47,6 +47,10 @@ nav h1 {
     max-width: 100%;
 }
 
+.nearest-neighbor {
+    image-rendering: pixelated;
+}
+
 footer,
 footer a {
     color: gray;
