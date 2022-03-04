@@ -101,7 +101,7 @@ table {
 }
 
 .button-row + table th {
-    padding-top: 16px;
+    padding-top: 24px;
 }
 
 table,
