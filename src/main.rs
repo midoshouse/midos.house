@@ -133,6 +133,7 @@ fn index(user: Option<User>) -> HtmlResult {
 
 enum Tab {
     Info,
+    Teams,
     Enter,
 }
 
@@ -145,6 +146,11 @@ fn event_header(tab: Tab) -> Box<dyn RenderBox> {
                 span(class = "button selected") : "Info";
             } else {
                 a(class = "button", href = uri!(pictionary_random_settings()).to_string()) : "Info";
+            }
+            @if let Tab::Teams = tab {
+                span(class = "button selected") : "Teams";
+            } else {
+                a(class = "button", href = uri!(pictionary_random_settings_teams()).to_string()) : "Teams";
             }
             //TODO if participating, replace “Enter” with “My Status” and “Resign”
             @if let Tab::Enter = tab {
@@ -293,9 +299,32 @@ fn pictionary_random_settings(user: Option<User>) -> HtmlResult {
     })
 }
 
+#[rocket::get("/event/pic/rs1/teams")]
+fn pictionary_random_settings_teams(user: Option<User>) -> HtmlResult {
+    page(&user, HeaderStyle { chests: ChestAppearances::VANILLA, ..HeaderStyle::default() }, "Teams — 1st Random Settings Pictionary Spoiler Log Race", html! {
+        main {
+            : event_header(Tab::Teams);
+            table {
+                thead {
+                    tr {
+                        th : "Team Name";
+                        th(class = "sheikah") : "Runner";
+                        th(class = "gerudo") : "Pilot";
+                    }
+                }
+                tbody {
+                    tr {
+                        td(colspan = "3") : "(no signups yet)"; //TODO
+                    }
+                }
+            }
+        }
+    })
+}
+
 #[rocket::get("/event/pic/rs1/enter")]
 fn pictionary_random_settings_enter(user: Option<User>) -> HtmlResult {
-    page(&user, HeaderStyle { chests: ChestAppearances::VANILLA, ..HeaderStyle::default() }, "1st Random Settings Pictionary Spoiler Log Race", html! {
+    page(&user, HeaderStyle { chests: ChestAppearances::VANILLA, ..HeaderStyle::default() }, "Enter — 1st Random Settings Pictionary Spoiler Log Race", html! {
         main {
             : event_header(Tab::Enter);
             article {
@@ -339,6 +368,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
     .mount("/", rocket::routes![
         index,
         pictionary_random_settings,
+        pictionary_random_settings_teams,
         pictionary_random_settings_enter,
         favicon::favicon_ico,
         favicon::favicon_png,

@@ -92,6 +92,51 @@ article {
     margin-top: -16px;
 }
 
+table {
+    margin: 8px;
+}
+
+.button-row + table {
+    margin-top: -16px;
+}
+
+.button-row + table th {
+    padding-top: 16px;
+}
+
+table,
+table th,
+table td {
+    border: 0.5px solid black;
+    border-spacing: 0;
+    text-align: center;
+}
+
+table th,
+table td {
+    padding: 8px;
+}
+
+.sheikah {
+    color: #6000c0;
+}
+
+.gerudo {
+    color: #c06000;
+}
+
+.power {
+    color: #c00000;
+}
+
+.wisdom {
+    color: #0000c0;
+}
+
+.courage {
+    color: #00c000;
+}
+
 .banner {
     text-align: center;
 }
@@ -159,5 +204,31 @@ footer a {
 
     article {
         border-color: white;
+    }
+
+    table,
+    table th,
+    table td {
+        border-color: white;
+    }
+
+    .sheikah {
+        color: #a040ff;
+    }
+
+    .gerudo {
+        color: #ffa040;
+    }
+
+    .power {
+        color: #ff4040;
+    }
+
+    .wisdom {
+        color: #4040ff;
+    }
+
+    .courage {
+        color: #40ff40;
     }
 }
