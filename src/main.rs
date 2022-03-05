@@ -181,11 +181,11 @@ fn pictionary_random_settings(user: Option<User>) -> HtmlResult {
                 }
                 p {
                     strong : "At the ±0 minute mark:";
-                    : " The Pilot is now allowed to look at the spoiler log and can start figuring out the route.";
+                    : " The pilot is now allowed to look at the spoiler log and can start figuring out the route.";
                 }
                 p {
                     strong : "At the +30 minute mark:";
-                    : " The Pilot is allowed to start drawing and the runner is allowed to start the file.";
+                    : " The pilot is allowed to start drawing and the runner is allowed to start the file.";
                 }
                 h2 : "Rules";
                 p {
@@ -193,7 +193,7 @@ fn pictionary_random_settings(user: Option<User>) -> HtmlResult {
                     a(href = "https://rsl-leaderboard.web.app/rules") : "Random Settings League";
                     : " ruleset.";
                 }
-                p : "The pilot is allowed to communicate to their partner only via drawing and may watch and hear the stream of the runner. Runners may talk to their drawer. We would prefer if the drawer did not directly respond to questions, as figuring things out is supposed to be part of the challenge, but in the end it's up to the individual teams.";
+                p : "The pilot is allowed to communicate to their partner only via drawing and may watch and hear the stream of the runner. Runners may talk to their pilot. We would prefer if the pilot did not directly respond to questions, as figuring things out is supposed to be part of the challenge, but in the end it's up to the individual teams.";
                 p {
                     strong : "Allowed:";
                     : " Arrows, Question marks, ingame symbols, check marks, “X” for crossing out stuff.";
@@ -206,7 +206,7 @@ fn pictionary_random_settings(user: Option<User>) -> HtmlResult {
                 p : "For having a better idea what we mean in regards with the rules / communication, here are some examples:";
                 ol {
                     li {
-                        : "The drawer draws 3 spiders and a bow. The runner then asks if there is a bow on 30 skulls. The pilot then draws a smiley or a checkmark for confirmation or a sad face for „no“ — that is ";
+                        : "The pilot draws 3 spiders and a bow. The runner then asks if there is a bow on 30 skulls. The pilot then draws a smiley or a checkmark for confirmation or a sad face for “no” — that is ";
                         strong : "allowed";
                         : ".";
                     }
@@ -221,12 +221,12 @@ fn pictionary_random_settings(user: Option<User>) -> HtmlResult {
                         : ".";
                     }
                     li {
-                        : "The runner says „if I need to do the toilet check, draw a heart“ — that is ";
+                        : "The runner says “if I need to do the toilet check, draw a heart” — that is ";
                         strong : "not allowed";
                         : ".";
                     }
                     li {
-                        : "The runner says: „since you didn't draw anything in the lost woods, I'm gonna skip all the checks there and go immediately to the Sacred Forest Meadow“ — that is ";
+                        : "The runner says: “since you didn't draw anything in the Lost Woods, I'm gonna skip all the checks there and go immediately to the Sacred Forest Meadow” — that is ";
                         strong : "allowed";
                         : ".";
                     }
