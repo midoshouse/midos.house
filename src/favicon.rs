@@ -132,7 +132,7 @@ impl_from_uri_param_identity!([Path] ChestTextures);
 
 #[rocket::get("/favicon.ico")]
 pub(crate) async fn favicon_ico() -> io::Result<NamedFile> {
-    //TODO random chest configurations based on current RSL weights except CSMC is replaced with CTMC?
+    //TODO random chest texture configurations based on current RSL weights?
     NamedFile::open("assets/favicon.ico").await
 }
 

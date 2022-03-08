@@ -9,7 +9,6 @@ use {
         RenderBox,
         box_html,
         html,
-        rocket::Result as HtmlResult,
     },
     rand::prelude::*,
     rocket::{
@@ -41,22 +40,34 @@ use {
     serde::Deserialize,
     sqlx::PgPool,
     crate::{
-        HeaderPage,
-        HeaderStyle,
+        PageError,
+        PageKind,
+        PageResult,
+        PageStyle,
         page,
     },
 };
 
 pub(crate) struct User {
-    //id: i64,
+    pub(crate) id: i64,
     pub(crate) display_name: String,
-    //racetime_id: Option<String>,
+    pub(crate) racetime_id: Option<String>,
 }
 
 impl User {
+    pub(crate) async fn from_id(pool: &PgPool, id: i64) -> sqlx::Result<Option<Self>> {
+        sqlx::query_as!(Self, "SELECT * FROM users WHERE id = $1", id).fetch_optional(pool).await
+    }
+
     async fn from_racetime(pool: &PgPool, racetime_id: &str) -> sqlx::Result<Option<Self>> {
         //TODO update display name from racetime user data?
-        sqlx::query_as!(Self, "SELECT display_name FROM users WHERE racetime_id = $1", racetime_id).fetch_optional(pool).await
+        sqlx::query_as!(Self, "SELECT * FROM users WHERE racetime_id = $1", racetime_id).fetch_optional(pool).await
+    }
+
+    pub(crate) fn to_html<'a>(&'a self) -> Box<dyn RenderBox + 'a> {
+        box_html! {
+            a(href? = self.racetime_id.as_ref().map(|racetime_id| format!("https://racetime.gg/user/{racetime_id}"))) : &self.display_name; //TODO link to Mido's House profile
+        }
     }
 }
 
@@ -108,8 +119,8 @@ pub(crate) struct RaceTimeUser {
 }
 
 #[rocket::get("/login")]
-pub(crate) fn login(user: Option<User>) -> HtmlResult {
-    page(&user, HeaderStyle { page: HeaderPage::Login, ..HeaderStyle::default() }, "Login — Mido's House", if user.is_some() {
+pub(crate) async fn login(pool: &State<PgPool>, user: Option<User>) -> PageResult {
+    page(&pool, &user, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Login — Mido's House", if user.is_some() {
         (box_html! {
             p : "You are already signed in.";
             ul {
@@ -119,17 +130,17 @@ pub(crate) fn login(user: Option<User>) -> HtmlResult {
                 }
                 //TODO offer to connect another account?
             }
-        }) as Box<dyn RenderBox>
+        }) as Box<dyn RenderBox + Send>
     } else {
         box_html! {
-            p : "To login or create a new account, please sign in with your racetime.gg account.";
+            p : "To sign in or create a new account, please sign in with your racetime.gg account.";
             ul {
                 li {
                     a(href = uri!(racetime_login).to_string()) : "Sign in with racetime.gg";
                 }
             }
         }
-    })
+    }).await
 }
 
 #[rocket::get("/login/racetime")]
@@ -143,24 +154,33 @@ pub(crate) enum RaceTimeCallbackResponse {
     Content(Html<String>),
 }
 
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+pub(crate) enum RaceTimeCallbackError {
+    #[error(transparent)] Page(#[from] PageError),
+    #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Time(#[from] time::error::ConversionRange),
+    #[error(transparent)] TryFromInt(#[from] std::num::TryFromIntError),
+}
+
 #[rocket::get("/auth/racetime")]
-pub(crate) async fn racetime_callback(pool: &State<PgPool>, client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<RaceTimeCallbackResponse, Debug<Error>> {
+pub(crate) async fn racetime_callback(pool: &State<PgPool>, client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<RaceTimeCallbackResponse, RaceTimeCallbackError> {
     let mut cookie = Cookie::build("racetime_token", token.access_token().to_owned())
         .same_site(SameSite::Lax);
     if let Some(expires_in) = token.expires_in() {
-        cookie = cookie.max_age(Duration::from_secs(expires_in.try_into().map_err(Error::from)?).try_into().map_err(Error::from)?);
+        cookie = cookie.max_age(Duration::from_secs(expires_in.try_into()?).try_into()?);
     }
     cookies.add_private(cookie.finish());
     //TODO if a Discord session token is already present, offer to connect this account with it instead (only if there aren't any conflicting associations)
     let racetime_user = client.get("https://racetime.gg/o/userinfo")
         .bearer_auth(token.access_token())
-        .send().await.map_err(Error::from)?
-        .error_for_status().map_err(Error::from)?
-        .json::<RaceTimeUser>().await.map_err(Error::from)?;
-    Ok(if User::from_racetime(pool, &racetime_user.id).await.map_err(Error::from)?.is_some() {
+        .send().await?
+        .error_for_status()?
+        .json::<RaceTimeUser>().await?;
+    Ok(if User::from_racetime(pool, &racetime_user.id).await?.is_some() {
         RaceTimeCallbackResponse::Redirect(Redirect::to(uri!(crate::index))) //TODO redirect to original page
     } else {
-        RaceTimeCallbackResponse::Content(page(&None, HeaderStyle { page: HeaderPage::Login, ..HeaderStyle::default() }, "Create account — Mido's House", html! {
+        RaceTimeCallbackResponse::Content(page(&pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create account — Mido's House", html! {
             p : "This racetime.gg account is not associated with a Mido's House account.";
             ul {
                 li {
@@ -170,7 +190,7 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, client: &State<reqwe
                     a(href = uri!(logout).to_string()) : "Cancel";
                 }
             }
-        }).map_err(Error::from)?)
+        }).await?)
         //TODO also offer to associate with an existing account with a Discord login
     })
 }
@@ -183,16 +203,18 @@ pub(crate) async fn register_racetime(pool: &State<PgPool>, client: &State<reqwe
             .send().await.map_err(Error::from)?
             .error_for_status().map_err(Error::from)?
             .json::<RaceTimeUser>().await.map_err(Error::from)?;
-        if sqlx::query!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE racetime_id = $1) AS "exists!""#, racetime_user.id).fetch_one(&**pool).await.map_err(Error::from)?.exists {
+        let mut transaction = pool.begin().await.map_err(Error::from)?;
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE racetime_id = $1) AS "exists!""#, racetime_user.id).fetch_one(&mut transaction).await.map_err(Error::from)? {
             return Err(Debug(anyhow!("there is already an account associated with this racetime.gg account"))) //TODO user-facing error message
         }
         let id = loop {
             let id = thread_rng().gen::<i64>();
-            if !sqlx::query!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, id).fetch_one(&**pool).await.map_err(Error::from)?.exists {
+            if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, id).fetch_one(&mut transaction).await.map_err(Error::from)? {
                 break id
             }
         };
-        sqlx::query!("INSERT INTO users (id, display_name, racetime_id) VALUES ($1, $2, $3)", id, racetime_user.name, racetime_user.id).execute(&**pool).await.map_err(Error::from)?;
+        sqlx::query!("INSERT INTO users (id, display_name, racetime_id) VALUES ($1, $2, $3)", id, racetime_user.name, racetime_user.id).execute(&mut transaction).await.map_err(Error::from)?;
+        transaction.commit().await.map_err(Error::from)?;
         Redirect::to(uri!(crate::index)) //TODO redirect to an appropriate page
     } else {
         Redirect::to(uri!(racetime_login))

@@ -7,6 +7,10 @@ body {
     font-family: system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
+body.fullscreen {
+    height: 100vh;
+}
+
 nav,
 nav > a {
     display: flex;
@@ -14,11 +18,12 @@ nav > a {
     flex-grow: 1;
 }
 
+input[type="submit"],
 a {
-    color: black;
+    color: inherit;
 }
 
-nav > a,
+a.nav,
 a.button,
 a:hover {
     text-decoration: none;
@@ -60,36 +65,50 @@ body > div {
     padding: 0 16px;
 }
 
+input[type="submit"],
 .button {
     background-color: white;
     border: 1px solid black;
     padding: 8px;
 }
 
+input[type="submit"]:nth-child(1),
 .button:nth-child(1) {
     border-top-left-radius: 8px;
     border-bottom-left-radius: 8px;
 }
 
+input[type="submit"]:nth-last-child(1),
 .button:nth-last-child(1) {
     border-top-right-radius: 8px;
     border-bottom-right-radius: 8px;
 }
 
+input[type="submit"]:hover,
 .button.selected,
 .button:hover {
     background-color: black;
     color: white;
 }
 
-article {
+input[type="submit"] {
+    cursor: pointer;
+}
+
+article,
+form {
     border: 1px solid black;
     margin: 8px;
     padding: 8px;
 }
 
-.button-row + article {
+.button-row + article,
+.button-row + form {
     margin-top: -16px;
+}
+
+.button-row + form {
+    padding-top: 24px;
 }
 
 table {
@@ -137,20 +156,34 @@ table td {
     color: #00c000;
 }
 
-.banner {
-    text-align: center;
+fieldset {
+    border-width: 0;
 }
 
-.banner img {
-    max-width: 100%;
+label:not(:nth-last-child(1)) {
+    margin-right: 8px;
+}
+
+label.help {
+    margin-left: 8px;
+}
+
+.error {
+    background-color: #ffc0c0;
+    border: 1px solid #c00000;
+    padding: 8px;
+}
+
+.banner {
+    min-height: 0;
+    object-fit: contain;
 }
 
 .nearest-neighbor {
     image-rendering: pixelated;
 }
 
-footer,
-footer a {
+footer {
     color: gray;
 }
 
@@ -187,22 +220,21 @@ footer a {
         color: white;
     }
 
-    a {
-        color: white;
-    }
-
+    input[type="submit"],
     .button {
         background-color: black;
         border-color: white;
     }
 
+    input[type="submit"]:hover,
     .button.selected,
     .button:hover {
         background-color: white;
         color: black;
     }
 
-    article {
+    article,
+    form {
         border-color: white;
     }
 
@@ -230,5 +262,10 @@ footer a {
 
     .courage {
         color: #40ff40;
+    }
+
+    .error {
+        background-color: #400000;
+        border-color: #ff4040;
     }
 }
