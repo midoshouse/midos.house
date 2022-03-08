@@ -544,7 +544,7 @@ async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, user: User,
             form.context.push_error(form::Error::validation("You cannot be your own teammate.").with_name("teammate"));
         } else {
             if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) as "exists!""#, value.teammate).fetch_one(&mut transaction).await? {
-                form.context.push_error(form::Error::validation("There is no user with this ID."));
+                form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("teammate"));
             } else {
                 if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM signups WHERE
                     series = 'pic'
