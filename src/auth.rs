@@ -10,7 +10,6 @@ use {
         box_html,
         html,
     },
-    rand::prelude::*,
     rocket::{
         Responder,
         State,
@@ -45,23 +44,35 @@ use {
         PageResult,
         PageStyle,
         page,
+        util::{
+            Id,
+            IdTable,
+        },
     },
 };
 
 pub(crate) struct User {
-    pub(crate) id: i64,
+    pub(crate) id: Id,
     pub(crate) display_name: String,
     pub(crate) racetime_id: Option<String>,
 }
 
 impl User {
-    pub(crate) async fn from_id(pool: &PgPool, id: i64) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, "SELECT * FROM users WHERE id = $1", id).fetch_optional(pool).await
+    pub(crate) async fn from_id(pool: &PgPool, id: Id) -> sqlx::Result<Option<Self>> {
+        Ok(sqlx::query!("SELECT * FROM users WHERE id = $1", i64::from(id)).fetch_optional(pool).await?.map(|row| Self {
+            id: row.id.into(),
+            display_name: row.display_name,
+            racetime_id: row.racetime_id,
+        }))
     }
 
     async fn from_racetime(pool: &PgPool, racetime_id: &str) -> sqlx::Result<Option<Self>> {
         //TODO update display name from racetime user data?
-        sqlx::query_as!(Self, "SELECT * FROM users WHERE racetime_id = $1", racetime_id).fetch_optional(pool).await
+        Ok(sqlx::query!("SELECT * FROM users WHERE racetime_id = $1", racetime_id).fetch_optional(pool).await?.map(|row| Self {
+            id: row.id.into(),
+            display_name: row.display_name,
+            racetime_id: row.racetime_id,
+        }))
     }
 
     pub(crate) fn to_html<'a>(&'a self) -> Box<dyn RenderBox + 'a> {
@@ -207,13 +218,8 @@ pub(crate) async fn register_racetime(pool: &State<PgPool>, client: &State<reqwe
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE racetime_id = $1) AS "exists!""#, racetime_user.id).fetch_one(&mut transaction).await.map_err(Error::from)? {
             return Err(Debug(anyhow!("there is already an account associated with this racetime.gg account"))) //TODO user-facing error message
         }
-        let id = loop {
-            let id = thread_rng().gen::<i64>();
-            if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, id).fetch_one(&mut transaction).await.map_err(Error::from)? {
-                break id
-            }
-        };
-        sqlx::query!("INSERT INTO users (id, display_name, racetime_id) VALUES ($1, $2, $3)", id, racetime_user.name, racetime_user.id).execute(&mut transaction).await.map_err(Error::from)?;
+        let id = Id::new(&mut transaction, IdTable::Users).await.map_err(Error::from)?;
+        sqlx::query!("INSERT INTO users (id, display_name, racetime_id) VALUES ($1, $2, $3)", i64::from(id), racetime_user.name, racetime_user.id).execute(&mut transaction).await.map_err(Error::from)?;
         transaction.commit().await.map_err(Error::from)?;
         Redirect::to(uri!(crate::index)) //TODO redirect to an appropriate page
     } else {

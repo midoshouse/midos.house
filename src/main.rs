@@ -18,7 +18,6 @@ use {
         rocket::TemplateExt as _, //TODO use a rocket_util wrapper instead?
     },
     itertools::Itertools as _,
-    rand::prelude::*,
     rocket::{
         FromForm,
         FromFormField,
@@ -58,12 +57,17 @@ use {
             ChestAppearances,
             ChestTextures,
         },
+        util::{
+            Id,
+            IdTable,
+        },
     },
 };
 
 mod auth;
 mod config;
 mod favicon;
+mod util;
 
 enum PageKind {
     Index,
@@ -103,7 +107,7 @@ async fn page(pool: &PgPool, user: &Option<User>, style: PageStyle, title: &str,
     } else {
         (None, Some(content))
     };
-    let fenhl = User::from_id(pool, -3874943390487736167).await?.ok_or(PageError::FenhlUserData)?;
+    let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
     Ok(html! {
         : doctype::HTML;
         html {
@@ -218,8 +222,8 @@ enum PictionaryRandomSettingsError {
 
 #[rocket::get("/event/pic/rs1")]
 async fn pictionary_random_settings(pool: &State<PgPool>, user: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsError> {
-    let tj = User::from_id(pool, -3874943390487736167).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
-    let fenhl = User::from_id(pool, 5961629664912637980).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
+    let tj = User::from_id(pool, Id(5961629664912637980)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
+    let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
     Ok(page(&pool, &user, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "1st Random Settings Pictionary Spoiler Log Race", html! {
         main {
             : event_header(Tab::Info);
@@ -359,7 +363,7 @@ async fn pictionary_random_settings(pool: &State<PgPool>, user: Option<User>) ->
 #[derive(Debug, sqlx::Type)]
 #[sqlx(type_name = "signup_player")]
 struct SignupPlayer {
-    id: i64,
+    id: Id,
     confirmed: bool,
 }
 
@@ -391,7 +395,7 @@ async fn pictionary_random_settings_teams(pool: &State<PgPool>, user: Option<Use
             EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE player.id = $1)
             OR NOT EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE NOT player.confirmed)
         )
-    "#, user.as_ref().map(|user| user.id)).fetch(&**pool); //TODO don't show unconfirmed teams even if the viewer is in them, add a “My Status” page instead
+    "#, user.as_ref().map(|user| i64::from(user.id))).fetch(&**pool); //TODO don't show unconfirmed teams even if the viewer is in them, add a “My Status” page instead
     while let Some(row) = signups_query.try_next().await? {
         let [runner, pilot] = <[_; 2]>::try_from(row.players.0).expect("found Pictionary spoiler log team not consisting of 2 players");
         let runner = User::from_id(&pool, runner.id).await?.ok_or(PictionaryRandomSettingsTeamsError::NonexistentUser)?;
@@ -518,7 +522,7 @@ enum Role {
 #[derive(FromForm)]
 struct EnterForm {
     my_role: Role,
-    teammate: i64,
+    teammate: Id,
 }
 
 #[derive(Responder)]
@@ -537,13 +541,13 @@ async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, user: User,
             AND event = 'rs1'
             AND EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE player.id = $1)
             AND NOT EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE NOT player.confirmed)
-        ) as "exists!""#, user.id).fetch_one(&mut transaction).await? {
+        ) as "exists!""#, i64::from(user.id)).fetch_one(&mut transaction).await? {
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
         if value.teammate == user.id {
             form.context.push_error(form::Error::validation("You cannot be your own teammate.").with_name("teammate"));
         } else {
-            if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) as "exists!""#, value.teammate).fetch_one(&mut transaction).await? {
+            if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) as "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
                 form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("teammate"));
             } else {
                 if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM signups WHERE
@@ -551,7 +555,7 @@ async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, user: User,
                     AND event = 'rs1'
                     AND EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE player.id = $1)
                     AND NOT EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE NOT player.confirmed)
-                ) as "exists!""#, value.teammate).fetch_one(&mut transaction).await? {
+                ) as "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
                     form.context.push_error(form::Error::validation("This user is already signed up for this race."));
                 }
                 //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa)
@@ -573,13 +577,8 @@ async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, user: User,
                 Role::Sheikah => vec![me, teammate],
                 Role::Gerudo => vec![teammate, me],
             };
-            let id = loop {
-                let id = thread_rng().gen::<i64>();
-                if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM signups WHERE id = $1) AS "exists!""#, id).fetch_one(&mut transaction).await? {
-                    break id
-                }
-            };
-            sqlx::query!("INSERT INTO signups (id, series, event, players) VALUES ($1, 'pic', 'rs1', $2)", id, SignupPlayers(signup_players) as _).execute(&mut transaction).await?;
+            let id = Id::new(&mut transaction, IdTable::Signups).await?;
+            sqlx::query!("INSERT INTO signups (id, series, event, players) VALUES ($1, 'pic', 'rs1', $2)", i64::from(id), SignupPlayers(signup_players) as _).execute(&mut transaction).await?;
             transaction.commit().await?;
             Ok(PictionaryRandomSettingsEnterPostResponse::Redirect(Redirect::to(uri!(pictionary_random_settings_teams)))) //TODO redirect to “My Status” page instead
         }
