@@ -28,12 +28,12 @@ use {
         postgres::PgConnectOptions,
     },
     crate::{
-        auth::User,
         config::Config,
         favicon::{
             ChestAppearances,
             ChestTextures,
         },
+        user::User,
         util::Id,
     },
 };
@@ -42,11 +42,13 @@ mod auth;
 mod config;
 mod event;
 mod favicon;
+mod user;
 mod util;
 
 enum PageKind {
     Index,
     Login,
+    MyProfile,
     Other,
 }
 
@@ -76,7 +78,7 @@ enum PageError {
 
 type PageResult = Result<Html<String>, PageError>;
 
-async fn page(pool: &PgPool, user: &Option<User>, style: PageStyle, title: &str, content: impl RenderOnce) -> PageResult {
+async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, content: impl RenderOnce) -> PageResult {
     let (banner_content, content) = if style.is_banner {
         (Some(content), None)
     } else {
@@ -108,8 +110,13 @@ async fn page(pool: &PgPool, user: &Option<User>, style: PageStyle, title: &str,
                         }
                         @if !matches!(style.kind, PageKind::Login) {
                             div(id = "login") {
-                                @if let Some(user) = user {
-                                    : format!("signed in as {}", user.display_name);
+                                @if let Some(me) = me {
+                                    : "signed in as ";
+                                    @if let PageKind::MyProfile = style.kind {
+                                        : &me.display_name;
+                                    } else {
+                                        : me.to_html();
+                                    }
                                     br;
                                     //TODO links to profile and preferences
                                     a(href = uri!(auth::logout).to_string()) : "Sign out";
@@ -139,8 +146,8 @@ async fn page(pool: &PgPool, user: &Option<User>, style: PageStyle, title: &str,
 }
 
 #[rocket::get("/")]
-async fn index(pool: &State<PgPool>, user: Option<User>) -> PageResult {
-    page(&pool, &user, PageStyle { kind: PageKind::Index, ..PageStyle::default() }, "Mido's House", html! {
+async fn index(pool: &State<PgPool>, me: Option<User>) -> PageResult {
+    page(&pool, &me, PageStyle { kind: PageKind::Index, ..PageStyle::default() }, "Mido's House", html! {
         h1 : "Events";
         ul {
             li {
@@ -153,8 +160,8 @@ async fn index(pool: &State<PgPool>, user: Option<User>) -> PageResult {
 #[rocket::catch(404)]
 async fn not_found(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
-    let user = request.guard::<User>().await.succeeded();
-    page(&pool, &user, PageStyle { is_banner: true, ..PageStyle::default() }, "Not Found — Mido's House", html! {
+    let me = request.guard::<User>().await.succeeded();
+    page(&pool, &me, PageStyle { is_banner: true, ..PageStyle::default() }, "Not Found — Mido's House", html! {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }
@@ -166,8 +173,8 @@ async fn not_found(request: &Request<'_>) -> PageResult {
 async fn internal_server_error(request: &Request<'_>) -> PageResult {
     //TODO report
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
-    let user = request.guard::<User>().await.succeeded();
-    page(&pool, &user, PageStyle::default(), "Internal Server Error — Mido's House", html! {
+    let me = request.guard::<User>().await.succeeded();
+    page(&pool, &me, PageStyle::default(), "Internal Server Error — Mido's House", html! {
         h1 : "Error 500: Internal Server Error";
         p : "Sorry, something went wrong. Please notify Fenhl on Discord.";
     }).await
@@ -200,6 +207,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
         event::pictionary_random_settings_enter_post,
         favicon::favicon_ico,
         favicon::favicon_png,
+        user::profile,
     ])
     .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))
     .register("/", rocket::catchers![

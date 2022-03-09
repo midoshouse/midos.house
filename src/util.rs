@@ -1,8 +1,12 @@
 use {
     rand::prelude::*,
-    rocket::form::{
-        self,
-        FromFormField,
+    rocket::{
+        UriDisplayPath,
+        form::{
+            self,
+            FromFormField,
+        },
+        request::FromParam,
     },
     sqlx::{
         Database,
@@ -13,7 +17,7 @@ use {
     },
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, UriDisplayPath)]
 pub(crate) struct Id(pub(crate) u64);
 
 pub(crate) enum IdTable {
@@ -86,6 +90,16 @@ where i64: sqlx::Type<DB> {
 
     fn compatible(ty: &<DB as Database>::TypeInfo) -> bool {
         i64::compatible(ty)
+    }
+}
+
+impl<'a> FromParam<'a> for Id {
+    type Error = &'a str;
+
+    fn from_param(param: &'a str) -> Result<Self, Self::Error> {
+        u64::from_param(param)
+            .map(Self)
+            .or_else(|_| i64::from_param(param).map(Self::from))
     }
 }
 

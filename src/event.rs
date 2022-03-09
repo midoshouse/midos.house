@@ -34,12 +34,10 @@ use {
         PageError,
         PageResult,
         PageStyle,
-        auth::{
-            self,
-            User,
-        },
+        auth,
         favicon::ChestAppearances,
         page,
+        user::User,
         util::{
             Id,
             IdTable,
@@ -93,10 +91,10 @@ pub(crate) enum PictionaryRandomSettingsError {
 }
 
 #[rocket::get("/event/pic/rs1")]
-pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, user: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsError> {
+pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsError> {
     let tj = User::from_id(pool, Id(5961629664912637980)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
     let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
-    Ok(page(&pool, &user, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "1st Random Settings Pictionary Spoiler Log Race", html! {
+    Ok(page(&pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "1st Random Settings Pictionary Spoiler Log Race", html! {
         main {
             : event_header(Tab::Info);
             article {
@@ -258,7 +256,7 @@ pub(crate) enum PictionaryRandomSettingsTeamsError {
 }
 
 #[rocket::get("/event/pic/rs1/teams")]
-pub(crate) async fn pictionary_random_settings_teams(pool: &State<PgPool>, user: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsTeamsError> {
+pub(crate) async fn pictionary_random_settings_teams(pool: &State<PgPool>, me: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsTeamsError> {
     let mut signups = Vec::default();
     let mut signups_query = sqlx::query!(r#"SELECT team_name, players AS "players!: SignupPlayers" FROM signups WHERE
         series = 'pic'
@@ -267,14 +265,14 @@ pub(crate) async fn pictionary_random_settings_teams(pool: &State<PgPool>, user:
             EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE player.id = $1)
             OR NOT EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE NOT player.confirmed)
         )
-    "#, user.as_ref().map(|user| i64::from(user.id))).fetch(&**pool); //TODO don't show unconfirmed teams even if the viewer is in them, add a “My Status” page instead
+    "#, me.as_ref().map(|me| i64::from(me.id))).fetch(&**pool); //TODO don't show unconfirmed teams even if the viewer is in them, add a “My Status” page instead
     while let Some(row) = signups_query.try_next().await? {
         let [runner, pilot] = <[_; 2]>::try_from(row.players.0).expect("found Pictionary spoiler log team not consisting of 2 players");
         let runner = User::from_id(&pool, runner.id).await?.ok_or(PictionaryRandomSettingsTeamsError::NonexistentUser)?;
         let pilot = User::from_id(&pool, pilot.id).await?.ok_or(PictionaryRandomSettingsTeamsError::NonexistentUser)?;
         signups.push((row.team_name, runner, pilot));
     }
-    Ok(page(&pool, &user, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Teams — 1st Random Settings Pictionary Spoiler Log Race", html! {
+    Ok(page(&pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Teams — 1st Random Settings Pictionary Spoiler Log Race", html! {
         main {
             : event_header(Tab::Teams);
             table {
@@ -323,8 +321,8 @@ fn field_errors(tmpl: &mut TemplateBuffer<'_>, errors: &mut Vec<&form::Error<'_>
     };
 }
 
-async fn pictionary_random_settings_enter_form(pool: &PgPool, user: Option<User>, context: Context<'_>) -> PageResult {
-    page(pool, &user, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Enter — 1st Random Settings Pictionary Spoiler Log Race", if user.is_some() {
+async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, context: Context<'_>) -> PageResult {
+    page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Enter — 1st Random Settings Pictionary Spoiler Log Race", if me.is_some() {
         let mut errors = context.errors().collect_vec();
         let form_content = html! {
             //TODO CSRF protection (rocket_csrf crate?)
@@ -348,7 +346,7 @@ async fn pictionary_random_settings_enter_form(pool: &PgPool, user: Option<User>
                 |tmpl| field_errors(tmpl, &mut errors, "teammate");
                 label(for = "teammate") : "Teammate:";
                 input(type = "text", name = "teammate", value? = context.field_value("teammate"));
-                label(class = "help") : "(Enter your teammate's Mido's House user ID.)"; //TODO instructions on where to find the ID, add JS-based user search?
+                label(class = "help") : "(Enter your teammate's Mido's House user ID. It can be found on their profile page.)"; //TODO add JS-based user search?
             }
             fieldset {
                 input(type = "submit", value = "Submit");
@@ -381,8 +379,8 @@ async fn pictionary_random_settings_enter_form(pool: &PgPool, user: Option<User>
 }
 
 #[rocket::get("/event/pic/rs1/enter")]
-pub(crate) async fn pictionary_random_settings_enter(pool: &State<PgPool>, user: Option<User>) -> PageResult {
-    pictionary_random_settings_enter_form(&pool, user, Context::default()).await
+pub(crate) async fn pictionary_random_settings_enter(pool: &State<PgPool>, me: Option<User>) -> PageResult {
+    pictionary_random_settings_enter_form(&pool, me, Context::default()).await
 }
 
 #[derive(FromFormField)]
@@ -404,7 +402,7 @@ pub(crate) enum PictionaryRandomSettingsEnterPostResponse {
 }
 
 #[rocket::post("/event/pic/rs1/enter", data = "<form>")]
-pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, user: User, form: Form<Contextual<'_, EnterForm>>) -> Result<PictionaryRandomSettingsEnterPostResponse, PageError> {
+pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, me: User, form: Form<Contextual<'_, EnterForm>>) -> Result<PictionaryRandomSettingsEnterPostResponse, PageError> {
     let mut form = form.into_inner();
     if let Some(ref value) = form.value {
         let mut transaction = pool.begin().await?;
@@ -413,10 +411,10 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
             AND event = 'rs1'
             AND EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE player.id = $1)
             AND NOT EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE NOT player.confirmed)
-        ) as "exists!""#, i64::from(user.id)).fetch_one(&mut transaction).await? {
+        ) as "exists!""#, i64::from(me.id)).fetch_one(&mut transaction).await? {
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
-        if value.teammate == user.id {
+        if value.teammate == me.id {
             form.context.push_error(form::Error::validation("You cannot be your own teammate.").with_name("teammate"));
         } else {
             if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) as "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
@@ -434,11 +432,11 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
             }
         }
         if form.context.errors().next().is_some() {
-            pictionary_random_settings_enter_form(&pool, Some(user), form.context).await
+            pictionary_random_settings_enter_form(&pool, Some(me), form.context).await
                 .map(PictionaryRandomSettingsEnterPostResponse::Content)
         } else {
             let me = SignupPlayer {
-                id: user.id,
+                id: me.id,
                 confirmed: true,
             };
             let teammate = SignupPlayer {
@@ -455,7 +453,7 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
             Ok(PictionaryRandomSettingsEnterPostResponse::Redirect(Redirect::to(uri!(pictionary_random_settings_teams)))) //TODO redirect to “My Status” page instead
         }
     } else {
-        pictionary_random_settings_enter_form(&pool, Some(user), form.context).await
+        pictionary_random_settings_enter_form(&pool, Some(me), form.context).await
             .map(PictionaryRandomSettingsEnterPostResponse::Content)
     }
 }

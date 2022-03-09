@@ -44,43 +44,13 @@ use {
         PageResult,
         PageStyle,
         page,
+        user::User,
         util::{
             Id,
             IdTable,
         },
     },
 };
-
-pub(crate) struct User {
-    pub(crate) id: Id,
-    pub(crate) display_name: String,
-    pub(crate) racetime_id: Option<String>,
-}
-
-impl User {
-    pub(crate) async fn from_id(pool: &PgPool, id: Id) -> sqlx::Result<Option<Self>> {
-        Ok(sqlx::query!("SELECT * FROM users WHERE id = $1", i64::from(id)).fetch_optional(pool).await?.map(|row| Self {
-            id: row.id.into(),
-            display_name: row.display_name,
-            racetime_id: row.racetime_id,
-        }))
-    }
-
-    async fn from_racetime(pool: &PgPool, racetime_id: &str) -> sqlx::Result<Option<Self>> {
-        //TODO update display name from racetime user data?
-        Ok(sqlx::query!("SELECT * FROM users WHERE racetime_id = $1", racetime_id).fetch_optional(pool).await?.map(|row| Self {
-            id: row.id.into(),
-            display_name: row.display_name,
-            racetime_id: row.racetime_id,
-        }))
-    }
-
-    pub(crate) fn to_html<'a>(&'a self) -> Box<dyn RenderBox + 'a> {
-        box_html! {
-            a(href? = self.racetime_id.as_ref().map(|racetime_id| format!("https://racetime.gg/user/{racetime_id}"))) : &self.display_name; //TODO link to Mido's House profile
-        }
-    }
-}
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for User {
@@ -98,7 +68,7 @@ impl<'r> FromRequest<'r> for User {
                         {
                             Ok(response) => match response.json::<RaceTimeUser>().await {
                                 Ok(user_data) => match User::from_racetime(pool, &user_data.id).await {
-                                    Ok(Some(user)) => Outcome::Success(user),
+                                    Ok(Some(user)) => Outcome::Success(user), //TODO update display name from racetime user data?
                                     Ok(None) => Outcome::Failure((Status::Unauthorized, anyhow!("this racetime.gg account is not associated with a Mido's House account"))),
                                     Err(e) => Outcome::Failure((Status::InternalServerError, anyhow!(e))),
                                 },
@@ -130,8 +100,8 @@ pub(crate) struct RaceTimeUser {
 }
 
 #[rocket::get("/login")]
-pub(crate) async fn login(pool: &State<PgPool>, user: Option<User>) -> PageResult {
-    page(&pool, &user, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Login — Mido's House", if user.is_some() {
+pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>) -> PageResult {
+    page(&pool, &me, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Login — Mido's House", if me.is_some() {
         (box_html! {
             p : "You are already signed in.";
             ul {
