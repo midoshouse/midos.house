@@ -33,6 +33,7 @@ use {
             ChestAppearances,
             ChestTextures,
         },
+        notification::Notification,
         user::User,
         util::Id,
     },
@@ -42,6 +43,7 @@ mod auth;
 mod config;
 mod event;
 mod favicon;
+mod notification;
 mod user;
 mod util;
 
@@ -49,6 +51,7 @@ enum PageKind {
     Index,
     Login,
     MyProfile,
+    Notifications,
     Other,
 }
 
@@ -79,6 +82,15 @@ enum PageError {
 type PageResult = Result<Html<String>, PageError>;
 
 async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, content: impl RenderOnce) -> PageResult {
+    let notifications = if let Some(me) = me {
+        if let PageKind::Notifications = style.kind {
+            Vec::default()
+        } else {
+            Notification::get(pool, me).await?
+        }
+    } else {
+        Vec::default()
+    };
     let (banner_content, content) = if style.is_banner {
         (Some(content), None)
     } else {
@@ -108,8 +120,8 @@ async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, c
                             }
                             h1 : "Mido's House";
                         }
-                        @if !matches!(style.kind, PageKind::Login) {
-                            div(id = "login") {
+                        div(id = "login") {
+                            @if !matches!(style.kind, PageKind::Login) {
                                 @if let Some(me) = me {
                                     : "signed in as ";
                                     @if let PageKind::MyProfile = style.kind {
@@ -122,6 +134,16 @@ async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, c
                                     a(href = uri!(auth::logout).to_string()) : "Sign out";
                                 } else {
                                     a(href = uri!(auth::login).to_string()) : "Sign in / Create account";
+                                }
+                            }
+                            @if !notifications.is_empty() {
+                                a(href = uri!(notification::notifications).to_string()) {
+                                    : notifications.len().to_string();
+                                    @if notifications.len() == 1 {
+                                        : " notification";
+                                    } else {
+                                        : " notifications";
+                                    }
                                 }
                             }
                         }
@@ -207,6 +229,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
         event::pictionary_random_settings_enter_post,
         favicon::favicon_ico,
         favicon::favicon_png,
+        notification::notifications,
         user::profile,
     ])
     .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))
