@@ -49,6 +49,12 @@ impl User {
             a(href = uri!(profile(self.id)).to_string()) : &self.display_name;
         }
     }
+
+    pub(crate) fn into_html(self) -> Box<dyn RenderBox + Send> {
+        box_html! {
+            a(href = uri!(profile(self.id)).to_string()) : self.display_name;
+        }
+    }
 }
 
 impl PartialEq for User {

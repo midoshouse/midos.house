@@ -1,4 +1,11 @@
 use {
+    std::iter,
+    horrorshow::{
+        RenderBox,
+        RenderOnce,
+        box_html,
+    },
+    itertools::Itertools as _,
     rand::prelude::*,
     rocket::{
         UriDisplayPath,
@@ -21,7 +28,7 @@ use {
 pub(crate) struct Id(pub(crate) u64);
 
 pub(crate) enum IdTable {
-    Signups,
+    Teams,
     Users,
 }
 
@@ -30,7 +37,7 @@ impl Id {
         Ok(loop {
             let id = Self(thread_rng().gen());
             let query = match table {
-                IdTable::Signups => sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM signups WHERE id = $1) AS "exists!""#, i64::from(id)),
+                IdTable::Teams => sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE id = $1) AS "exists!""#, i64::from(id)),
                 IdTable::Users => sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, i64::from(id)),
             };
             if !query.fetch_one(&mut *transaction).await? { break id }
@@ -78,7 +85,7 @@ where i64: Encode<'q, DB> {
     }
 
     fn size_hint(&self) -> usize {
-        (self.0 as i64).size_hint()
+        Encode::size_hint(&(self.0 as i64))
     }
 }
 
@@ -112,4 +119,34 @@ where i64: FromFormField<'v>, u64: FromFormField<'v> {
     }
 
     fn default() -> Option<Self> { None }
+}
+
+pub(crate) fn natjoin<'a, T: RenderOnce + 'a>(elts: impl IntoIterator<Item = T>) -> Option<Box<dyn RenderBox + 'a>> {
+    let mut elts = elts.into_iter().fuse();
+    match (elts.next(), elts.next(), elts.next()) {
+        (None, _, _) => None,
+        (Some(elt), None, _) => Some(box_html! {
+            : elt;
+        }),
+        (Some(elt1), Some(elt2), None) => Some(box_html! {
+            : elt1;
+            : " and ";
+            : elt2;
+        }),
+        (Some(elt1), Some(elt2), Some(elt3)) => {
+            let mut rest = iter::once(elt3).chain(elts).collect_vec();
+            let last = rest.pop().expect("rest contains at least elt3");
+            Some(box_html! {
+                : elt1;
+                : ", ";
+                : elt2;
+                @for elt in rest {
+                    : ", ";
+                    : elt;
+                }
+                : ", and ";
+                : last;
+            })
+        }
+    }
 }

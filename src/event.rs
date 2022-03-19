@@ -21,15 +21,13 @@ use {
             Form,
         },
         response::{
+            Debug,
             Redirect,
             content::Html,
         },
         uri,
     },
-    sqlx::{
-        PgPool,
-        postgres::PgTypeInfo,
-    },
+    sqlx::PgPool,
     crate::{
         PageError,
         PageResult,
@@ -44,6 +42,40 @@ use {
         },
     },
 };
+
+#[derive(Debug, sqlx::Decode)]
+#[sqlx(type_name = "signup_status", rename_all = "lowercase")]
+pub(crate) enum SignupStatus {
+    Created,
+    Confirmed,
+    Unconfirmed,
+}
+
+impl SignupStatus {
+    fn is_confirmed(&self) -> bool {
+        matches!(self, Self::Created | Self::Confirmed)
+    }
+}
+
+#[derive(Debug, Clone, Copy, sqlx::Type, FromFormField)]
+#[sqlx(type_name = "team_role", rename_all = "lowercase")]
+pub(crate) enum Role {
+    Sheikah,
+    Gerudo,
+}
+
+impl Role {
+    pub(crate) fn to_html(&self) -> Box<dyn RenderBox> { //TODO take parameter to render based on event kind
+        match self {
+            Self::Sheikah => box_html! {
+                span(class = "sheikah") : "runner";
+            },
+            Self::Gerudo => box_html! {
+                span(class = "gerudo") : "pilot";
+            },
+        }
+    }
+}
 
 enum Tab {
     Info,
@@ -230,23 +262,6 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
     }).await?)
 }
 
-#[derive(Debug, sqlx::Type)]
-#[sqlx(type_name = "signup_player")]
-struct SignupPlayer {
-    id: Id,
-    confirmed: bool,
-}
-
-/// This type is a workaround for https://github.com/launchbadge/sqlx/issues/298.
-#[derive(Debug, sqlx::Encode, sqlx::Decode)]
-struct SignupPlayers(Vec<SignupPlayer>);
-
-impl sqlx::Type<sqlx::Postgres> for SignupPlayers {
-    fn type_info() -> PgTypeInfo {
-        PgTypeInfo::with_name("_signup_player")
-    }
-}
-
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum PictionaryRandomSettingsTeamsError {
     #[error(transparent)] Page(#[from] PageError),
@@ -258,19 +273,22 @@ pub(crate) enum PictionaryRandomSettingsTeamsError {
 #[rocket::get("/event/pic/rs1/teams")]
 pub(crate) async fn pictionary_random_settings_teams(pool: &State<PgPool>, me: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsTeamsError> {
     let mut signups = Vec::default();
-    let mut signups_query = sqlx::query!(r#"SELECT team_name, players AS "players!: SignupPlayers" FROM signups WHERE
+    let mut teams_query = sqlx::query!(r#"SELECT id AS "id!: Id", name FROM teams WHERE
         series = 'pic'
         AND event = 'rs1'
         AND (
-            EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE player.id = $1)
-            OR NOT EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE NOT player.confirmed)
+            EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $1)
+            OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
         )
-    "#, me.as_ref().map(|me| i64::from(me.id))).fetch(&**pool); //TODO don't show unconfirmed teams even if the viewer is in them, add a “My Status” page instead
-    while let Some(row) = signups_query.try_next().await? {
-        let [runner, pilot] = <[_; 2]>::try_from(row.players.0).expect("found Pictionary spoiler log team not consisting of 2 players");
+    "#, me.as_ref().map(|me| i64::from(me.id))).fetch(&**pool);
+    while let Some(team) = teams_query.try_next().await? {
+        let runner = sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1 AND role = 'sheikah'"#, i64::from(team.id)).fetch_one(&**pool).await?;
+        let pilot = sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1 AND role = 'gerudo'"#, i64::from(team.id)).fetch_one(&**pool).await?;
+        let runner_confirmed = runner.status.is_confirmed();
         let runner = User::from_id(&pool, runner.id).await?.ok_or(PictionaryRandomSettingsTeamsError::NonexistentUser)?;
+        let pilot_confirmed = pilot.status.is_confirmed();
         let pilot = User::from_id(&pool, pilot.id).await?.ok_or(PictionaryRandomSettingsTeamsError::NonexistentUser)?;
-        signups.push((row.team_name, runner, pilot));
+        signups.push((team.name, runner, runner_confirmed, pilot, pilot_confirmed));
     }
     Ok(page(&pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Teams — 1st Random Settings Pictionary Spoiler Log Race", html! {
         main {
@@ -291,11 +309,21 @@ pub(crate) async fn pictionary_random_settings_teams(pool: &State<PgPool>, me: O
                             }
                         }
                     } else {
-                        @for (team_name, runner, pilot) in signups {
+                        @for (team_name, runner, runner_confirmed, pilot, pilot_confirmed) in signups {
                             tr {
                                 td : team_name.unwrap_or_default();
-                                td(class = "sheikah") : runner.to_html();
-                                td(class = "gerudo") : pilot.to_html();
+                                td(class = "sheikah") {
+                                    : runner.to_html();
+                                    @if !runner_confirmed {
+                                        : " (unconfirmed)";
+                                    }
+                                }
+                                td(class = "gerudo") {
+                                    : pilot.to_html();
+                                    @if !pilot_confirmed {
+                                        : " (unconfirmed)";
+                                    }
+                                }
                             }
                         }
                     }
@@ -383,12 +411,6 @@ pub(crate) async fn pictionary_random_settings_enter(pool: &State<PgPool>, me: O
     pictionary_random_settings_enter_form(&pool, me, Context::default()).await
 }
 
-#[derive(FromFormField)]
-enum Role {
-    Sheikah,
-    Gerudo,
-}
-
 #[derive(FromForm)]
 pub(crate) struct EnterForm {
     my_role: Role,
@@ -406,11 +428,12 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
     let mut form = form.into_inner();
     if let Some(ref value) = form.value {
         let mut transaction = pool.begin().await?;
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM signups WHERE
-            series = 'pic'
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+            id = team
+            AND series = 'pic'
             AND event = 'rs1'
-            AND EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE player.id = $1)
-            AND NOT EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE NOT player.confirmed)
+            AND member = $1
+            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
         ) as "exists!""#, i64::from(me.id)).fetch_one(&mut transaction).await? {
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
@@ -420,40 +443,70 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
             if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) as "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
                 form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("teammate"));
             } else {
-                if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM signups WHERE
-                    series = 'pic'
+                if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+                    id = team
+                    AND series = 'pic'
                     AND event = 'rs1'
-                    AND EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE player.id = $1)
-                    AND NOT EXISTS (SELECT 1 FROM UNNEST(players) AS player WHERE NOT player.confirmed)
+                    AND member = $1
+                    AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
                 ) as "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
-                    form.context.push_error(form::Error::validation("This user is already signed up for this race."));
+                    form.context.push_error(form::Error::validation("This user is already signed up for this race.").with_name("teammate"));
                 }
-                //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa)
+                //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
             }
         }
         if form.context.errors().next().is_some() {
             pictionary_random_settings_enter_form(&pool, Some(me), form.context).await
                 .map(PictionaryRandomSettingsEnterPostResponse::Content)
         } else {
-            let me = SignupPlayer {
-                id: me.id,
-                confirmed: true,
-            };
-            let teammate = SignupPlayer {
-                id: value.teammate,
-                confirmed: false,
-            };
-            let signup_players = match value.my_role {
-                Role::Sheikah => vec![me, teammate],
-                Role::Gerudo => vec![teammate, me],
-            };
-            let id = Id::new(&mut transaction, IdTable::Signups).await?;
-            sqlx::query!("INSERT INTO signups (id, series, event, players) VALUES ($1, 'pic', 'rs1', $2)", i64::from(id), SignupPlayers(signup_players) as _).execute(&mut transaction).await?;
+            let id = Id::new(&mut transaction, IdTable::Teams).await?;
+            sqlx::query!("INSERT INTO teams (id, series, event) VALUES ($1, 'pic', 'rs1')", i64::from(id)).execute(&mut transaction).await?; //TODO allow setting team name
+            sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", i64::from(id), i64::from(me.id), value.my_role as Role).execute(&mut transaction).await?;
+            sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", i64::from(id), i64::from(value.teammate), match value.my_role { Role::Sheikah => Role::Gerudo, Role::Gerudo => Role::Sheikah } as Role).execute(&mut transaction).await?;
             transaction.commit().await?;
             Ok(PictionaryRandomSettingsEnterPostResponse::Redirect(Redirect::to(uri!(pictionary_random_settings_teams)))) //TODO redirect to “My Status” page instead
         }
     } else {
         pictionary_random_settings_enter_form(&pool, Some(me), form.context).await
             .map(PictionaryRandomSettingsEnterPostResponse::Content)
+    }
+}
+
+#[rocket::post("/event/pic/rs1/confirm/<team>")]
+pub(crate) async fn pictionary_random_settings_confirm_signup(pool: &State<PgPool>, me: User, team: Id) -> Result<Redirect, Debug<sqlx::Error>> {
+    //TODO CSRF protection
+    //TODO send notification to everyone else on the team with status 'created' or 'confirmed'
+    sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2 AND status = 'unconfirmed'", i64::from(team), i64::from(me.id)).execute(&**pool).await?;
+    Ok(Redirect::to(uri!(pictionary_random_settings_teams)))
+}
+
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+pub(crate) enum PictionaryRandomSettingsResignError {
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("can't delete teams you're not part of")]
+    NotInTeam,
+}
+
+#[rocket::post("/event/pic/rs1/resign/<team>")]
+pub(crate) async fn pictionary_random_settings_resign(pool: &State<PgPool>, me: User, team: Id) -> Result<Redirect, PictionaryRandomSettingsResignError> {
+    //TODO CSRF protection
+    let mut transaction = pool.begin().await?;
+    let delete = sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id", status AS "status: SignupStatus""#, i64::from(team)).fetch_all(&mut transaction).await?;
+    let mut me_in_team = false;
+    for member in delete {
+        if member.id == me.id {
+            me_in_team = true;
+        } else if member.status.is_confirmed() {
+            //TODO use 'decline' notification kind if this was a declined invite
+            sqlx::query!("INSERT INTO notifications (rcpt, kind, series, event, sender) VALUES ($1, 'resign', 'pic', 'rs1', $2)", i64::from(member.id), i64::from(me.id)).execute(&mut transaction).await?;
+        }
+    }
+    if me_in_team {
+        sqlx::query!("DELETE FROM teams WHERE id = $1", i64::from(team)).execute(&mut transaction).await?;
+        transaction.commit().await?;
+        Ok(Redirect::to(uri!(pictionary_random_settings_teams)))
+    } else {
+        transaction.rollback().await?;
+        Err(PictionaryRandomSettingsResignError::NotInTeam)
     }
 }

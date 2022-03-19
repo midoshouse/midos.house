@@ -135,6 +135,9 @@ async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, c
                                 } else {
                                     a(href = uri!(auth::login).to_string()) : "Sign in / Create account";
                                 }
+                                @if !notifications.is_empty() {
+                                    br;
+                                }
                             }
                             @if !notifications.is_empty() {
                                 a(href = uri!(notification::notifications).to_string()) {
@@ -227,6 +230,8 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
         event::pictionary_random_settings_teams,
         event::pictionary_random_settings_enter,
         event::pictionary_random_settings_enter_post,
+        event::pictionary_random_settings_confirm_signup,
+        event::pictionary_random_settings_resign,
         favicon::favicon_ico,
         favicon::favicon_png,
         notification::notifications,

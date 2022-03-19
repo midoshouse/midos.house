@@ -102,6 +102,11 @@ form {
     padding: 8px;
 }
 
+.button-row form {
+    border: 0;
+    margin: 0;
+}
+
 .button-row + article,
 .button-row + form {
     margin-top: -16px;
