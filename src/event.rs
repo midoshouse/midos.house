@@ -434,28 +434,38 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
             AND series = 'pic'
             AND event = 'rs1'
             AND member = $1
+            AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $2)
+        ) AS "exists!""#, i64::from(me.id), i64::from(value.teammate)).fetch_one(&mut transaction).await? {
+            form.context.push_error(form::Error::validation("A team with these members is already proposed for this race. Check your notifications to accept the invite, or ask your teammate to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
+        }
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+            id = team
+            AND series = 'pic'
+            AND event = 'rs1'
+            AND member = $1
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
         ) AS "exists!""#, i64::from(me.id)).fetch_one(&mut transaction).await? {
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
+        if matches!(value.my_role, Role::Sheikah) && me.racetime_id.is_none() {
+            form.context.push_error(form::Error::validation("A racetime.gg account is required to enter as runner. Go to your profile and select “Connect a racetime.gg account”.")); //TODO direct link?
+        }
         if value.teammate == me.id {
             form.context.push_error(form::Error::validation("You cannot be your own teammate.").with_name("teammate"));
-        } else {
-            if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
-                form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("teammate"));
-            } else {
-                if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
-                    id = team
-                    AND series = 'pic'
-                    AND event = 'rs1'
-                    AND member = $1
-                    AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                ) AS "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
-                    form.context.push_error(form::Error::validation("This user is already signed up for this race.").with_name("teammate"));
-                }
-                //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
-            }
         }
+        if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
+            form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("teammate"));
+        }
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+            id = team
+            AND series = 'pic'
+            AND event = 'rs1'
+            AND member = $1
+            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+        ) AS "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
+            form.context.push_error(form::Error::validation("This user is already signed up for this race.").with_name("teammate"));
+        }
+        //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
         if form.context.errors().next().is_some() {
             pictionary_random_settings_enter_form(&pool, Some(me), form.context).await
                 .map(PictionaryRandomSettingsEnterPostResponse::Content)
@@ -478,6 +488,8 @@ pub(crate) enum PictionaryRandomSettingsAcceptError {
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("you haven't been invited to this team")]
     NotInTeam,
+    #[error("a racetime.gg account is required to enter as runner")]
+    RaceTimeAccountRequired,
 }
 
 #[rocket::post("/event/pic/rs1/confirm/<team>")]
@@ -485,7 +497,10 @@ pub(crate) async fn pictionary_random_settings_confirm_signup(pool: &State<PgPoo
     //TODO CSRF protection
     //TODO deny action if the event has started
     let mut transaction = pool.begin().await?;
-    if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed') AS "exists!""#, i64::from(team), i64::from(me.id)).fetch_one(&mut transaction).await? {
+    if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, i64::from(team), i64::from(me.id)).fetch_optional(&mut transaction).await? {
+        if matches!(role, Role::Sheikah) && me.racetime_id.is_none() {
+            return Err(PictionaryRandomSettingsAcceptError::RaceTimeAccountRequired)
+        }
         for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, i64::from(team)).fetch_all(&mut transaction).await? {
             let id = Id::new(&mut transaction, IdTable::Notifications).await?;
             sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', 'pic', 'rs1', $3)", i64::from(id), i64::from(member), i64::from(me.id)).execute(&mut transaction).await?;

@@ -125,7 +125,7 @@ async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, c
                                 @if let Some(me) = me {
                                     : "signed in as ";
                                     @if let PageKind::MyProfile = style.kind {
-                                        : &me.display_name;
+                                        : me.display_name();
                                     } else {
                                         : me.to_html();
                                     }
@@ -222,10 +222,13 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
     .mount("/", rocket::routes![
         index,
         auth::racetime_callback,
+        auth::discord_callback,
         auth::login,
         auth::logout,
         auth::racetime_login,
+        auth::discord_login,
         auth::register_racetime,
+        auth::register_discord,
         event::pictionary_random_settings,
         event::pictionary_random_settings_teams,
         event::pictionary_random_settings_enter,
@@ -254,6 +257,19 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
             uri!("https://dev.midos.house", auth::racetime_callback)
         } else {
             uri!("https://midos.house", auth::racetime_callback)
+        }.to_string()),
+    )))
+    .attach(OAuth2::<auth::Discord>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
+        rocket_oauth2::StaticProvider {
+            auth_uri: "https://discord.com/api/oauth2/authorize".into(),
+            token_uri: "https://discord.com/api/oauth2/token".into(),
+        },
+        config.discord.client_id,
+        config.discord.client_secret,
+        Some(if is_dev {
+            uri!("https://dev.midos.house", auth::discord_callback)
+        } else {
+            uri!("https://midos.house", auth::discord_callback)
         }.to_string()),
     )))
     .manage(PgPool::connect_with(PgConnectOptions::default().username("mido").database("midos_house").application_name("midos-house")).await?)

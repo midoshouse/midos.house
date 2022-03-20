@@ -172,8 +172,12 @@ impl Notification {
                     }
                     : ".";
                     div(class = "button-row") {
-                        form(action = uri!(crate::event::pictionary_random_settings_confirm_signup(team_id)).to_string(), method = "post") {
-                            input(type = "submit", value = "Accept");
+                        @if matches!(my_role, Role::Sheikah) && me.racetime_id.is_none() {
+                            a(class = "button", href = uri!(crate::auth::racetime_login).to_string()) : "Connect racetime.gg Account to Accept";
+                        } else {
+                            form(action = uri!(crate::event::pictionary_random_settings_confirm_signup(team_id)).to_string(), method = "post") {
+                                input(type = "submit", value = "Accept");
+                            }
                         }
                         form(action = uri!(crate::event::pictionary_random_settings_resign(team_id)).to_string(), method = "post") {
                             input(type = "submit", value = "Decline");

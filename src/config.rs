@@ -11,7 +11,8 @@ use {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct Config {
-    pub(crate) racetime: ConfigRacetime,
+    pub(crate) racetime: ConfigRaceTime,
+    pub(crate) discord: ConfigDiscord,
     pub(crate) secret_key: String,
 }
 
@@ -28,7 +29,15 @@ impl Config {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub(crate) struct ConfigRacetime {
+pub(crate) struct ConfigRaceTime {
+    #[serde(rename = "clientID")]
+    pub(crate) client_id: String,
+    pub(crate) client_secret: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct ConfigDiscord {
     #[serde(rename = "clientID")]
     pub(crate) client_id: String,
     pub(crate) client_secret: String,
