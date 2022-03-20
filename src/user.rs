@@ -124,7 +124,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, id: Id) -> R
                 : "racetime.gg: ";
                 a(href = format!("https://racetime.gg/user/{racetime_id}")) : user.racetime_display_name; //TODO racetime.gg display name with discriminator
             }
-        } else {
+        } else if me.as_ref().map_or(false, |me| me.id == user.id) {
             p {
                 a(href = uri!(crate::auth::racetime_login).to_string()) : "Connect a racetime.gg account";
             }
@@ -134,7 +134,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, id: Id) -> R
                 : "Discord: ";
                 a(href = format!("https://discord.com/users/{discord_id}")) : user.discord_display_name; //TODO Discord display name with discriminator
             }
-        } else {
+        } else if me.as_ref().map_or(false, |me| me.id == user.id) {
             p {
                 a(href = uri!(crate::auth::discord_login).to_string()) : "Connect a Discord account";
             }
