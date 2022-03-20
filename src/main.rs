@@ -235,6 +235,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
         favicon::favicon_ico,
         favicon::favicon_png,
         notification::notifications,
+        notification::dismiss,
         user::profile,
     ])
     .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))

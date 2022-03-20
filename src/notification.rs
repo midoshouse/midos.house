@@ -5,13 +5,19 @@ use {
         TryStreamExt as _,
     },
     horrorshow::{
+        RenderBox,
+        box_html,
         html,
         owned_html,
         rocket::TemplateExt as _,
     },
     rocket::{
         State,
-        response::content::Html,
+        response::{
+            Debug,
+            Redirect,
+            content::Html,
+        },
         uri,
     },
     sqlx::PgPool,
@@ -42,26 +48,83 @@ pub(crate) enum Error {
     UnknownUser,
 }
 
+#[derive(sqlx::Type)]
+#[sqlx(type_name = "notification_kind", rename_all = "lowercase")]
+pub(crate) enum SimpleNotificationKind {
+    Accept,
+    Decline,
+    Resign,
+}
+
 pub(crate) enum Notification {
+    /// A notification from the `notifications` table that can only be dismissed
+    Simple(Id),
     TeamInvite(Id),
 }
 
 impl Notification {
     pub(crate) async fn get(pool: &PgPool, me: &User) -> sqlx::Result<Vec<Self>> {
-        sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM team_members WHERE member = $1 AND status = 'unconfirmed'"#, i64::from(me.id))
+        let mut notifications = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM notifications WHERE rcpt = $1"#, i64::from(me.id))
+            .fetch(pool)
+            .map_ok(Self::Simple)
+            .try_collect::<Vec<_>>().await?;
+        notifications.extend(sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM team_members WHERE member = $1 AND status = 'unconfirmed'"#, i64::from(me.id))
             .fetch(pool)
             .map_ok(Self::TeamInvite)
-            .try_collect().await
+            .try_collect::<Vec<_>>().await?);
+        Ok(notifications)
     }
 
     async fn into_html(self, pool: &PgPool, me: &User) -> Result<Html<String>, Error> {
         Ok(match self {
+            Self::Simple(id) => {
+                let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await? {
+                    SimpleNotificationKind::Accept => {
+                        let sender = sqlx::query_scalar!(r#"SELECT sender AS "sender!: Id" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
+                        let sender = User::from_id(pool, sender).await?.ok_or(Error::UnknownUser)?;
+                        (box_html! {
+                            : sender.into_html();
+                            : " accepted your invitation to join a team for ";
+                            a(href = uri!(crate::event::pictionary_random_settings).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event
+                            : ".";
+                        }) as Box<dyn RenderBox>
+                    }
+                    SimpleNotificationKind::Decline => {
+                        let sender = sqlx::query_scalar!(r#"SELECT sender AS "sender!: Id" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
+                        let sender = User::from_id(pool, sender).await?.ok_or(Error::UnknownUser)?;
+                        box_html! {
+                            : sender.into_html();
+                            : " declined your invitation to form a team for ";
+                            a(href = uri!(crate::event::pictionary_random_settings).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event
+                            : ".";
+                        }
+                    }
+                    SimpleNotificationKind::Resign => {
+                        let sender = sqlx::query_scalar!(r#"SELECT sender AS "sender!: Id" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
+                        let sender = User::from_id(pool, sender).await?.ok_or(Error::UnknownUser)?;
+                        box_html! {
+                            : sender.into_html();
+                            : " resigned your team from ";
+                            a(href = uri!(crate::event::pictionary_random_settings).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event
+                            : ".";
+                        }
+                    }
+                };
+                html! {
+                    : text;
+                    div(class = "button-row") {
+                        form(action = uri!(dismiss(id)).to_string(), method = "post") {
+                            input(type = "submit", value = "Dismiss");
+                        }
+                    }
+                }.write_to_html()?
+            }
             Self::TeamInvite(team_id) => {
                 let team_name = sqlx::query_scalar!("SELECT name FROM teams WHERE id = $1", i64::from(team_id)).fetch_one(pool).await?;
                 let mut creator = None;
                 let mut my_role = None;
                 let mut teammates = Vec::default();
-                let mut members = sqlx::query!(r#"SELECT member as "id: Id", status as "status: SignupStatus", role as "role: Role" FROM team_members WHERE team = $1"#, i64::from(team_id)).fetch(pool);
+                let mut members = sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus", role AS "role: Role" FROM team_members WHERE team = $1"#, i64::from(team_id)).fetch(pool);
                 while let Some(member) = members.try_next().await? {
                     if member.id == me.id {
                         my_role = Some(member.role);
@@ -149,4 +212,10 @@ pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>) -> Res
             }
         }).await.map_err(Error::from)
     }
+}
+
+#[rocket::post("/notifications/dismiss/<id>")]
+pub(crate) async fn dismiss(pool: &State<PgPool>, me: User, id: Id) -> Result<Redirect, Debug<sqlx::Error>> {
+    sqlx::query!("DELETE FROM notifications WHERE id = $1 AND rcpt = $2", i64::from(id), i64::from(me.id)).execute(&**pool).await?;
+    Ok(Redirect::to(uri!(notifications)))
 }

@@ -21,7 +21,6 @@ use {
             Form,
         },
         response::{
-            Debug,
             Redirect,
             content::Html,
         },
@@ -34,6 +33,7 @@ use {
         PageStyle,
         auth,
         favicon::ChestAppearances,
+        notification::SimpleNotificationKind,
         page,
         user::User,
         util::{
@@ -425,6 +425,7 @@ pub(crate) enum PictionaryRandomSettingsEnterPostResponse {
 
 #[rocket::post("/event/pic/rs1/enter", data = "<form>")]
 pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, me: User, form: Form<Contextual<'_, EnterForm>>) -> Result<PictionaryRandomSettingsEnterPostResponse, PageError> {
+    //TODO deny action if the event has started
     let mut form = form.into_inner();
     if let Some(ref value) = form.value {
         let mut transaction = pool.begin().await?;
@@ -434,13 +435,13 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
             AND event = 'rs1'
             AND member = $1
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        ) as "exists!""#, i64::from(me.id)).fetch_one(&mut transaction).await? {
+        ) AS "exists!""#, i64::from(me.id)).fetch_one(&mut transaction).await? {
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
         if value.teammate == me.id {
             form.context.push_error(form::Error::validation("You cannot be your own teammate.").with_name("teammate"));
         } else {
-            if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) as "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
+            if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
                 form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("teammate"));
             } else {
                 if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
@@ -449,7 +450,7 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
                     AND event = 'rs1'
                     AND member = $1
                     AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                ) as "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
+                ) AS "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
                     form.context.push_error(form::Error::validation("This user is already signed up for this race.").with_name("teammate"));
                 }
                 //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
@@ -461,8 +462,8 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
             sqlx::query!("INSERT INTO teams (id, series, event) VALUES ($1, 'pic', 'rs1')", i64::from(id)).execute(&mut transaction).await?; //TODO allow setting team name
-            sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", i64::from(id), i64::from(me.id), value.my_role as Role).execute(&mut transaction).await?;
-            sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", i64::from(id), i64::from(value.teammate), match value.my_role { Role::Sheikah => Role::Gerudo, Role::Gerudo => Role::Sheikah } as Role).execute(&mut transaction).await?;
+            sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", i64::from(id), i64::from(me.id), value.my_role as _).execute(&mut transaction).await?;
+            sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", i64::from(id), i64::from(value.teammate), match value.my_role { Role::Sheikah => Role::Gerudo, Role::Gerudo => Role::Sheikah } as _).execute(&mut transaction).await?;
             transaction.commit().await?;
             Ok(PictionaryRandomSettingsEnterPostResponse::Redirect(Redirect::to(uri!(pictionary_random_settings_teams)))) //TODO redirect to “My Status” page instead
         }
@@ -472,12 +473,30 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
     }
 }
 
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+pub(crate) enum PictionaryRandomSettingsAcceptError {
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("you haven't been invited to this team")]
+    NotInTeam,
+}
+
 #[rocket::post("/event/pic/rs1/confirm/<team>")]
-pub(crate) async fn pictionary_random_settings_confirm_signup(pool: &State<PgPool>, me: User, team: Id) -> Result<Redirect, Debug<sqlx::Error>> {
+pub(crate) async fn pictionary_random_settings_confirm_signup(pool: &State<PgPool>, me: User, team: Id) -> Result<Redirect, PictionaryRandomSettingsAcceptError> {
     //TODO CSRF protection
-    //TODO send notification to everyone else on the team with status 'created' or 'confirmed'
-    sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2 AND status = 'unconfirmed'", i64::from(team), i64::from(me.id)).execute(&**pool).await?;
-    Ok(Redirect::to(uri!(pictionary_random_settings_teams)))
+    //TODO deny action if the event has started
+    let mut transaction = pool.begin().await?;
+    if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed') AS "exists!""#, i64::from(team), i64::from(me.id)).fetch_one(&mut transaction).await? {
+        for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, i64::from(team)).fetch_all(&mut transaction).await? {
+            let id = Id::new(&mut transaction, IdTable::Notifications).await?;
+            sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', 'pic', 'rs1', $3)", i64::from(id), i64::from(member), i64::from(me.id)).execute(&mut transaction).await?;
+        }
+        sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", i64::from(team), i64::from(me.id)).execute(&mut transaction).await?;
+        transaction.commit().await?;
+        Ok(Redirect::to(uri!(pictionary_random_settings_teams)))
+    } else {
+        transaction.rollback().await?;
+        Err(PictionaryRandomSettingsAcceptError::NotInTeam)
+    }
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -490,18 +509,26 @@ pub(crate) enum PictionaryRandomSettingsResignError {
 #[rocket::post("/event/pic/rs1/resign/<team>")]
 pub(crate) async fn pictionary_random_settings_resign(pool: &State<PgPool>, me: User, team: Id) -> Result<Redirect, PictionaryRandomSettingsResignError> {
     //TODO CSRF protection
+    //TODO deny action if the event is over
+    //TODO if the event has started, only mark the team as resigned, don't delete data
     let mut transaction = pool.begin().await?;
     let delete = sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id", status AS "status: SignupStatus""#, i64::from(team)).fetch_all(&mut transaction).await?;
     let mut me_in_team = false;
-    for member in delete {
+    let mut notification_kind = SimpleNotificationKind::Resign;
+    for member in &delete {
         if member.id == me.id {
             me_in_team = true;
-        } else if member.status.is_confirmed() {
-            //TODO use 'decline' notification kind if this was a declined invite
-            sqlx::query!("INSERT INTO notifications (rcpt, kind, series, event, sender) VALUES ($1, 'resign', 'pic', 'rs1', $2)", i64::from(member.id), i64::from(me.id)).execute(&mut transaction).await?;
+            if !member.status.is_confirmed() { notification_kind = SimpleNotificationKind::Decline }
+            break
         }
     }
     if me_in_team {
+        for member in delete {
+            if member.id != me.id && member.status.is_confirmed() {
+                let id = Id::new(&mut transaction, IdTable::Notifications).await?;
+                sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, 'pic', 'rs1', $4)", i64::from(id), i64::from(member.id), notification_kind as _, i64::from(me.id)).execute(&mut transaction).await?;
+            }
+        }
         sqlx::query!("DELETE FROM teams WHERE id = $1", i64::from(team)).execute(&mut transaction).await?;
         transaction.commit().await?;
         Ok(Redirect::to(uri!(pictionary_random_settings_teams)))
