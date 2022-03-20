@@ -168,6 +168,8 @@ pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>) -> PageResult 
             ul {
                 li {
                     a(href = uri!(racetime_login).to_string()) : "Sign in with racetime.gg";
+                }
+                li {
                     a(href = uri!(discord_login).to_string()) : "Sign in with Discord";
                 }
             }

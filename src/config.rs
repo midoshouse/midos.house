@@ -41,4 +41,7 @@ pub(crate) struct ConfigDiscord {
     #[serde(rename = "clientID")]
     pub(crate) client_id: String,
     pub(crate) client_secret: String,
+    #[serde(rename = "devClientID")]
+    pub(crate) dev_client_id: String,
+    pub(crate) dev_client_secret: String,
 }

@@ -264,8 +264,8 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
             auth_uri: "https://discord.com/api/oauth2/authorize".into(),
             token_uri: "https://discord.com/api/oauth2/token".into(),
         },
-        config.discord.client_id,
-        config.discord.client_secret,
+        if is_dev { config.discord.dev_client_id } else { config.discord.client_id },
+        if is_dev { config.discord.dev_client_secret } else { config.discord.client_secret },
         Some(if is_dev {
             uri!("https://dev.midos.house", auth::discord_callback)
         } else {
