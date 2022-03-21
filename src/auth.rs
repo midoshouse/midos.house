@@ -211,7 +211,7 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, cl
     Ok(if User::from_racetime(pool, &racetime_user.id).await?.is_some() {
         RedirectOrContent::Redirect(Redirect::to(uri!(crate::index))) //TODO redirect to original page
     } else if let Some(me) = me {
-        RedirectOrContent::Content(page(pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect account — Mido's House", html! {
+        RedirectOrContent::Content(page(pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
             p {
                 : "This racetime.gg account is not associated with a Mido's House account, but you are signed in as ";
                 : me.to_html();
@@ -227,7 +227,7 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, cl
             }
         }).await?)
     } else {
-        RedirectOrContent::Content(page(pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create account — Mido's House", html! {
+        RedirectOrContent::Content(page(pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create Account — Mido's House", html! {
             p : "This racetime.gg account is not associated with a Mido's House account.";
             ul {
                 li {
@@ -271,7 +271,7 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, cli
     Ok(if User::from_discord(pool, discord_user.id.parse()?).await?.is_some() {
         RedirectOrContent::Redirect(Redirect::to(uri!(crate::index))) //TODO redirect to original page
     } else if let Some(me) = me {
-        RedirectOrContent::Content(page(pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect account — Mido's House", html! {
+        RedirectOrContent::Content(page(pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
             p {
                 : "This Discord account is not associated with a Mido's House account, but you are signed in as ";
                 : me.to_html();
@@ -287,7 +287,7 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, cli
             }
         }).await?)
     } else {
-        RedirectOrContent::Content(page(pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create account — Mido's House", html! {
+        RedirectOrContent::Content(page(pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create Account — Mido's House", html! {
             p : "This Discord account is not associated with a Mido's House account.";
             ul {
                 li {

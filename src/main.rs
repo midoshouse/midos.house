@@ -173,11 +173,31 @@ async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, c
 #[rocket::get("/")]
 async fn index(pool: &State<PgPool>, me: Option<User>) -> PageResult {
     page(pool, &me, PageStyle { kind: PageKind::Index, ..PageStyle::default() }, "Mido's House", html! {
-        h1 : "Events";
+        p {
+            : "Mido's House is a platform where ";
+            a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
+            : " events like tournaments or community races can be organized.";
+        }
+        h1 : "Upcoming events";
         ul {
             li {
                 a(href = uri!(event::pictionary_random_settings).to_string()) : "1st Random Settings Pictionary Spoiler Log Race";
             }
+        }
+        p {
+            a(href = uri!(new_event).to_string()) : "Planning an event?";
+        }
+    }).await
+}
+
+#[rocket::get("/new")]
+async fn new_event(pool: &State<PgPool>, me: Option<User>) -> PageResult {
+    let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+    page(pool, &me, PageStyle::default(), "New Event — Mido's House", html! {
+        p {
+            : "If you are planning a tournament, community race, or other event for the Ocarina of Time randomizer community, or if you would like Mido's House to archive data about a past event you organized, please contact ";
+            : fenhl.into_html();
+            : " to determine the specific needs of the event.";
         }
     }).await
 }
@@ -221,6 +241,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
     })
     .mount("/", rocket::routes![
         index,
+        new_event,
         auth::racetime_callback,
         auth::discord_callback,
         auth::login,
