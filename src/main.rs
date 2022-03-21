@@ -172,7 +172,7 @@ async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, c
 
 #[rocket::get("/")]
 async fn index(pool: &State<PgPool>, me: Option<User>) -> PageResult {
-    page(&pool, &me, PageStyle { kind: PageKind::Index, ..PageStyle::default() }, "Mido's House", html! {
+    page(pool, &me, PageStyle { kind: PageKind::Index, ..PageStyle::default() }, "Mido's House", html! {
         h1 : "Events";
         ul {
             li {
@@ -186,7 +186,7 @@ async fn index(pool: &State<PgPool>, me: Option<User>) -> PageResult {
 async fn not_found(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
-    page(&pool, &me, PageStyle { is_banner: true, ..PageStyle::default() }, "Not Found — Mido's House", html! {
+    page(pool, &me, PageStyle { is_banner: true, ..PageStyle::default() }, "Not Found — Mido's House", html! {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }
@@ -199,7 +199,7 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
     //TODO report
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
-    page(&pool, &me, PageStyle::default(), "Internal Server Error — Mido's House", html! {
+    page(pool, &me, PageStyle::default(), "Internal Server Error — Mido's House", html! {
         h1 : "Error 500: Internal Server Error";
         p : "Sorry, something went wrong. Please notify Fenhl on Discord.";
     }).await

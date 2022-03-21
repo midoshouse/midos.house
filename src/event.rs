@@ -128,8 +128,19 @@ enum Tab {
     FindTeam,
 }
 
-fn event_header(tab: Tab) -> Box<dyn RenderBox> {
-    box_html! {
+async fn event_header(pool: &PgPool, me: &Option<User>, tab: Tab) -> sqlx::Result<Box<dyn RenderBox + Send>> {
+    let signed_up = if let Some(me) = me {
+        sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+            id = team
+            AND series = 'pic'
+            AND event = 'rs1'
+            AND member = $1
+            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+        ) AS "exists!""#, i64::from(me.id)).fetch_one(pool).await?
+    } else {
+        false
+    };
+    Ok(box_html! {
         h1 {
             a(class = "nav", href? = (!matches!(tab, Tab::Info)).then(|| uri!(pictionary_random_settings).to_string())) : "1st Random Settings Pictionary Spoiler Log Race";
         }
@@ -145,22 +156,24 @@ fn event_header(tab: Tab) -> Box<dyn RenderBox> {
             } else {
                 a(class = "button", href = uri!(pictionary_random_settings_teams).to_string()) : "Teams";
             }
-            //a(class = "button") : "My Status"; //TODO (if in any teams, including unconfirmed ones)
-            //TODO hide “Enter” and “Find Teammates” if in a confirmed team
-            @if let Tab::Enter = tab {
-                span(class = "button selected") : "Enter";
+            @if signed_up {
+                //a(class = "button") : "My Status"; //TODO
             } else {
-                a(class = "button", href = uri!(pictionary_random_settings_enter(None::<Role>, None::<Id>)).to_string()) : "Enter";
-            }
-            @if let Tab::FindTeam = tab {
-                span(class = "button selected") : "Find Teammates";
-            } else {
-                a(class = "button", href = uri!(pictionary_random_settings_find_team).to_string()) : "Find Teammates";
+                @if let Tab::Enter = tab {
+                    span(class = "button selected") : "Enter";
+                } else {
+                    a(class = "button", href = uri!(pictionary_random_settings_enter(None::<Role>, None::<Id>)).to_string()) : "Enter";
+                }
+                @if let Tab::FindTeam = tab {
+                    span(class = "button selected") : "Find Teammates";
+                } else {
+                    a(class = "button", href = uri!(pictionary_random_settings_find_team).to_string()) : "Find Teammates";
+                }
             }
             //a(class = "button") : "Volunteer"; //TODO
             //a(class = "button") : "Watch"; //TODO
         }
-    }
+    })
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -173,11 +186,12 @@ pub(crate) enum PictionaryRandomSettingsError {
 
 #[rocket::get("/event/pic/rs1")]
 pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsError> {
+    let header = event_header(pool, &me, Tab::Info).await?;
     let tj = User::from_id(pool, Id(5961629664912637980)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
     let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
-    Ok(page(&pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "1st Random Settings Pictionary Spoiler Log Race", html! {
+    Ok(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "1st Random Settings Pictionary Spoiler Log Race", html! {
         main {
-            : event_header(Tab::Info);
+            : header;
             article {
                 h2 : "What is a Pictionary Spoiler Log Race?";
                 p : "Each team consists of one Runner and one Spoiler Log Pilot who is drawing. The pilot has to figure out a way through the seed and how to tell their runner in drawing what checks they need to do. Hints are obviously disabled.";
@@ -322,6 +336,7 @@ pub(crate) enum PictionaryRandomSettingsTeamsError {
 
 #[rocket::get("/event/pic/rs1/teams")]
 pub(crate) async fn pictionary_random_settings_teams(pool: &State<PgPool>, me: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsTeamsError> {
+    let header = event_header(pool, &me, Tab::Teams).await?;
     let mut signups = Vec::default();
     let mut teams_query = sqlx::query!(r#"SELECT id AS "id!: Id", name FROM teams WHERE
         series = 'pic'
@@ -335,14 +350,14 @@ pub(crate) async fn pictionary_random_settings_teams(pool: &State<PgPool>, me: O
         let runner = sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1 AND role = 'sheikah'"#, i64::from(team.id)).fetch_one(&**pool).await?;
         let pilot = sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1 AND role = 'gerudo'"#, i64::from(team.id)).fetch_one(&**pool).await?;
         let runner_confirmed = runner.status.is_confirmed();
-        let runner = User::from_id(&pool, runner.id).await?.ok_or(PictionaryRandomSettingsTeamsError::NonexistentUser)?;
+        let runner = User::from_id(pool, runner.id).await?.ok_or(PictionaryRandomSettingsTeamsError::NonexistentUser)?;
         let pilot_confirmed = pilot.status.is_confirmed();
-        let pilot = User::from_id(&pool, pilot.id).await?.ok_or(PictionaryRandomSettingsTeamsError::NonexistentUser)?;
+        let pilot = User::from_id(pool, pilot.id).await?.ok_or(PictionaryRandomSettingsTeamsError::NonexistentUser)?;
         signups.push((team.name, runner, runner_confirmed, pilot, pilot_confirmed));
     }
-    Ok(page(&pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Teams — 1st Random Settings Pictionary Spoiler Log Race", html! {
+    Ok(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Teams — 1st Random Settings Pictionary Spoiler Log Race", html! {
         main {
-            : event_header(Tab::Teams);
+            : header;
             table {
                 thead {
                     tr {
@@ -435,6 +450,7 @@ impl<'v> PictionaryRandomSettingsEnterFormDefaults<'v> {
 }
 
 async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, defaults: PictionaryRandomSettingsEnterFormDefaults<'_>) -> PageResult {
+    let header = event_header(pool, &me, Tab::Enter).await?;
     page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Enter — 1st Random Settings Pictionary Spoiler Log Race", if me.is_some() {
         let mut errors = defaults.errors();
         let form_content = html! {
@@ -464,7 +480,7 @@ async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, 
         }.write_to_html()?;
         html! {
             main {
-                : event_header(Tab::Enter);
+                : header;
                 form(action = uri!(pictionary_random_settings_enter_post).to_string(), method = "post") {
                     @for error in errors {
                         |tmpl| render_form_error(tmpl, error);
@@ -476,7 +492,7 @@ async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, 
     } else {
         html! {
             main {
-                : event_header(Tab::Enter);
+                : header;
                 article {
                     p {
                         a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
@@ -490,7 +506,7 @@ async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, 
 
 #[rocket::get("/event/pic/rs1/enter?<my_role>&<teammate>")]
 pub(crate) async fn pictionary_random_settings_enter(pool: &State<PgPool>, me: Option<User>, my_role: Option<Role>, teammate: Option<Id>) -> PageResult {
-    pictionary_random_settings_enter_form(&pool, me, PictionaryRandomSettingsEnterFormDefaults::Values { my_role, teammate }).await
+    pictionary_random_settings_enter_form(pool, me, PictionaryRandomSettingsEnterFormDefaults::Values { my_role, teammate }).await
 }
 
 #[derive(FromForm)]
@@ -543,7 +559,7 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
         }
         //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
         if form.context.errors().next().is_some() {
-            pictionary_random_settings_enter_form(&pool, Some(me), PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await
+            pictionary_random_settings_enter_form(pool, Some(me), PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await
                 .map(RedirectOrContent::Content)
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
@@ -554,7 +570,7 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
             Ok(RedirectOrContent::Redirect(Redirect::to(uri!(pictionary_random_settings_teams)))) //TODO redirect to “My Status” page instead
         }
     } else {
-        pictionary_random_settings_enter_form(&pool, Some(me), PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await
+        pictionary_random_settings_enter_form(pool, Some(me), PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await
             .map(RedirectOrContent::Content)
     }
 }
@@ -569,12 +585,13 @@ pub(crate) enum PictionaryRandomSettingsFindTeamError {
 }
 
 async fn pictionary_random_settings_find_team_form(pool: &PgPool, me: Option<User>, context: Context<'_>) -> Result<Html<String>, PictionaryRandomSettingsFindTeamError> {
+    let header = event_header(pool, &me, Tab::FindTeam).await?;
     Ok(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Find Teammates — 1st Random Settings Pictionary Spoiler Log Race", if me.is_some() {
         let mut my_role = None;
         let mut looking_for_team = Vec::default();
         let mut looking_for_team_query = sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = 'pic' AND event = 'rs1'"#).fetch(pool);
         while let Some(row) = looking_for_team_query.try_next().await? {
-            let user = User::from_id(&pool, row.user).await?.ok_or(PictionaryRandomSettingsFindTeamError::UnknownUser)?;
+            let user = User::from_id(pool, row.user).await?.ok_or(PictionaryRandomSettingsFindTeamError::UnknownUser)?;
             if me.as_ref().map_or(false, |me| user.id == me.id) { my_role = Some(row.role) }
             let can_invite = me.as_ref().map_or(true, |me| user.id != me.id) && true /*TODO not already in a team with that user */;
             looking_for_team.push((user, row.role, can_invite));
@@ -632,7 +649,7 @@ async fn pictionary_random_settings_find_team_form(pool: &PgPool, me: Option<Use
             .collect_vec();
         html! {
             main {
-                : event_header(Tab::FindTeam);
+                : header;
                 : form;
                 table {
                     thead {
@@ -673,7 +690,7 @@ async fn pictionary_random_settings_find_team_form(pool: &PgPool, me: Option<Use
     } else {
         html! {
             main {
-                : event_header(Tab::FindTeam);
+                : header;
                 article {
                     p {
                         a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
@@ -718,7 +735,7 @@ pub(crate) async fn pictionary_random_settings_find_team_post(pool: &State<PgPoo
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
         if form.context.errors().next().is_some() {
-            pictionary_random_settings_find_team_form(&pool, Some(me), form.context).await
+            pictionary_random_settings_find_team_form(pool, Some(me), form.context).await
                 .map(RedirectOrContent::Content)
         } else {
             sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role) VALUES ('pic', 'rs1', $1, $2)", i64::from(me.id), value.role as _).execute(&mut transaction).await?;
@@ -726,7 +743,7 @@ pub(crate) async fn pictionary_random_settings_find_team_post(pool: &State<PgPoo
             Ok(RedirectOrContent::Redirect(Redirect::to(uri!(pictionary_random_settings_find_team))))
         }
     } else {
-        pictionary_random_settings_find_team_form(&pool, Some(me), form.context).await
+        pictionary_random_settings_find_team_form(pool, Some(me), form.context).await
             .map(RedirectOrContent::Content)
     }
 }
@@ -759,6 +776,7 @@ pub(crate) async fn pictionary_random_settings_confirm_signup(pool: &State<PgPoo
             EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND member = user_id)
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND status = 'unconfirmed')
         ", i64::from(team)).execute(&mut transaction).await?;
+        //TODO also remove all other teams with member overlap, and notify
         transaction.commit().await?;
         Ok(Redirect::to(uri!(pictionary_random_settings_teams)))
     } else {

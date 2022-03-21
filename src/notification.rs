@@ -209,7 +209,7 @@ pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>) -> Res
             }
         }).await.map_err(Error::from)
     } else {
-        page(&pool, &me, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
+        page(pool, &me, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
             p {
                 a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
                 : " to view your notifications.";

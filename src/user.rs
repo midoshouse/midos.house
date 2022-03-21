@@ -108,12 +108,12 @@ pub(crate) enum ProfileError {
 
 #[rocket::get("/user/<id>")]
 pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, id: Id) -> Result<Html<String>, ProfileError> {
-    let user = if let Some(user) = User::from_id(&pool, id).await.map_err(|e| ProfileError::Page(PageError::Sql(e)))? {
+    let user = if let Some(user) = User::from_id(pool, id).await.map_err(|e| ProfileError::Page(PageError::Sql(e)))? {
         user
     } else {
         return Err(ProfileError::NotFound(Status::NotFound))
     };
-    page(&pool, &me, PageStyle { kind: if me.as_ref().map_or(false, |me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
+    page(pool, &me, PageStyle { kind: if me.as_ref().map_or(false, |me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
         h1 : user.display_name();
         p {
             : "Mido's House user ID: ";
