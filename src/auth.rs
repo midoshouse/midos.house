@@ -11,7 +11,6 @@ use {
         html,
     },
     rocket::{
-        Responder,
         State,
         http::{
             Cookie,
@@ -28,7 +27,6 @@ use {
         response::{
             Debug,
             Redirect,
-            content::Html,
         },
         uri,
     },
@@ -48,6 +46,7 @@ use {
         util::{
             Id,
             IdTable,
+            RedirectOrContent,
         },
     },
 };
@@ -187,12 +186,6 @@ pub(crate) fn discord_login(oauth2: OAuth2<Discord>, cookies: &CookieJar<'_>) ->
     oauth2.get_redirect(cookies, &["identify"]).map_err(Debug)
 }
 
-#[derive(Responder)]
-pub(crate) enum RaceTimeCallbackResponse {
-    Redirect(Redirect),
-    Content(Html<String>),
-}
-
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum RaceTimeCallbackError {
     #[error(transparent)] Page(#[from] PageError),
@@ -203,7 +196,7 @@ pub(crate) enum RaceTimeCallbackError {
 }
 
 #[rocket::get("/auth/racetime")]
-pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<RaceTimeCallbackResponse, RaceTimeCallbackError> {
+pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<RedirectOrContent, RaceTimeCallbackError> {
     let mut cookie = Cookie::build("racetime_token", token.access_token().to_owned())
         .same_site(SameSite::Lax);
     if let Some(expires_in) = token.expires_in() {
@@ -216,9 +209,9 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, cl
         .error_for_status()?
         .json::<RaceTimeUser>().await?;
     Ok(if User::from_racetime(pool, &racetime_user.id).await?.is_some() {
-        RaceTimeCallbackResponse::Redirect(Redirect::to(uri!(crate::index))) //TODO redirect to original page
+        RedirectOrContent::Redirect(Redirect::to(uri!(crate::index))) //TODO redirect to original page
     } else if let Some(me) = me {
-        RaceTimeCallbackResponse::Content(page(&pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect account — Mido's House", html! {
+        RedirectOrContent::Content(page(&pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect account — Mido's House", html! {
             p {
                 : "This racetime.gg account is not associated with a Mido's House account, but you are signed in as ";
                 : me.to_html();
@@ -234,7 +227,7 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, cl
             }
         }).await?)
     } else {
-        RaceTimeCallbackResponse::Content(page(&pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create account — Mido's House", html! {
+        RedirectOrContent::Content(page(&pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create account — Mido's House", html! {
             p : "This racetime.gg account is not associated with a Mido's House account.";
             ul {
                 li {
@@ -252,12 +245,6 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, cl
     })
 }
 
-#[derive(Responder)]
-pub(crate) enum DiscordCallbackResponse {
-    Redirect(Redirect),
-    Content(Html<String>),
-}
-
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum DiscordCallbackError {
     #[error(transparent)] Page(#[from] PageError),
@@ -269,7 +256,7 @@ pub(crate) enum DiscordCallbackError {
 }
 
 #[rocket::get("/auth/discord")]
-pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, token: TokenResponse<Discord>, cookies: &CookieJar<'_>) -> Result<DiscordCallbackResponse, DiscordCallbackError> {
+pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, token: TokenResponse<Discord>, cookies: &CookieJar<'_>) -> Result<RedirectOrContent, DiscordCallbackError> {
     let mut cookie = Cookie::build("discord_token", token.access_token().to_owned())
         .same_site(SameSite::Lax);
     if let Some(expires_in) = token.expires_in() {
@@ -282,9 +269,9 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, cli
         .error_for_status()?
         .json::<DiscordUser>().await?;
     Ok(if User::from_discord(pool, discord_user.id.parse()?).await?.is_some() {
-        DiscordCallbackResponse::Redirect(Redirect::to(uri!(crate::index))) //TODO redirect to original page
+        RedirectOrContent::Redirect(Redirect::to(uri!(crate::index))) //TODO redirect to original page
     } else if let Some(me) = me {
-        DiscordCallbackResponse::Content(page(&pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect account — Mido's House", html! {
+        RedirectOrContent::Content(page(&pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect account — Mido's House", html! {
             p {
                 : "This Discord account is not associated with a Mido's House account, but you are signed in as ";
                 : me.to_html();
@@ -300,7 +287,7 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, cli
             }
         }).await?)
     } else {
-        DiscordCallbackResponse::Content(page(&pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create account — Mido's House", html! {
+        RedirectOrContent::Content(page(&pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create account — Mido's House", html! {
             p : "This Discord account is not associated with a Mido's House account.";
             ul {
                 li {

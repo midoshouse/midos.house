@@ -1,5 +1,9 @@
 use {
-    std::mem,
+    std::{
+        borrow::Cow,
+        cmp::Ordering::*,
+        mem,
+    },
     futures::stream::TryStreamExt as _,
     horrorshow::{
         RenderBox,
@@ -12,8 +16,8 @@ use {
     rocket::{
         FromForm,
         FromFormField,
-        Responder,
         State,
+        UriDisplayQuery,
         form::{
             self,
             Context,
@@ -39,12 +43,13 @@ use {
         util::{
             Id,
             IdTable,
+            RedirectOrContent,
         },
     },
 };
 
 #[derive(Debug, sqlx::Decode)]
-#[sqlx(type_name = "signup_status", rename_all = "lowercase")]
+#[sqlx(type_name = "signup_status", rename_all = "snake_case")]
 pub(crate) enum SignupStatus {
     Created,
     Confirmed,
@@ -57,10 +62,12 @@ impl SignupStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, sqlx::Type, FromFormField)]
-#[sqlx(type_name = "team_role", rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type, FromFormField, UriDisplayQuery)]
+#[sqlx(type_name = "team_role", rename_all = "snake_case")]
 pub(crate) enum Role {
+    #[field(value = "sheikah")]
     Sheikah,
+    #[field(value = "gerudo")]
     Gerudo,
 }
 
@@ -77,10 +84,48 @@ impl Role {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, FromFormField)]
+#[sqlx(type_name = "role_preference", rename_all = "snake_case")]
+pub(crate) enum RolePreference {
+    #[field(value = "sheikah_only")]
+    SheikahOnly,
+    #[field(value = "sheikah_preferred")]
+    SheikahPreferred,
+    #[field(value = "no_preference")]
+    NoPreference,
+    #[field(value = "gerudo_preferred")]
+    GerudoPreferred,
+    #[field(value = "gerudo_only")]
+    GerudoOnly,
+}
+
+impl RolePreference {
+    pub(crate) fn to_html(&self) -> Box<dyn RenderBox> {
+        match self {
+            Self::SheikahOnly => box_html! {
+                span(class = "sheikah") : "runner only";
+            },
+            Self::SheikahPreferred => box_html! {
+                span(class = "sheikah") : "runner preferred";
+            },
+            Self::NoPreference => box_html! {
+                : "no preference";
+            },
+            Self::GerudoPreferred => box_html! {
+                span(class = "gerudo") : "pilot preferred";
+            },
+            Self::GerudoOnly => box_html! {
+                span(class = "gerudo") : "pilot only";
+            },
+        }
+    }
+}
+
 enum Tab {
     Info,
     Teams,
     Enter,
+    FindTeam,
 }
 
 fn event_header(tab: Tab) -> Box<dyn RenderBox> {
@@ -105,9 +150,13 @@ fn event_header(tab: Tab) -> Box<dyn RenderBox> {
             @if let Tab::Enter = tab {
                 span(class = "button selected") : "Enter";
             } else {
-                a(class = "button", href = uri!(pictionary_random_settings_enter).to_string()) : "Enter";
+                a(class = "button", href = uri!(pictionary_random_settings_enter(None::<Role>, None::<Id>)).to_string()) : "Enter";
             }
-            //a(class = "button") : "Find Teammates"; //TODO
+            @if let Tab::FindTeam = tab {
+                span(class = "button selected") : "Find Teammates";
+            } else {
+                a(class = "button", href = uri!(pictionary_random_settings_find_team).to_string()) : "Find Teammates";
+            }
             //a(class = "button") : "Volunteer"; //TODO
             //a(class = "button") : "Watch"; //TODO
         }
@@ -217,6 +266,7 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
                             li : "Heart container requirements for rainbow bridge and/or Ganon boss key (50% chance each to replace a skulltula token requirement)";
                             li : "Full one-way entrance randomization (owls, warp songs, and spawns can lead to more destinations; 25% chance each)";
                             li : "One bonk KO (5% chance)";
+                            li : "Closed Kokiri Forest exit (50% chance, independent of Closed/Open Deku)";
                         }
                     }
                     li {
@@ -349,31 +399,63 @@ fn field_errors(tmpl: &mut TemplateBuffer<'_>, errors: &mut Vec<&form::Error<'_>
     };
 }
 
-async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, context: Context<'_>) -> PageResult {
+enum PictionaryRandomSettingsEnterFormDefaults<'a> {
+    Context(Context<'a>),
+    Values {
+        my_role: Option<Role>,
+        teammate: Option<Id>,
+    },
+}
+
+impl<'v> PictionaryRandomSettingsEnterFormDefaults<'v> {
+    fn errors(&self) -> Vec<&form::Error<'v>> {
+        match self {
+            Self::Context(ctx) => ctx.errors().collect(),
+            Self::Values { .. } => Vec::default(),
+        }
+    }
+
+    fn my_role(&self) -> Option<Role> {
+        match self {
+            Self::Context(ctx) => match ctx.field_value("my_role") {
+                Some("sheikah") => Some(Role::Sheikah),
+                Some("gerudo") => Some(Role::Gerudo),
+                _ => None,
+            },
+            &Self::Values { my_role, .. } => my_role,
+        }
+    }
+
+    fn teammate(&self) -> Option<Cow<'_, str>> {
+        match self {
+            Self::Context(ctx) => ctx.field_value("teammate").map(Cow::Borrowed),
+            &Self::Values { teammate, .. } => teammate.map(|id| Cow::Owned(id.0.to_string())),
+        }
+    }
+}
+
+async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, defaults: PictionaryRandomSettingsEnterFormDefaults<'_>) -> PageResult {
     page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Enter — 1st Random Settings Pictionary Spoiler Log Race", if me.is_some() {
-        let mut errors = context.errors().collect_vec();
+        let mut errors = defaults.errors();
         let form_content = html! {
             //TODO CSRF protection (rocket_csrf crate?)
             legend {
-                : "Fill out this form to enter the race as a team.";
-                /*
-                : " If you don't have a teammate yet, you can ";
-                a(href = unimplemented!(/*TODO*/)) : "look for a teammate";
+                : "Fill out this form to enter the race as a team. Your teammate will receive an invitation they have to accept to confirm the signup. If you don't have a team yet, you can ";
+                a(href = uri!(pictionary_random_settings_find_team).to_string()) : "look for a teammate";
                 : " instead.";
-                */
             }
             fieldset {
                 |tmpl| field_errors(tmpl, &mut errors, "my_role");
                 label(for = "my_role") : "My Role:";
-                input(id = "my_role-sheikah", class = "sheikah", type = "radio", name = "my_role", value = "sheikah", checked? = context.field_value("my_role") == Some("sheikah"));
+                input(id = "my_role-sheikah", class = "sheikah", type = "radio", name = "my_role", value = "sheikah", checked? = defaults.my_role() == Some(Role::Sheikah));
                 label(class = "sheikah", for = "my_role-sheikah") : "Runner";
-                input(id = "my_role-gerudo", class = "gerudo", type = "radio", name = "my_role", value = "gerudo", checked? = context.field_value("my_role") == Some("gerudo"));
+                input(id = "my_role-gerudo", class = "gerudo", type = "radio", name = "my_role", value = "gerudo", checked? = defaults.my_role() == Some(Role::Gerudo));
                 label(class = "gerudo", for = "my_role-gerudo") : "Pilot";
             }
             fieldset {
                 |tmpl| field_errors(tmpl, &mut errors, "teammate");
                 label(for = "teammate") : "Teammate:";
-                input(type = "text", name = "teammate", value? = context.field_value("teammate"));
+                input(type = "text", name = "teammate", value? = defaults.teammate().as_deref());
                 label(class = "help") : "(Enter your teammate's Mido's House user ID. It can be found on their profile page.)"; //TODO add JS-based user search?
             }
             fieldset {
@@ -406,9 +488,9 @@ async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, 
     }).await
 }
 
-#[rocket::get("/event/pic/rs1/enter")]
-pub(crate) async fn pictionary_random_settings_enter(pool: &State<PgPool>, me: Option<User>) -> PageResult {
-    pictionary_random_settings_enter_form(&pool, me, Context::default()).await
+#[rocket::get("/event/pic/rs1/enter?<my_role>&<teammate>")]
+pub(crate) async fn pictionary_random_settings_enter(pool: &State<PgPool>, me: Option<User>, my_role: Option<Role>, teammate: Option<Id>) -> PageResult {
+    pictionary_random_settings_enter_form(&pool, me, PictionaryRandomSettingsEnterFormDefaults::Values { my_role, teammate }).await
 }
 
 #[derive(FromForm)]
@@ -417,14 +499,8 @@ pub(crate) struct EnterForm {
     teammate: Id,
 }
 
-#[derive(Responder)]
-pub(crate) enum PictionaryRandomSettingsEnterPostResponse {
-    Redirect(Redirect),
-    Content(Html<String>),
-}
-
 #[rocket::post("/event/pic/rs1/enter", data = "<form>")]
-pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, me: User, form: Form<Contextual<'_, EnterForm>>) -> Result<PictionaryRandomSettingsEnterPostResponse, PageError> {
+pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, me: User, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, PageError> {
     //TODO deny action if the event has started
     let mut form = form.into_inner();
     if let Some(ref value) = form.value {
@@ -447,7 +523,7 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
         ) AS "exists!""#, i64::from(me.id)).fetch_one(&mut transaction).await? {
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
-        if matches!(value.my_role, Role::Sheikah) && me.racetime_id.is_none() {
+        if value.my_role == Role::Sheikah && me.racetime_id.is_none() {
             form.context.push_error(form::Error::validation("A racetime.gg account is required to enter as runner. Go to your profile and select “Connect a racetime.gg account”.")); //TODO direct link?
         }
         if value.teammate == me.id {
@@ -467,19 +543,191 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
         }
         //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
         if form.context.errors().next().is_some() {
-            pictionary_random_settings_enter_form(&pool, Some(me), form.context).await
-                .map(PictionaryRandomSettingsEnterPostResponse::Content)
+            pictionary_random_settings_enter_form(&pool, Some(me), PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await
+                .map(RedirectOrContent::Content)
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
             sqlx::query!("INSERT INTO teams (id, series, event) VALUES ($1, 'pic', 'rs1')", i64::from(id)).execute(&mut transaction).await?; //TODO allow setting team name
             sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", i64::from(id), i64::from(me.id), value.my_role as _).execute(&mut transaction).await?;
             sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", i64::from(id), i64::from(value.teammate), match value.my_role { Role::Sheikah => Role::Gerudo, Role::Gerudo => Role::Sheikah } as _).execute(&mut transaction).await?;
             transaction.commit().await?;
-            Ok(PictionaryRandomSettingsEnterPostResponse::Redirect(Redirect::to(uri!(pictionary_random_settings_teams)))) //TODO redirect to “My Status” page instead
+            Ok(RedirectOrContent::Redirect(Redirect::to(uri!(pictionary_random_settings_teams)))) //TODO redirect to “My Status” page instead
         }
     } else {
-        pictionary_random_settings_enter_form(&pool, Some(me), form.context).await
-            .map(PictionaryRandomSettingsEnterPostResponse::Content)
+        pictionary_random_settings_enter_form(&pool, Some(me), PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await
+            .map(RedirectOrContent::Content)
+    }
+}
+
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+pub(crate) enum PictionaryRandomSettingsFindTeamError {
+    #[error(transparent)] Horrorshow(#[from] horrorshow::Error),
+    #[error(transparent)] Page(#[from] PageError),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("unknown user")]
+    UnknownUser,
+}
+
+async fn pictionary_random_settings_find_team_form(pool: &PgPool, me: Option<User>, context: Context<'_>) -> Result<Html<String>, PictionaryRandomSettingsFindTeamError> {
+    Ok(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Find Teammates — 1st Random Settings Pictionary Spoiler Log Race", if me.is_some() {
+        let mut my_role = None;
+        let mut looking_for_team = Vec::default();
+        let mut looking_for_team_query = sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = 'pic' AND event = 'rs1'"#).fetch(pool);
+        while let Some(row) = looking_for_team_query.try_next().await? {
+            let user = User::from_id(&pool, row.user).await?.ok_or(PictionaryRandomSettingsFindTeamError::UnknownUser)?;
+            if me.as_ref().map_or(false, |me| user.id == me.id) { my_role = Some(row.role) }
+            let can_invite = me.as_ref().map_or(true, |me| user.id != me.id) && true /*TODO not already in a team with that user */;
+            looking_for_team.push((user, row.role, can_invite));
+        }
+        let mut errors = context.errors().collect_vec();
+        let form = if my_role.is_none() {
+            let form_content = html! {
+                //TODO CSRF protection (rocket_csrf crate?)
+                legend {
+                    : "Fill out this form to add yourself to the list below.";
+                }
+                fieldset {
+                    |tmpl| field_errors(tmpl, &mut errors, "role");
+                    label(for = "role") : "Role:";
+                    input(id = "role-sheikah_only", class = "sheikah", type = "radio", name = "role", value = "sheikah_only", checked? = context.field_value("role") == Some("sheikah_only"));
+                    label(class = "sheikah", for = "role-sheikah_only") : "Runner only";
+                    input(id = "role-sheikah_preferred", class = "sheikah", type = "radio", name = "role", value = "sheikah_preferred", checked? = context.field_value("role") == Some("sheikah_preferred"));
+                    label(class = "sheikah", for = "role-sheikah_preferred") : "Runner preferred";
+                    input(id = "role-no_preference", type = "radio", name = "role", value = "no_preference", checked? = context.field_value("role").map_or(true, |role| role == "no_preference"));
+                    label(for = "role-no_preference") : "No preference";
+                    input(id = "role-gerudo_preferred", class = "gerudo", type = "radio", name = "role", value = "gerudo_preferred", checked? = context.field_value("role") == Some("gerudo_preferred"));
+                    label(class = "gerudo", for = "role-gerudo_preferred") : "Pilot preferred";
+                    input(id = "role-gerudo_only", class = "gerudo", type = "radio", name = "role", value = "gerudo_only", checked? = context.field_value("role") == Some("gerudo_only"));
+                    label(class = "gerudo", for = "role-gerudo_only") : "Pilot only";
+                }
+                fieldset {
+                    input(type = "submit", value = "Submit");
+                }
+            }.write_to_html()?;
+            Some(html! {
+                form(action = uri!(pictionary_random_settings_find_team_post).to_string(), method = "post") {
+                    @for error in errors {
+                        |tmpl| render_form_error(tmpl, error);
+                    }
+                    : form_content;
+                }
+            })
+        } else {
+            None
+        };
+        let can_invite_any = looking_for_team.iter().any(|&(_, _, can_invite)| can_invite);
+        let looking_for_team = looking_for_team.into_iter()
+            .map(|(user, role, can_invite)| (user, role, can_invite.then(|| match (my_role, role) {
+                // if I haven't signed up looking for team, default to the role opposite the invitee's preference
+                (None, RolePreference::SheikahOnly | RolePreference::SheikahPreferred) => Some(Role::Gerudo),
+                (None, RolePreference::GerudoOnly | RolePreference::GerudoPreferred) => Some(Role::Sheikah),
+                (None, RolePreference::NoPreference) => None,
+                // if I have signed up looking for team, take the role that's more preferred by me than by the invitee
+                (Some(my_role), _) => match my_role.cmp(&role) {
+                    Less => Some(Role::Sheikah),
+                    Equal => None,
+                    Greater => Some(Role::Gerudo),
+                },
+            })))
+            .collect_vec();
+        html! {
+            main {
+                : event_header(Tab::FindTeam);
+                : form;
+                table {
+                    thead {
+                        tr {
+                            th : "User";
+                            th : "Role";
+                            @if can_invite_any {
+                                th;
+                            }
+                        }
+                    }
+                    tbody {
+                        @if looking_for_team.is_empty() {
+                            tr {
+                                td(colspan = "3") {
+                                    i : "(no one currently looking for teammates)";
+                                }
+                            }
+                        } else {
+                            @for (user, role, invite) in looking_for_team {
+                                tr {
+                                    td : user.to_html();
+                                    td : role.to_html();
+                                    @if can_invite_any {
+                                        td {
+                                            @if let Some(my_role) = invite {
+                                                a(class = "button", href = uri!(pictionary_random_settings_enter(my_role, Some(user.id))).to_string()) : "Invite";
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }.write_to_html()?
+    } else {
+        html! {
+            main {
+                : event_header(Tab::FindTeam);
+                article {
+                    p {
+                        a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
+                        : " to add yourself to this list.";
+                    }
+                }
+            }
+        }.write_to_html()?
+    }).await?)
+}
+
+#[rocket::get("/event/pic/rs1/find-team")]
+pub(crate) async fn pictionary_random_settings_find_team(pool: &State<PgPool>, me: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsFindTeamError> {
+    pictionary_random_settings_find_team_form(pool, me, Context::default()).await
+}
+
+#[derive(FromForm)]
+pub(crate) struct FindTeamForm {
+    role: RolePreference,
+}
+
+#[rocket::post("/event/pic/rs1/find-team", data = "<form>")]
+pub(crate) async fn pictionary_random_settings_find_team_post(pool: &State<PgPool>, me: User, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, PictionaryRandomSettingsFindTeamError> {
+    //TODO deny action if the event has started
+    let mut form = form.into_inner();
+    if let Some(ref value) = form.value {
+        let mut transaction = pool.begin().await?;
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM looking_for_team WHERE
+            series = 'pic'
+            AND event = 'rs1'
+            AND user_id = $1
+        ) AS "exists!""#, i64::from(me.id)).fetch_one(&mut transaction).await? {
+            form.context.push_error(form::Error::validation("You are already on the list."));
+        }
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+            id = team
+            AND series = 'pic'
+            AND event = 'rs1'
+            AND member = $1
+            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+        ) AS "exists!""#, i64::from(me.id)).fetch_one(&mut transaction).await? {
+            form.context.push_error(form::Error::validation("You are already signed up for this race."));
+        }
+        if form.context.errors().next().is_some() {
+            pictionary_random_settings_find_team_form(&pool, Some(me), form.context).await
+                .map(RedirectOrContent::Content)
+        } else {
+            sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role) VALUES ('pic', 'rs1', $1, $2)", i64::from(me.id), value.role as _).execute(&mut transaction).await?;
+            transaction.commit().await?;
+            Ok(RedirectOrContent::Redirect(Redirect::to(uri!(pictionary_random_settings_find_team))))
+        }
+    } else {
+        pictionary_random_settings_find_team_form(&pool, Some(me), form.context).await
+            .map(RedirectOrContent::Content)
     }
 }
 
@@ -498,7 +746,7 @@ pub(crate) async fn pictionary_random_settings_confirm_signup(pool: &State<PgPoo
     //TODO deny action if the event has started
     let mut transaction = pool.begin().await?;
     if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, i64::from(team), i64::from(me.id)).fetch_optional(&mut transaction).await? {
-        if matches!(role, Role::Sheikah) && me.racetime_id.is_none() {
+        if role == Role::Sheikah && me.racetime_id.is_none() {
             return Err(PictionaryRandomSettingsAcceptError::RaceTimeAccountRequired)
         }
         for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, i64::from(team)).fetch_all(&mut transaction).await? {
@@ -506,6 +754,11 @@ pub(crate) async fn pictionary_random_settings_confirm_signup(pool: &State<PgPoo
             sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', 'pic', 'rs1', $3)", i64::from(id), i64::from(member), i64::from(me.id)).execute(&mut transaction).await?;
         }
         sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", i64::from(team), i64::from(me.id)).execute(&mut transaction).await?;
+        // if this confirms the team, remove all members from looking_for_team
+        sqlx::query!("DELETE FROM looking_for_team WHERE
+            EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND member = user_id)
+            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND status = 'unconfirmed')
+        ", i64::from(team)).execute(&mut transaction).await?;
         transaction.commit().await?;
         Ok(Redirect::to(uri!(pictionary_random_settings_teams)))
     } else {

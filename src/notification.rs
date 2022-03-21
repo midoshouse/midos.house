@@ -49,7 +49,7 @@ pub(crate) enum Error {
 }
 
 #[derive(sqlx::Type)]
-#[sqlx(type_name = "notification_kind", rename_all = "lowercase")]
+#[sqlx(type_name = "notification_kind", rename_all = "snake_case")]
 pub(crate) enum SimpleNotificationKind {
     Accept,
     Decline,
@@ -172,7 +172,7 @@ impl Notification {
                     }
                     : ".";
                     div(class = "button-row") {
-                        @if matches!(my_role, Role::Sheikah) && me.racetime_id.is_none() {
+                        @if my_role == Role::Sheikah && me.racetime_id.is_none() {
                             a(class = "button", href = uri!(crate::auth::racetime_login).to_string()) : "Connect racetime.gg Account to Accept";
                         } else {
                             form(action = uri!(crate::event::pictionary_random_settings_confirm_signup(team_id)).to_string(), method = "post") {

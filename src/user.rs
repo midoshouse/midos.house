@@ -25,7 +25,7 @@ use {
 #[derive(sqlx::Type)]
 #[sqlx(type_name = "user_display_source", rename_all = "lowercase")]
 enum DisplaySource {
-    Racetime,
+    RaceTime,
     Discord,
 }
 
@@ -74,7 +74,7 @@ impl User {
 
     pub(crate) fn display_name(&self) -> &str {
         match self.display_source {
-            DisplaySource::Racetime => self.racetime_display_name.as_ref().expect("user with racetime.gg display preference but no racetime.gg display name"),
+            DisplaySource::RaceTime => self.racetime_display_name.as_ref().expect("user with racetime.gg display preference but no racetime.gg display name"),
             DisplaySource::Discord => self.discord_display_name.as_ref().expect("user with Discord display preference but no Discord display name"),
         }
     }

@@ -8,12 +8,18 @@ use {
     itertools::Itertools as _,
     rand::prelude::*,
     rocket::{
+        Responder,
         UriDisplayPath,
+        UriDisplayQuery,
         form::{
             self,
             FromFormField,
         },
         request::FromParam,
+        response::{
+            Redirect,
+            content::Html,
+        },
     },
     sqlx::{
         Database,
@@ -24,7 +30,7 @@ use {
     },
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, UriDisplayPath)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, UriDisplayPath, UriDisplayQuery)]
 pub(crate) struct Id(pub(crate) u64);
 
 pub(crate) enum IdTable {
@@ -151,4 +157,10 @@ pub(crate) fn natjoin<'a, T: RenderOnce + 'a>(elts: impl IntoIterator<Item = T>)
             })
         }
     }
+}
+
+#[derive(Responder)]
+pub(crate) enum RedirectOrContent {
+    Redirect(Redirect),
+    Content(Html<String>),
 }
