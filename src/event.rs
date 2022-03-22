@@ -586,18 +586,18 @@ pub(crate) enum PictionaryRandomSettingsFindTeamError {
 
 async fn pictionary_random_settings_find_team_form(pool: &PgPool, me: Option<User>, context: Context<'_>) -> Result<Html<String>, PictionaryRandomSettingsFindTeamError> {
     let header = event_header(pool, &me, Tab::FindTeam).await?;
-    Ok(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Find Teammates — 1st Random Settings Pictionary Spoiler Log Race", if me.is_some() {
-        let mut my_role = None;
-        let mut looking_for_team = Vec::default();
-        let mut looking_for_team_query = sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = 'pic' AND event = 'rs1'"#).fetch(pool);
-        while let Some(row) = looking_for_team_query.try_next().await? {
-            let user = User::from_id(pool, row.user).await?.ok_or(PictionaryRandomSettingsFindTeamError::UnknownUser)?;
-            if me.as_ref().map_or(false, |me| user.id == me.id) { my_role = Some(row.role) }
-            let can_invite = me.as_ref().map_or(true, |me| user.id != me.id) && true /*TODO not already in a team with that user */;
-            looking_for_team.push((user, row.role, can_invite));
-        }
+    let mut my_role = None;
+    let mut looking_for_team = Vec::default();
+    let mut looking_for_team_query = sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = 'pic' AND event = 'rs1'"#).fetch(pool);
+    while let Some(row) = looking_for_team_query.try_next().await? {
+        let user = User::from_id(pool, row.user).await?.ok_or(PictionaryRandomSettingsFindTeamError::UnknownUser)?;
+        if me.as_ref().map_or(false, |me| user.id == me.id) { my_role = Some(row.role) }
+        let can_invite = me.as_ref().map_or(true, |me| user.id != me.id) && true /*TODO not already in a team with that user */;
+        looking_for_team.push((user, row.role, can_invite));
+    }
+    let form = if me.is_some() {
         let mut errors = context.errors().collect_vec();
-        let form = if my_role.is_none() {
+        if my_role.is_none() {
             let form_content = html! {
                 //TODO CSRF protection (rocket_csrf crate?)
                 legend {
@@ -628,56 +628,65 @@ async fn pictionary_random_settings_find_team_form(pool: &PgPool, me: Option<Use
                     }
                     : form_content;
                 }
-            })
+            }.write_to_html()?)
         } else {
             None
-        };
-        let can_invite_any = looking_for_team.iter().any(|&(_, _, can_invite)| can_invite);
-        let looking_for_team = looking_for_team.into_iter()
-            .map(|(user, role, can_invite)| (user, role, can_invite.then(|| match (my_role, role) {
-                // if I haven't signed up looking for team, default to the role opposite the invitee's preference
-                (None, RolePreference::SheikahOnly | RolePreference::SheikahPreferred) => Some(Role::Gerudo),
-                (None, RolePreference::GerudoOnly | RolePreference::GerudoPreferred) => Some(Role::Sheikah),
-                (None, RolePreference::NoPreference) => None,
-                // if I have signed up looking for team, take the role that's more preferred by me than by the invitee
-                (Some(my_role), _) => match my_role.cmp(&role) {
-                    Less => Some(Role::Sheikah),
-                    Equal => None,
-                    Greater => Some(Role::Gerudo),
-                },
-            })))
-            .collect_vec();
-        html! {
-            main {
-                : header;
-                : form;
-                table {
-                    thead {
-                        tr {
-                            th : "User";
-                            th : "Role";
-                            @if can_invite_any {
-                                th;
-                            }
+        }
+    } else {
+        Some(html! {
+            article {
+                p {
+                    a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
+                    : " to add yourself to this list.";
+                }
+            }
+        }.write_to_html()?)
+    };
+    let can_invite_any = looking_for_team.iter().any(|&(_, _, can_invite)| can_invite);
+    let looking_for_team = looking_for_team.into_iter()
+        .map(|(user, role, can_invite)| (user, role, can_invite.then(|| match (my_role, role) {
+            // if I haven't signed up looking for team, default to the role opposite the invitee's preference
+            (None, RolePreference::SheikahOnly | RolePreference::SheikahPreferred) => Some(Role::Gerudo),
+            (None, RolePreference::GerudoOnly | RolePreference::GerudoPreferred) => Some(Role::Sheikah),
+            (None, RolePreference::NoPreference) => None,
+            // if I have signed up looking for team, take the role that's more preferred by me than by the invitee
+            (Some(my_role), _) => match my_role.cmp(&role) {
+                Less => Some(Role::Sheikah),
+                Equal => None,
+                Greater => Some(Role::Gerudo),
+            },
+        })))
+        .collect_vec();
+    Ok(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Find Teammates — 1st Random Settings Pictionary Spoiler Log Race", html! {
+        main {
+            : header;
+            : form;
+            table {
+                thead {
+                    tr {
+                        th : "User";
+                        th : "Role";
+                        @if can_invite_any {
+                            th;
                         }
                     }
-                    tbody {
-                        @if looking_for_team.is_empty() {
-                            tr {
-                                td(colspan = "3") {
-                                    i : "(no one currently looking for teammates)";
-                                }
+                }
+                tbody {
+                    @if looking_for_team.is_empty() {
+                        tr {
+                            td(colspan = "3") {
+                                i : "(no one currently looking for teammates)";
                             }
-                        } else {
-                            @for (user, role, invite) in looking_for_team {
-                                tr {
-                                    td : user.to_html();
-                                    td : role.to_html();
-                                    @if can_invite_any {
-                                        td {
-                                            @if let Some(my_role) = invite {
-                                                a(class = "button", href = uri!(pictionary_random_settings_enter(my_role, Some(user.id))).to_string()) : "Invite";
-                                            }
+                        }
+                    } else {
+                        @for (user, role, invite) in looking_for_team {
+                            tr {
+                                td : user.to_html();
+                                td : role.to_html();
+                                @if can_invite_any {
+                                    td {
+                                        @if let Some(my_role) = invite {
+                                            a(class = "button", href = uri!(pictionary_random_settings_enter(my_role, Some(user.id))).to_string()) : "Invite";
                                         }
                                     }
                                 }
@@ -686,19 +695,7 @@ async fn pictionary_random_settings_find_team_form(pool: &PgPool, me: Option<Use
                     }
                 }
             }
-        }.write_to_html()?
-    } else {
-        html! {
-            main {
-                : header;
-                article {
-                    p {
-                        a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
-                        : " to add yourself to this list.";
-                    }
-                }
-            }
-        }.write_to_html()?
+        }
     }).await?)
 }
 
