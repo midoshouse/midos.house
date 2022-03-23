@@ -13,13 +13,14 @@ use {
     },
     rocket::{
         State,
+        form::Form,
         response::{
-            Debug,
             Redirect,
             content::Html,
         },
         uri,
     },
+    rocket_csrf::CsrfToken,
     sqlx::PgPool,
     crate::{
         PageError,
@@ -33,7 +34,10 @@ use {
         },
         page,
         util::{
+            CsrfTokenExt as _,
+            EmptyForm,
             Id,
+            RedirectOrContent,
             natjoin,
         },
     },
@@ -75,7 +79,7 @@ impl Notification {
         Ok(notifications)
     }
 
-    async fn into_html(self, pool: &PgPool, me: &User) -> Result<Html<String>, Error> {
+    async fn into_html(self, pool: &PgPool, me: &User, csrf: &CsrfToken) -> Result<Html<String>, Error> {
         Ok(match self {
             Self::Simple(id) => {
                 let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await? {
@@ -114,6 +118,7 @@ impl Notification {
                     : text;
                     div(class = "button-row") {
                         form(action = uri!(dismiss(id)).to_string(), method = "post") {
+                            : csrf.to_html();
                             input(type = "submit", value = "Dismiss");
                         }
                     }
@@ -176,10 +181,12 @@ impl Notification {
                             a(class = "button", href = uri!(crate::auth::racetime_login).to_string()) : "Connect racetime.gg Account to Accept";
                         } else {
                             form(action = uri!(crate::event::pictionary_random_settings_confirm_signup(team_id)).to_string(), method = "post") {
+                                : csrf.to_html();
                                 input(type = "submit", value = "Accept");
                             }
                         }
                         form(action = uri!(crate::event::pictionary_random_settings_resign(team_id)).to_string(), method = "post") {
+                            : csrf.to_html();
                             input(type = "submit", value = "Decline");
                         }
                         //TODO block sender, block event
@@ -191,35 +198,46 @@ impl Notification {
 }
 
 #[rocket::get("/notifications")]
-pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>) -> Result<Html<String>, Error> {
+pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, csrf: Option<CsrfToken>) -> Result<RedirectOrContent, Error> {
     if let Some(me) = me {
-        let notifications = stream::iter(Notification::get(pool, &me).await?)
-            .then(|notification| notification.into_html(pool, &me))
-            .try_collect::<Vec<_>>().await?;
-        page(pool, &Some(me), PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
-            h1 : "Notifications";
-            @if notifications.is_empty() {
-                p : "You have no notifications.";
-            } else {
-                ul {
-                    @for notification in notifications {
-                        li : notification;
+        if let Some(csrf) = csrf {
+            let notifications = stream::iter(Notification::get(pool, &me).await?)
+                .then(|notification| notification.into_html(pool, &me, &csrf))
+                .try_collect::<Vec<_>>().await?;
+            page(pool, &Some(me), PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
+                h1 : "Notifications";
+                @if notifications.is_empty() {
+                    p : "You have no notifications.";
+                } else {
+                    ul {
+                        @for notification in notifications {
+                            li : notification;
+                        }
                     }
                 }
-            }
-        }).await.map_err(Error::from)
+            }).await.map(RedirectOrContent::Content).map_err(Error::from)
+        } else {
+            Ok(RedirectOrContent::Redirect(Redirect::temporary(uri!(notifications))))
+        }
     } else {
         page(pool, &me, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
             p {
                 a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
                 : " to view your notifications.";
             }
-        }).await.map_err(Error::from)
+        }).await.map(RedirectOrContent::Content).map_err(Error::from)
     }
 }
 
-#[rocket::post("/notifications/dismiss/<id>")]
-pub(crate) async fn dismiss(pool: &State<PgPool>, me: User, id: Id) -> Result<Redirect, Debug<sqlx::Error>> {
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+pub(crate) enum DismissError {
+    #[error(transparent)] Csrf(#[from] rocket_csrf::VerificationFailure),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+}
+
+#[rocket::post("/notifications/dismiss/<id>", data = "<form>")]
+pub(crate) async fn dismiss(pool: &State<PgPool>, me: User, id: Id, csrf: Option<CsrfToken>, form: Form<EmptyForm>) -> Result<Redirect, DismissError> {
+    form.verify(&csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
     sqlx::query!("DELETE FROM notifications WHERE id = $1 AND rcpt = $2", i64::from(id), i64::from(me.id)).execute(&**pool).await?;
     Ok(Redirect::to(uri!(notifications)))
 }

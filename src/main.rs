@@ -130,7 +130,7 @@ async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, c
                                         : me.to_html();
                                     }
                                     br;
-                                    //TODO links to profile and preferences
+                                    //TODO link to preferences
                                     a(href = uri!(auth::logout).to_string()) : "Sign out";
                                 } else {
                                     a(href = uri!(auth::login).to_string()) : "Sign in / Create account";
@@ -269,6 +269,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
         not_found,
         internal_server_error,
     ])
+    .attach(rocket_csrf::Fairing::default())
     .attach(OAuth2::<auth::RaceTime>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
         rocket_oauth2::StaticProvider {
             auth_uri: "https://racetime.gg/o/authorize".into(),

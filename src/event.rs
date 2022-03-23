@@ -30,6 +30,7 @@ use {
         },
         uri,
     },
+    rocket_csrf::CsrfToken,
     sqlx::PgPool,
     crate::{
         PageError,
@@ -41,6 +42,10 @@ use {
         page,
         user::User,
         util::{
+            ContextualExt as _,
+            CsrfForm,
+            CsrfTokenExt as _,
+            EmptyForm,
             Id,
             IdTable,
             RedirectOrContent,
@@ -189,6 +194,7 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
     let header = event_header(pool, &me, Tab::Info).await?;
     let tj = User::from_id(pool, Id(5961629664912637980)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
     let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
+    let tea = User::from_id(pool, Id(14099802746436324950)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
     Ok(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "1st Random Settings Pictionary Spoiler Log Race", html! {
         main {
             : header;
@@ -314,7 +320,9 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
                     : tj.to_html();
                     : ", ksinjah, ";
                     : fenhl.to_html();
-                    : ", melqwii, and TeaGrenadier. We will answer questions and inform about recent events on The Silver Gauntlets Discord in the #pictionary-spoiler-log channel (";
+                    : ", melqwii, and ";
+                    : tea.to_html();
+                    : ". We will answer questions and inform about recent events on The Silver Gauntlets Discord in the #pictionary-spoiler-log channel (";
                     a(href = "https://discord.gg/m8z8ZqtN8H") : "invite link";
                     : " • ";
                     a(href = "https://discord.com/channels/663207960432082944/865206020015128586") : "direct channel link";
@@ -449,12 +457,12 @@ impl<'v> PictionaryRandomSettingsEnterFormDefaults<'v> {
     }
 }
 
-async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, defaults: PictionaryRandomSettingsEnterFormDefaults<'_>) -> PageResult {
+async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, csrf: CsrfToken, defaults: PictionaryRandomSettingsEnterFormDefaults<'_>) -> PageResult {
     let header = event_header(pool, &me, Tab::Enter).await?;
     page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Enter — 1st Random Settings Pictionary Spoiler Log Race", if me.is_some() {
         let mut errors = defaults.errors();
         let form_content = html! {
-            //TODO CSRF protection (rocket_csrf crate?)
+            : csrf.to_html();
             legend {
                 : "Fill out this form to enter the race as a team. Your teammate will receive an invitation they have to accept to confirm the signup. If you don't have a team yet, you can ";
                 a(href = uri!(pictionary_random_settings_find_team).to_string()) : "look for a teammate";
@@ -505,20 +513,31 @@ async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, 
 }
 
 #[rocket::get("/event/pic/rs1/enter?<my_role>&<teammate>")]
-pub(crate) async fn pictionary_random_settings_enter(pool: &State<PgPool>, me: Option<User>, my_role: Option<Role>, teammate: Option<Id>) -> PageResult {
-    pictionary_random_settings_enter_form(pool, me, PictionaryRandomSettingsEnterFormDefaults::Values { my_role, teammate }).await
+pub(crate) async fn pictionary_random_settings_enter(pool: &State<PgPool>, me: Option<User>, csrf: Option<CsrfToken>, my_role: Option<Role>, teammate: Option<Id>) -> Result<RedirectOrContent, PageError> {
+    if let Some(csrf) = csrf {
+        pictionary_random_settings_enter_form(pool, me, csrf, PictionaryRandomSettingsEnterFormDefaults::Values { my_role, teammate }).await
+            .map(RedirectOrContent::Content)
+    } else {
+        Ok(RedirectOrContent::Redirect(Redirect::temporary(uri!(pictionary_random_settings_enter(my_role, teammate)))))
+    }
 }
 
 #[derive(FromForm)]
 pub(crate) struct EnterForm {
+    csrf: String,
     my_role: Role,
     teammate: Id,
 }
 
+impl CsrfForm for EnterForm {
+    fn csrf(&self) -> &String { &self.csrf }
+}
+
 #[rocket::post("/event/pic/rs1/enter", data = "<form>")]
-pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, me: User, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, PageError> {
+pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, PageError> {
     //TODO deny action if the event has started
     let mut form = form.into_inner();
+    form.verify(&csrf);
     if let Some(ref value) = form.value {
         let mut transaction = pool.begin().await?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
@@ -559,8 +578,12 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
         }
         //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
         if form.context.errors().next().is_some() {
-            pictionary_random_settings_enter_form(pool, Some(me), PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await
-                .map(RedirectOrContent::Content)
+            if let Some(csrf) = csrf {
+                pictionary_random_settings_enter_form(pool, Some(me), csrf, PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await
+                    .map(RedirectOrContent::Content)
+            } else {
+                Ok(RedirectOrContent::Redirect(Redirect::temporary(uri!(pictionary_random_settings_enter_post))))
+            }
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
             sqlx::query!("INSERT INTO teams (id, series, event) VALUES ($1, 'pic', 'rs1')", i64::from(id)).execute(&mut transaction).await?; //TODO allow setting team name
@@ -570,8 +593,12 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
             Ok(RedirectOrContent::Redirect(Redirect::to(uri!(pictionary_random_settings_teams)))) //TODO redirect to “My Status” page instead
         }
     } else {
-        pictionary_random_settings_enter_form(pool, Some(me), PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await
-            .map(RedirectOrContent::Content)
+        if let Some(csrf) = csrf {
+            pictionary_random_settings_enter_form(pool, Some(me), csrf, PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await
+                .map(RedirectOrContent::Content)
+        } else {
+            Ok(RedirectOrContent::Redirect(Redirect::temporary(uri!(pictionary_random_settings_enter_post))))
+        }
     }
 }
 
@@ -584,7 +611,7 @@ pub(crate) enum PictionaryRandomSettingsFindTeamError {
     UnknownUser,
 }
 
-async fn pictionary_random_settings_find_team_form(pool: &PgPool, me: Option<User>, context: Context<'_>) -> Result<Html<String>, PictionaryRandomSettingsFindTeamError> {
+async fn pictionary_random_settings_find_team_form(pool: &PgPool, me: Option<User>, csrf: CsrfToken, context: Context<'_>) -> Result<Html<String>, PictionaryRandomSettingsFindTeamError> {
     let header = event_header(pool, &me, Tab::FindTeam).await?;
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
@@ -599,7 +626,7 @@ async fn pictionary_random_settings_find_team_form(pool: &PgPool, me: Option<Use
         let mut errors = context.errors().collect_vec();
         if my_role.is_none() {
             let form_content = html! {
-                //TODO CSRF protection (rocket_csrf crate?)
+                : csrf.to_html();
                 legend {
                     : "Fill out this form to add yourself to the list below.";
                 }
@@ -700,19 +727,30 @@ async fn pictionary_random_settings_find_team_form(pool: &PgPool, me: Option<Use
 }
 
 #[rocket::get("/event/pic/rs1/find-team")]
-pub(crate) async fn pictionary_random_settings_find_team(pool: &State<PgPool>, me: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsFindTeamError> {
-    pictionary_random_settings_find_team_form(pool, me, Context::default()).await
+pub(crate) async fn pictionary_random_settings_find_team(pool: &State<PgPool>, me: Option<User>, csrf: Option<CsrfToken>) -> Result<RedirectOrContent, PictionaryRandomSettingsFindTeamError> {
+    if let Some(csrf) = csrf {
+        pictionary_random_settings_find_team_form(pool, me, csrf, Context::default()).await
+            .map(RedirectOrContent::Content)
+    } else {
+        Ok(RedirectOrContent::Redirect(Redirect::temporary(uri!(pictionary_random_settings_find_team))))
+    }
 }
 
 #[derive(FromForm)]
 pub(crate) struct FindTeamForm {
+    csrf: String,
     role: RolePreference,
 }
 
+impl CsrfForm for FindTeamForm { //TODO derive
+    fn csrf(&self) -> &String { &self.csrf }
+}
+
 #[rocket::post("/event/pic/rs1/find-team", data = "<form>")]
-pub(crate) async fn pictionary_random_settings_find_team_post(pool: &State<PgPool>, me: User, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, PictionaryRandomSettingsFindTeamError> {
+pub(crate) async fn pictionary_random_settings_find_team_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, PictionaryRandomSettingsFindTeamError> {
     //TODO deny action if the event has started
     let mut form = form.into_inner();
+    form.verify(&csrf);
     if let Some(ref value) = form.value {
         let mut transaction = pool.begin().await?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM looking_for_team WHERE
@@ -732,21 +770,30 @@ pub(crate) async fn pictionary_random_settings_find_team_post(pool: &State<PgPoo
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
         if form.context.errors().next().is_some() {
-            pictionary_random_settings_find_team_form(pool, Some(me), form.context).await
-                .map(RedirectOrContent::Content)
+            if let Some(csrf) = csrf {
+                pictionary_random_settings_find_team_form(pool, Some(me), csrf, form.context).await
+                    .map(RedirectOrContent::Content)
+            } else {
+                Ok(RedirectOrContent::Redirect(Redirect::temporary(uri!(pictionary_random_settings_find_team_post))))
+            }
         } else {
             sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role) VALUES ('pic', 'rs1', $1, $2)", i64::from(me.id), value.role as _).execute(&mut transaction).await?;
             transaction.commit().await?;
             Ok(RedirectOrContent::Redirect(Redirect::to(uri!(pictionary_random_settings_find_team))))
         }
     } else {
-        pictionary_random_settings_find_team_form(pool, Some(me), form.context).await
-            .map(RedirectOrContent::Content)
+        if let Some(csrf) = csrf {
+            pictionary_random_settings_find_team_form(pool, Some(me), csrf, form.context).await
+                .map(RedirectOrContent::Content)
+        } else {
+            Ok(RedirectOrContent::Redirect(Redirect::temporary(uri!(pictionary_random_settings_find_team_post))))
+        }
     }
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum PictionaryRandomSettingsAcceptError {
+    #[error(transparent)] Csrf(#[from] rocket_csrf::VerificationFailure),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("you haven't been invited to this team")]
     NotInTeam,
@@ -754,9 +801,9 @@ pub(crate) enum PictionaryRandomSettingsAcceptError {
     RaceTimeAccountRequired,
 }
 
-#[rocket::post("/event/pic/rs1/confirm/<team>")]
-pub(crate) async fn pictionary_random_settings_confirm_signup(pool: &State<PgPool>, me: User, team: Id) -> Result<Redirect, PictionaryRandomSettingsAcceptError> {
-    //TODO CSRF protection
+#[rocket::post("/event/pic/rs1/confirm/<team>", data = "<form>")]
+pub(crate) async fn pictionary_random_settings_confirm_signup(pool: &State<PgPool>, me: User, team: Id, csrf: Option<CsrfToken>, form: Form<EmptyForm>) -> Result<Redirect, PictionaryRandomSettingsAcceptError> {
+    form.verify(&csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
     //TODO deny action if the event has started
     let mut transaction = pool.begin().await?;
     if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, i64::from(team), i64::from(me.id)).fetch_optional(&mut transaction).await? {
@@ -784,14 +831,15 @@ pub(crate) async fn pictionary_random_settings_confirm_signup(pool: &State<PgPoo
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum PictionaryRandomSettingsResignError {
+    #[error(transparent)] Csrf(#[from] rocket_csrf::VerificationFailure),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("can't delete teams you're not part of")]
     NotInTeam,
 }
 
-#[rocket::post("/event/pic/rs1/resign/<team>")]
-pub(crate) async fn pictionary_random_settings_resign(pool: &State<PgPool>, me: User, team: Id) -> Result<Redirect, PictionaryRandomSettingsResignError> {
-    //TODO CSRF protection
+#[rocket::post("/event/pic/rs1/resign/<team>", data = "<form>")]
+pub(crate) async fn pictionary_random_settings_resign(pool: &State<PgPool>, me: User, team: Id, csrf: Option<CsrfToken>, form: Form<EmptyForm>) -> Result<Redirect, PictionaryRandomSettingsResignError> {
+    form.verify(&csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
     //TODO deny action if the event is over
     //TODO if the event has started, only mark the team as resigned, don't delete data
     let mut transaction = pool.begin().await?;

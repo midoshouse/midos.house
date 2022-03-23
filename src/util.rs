@@ -8,11 +8,13 @@ use {
     itertools::Itertools as _,
     rand::prelude::*,
     rocket::{
+        FromForm,
         Responder,
         UriDisplayPath,
         UriDisplayQuery,
         form::{
             self,
+            Contextual,
             FromFormField,
         },
         request::FromParam,
@@ -21,6 +23,7 @@ use {
             content::Html,
         },
     },
+    rocket_csrf::CsrfToken,
     sqlx::{
         Database,
         Decode,
@@ -29,6 +32,53 @@ use {
         Transaction,
     },
 };
+
+pub(crate) trait CsrfForm {
+    fn csrf(&self) -> &String;
+}
+
+pub(crate) trait ContextualExt {
+    fn verify(&mut self, token: &Option<CsrfToken>);
+}
+
+impl<F: CsrfForm> ContextualExt for Contextual<'_, F> {
+    fn verify(&mut self, token: &Option<CsrfToken>) {
+        if let Some(ref value) = self.value {
+            match token.as_ref().map(|token| token.verify(value.csrf())) {
+                Some(Ok(())) => {}
+                Some(Err(rocket_csrf::VerificationFailure)) | None => self.context.push_error(form::Error::validation("Please submit the form again to confirm your identity.").with_name("csrf")),
+            }
+        }
+    }
+}
+
+pub(crate) trait CsrfTokenExt {
+    fn to_html(&self) -> Box<dyn RenderBox + '_>;
+}
+
+impl CsrfTokenExt for CsrfToken {
+    fn to_html(&self) -> Box<dyn RenderBox + '_> {
+        box_html! {
+            input(type = "hidden", name = "csrf", value = self.authenticity_token());
+        }
+    }
+}
+
+/// A form that only holds a CSRF token
+#[derive(FromForm)]
+pub(crate) struct EmptyForm {
+    csrf: String,
+}
+
+impl EmptyForm {
+    pub(crate) fn verify(&self, token: &Option<CsrfToken>) -> Result<(), rocket_csrf::VerificationFailure> {
+        if let Some(token) = token {
+            token.verify(&self.csrf)
+        } else {
+            Err(rocket_csrf::VerificationFailure)
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, UriDisplayPath, UriDisplayQuery)]
 pub(crate) struct Id(pub(crate) u64);
