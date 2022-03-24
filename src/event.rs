@@ -2,12 +2,10 @@ use {
     std::{
         borrow::Cow,
         cmp::Ordering::*,
-        mem,
     },
     futures::stream::TryStreamExt as _,
     horrorshow::{
         RenderBox,
-        TemplateBuffer,
         box_html,
         html,
         rocket::TemplateExt as _,
@@ -49,6 +47,8 @@ use {
             Id,
             IdTable,
             RedirectOrContent,
+            field_errors,
+            render_form_error,
         },
     },
 };
@@ -129,6 +129,7 @@ impl RolePreference {
 enum Tab {
     Info,
     Teams,
+    MyStatus,
     Enter,
     FindTeam,
 }
@@ -162,7 +163,11 @@ async fn event_header(pool: &PgPool, me: &Option<User>, tab: Tab) -> sqlx::Resul
                 a(class = "button", href = uri!(pictionary_random_settings_teams).to_string()) : "Teams";
             }
             @if signed_up {
-                //a(class = "button") : "My Status"; //TODO
+                @if let Tab::MyStatus = tab {
+                    span(class = "button selected") : "My Status";
+                } else {
+                    a(class = "button", href = uri!(pictionary_random_settings_status).to_string()) : "My Status";
+                }
             } else {
                 @if let Tab::Enter = tab {
                     span(class = "button selected") : "Enter";
@@ -194,142 +199,143 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
     let header = event_header(pool, &me, Tab::Info).await?;
     let tj = User::from_id(pool, Id(5961629664912637980)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
     let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
+    let melqwii = User::from_id(pool, Id(14833818573807492523)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
     let tea = User::from_id(pool, Id(14099802746436324950)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
     Ok(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "1st Random Settings Pictionary Spoiler Log Race", html! {
-        main {
-            : header;
-            article {
-                h2 : "What is a Pictionary Spoiler Log Race?";
-                p : "Each team consists of one Runner and one Spoiler Log Pilot who is drawing. The pilot has to figure out a way through the seed and how to tell their runner in drawing what checks they need to do. Hints are obviously disabled.";
-                p : "This time, we are doing something slightly different: The settings will be random, with weights based on the Random Settings League but adjusted for Pictionary. To compensate for the additional complexity, the preparation time for the pilot will be 30 minutes instead of the usual 15.";
-                p {
-                    : "Before the race we will provide a room on ";
-                    a(href = "https://aggie.io/") : "aggie.io";
-                    : " to each team. The canvas will be set to 660×460 for restream purposes.";
-                }
-                p {
-                    strong : "At the ±0 minute mark:";
-                    : " The pilot is now allowed to look at the spoiler log and can start figuring out the route.";
-                }
-                p {
-                    strong : "At the +30 minute mark:";
-                    : " The pilot is allowed to start drawing and the runner is allowed to start the file.";
-                }
-                h2 : "Rules";
-                p {
-                    : "The race uses the ";
-                    a(href = "https://rsl-leaderboard.web.app/rules") : "Random Settings League";
-                    : " ruleset.";
-                }
-                p : "The pilot is allowed to communicate to their partner only via drawing and may watch and hear the stream of the runner. Runners may talk to their pilot. We would prefer if the pilot did not directly respond to questions, as figuring things out is supposed to be part of the challenge, but in the end it's up to the individual teams.";
-                p {
-                    strong : "Allowed:";
-                    : " Arrows, Question marks, ingame symbols, check marks, “X” for crossing out stuff.";
-                }
-                p {
-                    strong : "Not allowed:";
-                    : " Any kind of numbers or letters.";
-                }
-                h3 : "Examples";
-                p : "For having a better idea what we mean in regards with the rules / communication, here are some examples:";
-                ol {
-                    li {
-                        : "The pilot draws 3 spiders and a bow. The runner then asks if there is a bow on 30 skulls. The pilot then draws a smiley or a checkmark for confirmation or a sad face for “no” — that is ";
-                        strong : "allowed";
-                        : ".";
-                    }
-                    li {
-                        : "The runner just asks without a drawing if it's AD or if a specific check is required — that is ";
-                        strong : "not allowed";
-                        : ".";
-                    }
-                    li {
-                        : "The team has prepared a language for specific checks to avoid the requirement to draw the check (like morse code etc.) — that is ";
-                        strong : "not allowed";
-                        : ".";
-                    }
-                    li {
-                        : "The runner says “if I need to do the toilet check, draw a heart” — that is ";
-                        strong : "not allowed";
-                        : ".";
-                    }
-                    li {
-                        : "The runner says: “since you didn't draw anything in the Lost Woods, I'm gonna skip all the checks there and go immediately to the Sacred Forest Meadow” — that is ";
-                        strong : "allowed";
-                        : ".";
-                    }
-                }
-                h2 : "Settings";
-                p {
-                    : "We will be using ";
-                    a(href = "https://github.com/fenhl/plando-random-settings/blob/dev-fenhl/weights/pictionary_override.json") : "a special weights override";
-                    : " for Pictionary spoiler log races. Changes include:";
-                }
-                ul {
-                    li : "To reduce complexity for the pilot, overworld ER is disabled.";
-                    li : "Master Quest dungeons are disabled due to a lack of documentation for spoiler log location names.";
-                    li {
-                        : "Some of the settings and combinations of settings that are disabled in RSL for information-related reasons are turned back on, since they're not an issue if you have the spoiler log:";
-                        ul {
-                            li : "Triforce hunt + minimal item pool";
-                            li : "Ice trap mayhem/onslaught + quad damage/OHKO";
-                            li : "Separate keysanity setting for the Thieves' Hideout";
-                            li : "Random scrub prices without a starting wallet";
-                            li : "All goals reachable (33% chance)";
-                        }
-                    }
-                    li {
-                        : "The seed will be rolled on ";
-                        a(href = "https://github.com/fenhl/OoT-Randomizer") : "Fenhl's branch";
-                        : ", so some settings that aren't in Dev-R are added:";
-                        ul {
-                            li : "Heart container requirements for rainbow bridge and/or Ganon boss key (50% chance each to replace a skulltula token requirement)";
-                            li : "Full one-way entrance randomization (owls, warp songs, and spawns can lead to more destinations; 25% chance each)";
-                            li : "One bonk KO (5% chance)";
-                            li : "Closed Kokiri Forest exit (50% chance, independent of Closed/Open Deku)";
-                        }
-                    }
-                    li {
-                        : "Some newer settings that are not yet included in RSL due to the ongoing tournament are enabled:";
-                        ul {
-                            li : "Planted magic beans (50% chance)";
-                            li : "Key rings for all dungeons (20% chance)";
-                        }
-                    }
-                    li {
-                        : "The following settings that would give the runner hints or similar information are disabled:";
-                        ul {
-                            li : "Maps & compasses give info";
-                            li : "Chest appearance matches contents";
-                            li : "Gossip stone hints";
-                            li : "Temple of Time altar hints";
-                            li : "Ganondorf light arrows hint";
-                            li : "Warp song text boxes hinting destinations";
-                        }
-                    }
-                }
-                p {
-                    : "Everything else is the same as ";
-                    a(href = "https://rsl-leaderboard.web.app/weights") : "the usual RSL weights";
+        : header;
+        article {
+            h2 : "What is a Pictionary Spoiler Log Race?";
+            p : "Each team consists of one Runner and one Spoiler Log Pilot who is drawing. The pilot has to figure out a way through the seed and how to tell their runner in drawing what checks they need to do. Hints are obviously disabled.";
+            p : "This time, we are doing something slightly different: The settings will be random, with weights based on the Random Settings League but adjusted for Pictionary. To compensate for the additional complexity, the preparation time for the pilot will be 30 minutes instead of the usual 15.";
+            p {
+                : "Before the race we will provide a room on ";
+                a(href = "https://aggie.io/") : "aggie.io";
+                : " to each team. The canvas will be set to 660×460 for restream purposes.";
+            }
+            p {
+                strong : "At the ±0 minute mark:";
+                : " The pilot is now allowed to look at the spoiler log and can start figuring out the route.";
+            }
+            p {
+                strong : "At the +30 minute mark:";
+                : " The pilot is allowed to start drawing and the runner is allowed to start the file.";
+            }
+            h2 : "Rules";
+            p {
+                : "The race uses the ";
+                a(href = "https://rsl-leaderboard.web.app/rules") : "Random Settings League";
+                : " ruleset.";
+            }
+            p : "The pilot is allowed to communicate to their partner only via drawing and may watch and hear the stream of the runner. Runners may talk to their pilot. We would prefer if the pilot did not directly respond to questions, as figuring things out is supposed to be part of the challenge, but in the end it's up to the individual teams.";
+            p {
+                strong : "Allowed:";
+                : " Arrows, Question marks, ingame symbols, check marks, “X” for crossing out stuff.";
+            }
+            p {
+                strong : "Not allowed:";
+                : " Any kind of numbers or letters.";
+            }
+            h3 : "Examples";
+            p : "For having a better idea what we mean in regards with the rules / communication, here are some examples:";
+            ol {
+                li {
+                    : "The pilot draws 3 spiders and a bow. The runner then asks if there is a bow on 30 skulls. The pilot then draws a smiley or a checkmark for confirmation or a sad face for “no” — that is ";
+                    strong : "allowed";
                     : ".";
                 }
-                //TODO sample seeds?
-                h2 : "Further information";
-                p {
-                    : "The race is organized by ";
-                    : tj.to_html();
-                    : ", ksinjah, ";
-                    : fenhl.to_html();
-                    : ", melqwii, and ";
-                    : tea.to_html();
-                    : ". We will answer questions and inform about recent events on The Silver Gauntlets Discord in the #pictionary-spoiler-log channel (";
-                    a(href = "https://discord.gg/m8z8ZqtN8H") : "invite link";
-                    : " • ";
-                    a(href = "https://discord.com/channels/663207960432082944/865206020015128586") : "direct channel link";
-                    : "). If you have any questions, feel free to ask there!";
+                li {
+                    : "The runner just asks without a drawing if it's AD or if a specific check is required — that is ";
+                    strong : "not allowed";
+                    : ".";
                 }
-                p : "Special thanks to winniedemon who will be helping us keep important posts from getting lost in the Discord!";
+                li {
+                    : "The team has prepared a language for specific checks to avoid the requirement to draw the check (like morse code etc.) — that is ";
+                    strong : "not allowed";
+                    : ".";
+                }
+                li {
+                    : "The runner says “if I need to do the toilet check, draw a heart” — that is ";
+                    strong : "not allowed";
+                    : ".";
+                }
+                li {
+                    : "The runner says: “since you didn't draw anything in the Lost Woods, I'm gonna skip all the checks there and go immediately to the Sacred Forest Meadow” — that is ";
+                    strong : "allowed";
+                    : ".";
+                }
             }
+            h2 : "Settings";
+            p {
+                : "We will be using ";
+                a(href = "https://github.com/fenhl/plando-random-settings/blob/dev-fenhl/weights/pictionary_override.json") : "a special weights override";
+                : " for Pictionary spoiler log races. Changes include:";
+            }
+            ul {
+                li : "To reduce complexity for the pilot, overworld ER is disabled.";
+                li : "Master Quest dungeons are disabled due to a lack of documentation for spoiler log location names.";
+                li {
+                    : "Some of the settings and combinations of settings that are disabled in RSL for information-related reasons are turned back on, since they're not an issue if you have the spoiler log:";
+                    ul {
+                        li : "Triforce hunt + minimal item pool";
+                        li : "Ice trap mayhem/onslaught + quad damage/OHKO";
+                        li : "Separate keysanity setting for the Thieves' Hideout";
+                        li : "Random scrub prices without a starting wallet";
+                        li : "All goals reachable (33% chance)";
+                    }
+                }
+                li {
+                    : "The seed will be rolled on ";
+                    a(href = "https://github.com/fenhl/OoT-Randomizer") : "Fenhl's branch";
+                    : ", so some settings that aren't in Dev-R are added:";
+                    ul {
+                        li : "Heart container requirements for rainbow bridge and/or Ganon boss key (50% chance each to replace a skulltula token requirement)";
+                        li : "Full one-way entrance randomization (owls, warp songs, and spawns can lead to more destinations; 25% chance each)";
+                        li : "One bonk KO (5% chance)";
+                        li : "Closed Kokiri Forest exit (50% chance, independent of Closed/Open Deku)";
+                    }
+                }
+                li {
+                    : "Some newer settings that are not yet included in RSL due to the ongoing tournament are enabled:";
+                    ul {
+                        li : "Planted magic beans (50% chance)";
+                        li : "Key rings for all dungeons (20% chance)";
+                    }
+                }
+                li {
+                    : "The following settings that would give the runner hints or similar information are disabled:";
+                    ul {
+                        li : "Maps & compasses give info";
+                        li : "Chest appearance matches contents";
+                        li : "Gossip stone hints";
+                        li : "Temple of Time altar hints";
+                        li : "Ganondorf light arrows hint";
+                        li : "Warp song text boxes hinting destinations";
+                    }
+                }
+            }
+            p {
+                : "Everything else is the same as ";
+                a(href = "https://rsl-leaderboard.web.app/weights") : "the usual RSL weights";
+                : ".";
+            }
+            //TODO sample seeds?
+            h2 : "Further information";
+            p {
+                : "The race is organized by ";
+                : tj.to_html();
+                : ", ksinjah, ";
+                : fenhl.to_html();
+                : ", ";
+                : melqwii.to_html();
+                : ", and ";
+                : tea.to_html();
+                : ". We will answer questions and inform about recent events on The Silver Gauntlets Discord in the #pictionary-spoiler-log channel (";
+                a(href = "https://discord.gg/m8z8ZqtN8H") : "invite link";
+                : " • ";
+                a(href = "https://discord.com/channels/663207960432082944/865206020015128586") : "direct channel link";
+                : "). If you have any questions, feel free to ask there!";
+            }
+            p : "Special thanks to winniedemon who will be helping us keep important posts from getting lost in the Discord!";
         }
     }).await?)
 }
@@ -364,38 +370,36 @@ pub(crate) async fn pictionary_random_settings_teams(pool: &State<PgPool>, me: O
         signups.push((team.name, runner, runner_confirmed, pilot, pilot_confirmed));
     }
     Ok(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Teams — 1st Random Settings Pictionary Spoiler Log Race", html! {
-        main {
-            : header;
-            table {
-                thead {
-                    tr {
-                        th : "Team Name";
-                        th(class = "sheikah") : "Runner";
-                        th(class = "gerudo") : "Pilot";
-                    }
+        : header;
+        table {
+            thead {
+                tr {
+                    th : "Team Name";
+                    th(class = "sheikah") : "Runner";
+                    th(class = "gerudo") : "Pilot";
                 }
-                tbody {
-                    @if signups.is_empty() {
-                        tr {
-                            td(colspan = "3") {
-                                i : "(no signups yet)";
-                            }
+            }
+            tbody {
+                @if signups.is_empty() {
+                    tr {
+                        td(colspan = "3") {
+                            i : "(no signups yet)";
                         }
-                    } else {
-                        @for (team_name, runner, runner_confirmed, pilot, pilot_confirmed) in signups {
-                            tr {
-                                td : team_name.unwrap_or_default();
-                                td(class = "sheikah") {
-                                    : runner.to_html();
-                                    @if !runner_confirmed {
-                                        : " (unconfirmed)";
-                                    }
+                    }
+                } else {
+                    @for (team_name, runner, runner_confirmed, pilot, pilot_confirmed) in signups {
+                        tr {
+                            td : team_name.unwrap_or_default();
+                            td(class = "sheikah") {
+                                : runner.to_html();
+                                @if !runner_confirmed {
+                                    : " (unconfirmed)";
                                 }
-                                td(class = "gerudo") {
-                                    : pilot.to_html();
-                                    @if !pilot_confirmed {
-                                        : " (unconfirmed)";
-                                    }
+                            }
+                            td(class = "gerudo") {
+                                : pilot.to_html();
+                                @if !pilot_confirmed {
+                                    : " (unconfirmed)";
                                 }
                             }
                         }
@@ -406,20 +410,13 @@ pub(crate) async fn pictionary_random_settings_teams(pool: &State<PgPool>, me: O
     }).await?)
 }
 
-fn render_form_error(tmpl: &mut TemplateBuffer<'_>, error: &form::Error<'_>) {
-    tmpl << html! {
-        p(class = "error") : error.to_string();
-    };
-}
-
-fn field_errors(tmpl: &mut TemplateBuffer<'_>, errors: &mut Vec<&form::Error<'_>>, name: &str) {
-    let field_errors;
-    (field_errors, *errors) = mem::take(errors).into_iter().partition(|error| error.is_for(name));
-    tmpl << html! {
-        @for error in field_errors {
-            |tmpl| render_form_error(tmpl, error);
-        }
-    };
+#[rocket::get("/event/pic/rs1/status")]
+pub(crate) async fn pictionary_random_settings_status(pool: &State<PgPool>, me: Option<User>) -> PageResult {
+    let header = event_header(pool, &me, Tab::MyStatus).await?;
+    page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "My Status — 1st Random Settings Pictionary Spoiler Log Race", html! {
+        : header;
+        p : "Coming soon™"; //TODO options to change team name, swap roles, opt in/out for restreaming, or resign
+    }).await
 }
 
 enum PictionaryRandomSettingsEnterFormDefaults<'a> {
@@ -487,25 +484,21 @@ async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, 
             }
         }.write_to_html()?;
         html! {
-            main {
-                : header;
-                form(action = uri!(pictionary_random_settings_enter_post).to_string(), method = "post") {
-                    @for error in errors {
-                        |tmpl| render_form_error(tmpl, error);
-                    }
-                    : form_content;
+            : header;
+            form(action = uri!(pictionary_random_settings_enter_post).to_string(), method = "post") {
+                @for error in errors {
+                    |tmpl| render_form_error(tmpl, error);
                 }
+                : form_content;
             }
         }.write_to_html()?
     } else {
         html! {
-            main {
-                : header;
-                article {
-                    p {
-                        a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
-                        : " to enter this race.";
-                    }
+            : header;
+            article {
+                p {
+                    a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
+                    : " to enter this race.";
                 }
             }
         }.write_to_html()?
@@ -685,36 +678,34 @@ async fn pictionary_random_settings_find_team_form(pool: &PgPool, me: Option<Use
         })))
         .collect_vec();
     Ok(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Find Teammates — 1st Random Settings Pictionary Spoiler Log Race", html! {
-        main {
-            : header;
-            : form;
-            table {
-                thead {
-                    tr {
-                        th : "User";
-                        th : "Role";
-                        @if can_invite_any {
-                            th;
-                        }
+        : header;
+        : form;
+        table {
+            thead {
+                tr {
+                    th : "User";
+                    th : "Role";
+                    @if can_invite_any {
+                        th;
                     }
                 }
-                tbody {
-                    @if looking_for_team.is_empty() {
-                        tr {
-                            td(colspan = "3") {
-                                i : "(no one currently looking for teammates)";
-                            }
+            }
+            tbody {
+                @if looking_for_team.is_empty() {
+                    tr {
+                        td(colspan = "3") {
+                            i : "(no one currently looking for teammates)";
                         }
-                    } else {
-                        @for (user, role, invite) in looking_for_team {
-                            tr {
-                                td : user.to_html();
-                                td : role.to_html();
-                                @if can_invite_any {
-                                    td {
-                                        @if let Some(my_role) = invite {
-                                            a(class = "button", href = uri!(pictionary_random_settings_enter(my_role, Some(user.id))).to_string()) : "Invite";
-                                        }
+                    }
+                } else {
+                    @for (user, role, invite) in looking_for_team {
+                        tr {
+                            td : user.to_html();
+                            td : role.to_html();
+                            @if can_invite_any {
+                                td {
+                                    @if let Some(my_role) = invite {
+                                        a(class = "button", href = uri!(pictionary_random_settings_enter(my_role, Some(user.id))).to_string()) : "Invite";
                                     }
                                 }
                             }

@@ -1,9 +1,14 @@
 use {
-    std::iter,
+    std::{
+        iter,
+        mem,
+    },
     horrorshow::{
         RenderBox,
         RenderOnce,
+        TemplateBuffer,
         box_html,
+        html,
     },
     itertools::Itertools as _,
     rand::prelude::*,
@@ -213,4 +218,20 @@ pub(crate) fn natjoin<'a, T: RenderOnce + 'a>(elts: impl IntoIterator<Item = T>)
 pub(crate) enum RedirectOrContent {
     Redirect(Redirect),
     Content(Html<String>),
+}
+
+pub(crate) fn render_form_error(tmpl: &mut TemplateBuffer<'_>, error: &form::Error<'_>) {
+    tmpl << html! {
+        p(class = "error") : error.to_string();
+    };
+}
+
+pub(crate) fn field_errors(tmpl: &mut TemplateBuffer<'_>, errors: &mut Vec<&form::Error<'_>>, name: &str) {
+    let field_errors;
+    (field_errors, *errors) = mem::take(errors).into_iter().partition(|error| error.is_for(name));
+    tmpl << html! {
+        @for error in field_errors {
+            |tmpl| render_form_error(tmpl, error);
+        }
+    };
 }

@@ -76,13 +76,13 @@ impl From<ChestTexture> for char {
 #[derive(Clone, Copy, Deserialize)]
 pub(crate) struct ChestAppearance {
     pub(crate) texture: ChestTexture,
-    #[allow(unused)] big: bool,
+    //big: bool,
 }
 
 impl ChestAppearance {
     const VANILLA: Self = Self {
         texture: ChestTexture::Normal,
-        big: false,
+        //big: false,
     };
 }
 

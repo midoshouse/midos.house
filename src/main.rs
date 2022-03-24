@@ -49,6 +49,7 @@ mod util;
 
 enum PageKind {
     Index,
+    Banner,
     Login,
     MyProfile,
     Notifications,
@@ -58,7 +59,6 @@ enum PageKind {
 struct PageStyle {
     kind: PageKind,
     chests: ChestAppearances,
-    is_banner: bool,
 }
 
 impl Default for PageStyle {
@@ -66,7 +66,6 @@ impl Default for PageStyle {
         Self {
             kind: PageKind::Other,
             chests: ChestAppearances::random(),
-            is_banner: false,
         }
     }
 }
@@ -91,7 +90,7 @@ async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, c
     } else {
         Vec::default()
     };
-    let (banner_content, content) = if style.is_banner {
+    let (banner_content, content) = if let PageKind::Banner = style.kind {
         (Some(content), None)
     } else {
         (None, Some(content))
@@ -108,7 +107,7 @@ async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, c
                 link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(style.chests.textures(), Suffix(1024, "png"))).to_string());
                 link(rel = "stylesheet", href = "/static/common.css");
             }
-            body(class = style.is_banner.then(|| "fullscreen")) {
+            body(class = matches!(style.kind, PageKind::Banner).then(|| "fullscreen")) {
                 div {
                     nav(class? = matches!(style.kind, PageKind::Index).then(|| "index")) {
                         a(class = "nav", href? = (!matches!(style.kind, PageKind::Index)).then(|| uri!(index).to_string())) {
@@ -151,7 +150,11 @@ async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, c
                             }
                         }
                     }
-                    : content;
+                    @if let Some(content) = content {
+                        main {
+                            : content;
+                        }
+                    }
                 }
                 : banner_content;
                 footer {
@@ -206,7 +209,7 @@ async fn new_event(pool: &State<PgPool>, me: Option<User>) -> PageResult {
 async fn not_found(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
-    page(pool, &me, PageStyle { is_banner: true, ..PageStyle::default() }, "Not Found — Mido's House", html! {
+    page(pool, &me, PageStyle { kind: PageKind::Banner, ..PageStyle::default() }, "Not Found — Mido's House", html! {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }
@@ -252,6 +255,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
         auth::register_discord,
         event::pictionary_random_settings,
         event::pictionary_random_settings_teams,
+        event::pictionary_random_settings_status,
         event::pictionary_random_settings_enter,
         event::pictionary_random_settings_enter_post,
         event::pictionary_random_settings_find_team,
