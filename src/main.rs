@@ -2,7 +2,10 @@
 #![forbid(unsafe_code)]
 
 use {
-    std::time::Duration,
+    std::{
+        io,
+        time::Duration,
+    },
     anyhow::Result,
     horrorshow::{
         RenderOnce,
@@ -18,8 +21,12 @@ use {
         fs::FileServer,
         http::{
             Header,
+            Status,
             StatusClass,
-            hyper::header::CONTENT_DISPOSITION,
+            hyper::header::{
+                CONTENT_DISPOSITION,
+                LINK,
+            },
         },
         response::{
             Response,
@@ -43,6 +50,7 @@ use {
             ChestTextures,
         },
         notification::Notification,
+        seed::SpoilerLog,
         user::User,
         util::Id,
     },
@@ -256,6 +264,18 @@ impl Fairing for SeedDownloadFairing {
                 res.set_header(Header::new(CONTENT_DISPOSITION.as_str(), "attachment"));
             } else if path.ends_with(".json") {
                 res.set_header(Header::new(CONTENT_DISPOSITION.as_str(), "inline"));
+                if let Ok(body) = res.body_mut().to_string().await {
+                    if let Ok(log) = serde_json::from_str::<SpoilerLog>(&body) {
+                        let textures = ChestAppearances::from(log).textures();
+                        res.adjoin_header(Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="512x512""#, uri!(favicon::favicon_png(textures, Suffix(512, "png"))))));
+                        res.adjoin_header(Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(textures, Suffix(1024, "png"))))));
+                    } else {
+                        //TODO notify about JSON parse failure
+                    }
+                    res.set_sized_body(body.len(), io::Cursor::new(body))
+                } else {
+                    res.set_status(Status::InternalServerError);
+                }
             }
         }
     }
@@ -301,6 +321,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
         notification::dismiss,
         user::profile,
     ])
+    .mount("/seed", FileServer::new(seed::DIR, rocket::fs::Options::None))
     .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))
     .register("/", rocket::catchers![
         not_found,

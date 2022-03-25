@@ -21,9 +21,16 @@ use {
     },
     serde_plain::derive_display_from_serialize,
     tokio::fs,
+    crate::favicon::{
+        Bridge,
+        CorrectChestAppearances,
+        LacsCondition,
+        ShuffleGanonBosskey,
+        SpoilerLogLocations,
+    },
 };
 
-const SEEDS_DIR: &str = "/var/www/midos.house/seed";
+pub(crate) const DIR: &str = "/var/www/midos.house/seed";
 
 #[derive(Deserialize, Serialize)]
 enum HashIcon {
@@ -100,14 +107,26 @@ pub(crate) struct OotrWebData {
 }
 
 #[derive(Deserialize)]
-struct SpoilerLog {
+pub(crate) struct SpoilerLog {
     file_hash: [HashIcon; 5],
-    settings: SpoilerLogSettings,
+    pub(crate) settings: SpoilerLogSettings,
+    pub(crate) locations: SpoilerLogLocations,
 }
 
 #[derive(Deserialize)]
-struct SpoilerLogSettings {
+pub(crate) struct SpoilerLogSettings {
     world_count: NonZeroU8,
+    #[serde(default)]
+    pub(crate) bridge: Bridge,
+    #[serde(default)]
+    pub(crate) bombchus_in_logic: bool,
+    #[serde(default)]
+    pub(crate) shuffle_ganon_bosskey: ShuffleGanonBosskey,
+    #[serde(default)]
+    pub(crate) lacs_condition: LacsCondition,
+    #[serde(default)]
+    pub(crate) correct_chest_sizes: bool,
+    pub(crate) correct_chest_appearances: Option<CorrectChestAppearances>,
 }
 
 pub(crate) async fn table(seeds: impl Stream<Item = Data>) -> io::Result<Box<dyn RenderBox + Send>> {
@@ -115,7 +134,7 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>) -> io::Result<Box<dyn
     let seeds = seeds.then(|seed| async move {
         let web_id = seed.web.as_ref().and_then(|web| (web.gen_time > now - chrono::Duration::days(30)).then(|| web.id));
         let spoiler_file_name = format!("{}_Spoiler.json", seed.file_stem);
-        let spoiler_path = Path::new(SEEDS_DIR).join(&spoiler_file_name);
+        let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
         let spoiler_contents = serde_json::from_str(&fs::read_to_string(&spoiler_path).await?)?;
         io::Result::Ok((seed, web_id, spoiler_file_name, spoiler_contents))
     }).try_collect::<Vec<(_, _, _, SpoilerLog)>>().await?;
