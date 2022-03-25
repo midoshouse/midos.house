@@ -16,7 +16,7 @@ rocket_oauth2 = "0.5.0-rc.1"
 serde_json = "1"
 serde_plain = "1"
 thiserror = "1"
-time = "0.2"
+time = "0.2" # required for rocket cookies
 xdg = "2"
 
 [dependencies.clap]
