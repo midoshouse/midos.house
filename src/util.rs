@@ -184,7 +184,7 @@ where i64: FromFormField<'v>, u64: FromFormField<'v> {
     fn default() -> Option<Self> { None }
 }
 
-pub(crate) fn natjoin<'a, T: RenderOnce + 'a>(elts: impl IntoIterator<Item = T>) -> Option<Box<dyn RenderBox + 'a>> {
+pub(crate) fn natjoin<'a, T: RenderOnce + Send + 'a>(elts: impl IntoIterator<Item = T>) -> Option<Box<dyn RenderBox + Send + 'a>> {
     let mut elts = elts.into_iter().fuse();
     match (elts.next(), elts.next(), elts.next()) {
         (None, _, _) => None,

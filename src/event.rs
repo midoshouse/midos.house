@@ -6,6 +6,7 @@ use {
     },
     futures::stream::{
         self,
+        StreamExt as _,
         TryStreamExt as _,
     },
     horrorshow::{
@@ -53,6 +54,7 @@ use {
             IdTable,
             RedirectOrContent,
             field_errors,
+            natjoin,
             render_form_error,
         },
     },
@@ -216,10 +218,11 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
         seed::Data { web: None, file_stem: Cow::Borrowed("OoT_97904_8GWLLD9VXH") },
         seed::Data { web: None, file_stem: Cow::Borrowed("OoT_BEC2F_W8HHP1WRGI") },
     ])).await?;
-    let tj = User::from_id(pool, Id(5961629664912637980)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
-    let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
-    let melqwii = User::from_id(pool, Id(14833818573807492523)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
-    let tea = User::from_id(pool, Id(14099802746436324950)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
+    let organizers = stream::iter([5961629664912637980, 2689982510832487907, 14571800683221815449, 14833818573807492523, 14099802746436324950])
+        .map(Id)
+        .then(|id| async move { User::from_id(pool, id).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData) })
+        .try_collect::<Vec<_>>().await?;
+    let organizers = natjoin(organizers.into_iter().map(|organizer| organizer.into_html()));
     Ok(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "1st Random Settings Pictionary Spoiler Log Race", html! {
         : header;
         article {
@@ -350,13 +353,7 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
             h2 : "Further information";
             p {
                 : "The race is organized by ";
-                : tj.to_html();
-                : ", ksinjah, ";
-                : fenhl.to_html();
-                : ", ";
-                : melqwii.to_html();
-                : ", and ";
-                : tea.to_html();
+                : organizers;
                 : ". We will answer questions and inform about recent events on The Silver Gauntlets Discord in the #pictionary-spoiler-log channel (";
                 a(href = "https://discord.gg/m8z8ZqtN8H") : "invite link";
                 : " • ";
