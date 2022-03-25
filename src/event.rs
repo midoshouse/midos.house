@@ -2,8 +2,12 @@ use {
     std::{
         borrow::Cow,
         cmp::Ordering::*,
+        io,
     },
-    futures::stream::TryStreamExt as _,
+    futures::stream::{
+        self,
+        TryStreamExt as _,
+    },
     horrorshow::{
         RenderBox,
         box_html,
@@ -38,6 +42,7 @@ use {
         favicon::ChestAppearances,
         notification::SimpleNotificationKind,
         page,
+        seed,
         user::User,
         util::{
             ContextualExt as _,
@@ -182,12 +187,19 @@ async fn event_header(pool: &PgPool, me: &Option<User>, tab: Tab) -> sqlx::Resul
             }
             //a(class = "button") : "Volunteer"; //TODO
             //a(class = "button") : "Watch"; //TODO
+            /*
+            a(class = "button") {
+                img(class = "favicon", alt = "external link (racetime.gg)", src = "https://racetime.gg/favicon.ico");
+                : "Race Room";
+            }
+            */ //TODO
         }
     })
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum PictionaryRandomSettingsError {
+    #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("missing user data for a race organizer")]
@@ -197,6 +209,13 @@ pub(crate) enum PictionaryRandomSettingsError {
 #[rocket::get("/event/pic/rs1")]
 pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsError> {
     let header = event_header(pool, &me, Tab::Info).await?;
+    let sample_seeds = seed::table(stream::iter(vec![
+        seed::Data { web: None, file_stem: Cow::Borrowed("OoT_421D2_E7HASD27LI") },
+        seed::Data { web: None, file_stem: Cow::Borrowed("OoT_8EEB4_QZ3YAZW04U") },
+        seed::Data { web: None, file_stem: Cow::Borrowed("OoT_7E6D6_MMR9MNDERO") },
+        seed::Data { web: None, file_stem: Cow::Borrowed("OoT_97904_8GWLLD9VXH") },
+        seed::Data { web: None, file_stem: Cow::Borrowed("OoT_BEC2F_W8HHP1WRGI") },
+    ])).await?;
     let tj = User::from_id(pool, Id(5961629664912637980)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
     let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
     let melqwii = User::from_id(pool, Id(14833818573807492523)).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData)?;
@@ -266,8 +285,10 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
             }
             h2 : "Settings";
             p {
-                : "We will be using ";
-                a(href = "https://github.com/fenhl/plando-random-settings/blob/dev-fenhl/weights/pictionary_override.json") : "a special weights override";
+                : "The seed will be rolled on ";
+                a(href = "https://github.com/fenhl/plando-random-settings/tree/bbdf3f0336ba64232a8f79ee9fe6f0254acfad13") : "version 2.2.9 Fenhl-7";
+                : " of the random settings script. We will be using ";
+                a(href = "https://github.com/fenhl/plando-random-settings/blob/bbdf3f0336ba64232a8f79ee9fe6f0254acfad13/weights/pictionary_override.json") : "a special weights override";
                 : " for Pictionary spoiler log races. Changes include:";
             }
             ul {
@@ -285,7 +306,7 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
                 }
                 li {
                     : "The seed will be rolled on ";
-                    a(href = "https://github.com/fenhl/OoT-Randomizer") : "Fenhl's branch";
+                    a(href = "https://github.com/fenhl/OoT-Randomizer/tree/476cddc68c07e9ae5b1c9a11016feba49effa1ac") : "Fenhl's branch";
                     : ", so some settings that aren't in Dev-R are added:";
                     ul {
                         li : "Heart container requirements for rainbow bridge and/or Ganon boss key (50% chance each to replace a skulltula token requirement)";
@@ -318,7 +339,14 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
                 a(href = "https://rsl-leaderboard.web.app/weights") : "the usual RSL weights";
                 : ".";
             }
-            //TODO sample seeds?
+            h2 : "Sample seeds";
+            p : "Since the branch we're using isn't available on the website, we've prepared some sample seeds:";
+            : sample_seeds;
+            p {
+                : "You can apply these patch files using ";
+                a(href = "https://ootrandomizer.com/generator") : "the regular web patcher";
+                : ".";
+            }
             h2 : "Further information";
             p {
                 : "The race is organized by ";

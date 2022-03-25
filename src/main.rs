@@ -14,8 +14,17 @@ use {
         Request,
         State,
         config::SecretKey,
+        fairing::Fairing,
         fs::FileServer,
-        response::content::Html,
+        http::{
+            Header,
+            StatusClass,
+            hyper::header::CONTENT_DISPOSITION,
+        },
+        response::{
+            Response,
+            content::Html,
+        },
         uri,
     },
     rocket_oauth2::{
@@ -44,6 +53,7 @@ mod config;
 mod event;
 mod favicon;
 mod notification;
+mod seed;
 mod user;
 mod util;
 
@@ -228,6 +238,29 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
     }).await
 }
 
+struct SeedDownloadFairing;
+
+#[rocket::async_trait]
+impl Fairing for SeedDownloadFairing {
+    fn info(&self) -> rocket::fairing::Info {
+        rocket::fairing::Info {
+            name: "SeedDownloadFairing",
+            kind: rocket::fairing::Kind::Singleton | rocket::fairing::Kind::Response,
+        }
+    }
+
+    async fn on_response<'r>(&self, req: &'r Request<'_>, res: &mut Response<'r>) {
+        if res.status().class() == StatusClass::Success {
+            let path = req.uri().path();
+            if path.ends_with(".zpf") || path.ends_with(".zpfz") {
+                res.set_header(Header::new(CONTENT_DISPOSITION.as_str(), "attachment"));
+            } else if path.ends_with(".json") {
+                res.set_header(Header::new(CONTENT_DISPOSITION.as_str(), "inline"));
+            }
+        }
+    }
+}
+
 #[derive(clap::Parser)]
 struct Args {
     #[clap(long = "dev")]
@@ -300,6 +333,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
             uri!("https://midos.house", auth::discord_callback)
         }.to_string()),
     )))
+    .attach(SeedDownloadFairing)
     .manage(PgPool::connect_with(PgConnectOptions::default().username("mido").database("midos_house").application_name("midos-house")).await?)
     .manage(reqwest::Client::builder()
         .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION")))

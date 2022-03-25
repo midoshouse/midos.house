@@ -95,6 +95,13 @@ input[type="submit"] {
     cursor: pointer;
 }
 
+.favicon {
+    width: 16px;
+    height: 16px;
+    margin-right: 8px;
+    vertical-align: sub;
+}
+
 article,
 form {
     border: 1px solid black;
@@ -159,6 +166,12 @@ table td {
 
 .courage {
     color: #00c000;
+}
+
+.hash-icon {
+    width: 50px;
+    height: 50px;
+    vertical-align: sub;
 }
 
 fieldset {
@@ -272,5 +285,11 @@ footer {
     .error {
         background-color: #400000;
         border-color: #ff4040;
+    }
+}
+
+@media not (prefers-color-scheme: dark) {
+    .hash-icon[alt="SOLD OUT"] {
+        filter: invert(1);
     }
 }
