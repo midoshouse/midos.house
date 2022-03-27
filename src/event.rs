@@ -438,9 +438,52 @@ pub(crate) async fn pictionary_random_settings_teams(pool: &State<PgPool>, me: O
 #[rocket::get("/event/pic/rs1/status")]
 pub(crate) async fn pictionary_random_settings_status(pool: &State<PgPool>, me: Option<User>) -> PageResult {
     let header = event_header(pool, &me, Tab::MyStatus).await?;
-    page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "My Status — 1st Random Settings Pictionary Spoiler Log Race", html! {
-        : header;
-        p : "Coming soon™"; //TODO options to change team name, swap roles, opt in/out for restreaming, or resign
+    page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "My Status — 1st Random Settings Pictionary Spoiler Log Race", {
+        if let Some(ref me) = me {
+            if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name FROM teams, team_members WHERE
+                id = team
+                AND series = 'pic'
+                AND event = 'rs1'
+                AND member = $1
+                AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+            "#, i64::from(me.id)).fetch_optional(&**pool).await? {
+                box_html! {
+                    : header;
+                    p {
+                        : "You are signed up as part of ";
+                        @if let Some(name) = row.name {
+                            i : name;
+                        } else {
+                            : "an unnamed team";
+                        }
+                        //TODO list teammates
+                        : ".";
+                    }
+                    p : "More options coming soon™"; //TODO options to change team name, swap roles, opt in/out for restreaming, or resign
+                    p {
+                        a(href = uri!(pictionary_random_settings_resign(row.id)).to_string()) : "Resign";
+                    }
+                }
+            } else {
+                (box_html! {
+                    : header;
+                    article {
+                        p : "You are not signed up for this race.";
+                        //p : "You can retract or decline unconfirmed team invitations on the teams page."; //TODO
+                    }
+                } as Box<dyn RenderBox + Send>)
+            }
+        } else {
+            box_html! {
+                : header;
+                article {
+                    p {
+                        a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
+                        : " to view your status for this race.";
+                    }
+                }
+            }
+        }
     }).await
 }
 
@@ -853,8 +896,29 @@ pub(crate) enum PictionaryRandomSettingsResignError {
     NotInTeam,
 }
 
+#[rocket::get("/event/pic/rs1/resign/<team>")]
+pub(crate) async fn pictionary_random_settings_resign(pool: &State<PgPool>, me: Option<User>, team: Id, csrf: Option<CsrfToken>) -> Result<RedirectOrContent, PageError> {
+    //TODO display error message if the event is over
+    if let Some(csrf) = csrf {
+        page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Resign — 1st Random Settings Pictionary Spoiler Log Race", html! {
+            //TODO different wording if the event has started
+            p : "Are you sure you want to retract your team's registration from ";
+            a(href = uri!(pictionary_random_settings).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race";
+            : "? If you change your mind later, you will need to invite your teammates again.";
+            div(class = "button-row") {
+                form(action = uri!(crate::event::pictionary_random_settings_resign_post(team)).to_string(), method = "post") {
+                    : csrf.to_html();
+                    input(type = "submit", value = "Yes, resign");
+                }
+            }
+        }).await.map(RedirectOrContent::Content)
+    } else {
+        Ok(RedirectOrContent::Redirect(Redirect::temporary(uri!(pictionary_random_settings_resign(team)))))
+    }
+}
+
 #[rocket::post("/event/pic/rs1/resign/<team>", data = "<form>")]
-pub(crate) async fn pictionary_random_settings_resign(pool: &State<PgPool>, me: User, team: Id, csrf: Option<CsrfToken>, form: Form<EmptyForm>) -> Result<Redirect, PictionaryRandomSettingsResignError> {
+pub(crate) async fn pictionary_random_settings_resign_post(pool: &State<PgPool>, me: User, team: Id, csrf: Option<CsrfToken>, form: Form<EmptyForm>) -> Result<Redirect, PictionaryRandomSettingsResignError> {
     form.verify(&csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
     //TODO deny action if the event is over
     //TODO if the event has started, only mark the team as resigned, don't delete data

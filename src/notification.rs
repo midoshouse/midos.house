@@ -185,11 +185,11 @@ impl Notification {
                                 input(type = "submit", value = "Accept");
                             }
                         }
-                        form(action = uri!(crate::event::pictionary_random_settings_resign(team_id)).to_string(), method = "post") {
+                        form(action = uri!(crate::event::pictionary_random_settings_resign_post(team_id)).to_string(), method = "post") {
                             : csrf.to_html();
                             input(type = "submit", value = "Decline");
                         }
-                        //TODO block sender, block event
+                        //TODO options to block sender or event
                     }
                 }.write_to_html()?
             }

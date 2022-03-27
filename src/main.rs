@@ -315,6 +315,7 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
         event::pictionary_random_settings_find_team_post,
         event::pictionary_random_settings_confirm_signup,
         event::pictionary_random_settings_resign,
+        event::pictionary_random_settings_resign_post,
         favicon::favicon_ico,
         favicon::favicon_png,
         notification::notifications,
