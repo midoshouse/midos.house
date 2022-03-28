@@ -4,6 +4,7 @@ use {
         cmp::Ordering::*,
         io,
     },
+    chrono::prelude::*,
     futures::stream::{
         self,
         StreamExt as _,
@@ -212,11 +213,11 @@ pub(crate) enum PictionaryRandomSettingsError {
 pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsError> {
     let header = event_header(pool, &me, Tab::Info).await?;
     let sample_seeds = seed::table(stream::iter(vec![
-        seed::Data { web: None, file_stem: Cow::Borrowed("OoT_421D2_E7HASD27LI") },
-        seed::Data { web: None, file_stem: Cow::Borrowed("OoT_8EEB4_QZ3YAZW04U") },
-        seed::Data { web: None, file_stem: Cow::Borrowed("OoT_7E6D6_MMR9MNDERO") },
-        seed::Data { web: None, file_stem: Cow::Borrowed("OoT_97904_8GWLLD9VXH") },
-        seed::Data { web: None, file_stem: Cow::Borrowed("OoT_BEC2F_W8HHP1WRGI") },
+        seed::Data { web: Some(seed::OotrWebData { id: 1061367, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 6, 40) }), file_stem: Cow::Borrowed("OoTR_1061367_AH77X2M3IU") },
+        seed::Data { web: Some(seed::OotrWebData { id: 1061368, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 13, 24) }), file_stem: Cow::Borrowed("OoTR_1061368_R8TSFQRTKT") },
+        seed::Data { web: Some(seed::OotrWebData { id: 1061370, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 16, 44) }), file_stem: Cow::Borrowed("OoTR_1061370_SR2JJYTNEQ") },
+        seed::Data { web: Some(seed::OotrWebData { id: 1061371, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 17, 44) }), file_stem: Cow::Borrowed("OoTR_1061371_MQ8CFZVP5V") },
+        seed::Data { web: Some(seed::OotrWebData { id: 1061372, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 18, 41) }), file_stem: Cow::Borrowed("OoTR_1061372_CVNZ4UTVKK") },
     ])).await?;
     let organizers = stream::iter([5961629664912637980, 2689982510832487907, 14571800683221815449, 14833818573807492523, 14099802746436324950])
         .map(Id)
@@ -343,13 +344,8 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
                 : ".";
             }
             h2 : "Sample seeds";
-            p : "Since the branch we're using isn't available on the website, we've prepared some sample seeds:";
+            p : "Since the random settings script isn't available online, we've prepared some sample seeds:";
             : sample_seeds;
-            p {
-                : "You can apply these patch files using ";
-                a(href = "https://ootrandomizer.com/generator") : "the regular web patcher";
-                : ".";
-            }
             h2 : "Further information";
             p {
                 : "The race is organized by ";
