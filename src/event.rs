@@ -455,9 +455,9 @@ pub(crate) async fn pictionary_random_settings_status(pool: &State<PgPool>, me: 
                         //TODO list teammates
                         : ".";
                     }
-                    p : "More options coming soon™"; //TODO options to change team name, swap roles, opt in/out for restreaming, or resign
+                    p : "More options coming soon™"; //TODO options to change team name, swap roles, or opt in/out for restreaming
                     p {
-                        a(href = uri!(pictionary_random_settings_resign(row.id)).to_string()) : "Resign";
+                        a(href = uri!(pictionary_random_settings_resign(row.id)).to_string()) : "Resign"; //TODO hide if the event is over
                     }
                 }
             } else {
@@ -499,6 +499,13 @@ impl<'v> PictionaryRandomSettingsEnterFormDefaults<'v> {
         }
     }
 
+    fn team_name(&self) -> Option<&str> {
+        match self {
+            Self::Context(ctx) => ctx.field_value("team_name"),
+            Self::Values { .. } => None,
+        }
+    }
+
     fn my_role(&self) -> Option<Role> {
         match self {
             Self::Context(ctx) => match ctx.field_value("my_role") {
@@ -528,6 +535,12 @@ async fn pictionary_random_settings_enter_form(pool: &PgPool, me: Option<User>, 
                 : "Fill out this form to enter the race as a team. Your teammate will receive an invitation they have to accept to confirm the signup. If you don't have a team yet, you can ";
                 a(href = uri!(pictionary_random_settings_find_team).to_string()) : "look for a teammate";
                 : " instead.";
+            }
+            fieldset {
+                |tmpl| field_errors(tmpl, &mut errors, "team_name");
+                label(for = "team_name") : "Team Name:";
+                input(type = "text", name = "team_name", value? = defaults.team_name());
+                label(class = "help") : "(Optional unless you want to be on restream. Can be changed later. Organizers may remove inappropriate team names.)";
             }
             fieldset {
                 |tmpl| field_errors(tmpl, &mut errors, "my_role");
@@ -582,6 +595,7 @@ pub(crate) async fn pictionary_random_settings_enter(pool: &State<PgPool>, me: O
 #[derive(FromForm)]
 pub(crate) struct EnterForm {
     csrf: String,
+    team_name: String,
     my_role: Role,
     teammate: Id,
 }
@@ -615,8 +629,16 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
         ) AS "exists!""#, i64::from(me.id)).fetch_one(&mut transaction).await? {
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
+            series = 'pic'
+            AND event = 'rs1'
+            AND name = $1
+            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+        ) AS "exists!""#, value.team_name).fetch_one(&mut transaction).await? {
+            form.context.push_error(form::Error::validation("A team with this name is already signed up for this race.").with_name("team_name"));
+        }
         if value.my_role == Role::Sheikah && me.racetime_id.is_none() {
-            form.context.push_error(form::Error::validation("A racetime.gg account is required to enter as runner. Go to your profile and select “Connect a racetime.gg account”.")); //TODO direct link?
+            form.context.push_error(form::Error::validation("A racetime.gg account is required to enter as runner. Go to your profile and select “Connect a racetime.gg account”.").with_name("my_role")); //TODO direct link?
         }
         if value.teammate == me.id {
             form.context.push_error(form::Error::validation("You cannot be your own teammate.").with_name("teammate"));
@@ -635,6 +657,7 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
         }
         //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
         if form.context.errors().next().is_some() {
+            transaction.rollback().await?;
             if let Some(csrf) = csrf {
                 pictionary_random_settings_enter_form(pool, Some(me), csrf, PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await
                     .map(RedirectOrContent::Content)
@@ -643,7 +666,7 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
             }
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
-            sqlx::query!("INSERT INTO teams (id, series, event) VALUES ($1, 'pic', 'rs1')", i64::from(id)).execute(&mut transaction).await?; //TODO allow setting team name
+            sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, 'pic', 'rs1', $2)", i64::from(id), (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
             sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", i64::from(id), i64::from(me.id), value.my_role as _).execute(&mut transaction).await?;
             sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", i64::from(id), i64::from(value.teammate), match value.my_role { Role::Sheikah => Role::Gerudo, Role::Gerudo => Role::Sheikah } as _).execute(&mut transaction).await?;
             transaction.commit().await?;
