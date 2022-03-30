@@ -1,3 +1,5 @@
+#![allow(unused)] //TODO remove once sample seeds are back
+
 use {
     std::{
         borrow::Cow,

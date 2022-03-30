@@ -4,7 +4,7 @@ use {
         cmp::Ordering::*,
         io,
     },
-    chrono::prelude::*,
+    //chrono::prelude::*,
     futures::stream::{
         self,
         StreamExt as _,
@@ -44,7 +44,7 @@ use {
         favicon::ChestAppearances,
         notification::SimpleNotificationKind,
         page,
-        seed,
+        //seed,
         user::User,
         util::{
             ContextualExt as _,
@@ -212,6 +212,7 @@ pub(crate) enum PictionaryRandomSettingsError {
 #[rocket::get("/event/pic/rs1")]
 pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsError> {
     let header = event_header(pool, &me, Tab::Info).await?;
+    /*
     let sample_seeds = seed::table(stream::iter(vec![
         seed::Data { web: Some(seed::OotrWebData { id: 1061367, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 6, 40) }), file_stem: Cow::Borrowed("OoTR_1061367_AH77X2M3IU") },
         seed::Data { web: Some(seed::OotrWebData { id: 1061368, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 13, 24) }), file_stem: Cow::Borrowed("OoTR_1061368_R8TSFQRTKT") },
@@ -219,6 +220,7 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
         seed::Data { web: Some(seed::OotrWebData { id: 1061371, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 17, 44) }), file_stem: Cow::Borrowed("OoTR_1061371_MQ8CFZVP5V") },
         seed::Data { web: Some(seed::OotrWebData { id: 1061372, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 18, 41) }), file_stem: Cow::Borrowed("OoTR_1061372_CVNZ4UTVKK") },
     ])).await?;
+    */ //TODO roll sample seeds on updated dev-fenhl with fixed Closed Forest
     let organizers = stream::iter([5961629664912637980, 2689982510832487907, 14571800683221815449, 14833818573807492523, 14099802746436324950])
         .map(Id)
         .then(|id| async move { User::from_id(pool, id).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData) })
@@ -344,8 +346,9 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
                 : ".";
             }
             h2 : "Sample seeds";
-            p : "Since the random settings script isn't available online, we've prepared some sample seeds:";
-            : sample_seeds;
+            //p : "Since the random settings script isn't available online, we've prepared some sample seeds:";
+            //: sample_seeds;
+            p : "Coming soon™";
             h2 : "Further information";
             p {
                 : "The race is organized by ";
@@ -629,7 +632,7 @@ pub(crate) async fn pictionary_random_settings_enter_post(pool: &State<PgPool>, 
         ) AS "exists!""#, i64::from(me.id)).fetch_one(&mut transaction).await? {
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
+        if !value.team_name.is_empty() && sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
             series = 'pic'
             AND event = 'rs1'
             AND name = $1
