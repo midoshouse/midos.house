@@ -292,9 +292,9 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
             h2 : "Settings";
             p {
                 : "The seed will be rolled on ";
-                a(href = "https://github.com/fenhl/plando-random-settings/tree/bbdf3f0336ba64232a8f79ee9fe6f0254acfad13") : "version 2.2.9 Fenhl-7";
+                a(href = "https://github.com/fenhl/plando-random-settings/tree/a8f72ac02e91168fb13e9a4a6fd7ea4780e289f0") : "version 2.2.9 Fenhl-8";
                 : " of the random settings script. We will be using ";
-                a(href = "https://github.com/fenhl/plando-random-settings/blob/bbdf3f0336ba64232a8f79ee9fe6f0254acfad13/weights/pictionary_override.json") : "a special weights override";
+                a(href = "https://github.com/fenhl/plando-random-settings/blob/a8f72ac02e91168fb13e9a4a6fd7ea4780e289f0/weights/pictionary_override.json") : "a special weights override";
                 : " for Pictionary spoiler log races. Changes include:";
             }
             ul {
@@ -312,7 +312,7 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
                 }
                 li {
                     : "The seed will be rolled on ";
-                    a(href = "https://github.com/fenhl/OoT-Randomizer/tree/476cddc68c07e9ae5b1c9a11016feba49effa1ac") : "Fenhl's branch";
+                    a(href = "https://github.com/fenhl/OoT-Randomizer/tree/d7d16553252b96bd0f50ef96c2af250b7bfbba58") : "Fenhl's branch";
                     : ", so some settings that aren't in Dev-R are added:";
                     ul {
                         li : "Heart container requirements for rainbow bridge and/or Ganon boss key (50% chance each to replace a skulltula token requirement)";
