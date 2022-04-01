@@ -4,7 +4,7 @@ use {
         cmp::Ordering::*,
         io,
     },
-    //chrono::prelude::*,
+    chrono::prelude::*,
     futures::stream::{
         self,
         StreamExt as _,
@@ -44,7 +44,7 @@ use {
         favicon::ChestAppearances,
         notification::SimpleNotificationKind,
         page,
-        //seed,
+        seed,
         user::User,
         util::{
             ContextualExt as _,
@@ -212,15 +212,13 @@ pub(crate) enum PictionaryRandomSettingsError {
 #[rocket::get("/event/pic/rs1")]
 pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<User>) -> Result<Html<String>, PictionaryRandomSettingsError> {
     let header = event_header(pool, &me, Tab::Info).await?;
-    /*
     let sample_seeds = seed::table(stream::iter(vec![
-        seed::Data { web: Some(seed::OotrWebData { id: 1061367, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 6, 40) }), file_stem: Cow::Borrowed("OoTR_1061367_AH77X2M3IU") },
-        seed::Data { web: Some(seed::OotrWebData { id: 1061368, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 13, 24) }), file_stem: Cow::Borrowed("OoTR_1061368_R8TSFQRTKT") },
-        seed::Data { web: Some(seed::OotrWebData { id: 1061370, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 16, 44) }), file_stem: Cow::Borrowed("OoTR_1061370_SR2JJYTNEQ") },
-        seed::Data { web: Some(seed::OotrWebData { id: 1061371, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 17, 44) }), file_stem: Cow::Borrowed("OoTR_1061371_MQ8CFZVP5V") },
-        seed::Data { web: Some(seed::OotrWebData { id: 1061372, gen_time: Utc.ymd(2022, 3, 28).and_hms(12, 18, 41) }), file_stem: Cow::Borrowed("OoTR_1061372_CVNZ4UTVKK") },
+        seed::Data { web: Some(seed::OotrWebData { id: 1063820, gen_time: Utc.ymd(2022, 3, 31).and_hms(23, 57, 32) }), file_stem: Cow::Borrowed("OoTR_1063820_73DT13GLTE") },
+        seed::Data { web: Some(seed::OotrWebData { id: 1063823, gen_time: Utc.ymd(2022, 3, 31).and_hms(23, 58, 12) }), file_stem: Cow::Borrowed("OoTR_1063823_59FOD8AC5B") },
+        seed::Data { web: Some(seed::OotrWebData { id: 1063825, gen_time: Utc.ymd(2022, 3, 31).and_hms(23, 59, 21) }), file_stem: Cow::Borrowed("OoTR_1063825_64FD4JDWEP") },
+        seed::Data { web: Some(seed::OotrWebData { id: 1063826, gen_time: Utc.ymd(2022, 4, 1).and_hms(0, 0, 3) }), file_stem: Cow::Borrowed("OoTR_1063826_WA38LZE8A4") },
+        seed::Data { web: Some(seed::OotrWebData { id: 1063831, gen_time: Utc.ymd(2022, 4, 1).and_hms(0, 3, 26) }), file_stem: Cow::Borrowed("OoTR_1063831_SLC6YHI7H2") },
     ])).await?;
-    */ //TODO roll sample seeds on updated dev-fenhl with fixed Closed Forest
     let organizers = stream::iter([5961629664912637980, 2689982510832487907, 14571800683221815449, 14833818573807492523, 14099802746436324950])
         .map(Id)
         .then(|id| async move { User::from_id(pool, id).await?.ok_or(PictionaryRandomSettingsError::OrganizerUserData) })
@@ -346,9 +344,8 @@ pub(crate) async fn pictionary_random_settings(pool: &State<PgPool>, me: Option<
                 : ".";
             }
             h2 : "Sample seeds";
-            //p : "Since the random settings script isn't available online, we've prepared some sample seeds:";
-            //: sample_seeds;
-            p : "Coming soon™";
+            p : "Since the random settings script isn't available online, we've prepared some sample seeds:";
+            : sample_seeds;
             h2 : "Further information";
             p {
                 : "The race is organized by ";
