@@ -3,6 +3,7 @@ use {
         iter,
         mem,
     },
+    derive_more::From,
     horrorshow::{
         RenderBox,
         RenderOnce,
@@ -22,6 +23,7 @@ use {
             Contextual,
             FromFormField,
         },
+        http::Status,
         request::FromParam,
         response::{
             Redirect,
@@ -36,6 +38,7 @@ use {
         Postgres,
         Transaction,
     },
+    crate::PageError,
 };
 
 pub(crate) trait CsrfForm {
@@ -234,4 +237,17 @@ pub(crate) fn field_errors(tmpl: &mut TemplateBuffer<'_>, errors: &mut Vec<&form
             |tmpl| render_form_error(tmpl, error);
         }
     };
+}
+
+#[derive(Responder, From)]
+pub(crate) enum StatusOrError<E> {
+    Status(Status),
+    #[from]
+    Err(E),
+}
+
+impl From<sqlx::Error> for StatusOrError<PageError> {
+    fn from(e: sqlx::Error) -> Self {
+        Self::Err(PageError::Sql(e))
+    }
 }

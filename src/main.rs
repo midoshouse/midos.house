@@ -6,7 +6,6 @@ use {
         io,
         time::Duration,
     },
-    anyhow::Result,
     horrorshow::{
         RenderOnce,
         helper::doctype,
@@ -202,7 +201,7 @@ async fn index(pool: &State<PgPool>, me: Option<User>) -> PageResult {
         h1 : "Upcoming events";
         ul {
             li {
-                a(href = uri!(event::pictionary_random_settings).to_string()) : "1st Random Settings Pictionary Spoiler Log Race";
+                a(href = uri!(event::info("pic", "rs1")).to_string()) : "1st Random Settings Pictionary Spoiler Log Race";
             }
         }
         p {
@@ -287,8 +286,17 @@ struct Args {
     is_dev: bool,
 }
 
-#[wheel::main(rocket)]
-async fn main(Args { is_dev }: Args) -> Result<()> {
+#[derive(Debug, thiserror::Error)]
+enum Error {
+    #[error(transparent)] Any(#[from] anyhow::Error),
+    #[error(transparent)] Base64(#[from] base64::DecodeError),
+    #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Rocket(#[from] rocket::Error),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+}
+
+#[wheel::main(rocket, debug)]
+async fn main(Args { is_dev }: Args) -> Result<(), Error> {
     let config = Config::load().await?;
     rocket::custom(rocket::Config {
         port: if is_dev { 24814 } else { 24812 },
@@ -306,16 +314,16 @@ async fn main(Args { is_dev }: Args) -> Result<()> {
         auth::discord_login,
         auth::register_racetime,
         auth::register_discord,
-        event::pictionary_random_settings,
-        event::pictionary_random_settings_teams,
-        event::pictionary_random_settings_status,
-        event::pictionary_random_settings_enter,
-        event::pictionary_random_settings_enter_post,
-        event::pictionary_random_settings_find_team,
-        event::pictionary_random_settings_find_team_post,
-        event::pictionary_random_settings_confirm_signup,
-        event::pictionary_random_settings_resign,
-        event::pictionary_random_settings_resign_post,
+        event::info,
+        event::teams,
+        event::status,
+        event::enter,
+        event::enter_post,
+        event::find_team,
+        event::find_team_post,
+        event::confirm_signup,
+        event::resign,
+        event::resign_post,
         favicon::favicon_ico,
         favicon::favicon_png,
         notification::notifications,

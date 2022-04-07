@@ -5,7 +5,6 @@ use {
         html,
     },
     rocket::{
-        Responder,
         State,
         http::Status,
         response::content::Html,
@@ -17,7 +16,10 @@ use {
         PageKind,
         PageStyle,
         page,
-        util::Id,
+        util::{
+            Id,
+            StatusOrError,
+        },
     },
 };
 
@@ -100,18 +102,12 @@ impl PartialEq for User {
 
 impl Eq for User {}
 
-#[derive(Responder)]
-pub(crate) enum ProfileError {
-    NotFound(Status),
-    Page(PageError),
-}
-
 #[rocket::get("/user/<id>")]
-pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, id: Id) -> Result<Html<String>, ProfileError> {
-    let user = if let Some(user) = User::from_id(pool, id).await.map_err(|e| ProfileError::Page(PageError::Sql(e)))? {
+pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, id: Id) -> Result<Html<String>, StatusOrError<PageError>> {
+    let user = if let Some(user) = User::from_id(pool, id).await? {
         user
     } else {
-        return Err(ProfileError::NotFound(Status::NotFound))
+        return Err(StatusOrError::Status(Status::NotFound))
     };
     page(pool, &me, PageStyle { kind: if me.as_ref().map_or(false, |me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
         h1 : user.display_name();
@@ -139,5 +135,5 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, id: Id) -> R
                 a(href = uri!(crate::auth::discord_login).to_string()) : "Connect a Discord account";
             }
         }
-    }).await.map_err(ProfileError::Page)
+    }).await.map_err(StatusOrError::Err)
 }
