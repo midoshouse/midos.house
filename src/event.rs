@@ -5,6 +5,10 @@ use {
         io,
     },
     chrono::prelude::*,
+    chrono_tz::{
+        America,
+        Europe,
+    },
     futures::stream::{
         self,
         StreamExt as _,
@@ -210,13 +214,18 @@ struct Data<'a> {
     series: &'a str,
     event: &'a str,
     display_name: String,
+    start: Option<DateTime<Utc>>,
 }
 
 impl<'a> Data<'a> {
     async fn new(pool: PgPool, series: &'a str, event: &'a str) -> sqlx::Result<Option<Data<'a>>> {
         Ok(
-            sqlx::query_scalar!("SELECT display_name FROM events WHERE series = $1 AND event = $2", &series, &event).fetch_optional(&pool).await?
-                .map(|display_name| Self { pool, series, event, display_name })
+            sqlx::query!("SELECT display_name, start FROM events WHERE series = $1 AND event = $2", &series, &event).fetch_optional(&pool).await?
+                .map(|row| Self {
+                    display_name: row.display_name,
+                    start: row.start,
+                    pool, series, event,
+                })
         )
     }
 
@@ -240,11 +249,25 @@ impl<'a> Data<'a> {
         } else {
             false
         };
+        let start = self.start.map(|start| (
+            start,
+            start.with_timezone(&Europe::Berlin),
+            start.with_timezone(&America::New_York),
+        ));
         Ok(box_html! {
             h1 {
                 a(class = "nav", href? = (!matches!(tab, Tab::Info)).then(|| uri!(info(self.series, self.event)).to_string())) : &self.display_name;
             }
-            h2 : "Saturday, May 14, 2021 • 20:00 CEST • 18:00 UTC • 2PM EDT"; //TODO start_time column on events?
+            @if let Some((start_utc, start_berlin, start_new_york)) = start {
+                h2 {
+                    : start_utc.format("%A, %B %-d, %Y, %H:%M UTC").to_string();
+                    : " • ";
+                    : start_berlin.format(if start_berlin.date() == start_utc.date() { "%H:%M %Z" } else { "%A %H:%M %Z" }).to_string();
+                    : " • ";
+                    : start_new_york.format(if start_new_york.date() == start_utc.date() { "%-I:%M %p %Z" } else { "%A %-I:%M %p %Z" }).to_string(); //TODO omit minutes if 0
+                    //TODO allow users to set timezone and format preferences, fall back to JS APIs
+                }
+            }
             div(class = "button-row") {
                 @if let Tab::Info = tab {
                     span(class = "button selected") : "Info";
