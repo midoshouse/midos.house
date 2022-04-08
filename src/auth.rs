@@ -17,6 +17,7 @@ use {
             CookieJar,
             SameSite,
             Status,
+            ext::IntoOwned as _,
         },
         outcome::Outcome,
         request::{
@@ -46,6 +47,7 @@ use {
         util::{
             Id,
             IdTable,
+            Origin,
             RedirectOrContent,
         },
     },
@@ -136,9 +138,9 @@ pub(crate) struct DiscordUser {
     username: String,
 }
 
-#[rocket::get("/login")]
-pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>) -> PageResult {
-    page(pool, &me, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Login — Mido's House", if let Some(ref me) = me {
+#[rocket::get("/login?<redirect_to>")]
+pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, redirect_to: Option<Origin<'_>>) -> PageResult {
+    page(pool, &me, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Login — Mido's House", if let Some(ref me) = me {
         (box_html! {
             p {
                 : "You are already signed in as ";
@@ -148,16 +150,16 @@ pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>) -> PageResult 
             ul {
                 @if me.racetime_id.is_none() {
                     li {
-                        a(href = uri!(racetime_login).to_string()) : "Connect a racetime.gg account";
+                        a(href = uri!(racetime_login(redirect_to.clone())).to_string()) : "Connect a racetime.gg account";
                     }
                 }
                 @if me.discord_id.is_none() {
                     li {
-                        a(href = uri!(discord_login).to_string()) : "Connect a Discord account";
+                        a(href = uri!(discord_login(redirect_to.clone())).to_string()) : "Connect a Discord account";
                     }
                 }
                 li {
-                    a(href = uri!(logout).to_string()) : "Sign out";
+                    a(href = uri!(logout(redirect_to)).to_string()) : "Sign out";
                 }
             }
         }) as Box<dyn RenderBox + Send>
@@ -166,23 +168,29 @@ pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>) -> PageResult 
             p : "To sign in or create a new account, please sign in via one of the following services:";
             ul {
                 li {
-                    a(href = uri!(racetime_login).to_string()) : "Sign in with racetime.gg";
+                    a(href = uri!(racetime_login(redirect_to.clone())).to_string()) : "Sign in with racetime.gg";
                 }
                 li {
-                    a(href = uri!(discord_login).to_string()) : "Sign in with Discord";
+                    a(href = uri!(discord_login(redirect_to)).to_string()) : "Sign in with Discord";
                 }
             }
         }
     }).await
 }
 
-#[rocket::get("/login/racetime")]
-pub(crate) fn racetime_login(oauth2: OAuth2<RaceTime>, cookies: &CookieJar<'_>) -> Result<Redirect, Debug<rocket_oauth2::Error>> {
+#[rocket::get("/login/racetime?<redirect_to>")]
+pub(crate) fn racetime_login(oauth2: OAuth2<RaceTime>, cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Result<Redirect, Debug<rocket_oauth2::Error>> {
+    if let Some(redirect_to) = redirect_to {
+        cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
+    }
     oauth2.get_redirect(cookies, &["read"]).map_err(Debug)
 }
 
-#[rocket::get("/login/discord")]
-pub(crate) fn discord_login(oauth2: OAuth2<Discord>, cookies: &CookieJar<'_>) -> Result<Redirect, Debug<rocket_oauth2::Error>> {
+#[rocket::get("/login/discord?<redirect_to>")]
+pub(crate) fn discord_login(oauth2: OAuth2<Discord>, cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Result<Redirect, Debug<rocket_oauth2::Error>> {
+    if let Some(redirect_to) = redirect_to {
+        cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
+    }
     oauth2.get_redirect(cookies, &["identify"]).map_err(Debug)
 }
 
@@ -196,7 +204,7 @@ pub(crate) enum RaceTimeCallbackError {
 }
 
 #[rocket::get("/auth/racetime")]
-pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<RedirectOrContent, RaceTimeCallbackError> {
+pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<RedirectOrContent, RaceTimeCallbackError> {
     let mut cookie = Cookie::build("racetime_token", token.access_token().to_owned())
         .same_site(SameSite::Lax);
     if let Some(expires_in) = token.expires_in() {
@@ -208,10 +216,11 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, cl
         .send().await?
         .error_for_status()?
         .json::<RaceTimeUser>().await?;
+    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::index), |uri| uri.into_owned());
     Ok(if User::from_racetime(pool, &racetime_user.id).await?.is_some() {
-        RedirectOrContent::Redirect(Redirect::to(uri!(crate::index))) //TODO redirect to original page
+        RedirectOrContent::Redirect(Redirect::to(redirect_uri))
     } else if let Some(me) = me {
-        RedirectOrContent::Content(page(pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
+        RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
             p {
                 : "This racetime.gg account is not associated with a Mido's House account, but you are signed in as ";
                 : me.to_html();
@@ -222,23 +231,23 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, cl
                     a(href = uri!(register_racetime).to_string()) : "Connect this racetime.gg account to your Mido's House account";
                 }
                 li {
-                    a(href = uri!(logout).to_string()) : "Cancel";
+                    a(href = uri!(logout(Some(redirect_uri))).to_string()) : "Cancel";
                 }
             }
         }).await?)
     } else {
-        RedirectOrContent::Content(page(pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create Account — Mido's House", html! {
+        RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create Account — Mido's House", html! {
             p : "This racetime.gg account is not associated with a Mido's House account.";
             ul {
                 li {
                     a(href = uri!(register_racetime).to_string()) : "Create a new Mido's House account from this racetime.gg account";
                 }
                 li {
-                    a(href = uri!(discord_login).to_string()) : "Sign in with Discord";
+                    a(href = uri!(discord_login(_)).to_string()) : "Sign in with Discord";
                     : " to associate this racetime.gg account with an existing Mido's House account";
                 }
                 li {
-                    a(href = uri!(logout).to_string()) : "Cancel";
+                    a(href = uri!(logout(Some(redirect_uri))).to_string()) : "Cancel";
                 }
             }
         }).await?)
@@ -256,7 +265,7 @@ pub(crate) enum DiscordCallbackError {
 }
 
 #[rocket::get("/auth/discord")]
-pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, token: TokenResponse<Discord>, cookies: &CookieJar<'_>) -> Result<RedirectOrContent, DiscordCallbackError> {
+pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, client: &State<reqwest::Client>, token: TokenResponse<Discord>, cookies: &CookieJar<'_>) -> Result<RedirectOrContent, DiscordCallbackError> {
     let mut cookie = Cookie::build("discord_token", token.access_token().to_owned())
         .same_site(SameSite::Lax);
     if let Some(expires_in) = token.expires_in() {
@@ -268,10 +277,11 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, cli
         .send().await?
         .error_for_status()?
         .json::<DiscordUser>().await?;
+    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::index), |uri| uri.into_owned());
     Ok(if User::from_discord(pool, discord_user.id.parse()?).await?.is_some() {
-        RedirectOrContent::Redirect(Redirect::to(uri!(crate::index))) //TODO redirect to original page
+        RedirectOrContent::Redirect(Redirect::to(redirect_uri))
     } else if let Some(me) = me {
-        RedirectOrContent::Content(page(pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
+        RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
             p {
                 : "This Discord account is not associated with a Mido's House account, but you are signed in as ";
                 : me.to_html();
@@ -282,23 +292,23 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, cli
                     a(href = uri!(register_discord).to_string()) : "Connect this Discord account to your Mido's House account";
                 }
                 li {
-                    a(href = uri!(logout).to_string()) : "Cancel";
+                    a(href = uri!(logout(Some(redirect_uri))).to_string()) : "Cancel";
                 }
             }
         }).await?)
     } else {
-        RedirectOrContent::Content(page(pool, &None, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create Account — Mido's House", html! {
+        RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create Account — Mido's House", html! {
             p : "This Discord account is not associated with a Mido's House account.";
             ul {
                 li {
                     a(href = uri!(register_discord).to_string()) : "Create a new Mido's House account from this Discord account";
                 }
                 li {
-                    a(href = uri!(racetime_login).to_string()) : "Sign in with racetime.gg";
+                    a(href = uri!(racetime_login(_)).to_string()) : "Sign in with racetime.gg";
                     : " to associate this Discord account with an existing Mido's House account";
                 }
                 li {
-                    a(href = uri!(logout).to_string()) : "Cancel";
+                    a(href = uri!(logout(Some(redirect_uri))).to_string()) : "Cancel";
                 }
             }
         }).await?)
@@ -327,7 +337,7 @@ pub(crate) async fn register_racetime(pool: &State<PgPool>, me: Option<User>, cl
             Redirect::to(uri!(crate::user::profile(id)))
         }
     } else {
-        Redirect::to(uri!(racetime_login))
+        Redirect::to(uri!(racetime_login(_)))
     })
 }
 
@@ -354,13 +364,13 @@ pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, cli
             Redirect::to(uri!(crate::user::profile(id)))
         }
     } else {
-        Redirect::to(uri!(discord_login))
+        Redirect::to(uri!(discord_login(_)))
     })
 }
 
-#[rocket::get("/logout")]
-pub(crate) fn logout(cookies: &CookieJar<'_>) -> Redirect {
+#[rocket::get("/logout?<redirect_to>")]
+pub(crate) fn logout(cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Redirect {
     cookies.remove_private(Cookie::named("racetime_token"));
     cookies.remove_private(Cookie::named("discord_token"));
-    Redirect::to(uri!(crate::index)) //TODO redirect to original page
+    Redirect::to(redirect_to.map_or_else(|| uri!(crate::index), |uri| uri.0.into_owned()))
 }

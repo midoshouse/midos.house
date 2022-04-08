@@ -1,7 +1,11 @@
 use {
     std::{
+        borrow::Cow,
+        convert::Infallible as Never,
+        fmt,
         iter,
         mem,
+        str::FromStr,
     },
     derive_more::From,
     horrorshow::{
@@ -23,8 +27,21 @@ use {
             Contextual,
             FromFormField,
         },
-        http::Status,
-        request::FromParam,
+        http::{
+            Status,
+            impl_from_uri_param_identity,
+            uri::fmt::{
+                FromUriParam,
+                Query,
+                UriDisplay,
+            },
+        },
+        request::{
+            self,
+            FromParam,
+            FromRequest,
+            Request,
+        },
         response::{
             Redirect,
             content::Html,
@@ -68,6 +85,16 @@ impl CsrfTokenExt for CsrfToken {
     fn to_html(&self) -> Box<dyn RenderBox + '_> {
         box_html! {
             input(type = "hidden", name = "csrf", value = self.authenticity_token());
+        }
+    }
+}
+
+impl CsrfTokenExt for Option<CsrfToken> {
+    fn to_html(&self) -> Box<dyn RenderBox + '_> {
+        box_html! {
+            @if let Some(csrf) = self {
+                : csrf.to_html();
+            }
         }
     }
 }
@@ -129,6 +156,16 @@ impl From<Id> for i64 {
     }
 }
 
+impl FromStr for Id {
+    type Err = std::num::ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse::<u64>()
+            .map(Self)
+            .or_else(|_| s.parse::<i64>().map(Self::from))
+    }
+}
+
 impl<'r, DB: Database> Decode<'r, DB> for Id
 where i64: Decode<'r, DB> {
     fn decode(value: <DB as sqlx::database::HasValueRef<'r>>::ValueRef) -> Result<Self, Box<dyn std::error::Error + 'static + Send + Sync>> {
@@ -185,6 +222,49 @@ where i64: FromFormField<'v>, u64: FromFormField<'v> {
     }
 
     fn default() -> Option<Self> { None }
+}
+
+/// A URL without a hostname but with an absolute path and optional query.
+///
+/// Wrapper type used here to allow decoding from URI query
+#[derive(Clone)]
+pub(crate) struct Origin<'a>(pub(crate) rocket::http::uri::Origin<'a>);
+
+#[rocket::async_trait]
+impl<'a> FromRequest<'a> for Origin<'a> {
+    type Error = Never;
+
+    async fn from_request(req: &'a Request<'_>) -> request::Outcome<Self, Never> {
+        <&rocket::http::uri::Origin<'_>>::from_request(req).await.map(|origin| Self(origin.clone()))
+    }
+}
+
+impl<'a> FromFormField<'a> for Origin<'a> {
+    fn from_value(field: form::ValueField<'a>) -> form::Result<'a, Self> {
+        Ok(Self(rocket::http::uri::Origin::try_from(field.value).map_err(|e| form::Error::validation(e.to_string()))?))
+    }
+}
+
+impl<'a> UriDisplay<Query> for Origin<'a> {
+    fn fmt(&self, f: &mut rocket::http::uri::fmt::Formatter<'_, Query>) -> fmt::Result {
+        UriDisplay::fmt(&self.0.to_string(), f)
+    }
+}
+
+impl<'a> FromUriParam<Query, rocket::http::uri::Origin<'a>> for Origin<'a> {
+    type Target = Self;
+
+    fn from_uri_param(param: rocket::http::uri::Origin<'a>) -> Self {
+        Self(param)
+    }
+}
+
+impl_from_uri_param_identity!([Query] ('a) Origin<'a>);
+
+impl From<Origin<'_>> for Cow<'_, str> {
+    fn from(Origin(origin): Origin<'_>) -> Self {
+        Self::Owned(origin.to_string())
+    }
 }
 
 pub(crate) fn natjoin<'a, T: RenderOnce + Send + 'a>(elts: impl IntoIterator<Item = T>) -> Option<Box<dyn RenderBox + Send + 'a>> {

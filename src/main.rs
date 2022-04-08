@@ -51,7 +51,10 @@ use {
         notification::Notification,
         seed::SpoilerLog,
         user::User,
-        util::Id,
+        util::{
+            Id,
+            Origin,
+        },
     },
 };
 
@@ -97,7 +100,7 @@ enum PageError {
 
 type PageResult = Result<Html<String>, PageError>;
 
-async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, content: impl RenderOnce) -> PageResult {
+async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageStyle, title: &str, content: impl RenderOnce) -> PageResult {
     let notifications = if let Some(me) = me {
         if let PageKind::Notifications = style.kind {
             Vec::default()
@@ -147,9 +150,9 @@ async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, c
                                     }
                                     br;
                                     //TODO link to preferences
-                                    a(href = uri!(auth::logout).to_string()) : "Sign out";
+                                    a(href = uri!(auth::logout(Some(uri))).to_string()) : "Sign out";
                                 } else {
-                                    a(href = uri!(auth::login).to_string()) : "Sign in / Create account";
+                                    a(href = uri!(auth::login(Some(uri))).to_string()) : "Sign in / Create account";
                                 }
                                 @if !notifications.is_empty() {
                                     br;
@@ -191,8 +194,8 @@ async fn page(pool: &PgPool, me: &Option<User>, style: PageStyle, title: &str, c
 }
 
 #[rocket::get("/")]
-async fn index(pool: &State<PgPool>, me: Option<User>) -> PageResult {
-    page(pool, &me, PageStyle { kind: PageKind::Index, ..PageStyle::default() }, "Mido's House", html! {
+async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
+    page(pool, &me, &uri, PageStyle { kind: PageKind::Index, ..PageStyle::default() }, "Mido's House", html! {
         p {
             : "Mido's House is a platform where ";
             a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
@@ -211,9 +214,9 @@ async fn index(pool: &State<PgPool>, me: Option<User>) -> PageResult {
 }
 
 #[rocket::get("/new")]
-async fn new_event(pool: &State<PgPool>, me: Option<User>) -> PageResult {
+async fn new_event(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
     let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
-    page(pool, &me, PageStyle::default(), "New Event — Mido's House", html! {
+    page(pool, &me, &uri, PageStyle::default(), "New Event — Mido's House", html! {
         p {
             : "If you are planning a tournament, community race, or other event for the Ocarina of Time randomizer community, or if you would like Mido's House to archive data about a past event you organized, please contact ";
             : fenhl.into_html();
@@ -226,7 +229,8 @@ async fn new_event(pool: &State<PgPool>, me: Option<User>) -> PageResult {
 async fn not_found(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
-    page(pool, &me, PageStyle { kind: PageKind::Banner, ..PageStyle::default() }, "Not Found — Mido's House", html! {
+    let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
+    page(pool, &me, &uri, PageStyle { kind: PageKind::Banner, ..PageStyle::default() }, "Not Found — Mido's House", html! {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }
@@ -239,7 +243,8 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
     //TODO report
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
-    page(pool, &me, PageStyle::default(), "Internal Server Error — Mido's House", html! {
+    let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
+    page(pool, &me, &uri, PageStyle::default(), "Internal Server Error — Mido's House", html! {
         h1 : "Error 500: Internal Server Error";
         p : "Sorry, something went wrong. Please notify Fenhl on Discord.";
     }).await

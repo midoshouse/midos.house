@@ -18,6 +18,7 @@ use {
         page,
         util::{
             Id,
+            Origin,
             StatusOrError,
         },
     },
@@ -103,13 +104,13 @@ impl PartialEq for User {
 impl Eq for User {}
 
 #[rocket::get("/user/<id>")]
-pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, id: Id) -> Result<Html<String>, StatusOrError<PageError>> {
+pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, id: Id) -> Result<Html<String>, StatusOrError<PageError>> {
     let user = if let Some(user) = User::from_id(pool, id).await? {
         user
     } else {
         return Err(StatusOrError::Status(Status::NotFound))
     };
-    page(pool, &me, PageStyle { kind: if me.as_ref().map_or(false, |me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
+    page(pool, &me, &uri, PageStyle { kind: if me.as_ref().map_or(false, |me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
         h1 : user.display_name();
         p {
             : "Mido's House user ID: ";
@@ -122,7 +123,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, id: Id) -> R
             }
         } else if me.as_ref().map_or(false, |me| me.id == user.id) {
             p {
-                a(href = uri!(crate::auth::racetime_login).to_string()) : "Connect a racetime.gg account";
+                a(href = uri!(crate::auth::racetime_login(Some(uri!(profile(id))))).to_string()) : "Connect a racetime.gg account";
             }
         }
         @if let Some(Id(discord_id)) = user.discord_id {
@@ -132,7 +133,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, id: Id) -> R
             }
         } else if me.as_ref().map_or(false, |me| me.id == user.id) {
             p {
-                a(href = uri!(crate::auth::discord_login).to_string()) : "Connect a Discord account";
+                a(href = uri!(crate::auth::discord_login(Some(uri!(profile(id))))).to_string()) : "Connect a Discord account";
             }
         }
     }).await.map_err(StatusOrError::Err)

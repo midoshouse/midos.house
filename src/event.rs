@@ -54,6 +54,7 @@ use {
             EmptyForm,
             Id,
             IdTable,
+            Origin,
             RedirectOrContent,
             StatusOrError,
             field_errors,
@@ -265,7 +266,7 @@ impl<'a> Data<'a> {
                     @if let Tab::Enter = tab {
                         span(class = "button selected") : "Enter";
                     } else {
-                        a(class = "button", href = uri!(enter(self.series, self.event, None::<PictionaryRole>, None::<Id>)).to_string()) : "Enter";
+                        a(class = "button", href = uri!(enter(self.series, self.event, _, _)).to_string()) : "Enter";
                     }
                     @if let Tab::FindTeam = tab {
                         span(class = "button selected") : "Find Teammates";
@@ -304,7 +305,7 @@ pub(crate) enum InfoError {
 }
 
 #[rocket::get("/event/<series>/<event>")]
-pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<InfoError>> {
+pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<InfoError>> {
     let content = match (series, event) {
         ("mw", "3") => {
             let organizers = stream::iter([
@@ -489,7 +490,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, series: &str, e
     };
     let data = Data::new((**pool).clone(), series, event).await.map_err(InfoError::Sql)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&me, Tab::Info).await.map_err(InfoError::Sql)?;
-    page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &data.display_name, html! {
+    page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &data.display_name, html! {
         : header;
         : content;
     }).await.map_err(|e| StatusOrError::Err(InfoError::Page(e)))
@@ -504,7 +505,7 @@ pub(crate) enum TeamsError {
 }
 
 #[rocket::get("/event/<series>/<event>/teams")]
-pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<TeamsError>> {
+pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<TeamsError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(TeamsError::Sql)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&me, Tab::Teams).await.map_err(TeamsError::Sql)?;
     let mut signups = Vec::default();
@@ -528,7 +529,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, series: &str, 
             .try_collect::<Vec<_>>().await?;
         signups.push((team.name, members));
     }
-    page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
+    page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
         : header;
         table {
             thead {
@@ -567,10 +568,10 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, series: &str, 
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
-pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<PageError>> {
+pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<PageError>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&me, Tab::MyStatus).await?;
-    Ok(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
+    Ok(page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
         if let Some(ref me) = me {
             if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name FROM teams, team_members WHERE
                 id = team
@@ -601,7 +602,7 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, series: &str,
                     : header;
                     article {
                         p : "You are not signed up for this race.";
-                        //p : "You can retract or decline unconfirmed team invitations on the teams page."; //TODO
+                        //p : "You can accept, decline, or retract unconfirmed team invitations on the teams page."; //TODO
                     }
                 } as Box<dyn RenderBox + Send>)
             }
@@ -610,7 +611,7 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, series: &str,
                 : header;
                 article {
                     p {
-                        a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
+                        a(href = uri!(auth::login(Some(uri!(status(series, event))))).to_string()) : "Sign in or create a Mido's House account";
                         : " to view your status for this race.";
                     }
                 }
@@ -653,7 +654,11 @@ impl<'v> PictionaryRandomSettingsEnterFormDefaults<'v> {
         }
     }
 
-    fn teammate(&self) -> Option<Cow<'_, str>> {
+    fn teammate(&self) -> Option<Id> {
+        self.teammate_text().and_then(|text| text.parse().ok())
+    }
+
+    fn teammate_text(&self) -> Option<Cow<'_, str>> {
         match self {
             Self::Context(ctx) => ctx.field_value("teammate").map(Cow::Borrowed),
             &Self::Values { teammate, .. } => teammate.map(|id| Cow::Owned(id.0.to_string())),
@@ -661,9 +666,9 @@ impl<'v> PictionaryRandomSettingsEnterFormDefaults<'v> {
     }
 }
 
-async fn pictionary_random_settings_enter_form(me: Option<User>, csrf: CsrfToken, data: Data<'_>, defaults: PictionaryRandomSettingsEnterFormDefaults<'_>) -> PageResult {
+async fn pictionary_random_settings_enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, defaults: PictionaryRandomSettingsEnterFormDefaults<'_>) -> PageResult {
     let header = data.header(&me, Tab::Enter).await?;
-    page(&data.pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
+    page(&data.pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
         let mut errors = defaults.errors();
         let form_content = html! {
             : csrf.to_html();
@@ -689,7 +694,7 @@ async fn pictionary_random_settings_enter_form(me: Option<User>, csrf: CsrfToken
             fieldset {
                 |tmpl| field_errors(tmpl, &mut errors, "teammate");
                 label(for = "teammate") : "Teammate:";
-                input(type = "text", name = "teammate", value? = defaults.teammate().as_deref());
+                input(type = "text", name = "teammate", value? = defaults.teammate_text().as_deref());
                 label(class = "help") : "(Enter your teammate's Mido's House user ID. It can be found on their profile page.)"; //TODO add JS-based user search?
             }
             fieldset {
@@ -710,7 +715,7 @@ async fn pictionary_random_settings_enter_form(me: Option<User>, csrf: CsrfToken
             : header;
             article {
                 p {
-                    a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(enter(data.series, data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to enter this race.";
                 }
             }
@@ -719,29 +724,26 @@ async fn pictionary_random_settings_enter_form(me: Option<User>, csrf: CsrfToken
 }
 
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
-pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, csrf: Option<CsrfToken>, series: &str, event: &str, my_role: Option<PictionaryRole>, teammate: Option<Id>) -> Result<RedirectOrContent, StatusOrError<PageError>> {
+pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, my_role: Option<PictionaryRole>, teammate: Option<Id>) -> Result<RedirectOrContent, StatusOrError<PageError>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(if let Some(csrf) = csrf {
-        RedirectOrContent::Content(pictionary_random_settings_enter_form(me, csrf, data, PictionaryRandomSettingsEnterFormDefaults::Values { my_role, teammate }).await?)
-    } else {
-        RedirectOrContent::Redirect(Redirect::temporary(uri!(enter(series, event, my_role, teammate))))
-    })
+    Ok(RedirectOrContent::Content(pictionary_random_settings_enter_form(me, uri, csrf, data, PictionaryRandomSettingsEnterFormDefaults::Values { my_role, teammate }).await?))
 }
 
 #[derive(FromForm)]
 pub(crate) struct PictionaryEnterForm {
+    #[field(default = String::new())]
     csrf: String,
     team_name: String,
     my_role: PictionaryRole,
     teammate: Id,
 }
 
-impl CsrfForm for PictionaryEnterForm {
+impl CsrfForm for PictionaryEnterForm { //TODO derive
     fn csrf(&self) -> &String { &self.csrf }
 }
 
 #[rocket::post("/event/<series>/<event>/enter", data = "<form>")]
-pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, series: &str, event: &str, form: Form<Contextual<'_, PictionaryEnterForm>>) -> Result<RedirectOrContent, StatusOrError<PageError>> {
+pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, form: Form<Contextual<'_, PictionaryEnterForm>>) -> Result<RedirectOrContent, StatusOrError<PageError>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     //TODO deny action if the event has started
     let mut form = form.into_inner();
@@ -795,11 +797,7 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, csrf: Option<Csrf
         //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
         if form.context.errors().next().is_some() {
             transaction.rollback().await?;
-            if let Some(csrf) = csrf {
-                RedirectOrContent::Content(pictionary_random_settings_enter_form(Some(me), csrf, data, PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await?)
-            } else {
-                RedirectOrContent::Redirect(Redirect::temporary(uri!(enter_post(series, event))))
-            }
+            RedirectOrContent::Content(pictionary_random_settings_enter_form(Some(me), uri, csrf, data, PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await?)
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
             sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, $2, $3, $4)", i64::from(id), series, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
@@ -809,11 +807,7 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, csrf: Option<Csrf
             RedirectOrContent::Redirect(Redirect::to(uri!(teams(series, event))))
         }
     } else {
-        if let Some(csrf) = csrf {
-            RedirectOrContent::Content(pictionary_random_settings_enter_form(Some(me), csrf, data, PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await?)
-        } else {
-            RedirectOrContent::Redirect(Redirect::temporary(uri!(enter_post(series, event))))
-        }
+        RedirectOrContent::Content(pictionary_random_settings_enter_form(Some(me), uri, csrf, data, PictionaryRandomSettingsEnterFormDefaults::Context(form.context)).await?)
     })
 }
 
@@ -826,7 +820,7 @@ pub(crate) enum PictionaryRandomSettingsFindTeamError {
     UnknownUser,
 }
 
-async fn pictionary_random_settings_find_team_form(me: Option<User>, csrf: CsrfToken, data: Data<'_>, context: Context<'_>) -> Result<Html<String>, PictionaryRandomSettingsFindTeamError> {
+async fn pictionary_random_settings_find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<Html<String>, PictionaryRandomSettingsFindTeamError> {
     let header = data.header(&me, Tab::FindTeam).await?;
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
@@ -878,7 +872,7 @@ async fn pictionary_random_settings_find_team_form(me: Option<User>, csrf: CsrfT
         Some(html! {
             article {
                 p {
-                    a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(find_team(data.series, data.event))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to add yourself to this list.";
                 }
             }
@@ -899,7 +893,7 @@ async fn pictionary_random_settings_find_team_form(me: Option<User>, csrf: CsrfT
             },
         })))
         .collect_vec();
-    Ok(page(&data.pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Find Teammates — 1st Random Settings Pictionary Spoiler Log Race", html! {
+    Ok(page(&data.pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Find Teammates — 1st Random Settings Pictionary Spoiler Log Race", html! {
         : header;
         : form;
         table {
@@ -940,17 +934,14 @@ async fn pictionary_random_settings_find_team_form(me: Option<User>, csrf: CsrfT
 }
 
 #[rocket::get("/event/<series>/<event>/find-team")]
-pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, csrf: Option<CsrfToken>, series: &str, event: &str) -> Result<RedirectOrContent, StatusOrError<PictionaryRandomSettingsFindTeamError>> {
+pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str) -> Result<RedirectOrContent, StatusOrError<PictionaryRandomSettingsFindTeamError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(PictionaryRandomSettingsFindTeamError::Sql)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(if let Some(csrf) = csrf {
-        RedirectOrContent::Content(pictionary_random_settings_find_team_form(me, csrf, data, Context::default()).await?)
-    } else {
-        RedirectOrContent::Redirect(Redirect::temporary(uri!(find_team(series, event))))
-    })
+    Ok(RedirectOrContent::Content(pictionary_random_settings_find_team_form(me, uri, csrf, data, Context::default()).await?))
 }
 
 #[derive(FromForm)]
 pub(crate) struct FindTeamForm {
+    #[field(default = String::new())]
     csrf: String,
     role: RolePreference,
 }
@@ -960,7 +951,7 @@ impl CsrfForm for FindTeamForm { //TODO derive
 }
 
 #[rocket::post("/event/<series>/<event>/find-team", data = "<form>")]
-pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, series: &str, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<PictionaryRandomSettingsFindTeamError>> {
+pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<PictionaryRandomSettingsFindTeamError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(PictionaryRandomSettingsFindTeamError::Sql)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     //TODO deny action if the event has started
     let mut form = form.into_inner();
@@ -984,22 +975,14 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, csrf: Option<
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
         if form.context.errors().next().is_some() {
-            if let Some(csrf) = csrf {
-                RedirectOrContent::Content(pictionary_random_settings_find_team_form(Some(me), csrf, data, form.context).await?)
-            } else {
-                RedirectOrContent::Redirect(Redirect::temporary(uri!(find_team_post(series, event))))
-            }
+            RedirectOrContent::Content(pictionary_random_settings_find_team_form(Some(me), uri, csrf, data, form.context).await?)
         } else {
             sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role) VALUES ($1, $2, $3, $4)", series, event, i64::from(me.id), value.role as _).execute(&mut transaction).await.map_err(PictionaryRandomSettingsFindTeamError::Sql)?;
             transaction.commit().await.map_err(PictionaryRandomSettingsFindTeamError::Sql)?;
             RedirectOrContent::Redirect(Redirect::to(uri!(find_team(series, event))))
         }
     } else {
-        if let Some(csrf) = csrf {
-            RedirectOrContent::Content(pictionary_random_settings_find_team_form(Some(me), csrf, data, form.context).await?)
-        } else {
-            RedirectOrContent::Redirect(Redirect::temporary(uri!(find_team_post(series, event))))
-        }
+        RedirectOrContent::Content(pictionary_random_settings_find_team_form(Some(me), uri, csrf, data, form.context).await?)
     })
 }
 
@@ -1050,27 +1033,23 @@ pub(crate) enum ResignError {
 }
 
 #[rocket::get("/event/<series>/<event>/resign/<team>")]
-pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, csrf: Option<CsrfToken>, series: &str, event: &str, team: Id) -> Result<RedirectOrContent, StatusOrError<PageError>> {
+pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, team: Id) -> Result<Html<String>, StatusOrError<PageError>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     //TODO display error message if the event is over
-    Ok(if let Some(csrf) = csrf {
-        RedirectOrContent::Content(page(pool, &me, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
-            //TODO different wording if the event has started
-            p {
-                : "Are you sure you want to retract your team's registration from ";
-                a(href = uri!(info(series, event)).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event name
-                : "? If you change your mind later, you will need to invite your teammates again.";
+    Ok(page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
+        //TODO different wording if the event has started
+        p {
+            : "Are you sure you want to retract your team's registration from ";
+            a(href = uri!(info(series, event)).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event name
+            : "? If you change your mind later, you will need to invite your teammates again.";
+        }
+        div(class = "button-row") {
+            form(action = uri!(crate::event::resign_post(series, event, team)).to_string(), method = "post") {
+                : csrf.to_html();
+                input(type = "submit", value = "Yes, resign");
             }
-            div(class = "button-row") {
-                form(action = uri!(crate::event::resign_post(series, event, team)).to_string(), method = "post") {
-                    : csrf.to_html();
-                    input(type = "submit", value = "Yes, resign");
-                }
-            }
-        }).await?)
-    } else {
-        RedirectOrContent::Redirect(Redirect::temporary(uri!(resign(series, event, team))))
-    })
+        }
+    }).await?)
 }
 
 #[rocket::post("/event/<series>/<event>/resign/<team>", data = "<form>")]

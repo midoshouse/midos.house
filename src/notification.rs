@@ -38,7 +38,7 @@ use {
             CsrfTokenExt as _,
             EmptyForm,
             Id,
-            RedirectOrContent,
+            Origin,
             natjoin,
         },
     },
@@ -80,7 +80,7 @@ impl Notification {
         Ok(notifications)
     }
 
-    async fn into_html(self, pool: &PgPool, me: &User, csrf: &CsrfToken) -> Result<Html<String>, Error> {
+    async fn into_html(self, pool: &PgPool, me: &User, csrf: &Option<CsrfToken>) -> Result<Html<String>, Error> {
         Ok(match self {
             Self::Simple(id) => {
                 let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await? {
@@ -187,7 +187,7 @@ impl Notification {
                     : ".";
                     div(class = "button-row") {
                         @if my_role == Role::Sheikah && me.racetime_id.is_none() {
-                            a(class = "button", href = uri!(crate::auth::racetime_login).to_string()) : "Connect racetime.gg Account to Accept";
+                            a(class = "button", href = uri!(crate::auth::racetime_login(Some(uri!(notifications)))).to_string()) : "Connect racetime.gg Account to Accept";
                         } else {
                             form(action = uri!(crate::event::confirm_signup(&team_row.series, &team_row.event, team_id)).to_string(), method = "post") {
                                 : csrf.to_html();
@@ -207,34 +207,30 @@ impl Notification {
 }
 
 #[rocket::get("/notifications")]
-pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, csrf: Option<CsrfToken>) -> Result<RedirectOrContent, Error> {
+pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>) -> Result<Html<String>, Error> {
     Ok(if let Some(me) = me {
-        if let Some(csrf) = csrf {
-            let notifications = stream::iter(Notification::get(pool, &me).await?)
-                .then(|notification| notification.into_html(pool, &me, &csrf))
-                .try_collect::<Vec<_>>().await?;
-            RedirectOrContent::Content(page(pool, &Some(me), PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
-                h1 : "Notifications";
-                @if notifications.is_empty() {
-                    p : "You have no notifications.";
-                } else {
-                    ul {
-                        @for notification in notifications {
-                            li : notification;
-                        }
+        let notifications = stream::iter(Notification::get(pool, &me).await?)
+            .then(|notification| notification.into_html(pool, &me, &csrf))
+            .try_collect::<Vec<_>>().await?;
+        page(pool, &Some(me), &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
+            h1 : "Notifications";
+            @if notifications.is_empty() {
+                p : "You have no notifications.";
+            } else {
+                ul {
+                    @for notification in notifications {
+                        li : notification;
                     }
                 }
-            }).await?)
-        } else {
-            RedirectOrContent::Redirect(Redirect::temporary(uri!(notifications)))
-        }
+            }
+        }).await?
     } else {
-        RedirectOrContent::Content(page(pool, &me, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
+        page(pool, &me, &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
             p {
-                a(href = uri!(auth::login).to_string()) : "Sign in or create a Mido's House account";
+                a(href = uri!(auth::login(Some(uri!(notifications)))).to_string()) : "Sign in or create a Mido's House account";
                 : " to view your notifications.";
             }
-        }).await?)
+        }).await?
     })
 }
 
