@@ -186,7 +186,7 @@ async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageSty
                         : " • ";
                         a(href = "https://github.com/midoshouse/midos.house") : "source code";
                     }
-                    p : "Special thanks to Maplestar for the chest icons used in the logo!";
+                    p : "Special thanks to Maplestar for the chest icons used in the logo, and to Xopar and shiroaeli for some of the seed hash icons!";
                 }
             }
         }

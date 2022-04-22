@@ -141,7 +141,7 @@ pub(crate) struct SpoilerLogLocations {
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum ChestTexture {
+pub(crate) enum ChestTexture { //TODO new variants for PR #1500
     Normal,
     Major,
     SmallKey,
@@ -272,7 +272,12 @@ impl ChestAppearance {
             "Song of Time" |
             "Song of Storms" |
             "Magic Bean Pack" |
-            "Triforce Piece" => match camc_kind {
+            "Triforce Piece" |
+            "Easter Egg" |
+            "Easter Egg (Pink)" |
+            "Easter Egg (Orange)" |
+            "Easter Egg (Green)" |
+            "Easter Egg (Blue)" => match camc_kind {
                 CorrectChestAppearances::Off => unreachable!(),
                 CorrectChestAppearances::Classic => ChestAppearance { texture: ChestTexture::Normal, big: true },
                 CorrectChestAppearances::Textures => ChestAppearance { texture: ChestTexture::Major, big: false },

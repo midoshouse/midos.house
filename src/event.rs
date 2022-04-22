@@ -357,11 +357,11 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
         }
         ("pic", "rs1") => {
             let sample_seeds = seed::table(stream::iter(vec![
-                seed::Data { web: Some(seed::OotrWebData { id: 1063820, gen_time: Utc.ymd(2022, 3, 31).and_hms(23, 57, 32) }), file_stem: Cow::Borrowed("OoTR_1063820_73DT13GLTE") },
-                seed::Data { web: Some(seed::OotrWebData { id: 1063823, gen_time: Utc.ymd(2022, 3, 31).and_hms(23, 58, 12) }), file_stem: Cow::Borrowed("OoTR_1063823_59FOD8AC5B") },
-                seed::Data { web: Some(seed::OotrWebData { id: 1063825, gen_time: Utc.ymd(2022, 3, 31).and_hms(23, 59, 21) }), file_stem: Cow::Borrowed("OoTR_1063825_64FD4JDWEP") },
-                seed::Data { web: Some(seed::OotrWebData { id: 1063826, gen_time: Utc.ymd(2022, 4, 1).and_hms(0, 0, 3) }), file_stem: Cow::Borrowed("OoTR_1063826_WA38LZE8A4") },
-                seed::Data { web: Some(seed::OotrWebData { id: 1063831, gen_time: Utc.ymd(2022, 4, 1).and_hms(0, 3, 26) }), file_stem: Cow::Borrowed("OoTR_1063831_SLC6YHI7H2") },
+                seed::Data { web: Some(seed::OotrWebData { id: 1079630, gen_time: Utc.ymd(2022, 4, 22).and_hms(15, 59, 36) }), file_stem: Cow::Borrowed("OoTR_1079630_V6516H22IW") },
+                seed::Data { web: Some(seed::OotrWebData { id: 1079637, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 1, 5) }), file_stem: Cow::Borrowed("OoTR_1079637_HAH75EOAHQ") },
+                seed::Data { web: Some(seed::OotrWebData { id: 1079645, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 3, 19) }), file_stem: Cow::Borrowed("OoTR_1079645_6XZJOSDCRW") },
+                seed::Data { web: Some(seed::OotrWebData { id: 1079646, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 3, 53) }), file_stem: Cow::Borrowed("OoTR_1079646_AJZWAB1X3U") },
+                seed::Data { web: Some(seed::OotrWebData { id: 1079648, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 4, 11) }), file_stem: Cow::Borrowed("OoTR_1079648_1DHCCQB5AC") },
             ])).await.map_err(InfoError::Io)?;
             let organizers = stream::iter([
                 5961629664912637980, // Tjongejonge_

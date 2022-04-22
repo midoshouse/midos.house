@@ -134,7 +134,8 @@ pub(crate) struct SpoilerLogSettings {
 pub(crate) async fn table(seeds: impl Stream<Item = Data>) -> io::Result<Box<dyn RenderBox + Send>> {
     let now = Utc::now();
     let seeds = seeds.then(|seed| async move {
-        let web_id = seed.web.as_ref().and_then(|web| (web.gen_time > now - chrono::Duration::days(30)).then(|| web.id));
+        // ootrandomizer.com seeds are deleted after 90 days
+        let web_id = seed.web.as_ref().and_then(|web| (web.gen_time > now - chrono::Duration::days(90)).then(|| web.id));
         let spoiler_file_name = format!("{}_Spoiler.json", seed.file_stem);
         let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
         let spoiler_contents = serde_json::from_str(&fs::read_to_string(&spoiler_path).await?)?;
@@ -158,7 +159,6 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>) -> io::Result<Box<dyn
                                 img(class = "hash-icon", alt = hash_icon.to_string(), src = hash_icon.img_url());
                             }
                         }
-                        // ootrandomizer.com seeds are deleted after 30 days
                         @if let Some(web_id) = web_id {
                             td(colspan = "2") {
                                 a(href = format!("https://ootrandomizer.com/seed/get?id={web_id}")) : "View";
