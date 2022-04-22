@@ -175,6 +175,10 @@ table td {
     filter: drop-shadow(1px 1px 0 black);
 }
 
+.hash-icon + .hash-icon {
+    margin-left: 10px;
+}
+
 fieldset {
     border-width: 0;
 }
