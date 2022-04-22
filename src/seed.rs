@@ -1,5 +1,3 @@
-#![allow(unused)] //TODO remove once sample seeds are back
-
 use {
     std::{
         borrow::Cow,
@@ -93,8 +91,25 @@ enum HashIcon {
 derive_display_from_serialize!(HashIcon);
 
 impl HashIcon {
-    fn img_url(&self) -> String {
-        format!("https://ootr.fenhl.net/static/hash-icon/{}.png", self.to_string().to_ascii_lowercase().replace(' ', "-"))
+    fn to_html(&self) -> Box<dyn RenderBox + '_> {
+        let url_part = self.to_string().to_ascii_lowercase().replace(' ', "-");
+        match self {
+            Self::Bombchu |
+            Self::BossKey |
+            Self::Compass |
+            Self::DekuNut |
+            Self::DekuStick |
+            Self::HeartContainer |
+            Self::Map |
+            Self::MasterSword |
+            Self::SoldOut |
+            Self::StoneOfAgony => box_html! {
+                img(class = "hash-icon", alt = self.to_string(), src = format!("/static/hash-icon/{url_part}.png"), srcset = format!("/static/hash-icon-500/{url_part}.png 10x"));
+            },
+            _ => box_html! {
+                img(class = "hash-icon", alt = self.to_string(), src = format!("/static/hash-icon/{url_part}.png"));
+            },
+        }
     }
 }
 
@@ -155,8 +170,7 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>) -> io::Result<Box<dyn
                     tr {
                         td {
                             @for hash_icon in spoiler_contents.file_hash {
-                                //TODO get stylized hash icons and host them locally?
-                                img(class = "hash-icon", alt = hash_icon.to_string(), src = hash_icon.img_url());
+                                : hash_icon.to_html();
                             }
                         }
                         @if let Some(web_id) = web_id {
