@@ -62,6 +62,7 @@ use {
             Origin,
             RedirectOrContent,
             StatusOrError,
+            favicon,
             field_errors,
             natjoin,
             render_form_error,
@@ -312,21 +313,16 @@ impl<'a> Data<'a> {
                 //a(class = "button") : "Volunteer"; //TODO
                 @if let Some(ref video_url) = self.video_url {
                     a(class = "button", href = video_url.to_string()) {
-                        @if video_url.host_str() == Some("twitch.tv") {
-                            img(class = "favicon", alt = "external link (twitch.tv)", src = "https://static.twitchcdn.net/assets/favicon-16-52e571ffea063af7a7f4.png", width = "16", height = "16", srcset = "https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png 2x");
-                        } else {
-                            //TODO generic “external link” image?
-                        }
+                        : favicon(video_url);
                         : "Watch";
                     }
                 }
                 @if let Some(ref url) = self.url {
                     a(class = "button", href = url.to_string()) {
+                        : favicon(url);
                         @if url.host_str() == Some("racetime.gg") {
-                            img(class = "favicon", alt = "external link (racetime.gg)", src = "https://racetime.gg/favicon.ico", width = "16", height = "16");
                             : "Race Room";
                         } else {
-                            //TODO generic “external link” image?
                             : "Website";
                         }
                     }

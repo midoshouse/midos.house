@@ -55,6 +55,7 @@ use {
         Postgres,
         Transaction,
     },
+    url::Url,
     crate::PageError,
 };
 
@@ -329,5 +330,17 @@ pub(crate) enum StatusOrError<E> {
 impl From<sqlx::Error> for StatusOrError<PageError> {
     fn from(e: sqlx::Error) -> Self {
         Self::Err(PageError::Sql(e))
+    }
+}
+
+pub(crate) fn favicon(url: &Url) -> Box<dyn RenderBox> {
+    match url.host_str() {
+        Some("racetime.gg") => box_html! {
+            img(class = "favicon", alt = "external link (racetime.gg)", src = "https://racetime.gg/favicon.ico", width = "16", height = "16");
+        },
+        Some("twitch.tv") | Some("www.twitch.tv") => box_html! {
+            img(class = "favicon", alt = "external link (twitch.tv)", src = "https://static.twitchcdn.net/assets/favicon-16-52e571ffea063af7a7f4.png", width = "16", height = "16", srcset = "https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png 2x");
+        },
+        _ => box_html! {}, //TODO generic “external link” image?
     }
 }
