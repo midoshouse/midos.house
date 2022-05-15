@@ -495,6 +495,10 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
                         li : "shuffled ocarinas";
                         li : "shuffled Gerudo card";
                     }
+                    p {
+                        : "Settings string for version 6.2: ";
+                        code: "AJTWFCHYKAA8KLAH2CASAHCCYCHGLTDDAKJ8S8AAJAEAC2AJSDGBLADLED7JKQUXEANKCAJAAENAABFAB";
+                    }
                 },
                 _ => unimplemented!(),
             };
