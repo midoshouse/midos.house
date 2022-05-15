@@ -41,6 +41,7 @@ use {
     },
     rocket_csrf::CsrfToken,
     sqlx::PgPool,
+    url::Url,
     crate::{
         PageError,
         PageResult,
@@ -215,17 +216,28 @@ struct Data<'a> {
     event: &'a str,
     display_name: String,
     start: Option<DateTime<Utc>>,
+    url: Option<Url>,
+    video_url: Option<Url>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum DataError {
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Url(#[from] url::ParseError),
 }
 
 impl<'a> Data<'a> {
-    async fn new(pool: PgPool, series: &'a str, event: &'a str) -> sqlx::Result<Option<Data<'a>>> {
+    async fn new(pool: PgPool, series: &'a str, event: &'a str) -> Result<Option<Data<'a>>, DataError> {
         Ok(
-            sqlx::query!("SELECT display_name, start FROM events WHERE series = $1 AND event = $2", &series, &event).fetch_optional(&pool).await?
-                .map(|row| Self {
+            sqlx::query!("SELECT display_name, start, url, video_url FROM events WHERE series = $1 AND event = $2", &series, &event).fetch_optional(&pool).await?
+                .map(|row| Ok::<_, DataError>(Self {
                     display_name: row.display_name,
                     start: row.start,
+                    url: row.url.map(|url| url.parse()).transpose()?,
+                    video_url: row.video_url.map(|url| url.parse()).transpose()?,
                     pool, series, event,
-                })
+                }))
+                .transpose()?
         )
     }
 
@@ -298,13 +310,27 @@ impl<'a> Data<'a> {
                     }
                 }
                 //a(class = "button") : "Volunteer"; //TODO
-                //a(class = "button") : "Watch"; //TODO
-                /*
-                a(class = "button") {
-                    img(class = "favicon", alt = "external link (racetime.gg)", src = "https://racetime.gg/favicon.ico");
-                    : "Race Room";
+                @if let Some(ref video_url) = self.video_url {
+                    a(class = "button", href = video_url.to_string()) {
+                        @if video_url.host_str() == Some("twitch.tv") {
+                            img(class = "favicon", alt = "external link (twitch.tv)", src = "https://static.twitchcdn.net/assets/favicon-16-52e571ffea063af7a7f4.png", width = "16", height = "16", srcset = "https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png 2x");
+                        } else {
+                            //TODO generic “external link” image?
+                        }
+                        : "Watch";
+                    }
                 }
-                */ //TODO
+                @if let Some(ref url) = self.url {
+                    a(class = "button", href = url.to_string()) {
+                        @if url.host_str() == Some("racetime.gg") {
+                            img(class = "favicon", alt = "external link (racetime.gg)", src = "https://racetime.gg/favicon.ico", width = "16", height = "16");
+                            : "Race Room";
+                        } else {
+                            //TODO generic “external link” image?
+                            : "Website";
+                        }
+                    }
+                }
             }
         })
     }
@@ -319,7 +345,33 @@ enum Tab {
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
+pub(crate) enum Error {
+    #[error(transparent)] Data(#[from] DataError),
+    #[error(transparent)] Page(#[from] PageError),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+}
+
+impl From<DataError> for StatusOrError<Error> {
+    fn from(e: DataError) -> Self {
+        Self::Err(Error::Data(e))
+    }
+}
+
+impl From<PageError> for StatusOrError<Error> {
+    fn from(e: PageError) -> Self {
+        Self::Err(Error::Page(e))
+    }
+}
+
+impl From<sqlx::Error> for StatusOrError<Error> {
+    fn from(e: sqlx::Error) -> Self {
+        Self::Err(Error::Sql(e))
+    }
+}
+
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum InfoError {
+    #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
@@ -511,7 +563,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
         }
         (_, _) => unimplemented!(),
     };
-    let data = Data::new((**pool).clone(), series, event).await.map_err(InfoError::Sql)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let data = Data::new((**pool).clone(), series, event).await.map_err(InfoError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&me, Tab::Info).await.map_err(InfoError::Sql)?;
     page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &data.display_name, html! {
         : header;
@@ -521,6 +573,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum TeamsError {
+    #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("team with nonexistent user")]
@@ -529,7 +582,7 @@ pub(crate) enum TeamsError {
 
 #[rocket::get("/event/<series>/<event>/teams")]
 pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<TeamsError>> {
-    let data = Data::new((**pool).clone(), series, event).await.map_err(TeamsError::Sql)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let data = Data::new((**pool).clone(), series, event).await.map_err(TeamsError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&me, Tab::Teams).await.map_err(TeamsError::Sql)?;
     let mut signups = Vec::default();
     let mut teams_query = sqlx::query!(r#"SELECT id AS "id!: Id", name FROM teams WHERE
@@ -591,7 +644,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
-pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<PageError>> {
+pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&me, Tab::MyStatus).await?;
     Ok(page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
@@ -747,7 +800,7 @@ async fn pictionary_random_settings_enter_form(me: Option<User>, uri: Origin<'_>
 }
 
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
-pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, my_role: Option<PictionaryRole>, teammate: Option<Id>) -> Result<RedirectOrContent, StatusOrError<PageError>> {
+pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, my_role: Option<PictionaryRole>, teammate: Option<Id>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(RedirectOrContent::Content(pictionary_random_settings_enter_form(me, uri, csrf, data, PictionaryRandomSettingsEnterFormDefaults::Values { my_role, teammate }).await?))
 }
@@ -766,7 +819,7 @@ impl CsrfForm for PictionaryEnterForm { //TODO derive
 }
 
 #[rocket::post("/event/<series>/<event>/enter", data = "<form>")]
-pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, form: Form<Contextual<'_, PictionaryEnterForm>>) -> Result<RedirectOrContent, StatusOrError<PageError>> {
+pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, form: Form<Contextual<'_, PictionaryEnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     //TODO deny action if the event has started
     let mut form = form.into_inner();
@@ -836,6 +889,7 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum PictionaryRandomSettingsFindTeamError {
+    #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Horrorshow(#[from] horrorshow::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
@@ -958,7 +1012,7 @@ async fn pictionary_random_settings_find_team_form(me: Option<User>, uri: Origin
 
 #[rocket::get("/event/<series>/<event>/find-team")]
 pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str) -> Result<RedirectOrContent, StatusOrError<PictionaryRandomSettingsFindTeamError>> {
-    let data = Data::new((**pool).clone(), series, event).await.map_err(PictionaryRandomSettingsFindTeamError::Sql)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let data = Data::new((**pool).clone(), series, event).await.map_err(PictionaryRandomSettingsFindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(RedirectOrContent::Content(pictionary_random_settings_find_team_form(me, uri, csrf, data, Context::default()).await?))
 }
 
@@ -975,7 +1029,7 @@ impl CsrfForm for FindTeamForm { //TODO derive
 
 #[rocket::post("/event/<series>/<event>/find-team", data = "<form>")]
 pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<PictionaryRandomSettingsFindTeamError>> {
-    let data = Data::new((**pool).clone(), series, event).await.map_err(PictionaryRandomSettingsFindTeamError::Sql)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let data = Data::new((**pool).clone(), series, event).await.map_err(PictionaryRandomSettingsFindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     //TODO deny action if the event has started
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -1056,7 +1110,7 @@ pub(crate) enum ResignError {
 }
 
 #[rocket::get("/event/<series>/<event>/resign/<team>")]
-pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, team: Id) -> Result<Html<String>, StatusOrError<PageError>> {
+pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, team: Id) -> Result<Html<String>, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     //TODO display error message if the event is over
     Ok(page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {

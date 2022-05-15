@@ -18,6 +18,7 @@ serde_json = "1"
 serde_plain = "1"
 thiserror = "1"
 time = "0.2" # required for rocket cookies
+url = "2"
 xdg = "2"
 
 [dependencies.clap]
