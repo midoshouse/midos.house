@@ -393,114 +393,39 @@ pub(crate) enum InfoError {
 
 #[rocket::get("/event/<series>/<event>")]
 pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<InfoError>> {
-    let content = match (series, event) {
-        ("mw", "3") => {
-            let organizers = stream::iter([
-                11983715422555811980, // ACreativeUsername
-                10663518306823692018, // Alaszun
-                11587964556511372305, // Bliven
-                6374388881117205057, // felixoide4
-                14571800683221815449, // Fenhl
-                12937129924130129092, // Hamsda
-                2315005348393237449, // rockchalk
-                5305697930717211129, // tenacious_toad
-            ])
-                .map(Id)
-                .then(|id| async move { User::from_id(pool, id).await?.ok_or(InfoError::OrganizerUserData) })
-                .try_collect::<Vec<_>>().await?;
-            let organizers = natjoin(organizers.into_iter().map(|organizer| organizer.into_html()));
-            (box_html! {
-                article {
-                    p {
-                        : "This is a placeholder page for the third Ocarina of Time randomizer multiworld tournament, organized by ";
-                        : organizers;
-                        : ". More infos coming soon.";
-                    }
-                }
-            }) as Box<dyn RenderBox + Send>
-        }
-        ("pic", "rs1") => {
-            let sample_seeds = seed::table(stream::iter(vec![
-                seed::Data { web: Some(seed::OotrWebData { id: 1079630, gen_time: Utc.ymd(2022, 4, 22).and_hms(15, 59, 36) }), file_stem: Cow::Borrowed("OoTR_1079630_V6516H22IW") },
-                seed::Data { web: Some(seed::OotrWebData { id: 1079637, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 1, 5) }), file_stem: Cow::Borrowed("OoTR_1079637_HAH75EOAHQ") },
-                seed::Data { web: Some(seed::OotrWebData { id: 1079645, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 3, 19) }), file_stem: Cow::Borrowed("OoTR_1079645_6XZJOSDCRW") },
-                seed::Data { web: Some(seed::OotrWebData { id: 1079646, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 3, 53) }), file_stem: Cow::Borrowed("OoTR_1079646_AJZWAB1X3U") },
-                seed::Data { web: Some(seed::OotrWebData { id: 1079648, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 4, 11) }), file_stem: Cow::Borrowed("OoTR_1079648_1DHCCQB5AC") },
-            ])).await.map_err(InfoError::Io)?;
-            let organizers = stream::iter([
-                5961629664912637980, // Tjongejonge_
-                2689982510832487907, // ksinjah
-                14571800683221815449, // Fenhl
-                3722744861553903438, // melqwii
-                14099802746436324950, // TeaGrenadier
-            ])
-                .map(Id)
-                .then(|id| async move { User::from_id(pool, id).await?.ok_or(InfoError::OrganizerUserData) })
-                .try_collect::<Vec<_>>().await?;
-            let organizers = natjoin(organizers.into_iter().map(|organizer| organizer.into_html()));
-            box_html! {
-                article {
-                    h2 : "What is a Pictionary Spoiler Log Race?";
-                    p : "Each team consists of one Runner and one Spoiler Log Pilot who is drawing. The pilot has to figure out a way through the seed and how to tell their runner in drawing what checks they need to do. Hints are obviously disabled.";
-                    p : "This time, we are doing something slightly different: The settings will be random, with weights based on the Random Settings League but adjusted for Pictionary. To compensate for the additional complexity, the preparation time for the pilot will be 30 minutes instead of the usual 15.";
-                    p {
-                        : "Before the race we will provide a room on ";
-                        a(href = "https://aggie.io/") : "aggie.io";
-                        : " to each team. The canvas will be set to 660×460 for restream purposes.";
-                    }
-                    p {
-                        strong : "At the ±0 minute mark:";
-                        : " The pilot is now allowed to look at the spoiler log and can start figuring out the route.";
-                    }
-                    p {
-                        strong : "At the +30 minute mark:";
-                        : " The pilot is allowed to start drawing and the runner is allowed to start the file.";
-                    }
-                    h2 : "Rules";
-                    p {
-                        : "The race uses the ";
-                        a(href = "https://rsl-leaderboard.web.app/rules") : "Random Settings League";
-                        : " ruleset.";
-                    }
-                    p : "The pilot is allowed to communicate to their partner only via drawing and may watch and hear the stream of the runner. Runners may talk to their pilot. We would prefer if the pilot did not directly respond to questions, as figuring things out is supposed to be part of the challenge, but in the end it's up to the individual teams.";
-                    p {
-                        strong : "Allowed:";
-                        : " Arrows, Question marks, ingame symbols, check marks, “X” for crossing out stuff.";
-                    }
-                    p {
-                        strong : "Not allowed:";
-                        : " Any kind of numbers or letters.";
-                    }
-                    h3 : "Examples";
-                    p : "For having a better idea what we mean in regards with the rules / communication, here are some examples:";
-                    ol {
-                        li {
-                            : "The pilot draws 3 spiders and a bow. The runner then asks if there is a bow on 30 skulls. The pilot then draws a smiley or a checkmark for confirmation or a sad face for “no” — that is ";
-                            strong : "allowed";
-                            : ".";
-                        }
-                        li {
-                            : "The runner just asks without a drawing if it's AD or if a specific check is required — that is ";
-                            strong : "not allowed";
-                            : ".";
-                        }
-                        li {
-                            : "The team has prepared a language for specific checks to avoid the requirement to draw the check (like morse code etc.) — that is ";
-                            strong : "not allowed";
-                            : ".";
-                        }
-                        li {
-                            : "The runner says “if I need to do the toilet check, draw a heart” — that is ";
-                            strong : "not allowed";
-                            : ".";
-                        }
-                        li {
-                            : "The runner says: “since you didn't draw anything in the Lost Woods, I'm gonna skip all the checks there and go immediately to the Sacred Forest Meadow” — that is ";
-                            strong : "allowed";
-                            : ".";
+    let content = match series {
+        "mw" => match event {
+            "3" => {
+                let organizers = stream::iter([
+                    11983715422555811980, // ACreativeUsername
+                    10663518306823692018, // Alaszun
+                    11587964556511372305, // Bliven
+                    6374388881117205057, // felixoide4
+                    14571800683221815449, // Fenhl
+                    12937129924130129092, // Hamsda
+                    2315005348393237449, // rockchalk
+                    5305697930717211129, // tenacious_toad
+                ])
+                    .map(Id)
+                    .then(|id| async move { User::from_id(pool, id).await?.ok_or(InfoError::OrganizerUserData) })
+                    .try_collect::<Vec<_>>().await?;
+                let organizers = natjoin(organizers.into_iter().map(|organizer| organizer.into_html()));
+                (box_html! {
+                    article {
+                        p {
+                            : "This is a placeholder page for the third Ocarina of Time randomizer multiworld tournament, organized by ";
+                            : organizers;
+                            : ". More infos coming soon.";
                         }
                     }
-                    h2 : "Settings";
+                }) as Box<dyn RenderBox + Send>
+            }
+            _ => unimplemented!(),
+        },
+        "pic" => {
+            let is_random_settings = event.starts_with("rs");
+            let settings = match event {
+                "rs1" => (box_html! {
                     p {
                         : "The seed will be rolled on ";
                         a(href = "https://github.com/fenhl/plando-random-settings/tree/a08223927138c6f039c1aa3603130d8bd900fb48") : "version 2.2.10 Fenhl-5";
@@ -556,9 +481,132 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
                         a(href = "https://rsl-leaderboard.web.app/weights") : "the usual RSL weights";
                         : ".";
                     }
-                    h2 : "Sample seeds";
-                    p : "Since the random settings script isn't available online, we've prepared some sample seeds:";
-                    : sample_seeds;
+                } as Box<dyn RenderBox + Send>),
+                "6" => box_html! {
+                    p : "The settings are mostly a repeat of the 3rd Pictionary spoiler log race (the first one we organized), with the difference that 40 and 50 skulls are turned off:";
+                    ul {
+                        li : "S5 base";
+                        li : "CSMC off";
+                        li : "no hints (including altar)";
+                        li : "2 medallion bridge";
+                        li : "Ganon boss key on 6 medallions";
+                        li : "all skulls shuffled";
+                        li : "40 and 50 skulls disabled";
+                        li : "shuffled ocarinas";
+                        li : "shuffled Gerudo card";
+                    }
+                },
+                _ => unimplemented!(),
+            };
+            let sample_seeds = match event {
+                "rs1" => Some(seed::table(stream::iter(vec![
+                    seed::Data { web: Some(seed::OotrWebData { id: 1079630, gen_time: Utc.ymd(2022, 4, 22).and_hms(15, 59, 36) }), file_stem: Cow::Borrowed("OoTR_1079630_V6516H22IW") },
+                    seed::Data { web: Some(seed::OotrWebData { id: 1079637, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 1, 5) }), file_stem: Cow::Borrowed("OoTR_1079637_HAH75EOAHQ") },
+                    seed::Data { web: Some(seed::OotrWebData { id: 1079645, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 3, 19) }), file_stem: Cow::Borrowed("OoTR_1079645_6XZJOSDCRW") },
+                    seed::Data { web: Some(seed::OotrWebData { id: 1079646, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 3, 53) }), file_stem: Cow::Borrowed("OoTR_1079646_AJZWAB1X3U") },
+                    seed::Data { web: Some(seed::OotrWebData { id: 1079648, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 4, 11) }), file_stem: Cow::Borrowed("OoTR_1079648_1DHCCQB5AC") },
+                ])).await.map_err(InfoError::Io)?),
+                _ => None,
+            };
+            let organizers = stream::iter([
+                5961629664912637980, // Tjongejonge_
+                2689982510832487907, // ksinjah
+                14571800683221815449, // Fenhl
+                3722744861553903438, // melqwii
+                14099802746436324950, // TeaGrenadier
+            ])
+                .map(Id)
+                .then(|id| async move { User::from_id(pool, id).await?.ok_or(InfoError::OrganizerUserData) })
+                .try_collect::<Vec<_>>().await?;
+            let organizers = natjoin(organizers.into_iter().map(|organizer| organizer.into_html()));
+            box_html! {
+                article {
+                    h2 : "What is a Pictionary Spoiler Log Race?";
+                    p : "Each team consists of one Runner and one Spoiler Log Pilot who is drawing. The pilot has to figure out a way through the seed and how to tell their runner in drawing what checks they need to do. Hints are obviously disabled.";
+                    @if is_random_settings {
+                        p : "This time, we are doing something slightly different: The settings will be random, with weights based on the Random Settings League but adjusted for Pictionary. To compensate for the additional complexity, the preparation time for the pilot will be 30 minutes instead of the usual 15.";
+                    }
+                    p {
+                        : "Before the race we will provide a room on ";
+                        a(href = "https://aggie.io/") : "aggie.io";
+                        : " to each team. The canvas will be set to 660×460 for restream purposes.";
+                    }
+                    p {
+                        strong : "At the ±0 minute mark:";
+                        : " The pilot is now allowed to look at the spoiler log and can start figuring out the route.";
+                    }
+                    p {
+                        strong : "At the ";
+                        @if is_random_settings {
+                            : "+30";
+                        } else {
+                            : "+15";
+                        }
+                        : " minute mark:";
+                        : " The pilot is allowed to start drawing and the runner is allowed to start the file.";
+                    }
+                    h2 : "Rules";
+                    p {
+                        : "The race uses the ";
+                        @if is_random_settings {
+                            a(href = "https://rsl-leaderboard.web.app/rules") : "Random Settings League";
+                        } else {
+                            a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "Standard";
+                        }
+                        : " ruleset.";
+                    }
+                    p : "The pilot is allowed to communicate to their partner only via drawing and may watch and hear the stream of the runner. Runners may talk to their pilot. We would prefer if the pilot did not directly respond to questions, as figuring things out is supposed to be part of the challenge, but in the end it's up to the individual teams.";
+                    p {
+                        strong : "Allowed:";
+                        : " Arrows, question marks, ingame symbols, check marks, “X” for crossing out stuff.";
+                    }
+                    p {
+                        strong : "Not allowed:";
+                        : " Any kind of numbers or letters.";
+                    }
+                    h3 : "Examples";
+                    p : "For having a better idea what we mean in regards with the rules / communication, here are some examples:";
+                    ol {
+                        li {
+                            : "The pilot draws 3 spiders and a bow. The runner then asks if there is a bow on 30 skulls. The pilot then draws a smiley or a checkmark for confirmation or a sad face for “no” — that is ";
+                            strong : "allowed";
+                            : ".";
+                        }
+                        li {
+                            : "The runner just asks without a drawing if it's AD or if a specific check is required — that is ";
+                            strong : "not allowed";
+                            : ".";
+                        }
+                        li {
+                            : "The team has prepared a language for specific checks to avoid the requirement to draw the check (like morse code etc.) — that is ";
+                            strong : "not allowed";
+                            : ".";
+                        }
+                        li {
+                            : "The runner says “if I need to do the toilet check, draw a heart” — that is ";
+                            strong : "not allowed";
+                            : ".";
+                        }
+                        li {
+                            : "The runner says: “since you didn't draw anything in the Lost Woods, I'm gonna skip all the checks there and go immediately to the Sacred Forest Meadow” — that is ";
+                            strong : "allowed";
+                            : ".";
+                        }
+                    }
+                    h2 : "Settings";
+                    : settings;
+                    @if let Some(sample_seeds) = sample_seeds {
+                        h2 : "Sample seeds";
+                        p {
+                            @if is_random_settings {
+                                : "Since the random settings script isn't available online";
+                            } else {
+                                : "Since the branch we're using isn't available on the website";
+                            }
+                            : ", we've prepared some sample seeds:";
+                        }
+                        : sample_seeds;
+                    }
                     h2 : "Further information";
                     p {
                         : "The race is organized by ";
@@ -573,7 +621,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
                 }
             }
         }
-        (_, _) => unimplemented!(),
+        _ => unimplemented!(),
     };
     let data = Data::new((**pool).clone(), series, event).await.map_err(InfoError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&me, Tab::Info).await.map_err(InfoError::Sql)?;
