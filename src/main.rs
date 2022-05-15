@@ -203,12 +203,24 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageR
         }
         h1 : "Upcoming events";
         ul {
+            i : "(none currently)";
+        }
+        p {
+            a(href = uri!(archive).to_string()) : "Past events";
+            : " • ";
+            a(href = uri!(new_event).to_string()) : "Planning an event?";
+        }
+    }).await
+}
+
+#[rocket::get("/archive")]
+async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
+    page(pool, &me, &uri, PageStyle::default(), "Event Archive — Mido's House", html! {
+        h1 : "Past events";
+        ul {
             li {
                 a(href = uri!(event::info("pic", "rs1")).to_string()) : "1st Random Settings Pictionary Spoiler Log Race";
             }
-        }
-        p {
-            a(href = uri!(new_event).to_string()) : "Planning an event?";
         }
     }).await
 }
@@ -310,6 +322,7 @@ async fn main(Args { is_dev }: Args) -> Result<(), Error> {
     })
     .mount("/", rocket::routes![
         index,
+        archive,
         new_event,
         auth::racetime_callback,
         auth::discord_callback,
