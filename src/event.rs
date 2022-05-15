@@ -536,13 +536,15 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
                         : " The pilot is now allowed to look at the spoiler log and can start figuring out the route.";
                     }
                     p {
-                        strong : "At the ";
-                        @if is_random_settings {
-                            : "+30";
-                        } else {
-                            : "+15";
+                        strong {
+                            : "At the ";
+                            @if is_random_settings {
+                                : "+30";
+                            } else {
+                                : "+15";
+                            }
+                            : " minute mark:";
                         }
-                        : " minute mark:";
                         : " The pilot is allowed to start drawing and the runner is allowed to start the file.";
                     }
                     h2 : "Rules";
