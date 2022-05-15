@@ -217,6 +217,7 @@ struct Data<'a> {
     event: &'a str,
     display_name: String,
     start: Option<DateTime<Utc>>,
+    end: Option<DateTime<Utc>>,
     url: Option<Url>,
     video_url: Option<Url>,
 }
@@ -230,10 +231,11 @@ pub(crate) enum DataError {
 impl<'a> Data<'a> {
     async fn new(pool: PgPool, series: &'a str, event: &'a str) -> Result<Option<Data<'a>>, DataError> {
         Ok(
-            sqlx::query!("SELECT display_name, start, url, video_url FROM events WHERE series = $1 AND event = $2", &series, &event).fetch_optional(&pool).await?
+            sqlx::query!(r#"SELECT display_name, start, end_time, url, video_url FROM events WHERE series = $1 AND event = $2"#, &series, &event).fetch_optional(&pool).await?
                 .map(|row| Ok::<_, DataError>(Self {
                     display_name: row.display_name,
                     start: row.start,
+                    end: row.end_time,
                     url: row.url.map(|url| url.parse()).transpose()?,
                     video_url: row.video_url.map(|url| url.parse()).transpose()?,
                     pool, series, event,
@@ -248,6 +250,14 @@ impl<'a> Data<'a> {
             "pic" => TeamConfig::Pictionary,
             _ => unimplemented!(),
         }
+    }
+
+    fn is_started(&self) -> bool {
+        self.start.map_or(false, |start| start <= Utc::now())
+    }
+
+    fn is_ended(&self) -> bool {
+        self.end.map_or(false, |end| end <= Utc::now())
     }
 
     async fn header(&self, me: &Option<User>, tab: Tab) -> sqlx::Result<Box<dyn RenderBox + Send + '_>> {
@@ -350,6 +360,12 @@ pub(crate) enum Error {
 impl From<DataError> for StatusOrError<Error> {
     fn from(e: DataError) -> Self {
         Self::Err(Error::Data(e))
+    }
+}
+
+impl From<horrorshow::Error> for StatusOrError<Error> {
+    fn from(e: horrorshow::Error) -> Self {
+        Self::Err(Error::Page(PageError::Horrorshow(e)))
     }
 }
 
@@ -642,7 +658,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 #[rocket::get("/event/<series>/<event>/status")]
 pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&me, Tab::MyStatus).await?;
+    let header = data.header(&me, Tab::MyStatus).await?.write_to_html()?;
     Ok(page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
         if let Some(ref me) = me {
             if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name FROM teams, team_members WHERE
@@ -665,8 +681,10 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
                         : ".";
                     }
                     p : "More options coming soon"; //TODO options to change team name, swap roles, or opt in/out for restreaming
-                    p {
-                        a(href = uri!(resign(series, event, row.id)).to_string()) : "Resign"; //TODO hide if the event is over
+                    @if !data.is_ended() {
+                        p {
+                            a(href = uri!(resign(series, event, row.id)).to_string()) : "Resign";
+                        }
                     }
                 }
             } else {
@@ -817,9 +835,11 @@ impl CsrfForm for PictionaryEnterForm { //TODO derive
 #[rocket::post("/event/<series>/<event>/enter", data = "<form>")]
 pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, form: Form<Contextual<'_, PictionaryEnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    //TODO deny action if the event has started
     let mut form = form.into_inner();
     form.verify(&csrf);
+    if data.is_started() {
+        form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
+    }
     Ok(if let Some(ref value) = form.value {
         let mut transaction = pool.begin().await?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
@@ -1026,9 +1046,11 @@ impl CsrfForm for FindTeamForm { //TODO derive
 #[rocket::post("/event/<series>/<event>/find-team", data = "<form>")]
 pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<PictionaryRandomSettingsFindTeamError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(PictionaryRandomSettingsFindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    //TODO deny action if the event has started
     let mut form = form.into_inner();
     form.verify(&csrf);
+    if data.is_started() {
+        form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
+    }
     Ok(if let Some(ref value) = form.value {
         let mut transaction = pool.begin().await.map_err(PictionaryRandomSettingsFindTeamError::Sql)?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM looking_for_team WHERE
@@ -1062,7 +1084,10 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum AcceptError {
     #[error(transparent)] Csrf(#[from] rocket_csrf::VerificationFailure),
+    #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("you can no longer enter this event since it has already started")]
+    EventStarted,
     #[error("you haven't been invited to this team")]
     NotInTeam,
     #[error("a racetime.gg account is required to enter as runner")]
@@ -1070,37 +1095,41 @@ pub(crate) enum AcceptError {
 }
 
 #[rocket::post("/event/<series>/<event>/confirm/<team>", data = "<form>")]
-pub(crate) async fn confirm_signup(pool: &State<PgPool>, me: User, team: Id, csrf: Option<CsrfToken>, series: &str, event: &str, form: Form<EmptyForm>) -> Result<Redirect, AcceptError> {
-    form.verify(&csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
-    //TODO deny action if the event has started
-    let mut transaction = pool.begin().await?;
-    if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, i64::from(team), i64::from(me.id)).fetch_optional(&mut transaction).await? {
+pub(crate) async fn confirm_signup(pool: &State<PgPool>, me: User, team: Id, csrf: Option<CsrfToken>, series: &str, event: &str, form: Form<EmptyForm>) -> Result<Redirect, StatusOrError<AcceptError>> {
+    let data = Data::new((**pool).clone(), series, event).await.map_err(AcceptError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    form.verify(&csrf).map_err(AcceptError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
+    if data.is_started() { return Err(AcceptError::EventStarted.into()) }
+    let mut transaction = pool.begin().await.map_err(AcceptError::Sql)?;
+    if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, i64::from(team), i64::from(me.id)).fetch_optional(&mut transaction).await.map_err(AcceptError::Sql)? {
         if role == Role::Sheikah && me.racetime_id.is_none() {
-            return Err(AcceptError::RaceTimeAccountRequired)
+            return Err(AcceptError::RaceTimeAccountRequired.into())
         }
-        for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, i64::from(team)).fetch_all(&mut transaction).await? {
-            let id = Id::new(&mut transaction, IdTable::Notifications).await?;
-            sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', $3, $4, $5)", i64::from(id), i64::from(member), series, event, i64::from(me.id)).execute(&mut transaction).await?;
+        for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, i64::from(team)).fetch_all(&mut transaction).await.map_err(AcceptError::Sql)? {
+            let id = Id::new(&mut transaction, IdTable::Notifications).await.map_err(AcceptError::Sql)?;
+            sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', $3, $4, $5)", i64::from(id), i64::from(member), series, event, i64::from(me.id)).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
         }
-        sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", i64::from(team), i64::from(me.id)).execute(&mut transaction).await?;
+        sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", i64::from(team), i64::from(me.id)).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
         // if this confirms the team, remove all members from looking_for_team
         sqlx::query!("DELETE FROM looking_for_team WHERE
             EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND member = user_id)
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND status = 'unconfirmed')
-        ", i64::from(team)).execute(&mut transaction).await?;
+        ", i64::from(team)).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
         //TODO also remove all other teams with member overlap, and notify
-        transaction.commit().await?;
+        transaction.commit().await.map_err(AcceptError::Sql)?;
         Ok(Redirect::to(uri!(teams(series, event))))
     } else {
-        transaction.rollback().await?;
-        Err(AcceptError::NotInTeam)
+        transaction.rollback().await.map_err(AcceptError::Sql)?;
+        Err(AcceptError::NotInTeam.into())
     }
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum ResignError {
     #[error(transparent)] Csrf(#[from] rocket_csrf::VerificationFailure),
+    #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("you can no longer resign from this event since it has already ended")]
+    EventEnded,
     #[error("can't delete teams you're not part of")]
     NotInTeam,
 }
@@ -1108,7 +1137,9 @@ pub(crate) enum ResignError {
 #[rocket::get("/event/<series>/<event>/resign/<team>")]
 pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, team: Id) -> Result<Html<String>, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    //TODO display error message if the event is over
+    if data.is_ended() {
+        return Err(StatusOrError::Status(Status::Forbidden))
+    }
     Ok(page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
         //TODO different wording if the event has started
         p {
@@ -1126,12 +1157,13 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
 }
 
 #[rocket::post("/event/<series>/<event>/resign/<team>", data = "<form>")]
-pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, series: &str, event: &str, team: Id, form: Form<EmptyForm>) -> Result<Redirect, ResignError> {
-    form.verify(&csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
-    //TODO deny action if the event is over
+pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, series: &str, event: &str, team: Id, form: Form<EmptyForm>) -> Result<Redirect, StatusOrError<ResignError>> {
+    let data = Data::new((**pool).clone(), series, event).await.map_err(ResignError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    form.verify(&csrf).map_err(ResignError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
+    if data.is_ended() { return Err(ResignError::EventEnded.into()) }
     //TODO if the event has started, only mark the team as resigned, don't delete data
-    let mut transaction = pool.begin().await?;
-    let delete = sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id", status AS "status: SignupStatus""#, i64::from(team)).fetch_all(&mut transaction).await?;
+    let mut transaction = pool.begin().await.map_err(ResignError::Sql)?;
+    let delete = sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id", status AS "status: SignupStatus""#, i64::from(team)).fetch_all(&mut transaction).await.map_err(ResignError::Sql)?;
     let mut me_in_team = false;
     let mut notification_kind = SimpleNotificationKind::Resign;
     for member in &delete {
@@ -1144,15 +1176,15 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<Csr
     if me_in_team {
         for member in delete {
             if member.id != me.id && member.status.is_confirmed() {
-                let id = Id::new(&mut transaction, IdTable::Notifications).await?;
-                sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", i64::from(id), i64::from(member.id), notification_kind as _, series, event, i64::from(me.id)).execute(&mut transaction).await?;
+                let id = Id::new(&mut transaction, IdTable::Notifications).await.map_err(ResignError::Sql)?;
+                sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", i64::from(id), i64::from(member.id), notification_kind as _, series, event, i64::from(me.id)).execute(&mut transaction).await.map_err(ResignError::Sql)?;
             }
         }
-        sqlx::query!("DELETE FROM teams WHERE id = $1", i64::from(team)).execute(&mut transaction).await?;
-        transaction.commit().await?;
+        sqlx::query!("DELETE FROM teams WHERE id = $1", i64::from(team)).execute(&mut transaction).await.map_err(ResignError::Sql)?;
+        transaction.commit().await.map_err(ResignError::Sql)?;
         Ok(Redirect::to(uri!(teams(series, event))))
     } else {
-        transaction.rollback().await?;
-        Err(ResignError::NotInTeam)
+        transaction.rollback().await.map_err(ResignError::Sql)?;
+        Err(ResignError::NotInTeam.into())
     }
 }
