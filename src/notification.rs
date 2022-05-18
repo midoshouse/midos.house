@@ -14,7 +14,10 @@ use {
         uri,
     },
     rocket_csrf::CsrfToken,
-    rocket_util::html,
+    rocket_util::{
+        Origin,
+        html,
+    },
     sqlx::PgPool,
     crate::{
         PageError,
@@ -23,15 +26,14 @@ use {
         User,
         auth,
         event::{
-            PictionaryRole,
             Role,
             SignupStatus,
+            pic,
         },
         page,
         util::{
             EmptyForm,
             Id,
-            Origin,
             natjoin,
         },
     },
@@ -139,7 +141,7 @@ impl Notification {
                         teammates.push(html! {
                             : user;
                             : " (";
-                            @if let Ok(role) = PictionaryRole::try_from(member.role) {
+                            @if let Ok(role) = pic::Role::try_from(member.role) {
                                 : role;
                                 : ", ";
                             }
@@ -155,7 +157,7 @@ impl Notification {
                 let my_role = my_role.ok_or(Error::UnknownUser)?;
                 html! {
                     : creator;
-                    @if let Ok(role) = PictionaryRole::try_from(creator_role) {
+                    @if let Ok(role) = pic::Role::try_from(creator_role) {
                         : " (";
                         : role;
                         : ")";
@@ -168,7 +170,7 @@ impl Notification {
                     }
                     : " for ";
                     a(href = uri!(crate::event::info(&team_row.series, &team_row.event)).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event
-                    @if let Ok(role) = PictionaryRole::try_from(my_role) {
+                    @if let Ok(role) = pic::Role::try_from(my_role) {
                         : " as ";
                         : role;
                     }

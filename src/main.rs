@@ -33,6 +33,7 @@ use {
     },
     rocket_util::{
         Doctype,
+        Origin,
         Suffix,
         ToHtml,
         html,
@@ -50,10 +51,7 @@ use {
         notification::Notification,
         seed::SpoilerLog,
         user::User,
-        util::{
-            Id,
-            Origin,
-        },
+        util::Id,
     },
 };
 
@@ -119,8 +117,8 @@ async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageSty
         html {
             head {
                 meta(charset = "utf-8");
-                meta(name = "viewport", content = "width=device-width, initial-scale=1, shrink-to-fit=no");
                 title : title;
+                meta(name = "viewport", content = "width=device-width, initial-scale=1, shrink-to-fit=no");
                 link(rel = "icon", sizes = "512x512", type = "image/png", href = uri!(favicon::favicon_png(style.chests.textures(), Suffix(512, "png"))).to_string());
                 link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(style.chests.textures(), Suffix(1024, "png"))).to_string());
                 link(rel = "stylesheet", href = "/static/common.css");
@@ -334,12 +332,12 @@ async fn main(Args { is_dev }: Args) -> Result<(), Error> {
         event::teams,
         event::status,
         event::enter,
-        event::enter_post,
         event::find_team,
-        event::find_team_post,
         event::confirm_signup,
         event::resign,
         event::resign_post,
+        event::pic::enter_post,
+        event::pic::find_team_post,
         favicon::favicon_ico,
         favicon::favicon_png,
         notification::notifications,

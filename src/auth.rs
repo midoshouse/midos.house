@@ -30,7 +30,10 @@ use {
         OAuth2,
         TokenResponse,
     },
-    rocket_util::html,
+    rocket_util::{
+        Origin,
+        html,
+    },
     serde::Deserialize,
     sqlx::PgPool,
     crate::{
@@ -43,7 +46,6 @@ use {
         util::{
             Id,
             IdTable,
-            Origin,
             RedirectOrContent,
         },
     },

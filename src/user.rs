@@ -6,6 +6,7 @@ use {
         uri,
     },
     rocket_util::{
+        Origin,
         ToHtml,
         html,
     },
@@ -17,7 +18,6 @@ use {
         page,
         util::{
             Id,
-            Origin,
             StatusOrError,
         },
     },
