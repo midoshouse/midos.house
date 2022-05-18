@@ -6,12 +6,6 @@ use {
         io,
         time::Duration,
     },
-    horrorshow::{
-        RenderOnce,
-        helper::doctype,
-        html,
-        rocket::TemplateExt as _, //TODO use a rocket_util wrapper instead?
-    },
     rocket::{
         Request,
         State,
@@ -29,7 +23,7 @@ use {
         },
         response::{
             Response,
-            content::Html,
+            content::RawHtml,
         },
         uri,
     },
@@ -37,7 +31,12 @@ use {
         OAuth2,
         OAuthConfig,
     },
-    rocket_util::Suffix,
+    rocket_util::{
+        Doctype,
+        Suffix,
+        ToHtml,
+        html,
+    },
     sqlx::{
         PgPool,
         postgres::PgConnectOptions,
@@ -92,15 +91,14 @@ impl Default for PageStyle {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 enum PageError {
-    #[error(transparent)] Horrorshow(#[from] horrorshow::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("missing user data for Fenhl")]
     FenhlUserData,
 }
 
-type PageResult = Result<Html<String>, PageError>;
+type PageResult = Result<RawHtml<String>, PageError>;
 
-async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageStyle, title: &str, content: impl RenderOnce) -> PageResult {
+async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageStyle, title: &str, content: impl ToHtml) -> PageResult {
     let notifications = if let Some(me) = me {
         if let PageKind::Notifications = style.kind {
             Vec::default()
@@ -117,7 +115,7 @@ async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageSty
     };
     let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
     Ok(html! {
-        : doctype::HTML;
+        : Doctype;
         html {
             head {
                 meta(charset = "utf-8");
@@ -146,7 +144,7 @@ async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageSty
                                     @if let PageKind::MyProfile = style.kind {
                                         : me.display_name();
                                     } else {
-                                        : me.to_html();
+                                        : me;
                                     }
                                     br;
                                     //TODO link to preferences
@@ -180,7 +178,7 @@ async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageSty
                 footer {
                     p {
                         : "hosted by ";
-                        : fenhl.to_html();
+                        : fenhl;
                         : " • ";
                         a(href = "https://fenhl.net/disc") : "disclaimer";
                         : " • ";
@@ -190,7 +188,7 @@ async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageSty
                 }
             }
         }
-    }.write_to_html()?)
+    })
 }
 
 #[rocket::get("/")]
@@ -231,7 +229,7 @@ async fn new_event(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> P
     page(pool, &me, &uri, PageStyle::default(), "New Event — Mido's House", html! {
         p {
             : "If you are planning a tournament, community race, or other event for the Ocarina of Time randomizer community, or if you would like Mido's House to archive data about a past event you organized, please contact ";
-            : fenhl.into_html();
+            : fenhl;
             : " to determine the specific needs of the event.";
         }
     }).await
@@ -315,7 +313,7 @@ enum Error {
 #[wheel::main(rocket, debug)]
 async fn main(Args { is_dev }: Args) -> Result<(), Error> {
     let config = Config::load().await?;
-    rocket::custom(rocket::Config {
+    let _ = rocket::custom(rocket::Config {
         port: if is_dev { 24814 } else { 24812 },
         secret_key: SecretKey::from(&base64::decode(config.secret_key)?),
         ..rocket::Config::default()

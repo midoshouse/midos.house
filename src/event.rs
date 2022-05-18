@@ -14,12 +14,6 @@ use {
         StreamExt as _,
         TryStreamExt as _,
     },
-    horrorshow::{
-        RenderBox,
-        box_html,
-        html,
-        rocket::TemplateExt as _,
-    },
     itertools::Itertools as _,
     rocket::{
         FromForm,
@@ -35,11 +29,15 @@ use {
         http::Status,
         response::{
             Redirect,
-            content::Html,
+            content::RawHtml,
         },
         uri,
     },
     rocket_csrf::CsrfToken,
+    rocket_util::{
+        ToHtml,
+        html,
+    },
     sqlx::PgPool,
     url::Url,
     crate::{
@@ -55,7 +53,6 @@ use {
         util::{
             ContextualExt as _,
             CsrfForm,
-            CsrfTokenExt as _,
             EmptyForm,
             Id,
             IdTable,
@@ -128,13 +125,13 @@ pub(crate) enum PictionaryRole {
     Gerudo,
 }
 
-impl PictionaryRole {
-    pub(crate) fn to_html(&self) -> Box<dyn RenderBox> {
+impl ToHtml for PictionaryRole {
+    fn to_html(&self) -> RawHtml<String> {
         match self {
-            Self::Sheikah => box_html! {
+            Self::Sheikah => html! {
                 span(class = "sheikah") : "runner";
             },
-            Self::Gerudo => box_html! {
+            Self::Gerudo => html! {
                 span(class = "gerudo") : "pilot";
             },
         }
@@ -168,22 +165,22 @@ pub(crate) enum RolePreference {
     GerudoOnly,
 }
 
-impl RolePreference {
-    pub(crate) fn to_html(&self) -> Box<dyn RenderBox> {
+impl ToHtml for RolePreference {
+    fn to_html(&self) -> RawHtml<String> {
         match self {
-            Self::SheikahOnly => box_html! {
+            Self::SheikahOnly => html! {
                 span(class = "sheikah") : "runner only";
             },
-            Self::SheikahPreferred => box_html! {
+            Self::SheikahPreferred => html! {
                 span(class = "sheikah") : "runner preferred";
             },
-            Self::NoPreference => box_html! {
+            Self::NoPreference => html! {
                 : "no preference";
             },
-            Self::GerudoPreferred => box_html! {
+            Self::GerudoPreferred => html! {
                 span(class = "gerudo") : "pilot preferred";
             },
-            Self::GerudoOnly => box_html! {
+            Self::GerudoOnly => html! {
                 span(class = "gerudo") : "pilot only";
             },
         }
@@ -260,7 +257,7 @@ impl<'a> Data<'a> {
         self.end.map_or(false, |end| end <= Utc::now())
     }
 
-    async fn header(&self, me: &Option<User>, tab: Tab) -> sqlx::Result<Box<dyn RenderBox + Send + '_>> {
+    async fn header(&self, me: &Option<User>, tab: Tab) -> sqlx::Result<RawHtml<String>> {
         let signed_up = if let Some(me) = me {
             sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
                 id = team
@@ -277,7 +274,7 @@ impl<'a> Data<'a> {
             start.with_timezone(&Europe::Berlin),
             start.with_timezone(&America::New_York),
         ));
-        Ok(box_html! {
+        Ok(html! {
             h1 {
                 a(class = "nav", href? = (!matches!(tab, Tab::Info)).then(|| uri!(info(self.series, self.event)).to_string())) : &self.display_name;
             }
@@ -363,12 +360,6 @@ impl From<DataError> for StatusOrError<Error> {
     }
 }
 
-impl From<horrorshow::Error> for StatusOrError<Error> {
-    fn from(e: horrorshow::Error) -> Self {
-        Self::Err(Error::Page(PageError::Horrorshow(e)))
-    }
-}
-
 impl From<PageError> for StatusOrError<Error> {
     fn from(e: PageError) -> Self {
         Self::Err(Error::Page(e))
@@ -392,7 +383,7 @@ pub(crate) enum InfoError {
 }
 
 #[rocket::get("/event/<series>/<event>")]
-pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<InfoError>> {
+pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
     let content = match series {
         "mw" => match event {
             "3" => {
@@ -409,23 +400,22 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
                     .map(Id)
                     .then(|id| async move { User::from_id(pool, id).await?.ok_or(InfoError::OrganizerUserData) })
                     .try_collect::<Vec<_>>().await?;
-                let organizers = natjoin(organizers.into_iter().map(|organizer| organizer.into_html()));
-                (box_html! {
+                html! {
                     article {
                         p {
                             : "This is a placeholder page for the third Ocarina of Time randomizer multiworld tournament, organized by ";
-                            : organizers;
+                            : natjoin(organizers);
                             : ". More infos coming soon.";
                         }
                     }
-                }) as Box<dyn RenderBox + Send>
+                }
             }
             _ => unimplemented!(),
         },
         "pic" => {
             let is_random_settings = event.starts_with("rs");
             let settings = match event {
-                "rs1" => (box_html! {
+                "rs1" => html! {
                     p {
                         : "The seed will be rolled on ";
                         a(href = "https://github.com/fenhl/plando-random-settings/tree/a08223927138c6f039c1aa3603130d8bd900fb48") : "version 2.2.10 Fenhl-5";
@@ -481,8 +471,8 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
                         a(href = "https://rsl-leaderboard.web.app/weights") : "the usual RSL weights";
                         : ".";
                     }
-                } as Box<dyn RenderBox + Send>),
-                "6" => box_html! {
+                },
+                "6" => html! {
                     p : "The settings are mostly a repeat of the 3rd Pictionary spoiler log race (the first one we organized), with the difference that 40 and 50 skulls are turned off:";
                     ul {
                         li : "S5 base";
@@ -522,8 +512,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
                 .map(Id)
                 .then(|id| async move { User::from_id(pool, id).await?.ok_or(InfoError::OrganizerUserData) })
                 .try_collect::<Vec<_>>().await?;
-            let organizers = natjoin(organizers.into_iter().map(|organizer| organizer.into_html()));
-            box_html! {
+            html! {
                 article {
                     h2 : "What is a Pictionary Spoiler Log Race?";
                     p : "Each team consists of one Runner and one Spoiler Log Pilot who is drawing. The pilot has to figure out a way through the seed and how to tell their runner in drawing what checks they need to do. Hints are obviously disabled.";
@@ -616,7 +605,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
                     h2 : "Further information";
                     p {
                         : "The race is organized by ";
-                        : organizers;
+                        : natjoin(organizers);
                         : ". We will answer questions and inform about recent events on The Silver Gauntlets Discord in the #pictionary-spoiler-log channel (";
                         a(href = "https://discord.gg/m8z8ZqtN8H") : "invite link";
                         : " • ";
@@ -647,7 +636,7 @@ pub(crate) enum TeamsError {
 }
 
 #[rocket::get("/event/<series>/<event>/teams")]
-pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<TeamsError>> {
+pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<RawHtml<String>, StatusOrError<TeamsError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(TeamsError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&me, Tab::Teams).await.map_err(TeamsError::Sql)?;
     let mut signups = Vec::default();
@@ -695,7 +684,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                             td : team_name.unwrap_or_default();
                             @for (role, user, is_confirmed) in members {
                                 td(class = role.css_class()) {
-                                    : user.to_html();
+                                    : user;
                                     @if !is_confirmed {
                                         : " (unconfirmed)";
                                     }
@@ -710,9 +699,9 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
-pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<Html<String>, StatusOrError<Error>> {
+pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&me, Tab::MyStatus).await?.write_to_html()?;
+    let header = data.header(&me, Tab::MyStatus).await?;
     Ok(page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
         if let Some(ref me) = me {
             if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name FROM teams, team_members WHERE
@@ -722,7 +711,7 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
                 AND member = $3
                 AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
             "#, series, event, i64::from(me.id)).fetch_optional(&**pool).await? {
-                box_html! {
+                html! {
                     : header;
                     p {
                         : "You are signed up as part of ";
@@ -742,16 +731,16 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
                     }
                 }
             } else {
-                (box_html! {
+                html! {
                     : header;
                     article {
                         p : "You are not signed up for this race.";
                         //p : "You can accept, decline, or retract unconfirmed team invitations on the teams page."; //TODO
                     }
-                } as Box<dyn RenderBox + Send>)
+                }
             }
         } else {
-            box_html! {
+            html! {
                 : header;
                 article {
                     p {
@@ -815,20 +804,20 @@ async fn pictionary_random_settings_enter_form(me: Option<User>, uri: Origin<'_>
     page(&data.pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
         let mut errors = defaults.errors();
         let form_content = html! {
-            : csrf.to_html();
+            : csrf;
             legend {
                 : "Fill out this form to enter the race as a team. Your teammate will receive an invitation they have to accept to confirm the signup. If you don't have a team yet, you can ";
                 a(href = uri!(find_team(data.series, data.event)).to_string()) : "look for a teammate";
                 : " instead.";
             }
             fieldset {
-                |tmpl| field_errors(tmpl, &mut errors, "team_name");
+                : field_errors(&mut errors, "team_name");
                 label(for = "team_name") : "Team Name:";
                 input(type = "text", name = "team_name", value? = defaults.team_name());
                 label(class = "help") : "(Optional unless you want to be on restream. Can be changed later. Organizers may remove inappropriate team names.)";
             }
             fieldset {
-                |tmpl| field_errors(tmpl, &mut errors, "my_role");
+                : field_errors(&mut errors, "my_role");
                 label(for = "my_role") : "My Role:";
                 input(id = "my_role-sheikah", class = "sheikah", type = "radio", name = "my_role", value = "sheikah", checked? = defaults.my_role() == Some(PictionaryRole::Sheikah));
                 label(class = "sheikah", for = "my_role-sheikah") : "Runner";
@@ -836,7 +825,7 @@ async fn pictionary_random_settings_enter_form(me: Option<User>, uri: Origin<'_>
                 label(class = "gerudo", for = "my_role-gerudo") : "Pilot";
             }
             fieldset {
-                |tmpl| field_errors(tmpl, &mut errors, "teammate");
+                : field_errors(&mut errors, "teammate");
                 label(for = "teammate") : "Teammate:";
                 input(type = "text", name = "teammate", value? = defaults.teammate_text().as_deref());
                 label(class = "help") : "(Enter your teammate's Mido's House user ID. It can be found on their profile page.)"; //TODO add JS-based user search?
@@ -844,16 +833,16 @@ async fn pictionary_random_settings_enter_form(me: Option<User>, uri: Origin<'_>
             fieldset {
                 input(type = "submit", value = "Submit");
             }
-        }.write_to_html()?;
+        };
         html! {
             : header;
             form(action = uri!(enter_post(data.series, data.event)).to_string(), method = "post") {
                 @for error in errors {
-                    |tmpl| render_form_error(tmpl, error);
+                    : render_form_error(error);
                 }
                 : form_content;
             }
-        }.write_to_html()?
+        }
     } else {
         html! {
             : header;
@@ -863,7 +852,7 @@ async fn pictionary_random_settings_enter_form(me: Option<User>, uri: Origin<'_>
                     : " to enter this race.";
                 }
             }
-        }.write_to_html()?
+        }
     }).await
 }
 
@@ -960,14 +949,13 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum PictionaryRandomSettingsFindTeamError {
     #[error(transparent)] Data(#[from] DataError),
-    #[error(transparent)] Horrorshow(#[from] horrorshow::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("unknown user")]
     UnknownUser,
 }
 
-async fn pictionary_random_settings_find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<Html<String>, PictionaryRandomSettingsFindTeamError> {
+async fn pictionary_random_settings_find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, PictionaryRandomSettingsFindTeamError> {
     let header = data.header(&me, Tab::FindTeam).await?;
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
@@ -982,12 +970,12 @@ async fn pictionary_random_settings_find_team_form(me: Option<User>, uri: Origin
         let mut errors = context.errors().collect_vec();
         if my_role.is_none() {
             let form_content = html! {
-                : csrf.to_html();
+                : csrf;
                 legend {
                     : "Fill out this form to add yourself to the list below.";
                 }
                 fieldset {
-                    |tmpl| field_errors(tmpl, &mut errors, "role");
+                    : field_errors(&mut errors, "role");
                     label(for = "role") : "Role:";
                     input(id = "role-sheikah_only", class = "sheikah", type = "radio", name = "role", value = "sheikah_only", checked? = context.field_value("role") == Some("sheikah_only"));
                     label(class = "sheikah", for = "role-sheikah_only") : "Runner only";
@@ -1003,15 +991,15 @@ async fn pictionary_random_settings_find_team_form(me: Option<User>, uri: Origin
                 fieldset {
                     input(type = "submit", value = "Submit");
                 }
-            }.write_to_html()?;
+            };
             Some(html! {
                 form(action = uri!(find_team_post(data.series, data.event)).to_string(), method = "post") {
                     @for error in errors {
-                        |tmpl| render_form_error(tmpl, error);
+                        : render_form_error(error);
                     }
                     : form_content;
                 }
-            }.write_to_html()?)
+            })
         } else {
             None
         }
@@ -1023,7 +1011,7 @@ async fn pictionary_random_settings_find_team_form(me: Option<User>, uri: Origin
                     : " to add yourself to this list.";
                 }
             }
-        }.write_to_html()?)
+        })
     };
     let can_invite_any = looking_for_team.iter().any(|&(_, _, can_invite)| can_invite);
     let looking_for_team = looking_for_team.into_iter()
@@ -1063,8 +1051,8 @@ async fn pictionary_random_settings_find_team_form(me: Option<User>, uri: Origin
                 } else {
                     @for (user, role, invite) in looking_for_team {
                         tr {
-                            td : user.to_html();
-                            td : role.to_html();
+                            td : user;
+                            td : role;
                             @if can_invite_any {
                                 td {
                                     @if let Some(my_role) = invite {
@@ -1189,7 +1177,7 @@ pub(crate) enum ResignError {
 }
 
 #[rocket::get("/event/<series>/<event>/resign/<team>")]
-pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, team: Id) -> Result<Html<String>, StatusOrError<Error>> {
+pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, team: Id) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() {
         return Err(StatusOrError::Status(Status::Forbidden))
@@ -1203,7 +1191,7 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
         }
         div(class = "button-row") {
             form(action = uri!(crate::event::resign_post(series, event, team)).to_string(), method = "post") {
-                : csrf.to_html();
+                : csrf;
                 input(type = "submit", value = "Yes, resign");
             }
         }

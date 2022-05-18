@@ -4,23 +4,17 @@ use {
         StreamExt as _,
         TryStreamExt as _,
     },
-    horrorshow::{
-        RenderBox,
-        box_html,
-        html,
-        owned_html,
-        rocket::TemplateExt as _,
-    },
     rocket::{
         State,
         form::Form,
         response::{
             Redirect,
-            content::Html,
+            content::RawHtml,
         },
         uri,
     },
     rocket_csrf::CsrfToken,
+    rocket_util::html,
     sqlx::PgPool,
     crate::{
         PageError,
@@ -35,7 +29,6 @@ use {
         },
         page,
         util::{
-            CsrfTokenExt as _,
             EmptyForm,
             Id,
             Origin,
@@ -46,7 +39,6 @@ use {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum Error {
-    #[error(transparent)] Horrorshow(#[from] horrorshow::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("unknown user")]
@@ -80,25 +72,25 @@ impl Notification {
         Ok(notifications)
     }
 
-    async fn into_html(self, pool: &PgPool, me: &User, csrf: &Option<CsrfToken>) -> Result<Html<String>, Error> {
+    async fn into_html(self, pool: &PgPool, me: &User, csrf: &Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
         Ok(match self {
             Self::Simple(id) => {
                 let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await? {
                     SimpleNotificationKind::Accept => {
                         let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
                         let sender = User::from_id(pool, row.sender).await?.ok_or(Error::UnknownUser)?;
-                        (box_html! {
-                            : sender.into_html();
+                        html! {
+                            : sender;
                             : " accepted your invitation to join a team for ";
                             a(href = uri!(crate::event::info(row.series, row.event)).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event
                             : ".";
-                        }) as Box<dyn RenderBox>
+                        }
                     }
                     SimpleNotificationKind::Decline => {
                         let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
                         let sender = User::from_id(pool, row.sender).await?.ok_or(Error::UnknownUser)?;
-                        box_html! {
-                            : sender.into_html();
+                        html! {
+                            : sender;
                             : " declined your invitation to form a team for ";
                             a(href = uri!(crate::event::info(row.series, row.event)).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event
                             : ".";
@@ -107,8 +99,8 @@ impl Notification {
                     SimpleNotificationKind::Resign => {
                         let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
                         let sender = User::from_id(pool, row.sender).await?.ok_or(Error::UnknownUser)?;
-                        box_html! {
-                            : sender.into_html();
+                        html! {
+                            : sender;
                             : " resigned your team from ";
                             a(href = uri!(crate::event::info(row.series, row.event)).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event
                             : ".";
@@ -119,11 +111,11 @@ impl Notification {
                     : text;
                     div(class = "button-row") {
                         form(action = uri!(dismiss(id)).to_string(), method = "post") {
-                            : csrf.to_html();
+                            : csrf;
                             input(type = "submit", value = "Dismiss");
                         }
                     }
-                }.write_to_html()?
+                }
             }
             Self::TeamInvite(team_id) => {
                 let team_row = sqlx::query!("SELECT series, event, name FROM teams WHERE id = $1", i64::from(team_id)).fetch_one(pool).await?;
@@ -144,11 +136,11 @@ impl Notification {
                             SignupStatus::Unconfirmed => false,
                         };
                         let user = User::from_id(pool, member.id).await?.ok_or(Error::UnknownUser)?;
-                        teammates.push(owned_html! {
-                            : user.into_html();
+                        teammates.push(html! {
+                            : user;
                             : " (";
                             @if let Ok(role) = PictionaryRole::try_from(member.role) {
-                                : role.to_html();
+                                : role;
                                 : ", ";
                             }
                             @if is_confirmed {
@@ -162,10 +154,10 @@ impl Notification {
                 let (creator, creator_role) = creator.ok_or(Error::UnknownUser)?;
                 let my_role = my_role.ok_or(Error::UnknownUser)?;
                 html! {
-                    : creator.into_html();
+                    : creator;
                     @if let Ok(role) = PictionaryRole::try_from(creator_role) {
                         : " (";
-                        : role.to_html();
+                        : role;
                         : ")";
                     }
                     : " invited you to join their team"; //TODO adjust pronouns based on racetime.gg user data?
@@ -178,7 +170,7 @@ impl Notification {
                     a(href = uri!(crate::event::info(&team_row.series, &team_row.event)).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event
                     @if let Ok(role) = PictionaryRole::try_from(my_role) {
                         : " as ";
-                        : role.to_html();
+                        : role;
                     }
                     @if let Some(teammates) = natjoin(teammates) {
                         : " together with ";
@@ -190,24 +182,24 @@ impl Notification {
                             a(class = "button", href = uri!(crate::auth::racetime_login(Some(uri!(notifications)))).to_string()) : "Connect racetime.gg Account to Accept";
                         } else {
                             form(action = uri!(crate::event::confirm_signup(&team_row.series, &team_row.event, team_id)).to_string(), method = "post") {
-                                : csrf.to_html();
+                                : csrf;
                                 input(type = "submit", value = "Accept");
                             }
                         }
                         form(action = uri!(crate::event::resign_post(team_row.series, team_row.event, team_id)).to_string(), method = "post") {
-                            : csrf.to_html();
+                            : csrf;
                             input(type = "submit", value = "Decline");
                         }
                         //TODO options to block sender or event
                     }
-                }.write_to_html()?
+                }
             }
         })
     }
 }
 
 #[rocket::get("/notifications")]
-pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>) -> Result<Html<String>, Error> {
+pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
     Ok(if let Some(me) = me {
         let notifications = stream::iter(Notification::get(pool, &me).await?)
             .then(|notification| notification.into_html(pool, &me, &csrf))

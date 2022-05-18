@@ -5,11 +5,6 @@ use {
         Result,
         anyhow,
     },
-    horrorshow::{
-        RenderBox,
-        box_html,
-        html,
-    },
     rocket::{
         State,
         http::{
@@ -35,6 +30,7 @@ use {
         OAuth2,
         TokenResponse,
     },
+    rocket_util::html,
     serde::Deserialize,
     sqlx::PgPool,
     crate::{
@@ -141,10 +137,10 @@ pub(crate) struct DiscordUser {
 #[rocket::get("/login?<redirect_to>")]
 pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, redirect_to: Option<Origin<'_>>) -> PageResult {
     page(pool, &me, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Login — Mido's House", if let Some(ref me) = me {
-        (box_html! {
+        html! {
             p {
                 : "You are already signed in as ";
-                : me.to_html();
+                : me;
                 : ".";
             }
             ul {
@@ -162,9 +158,9 @@ pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                     a(href = uri!(logout(redirect_to)).to_string()) : "Sign out";
                 }
             }
-        }) as Box<dyn RenderBox + Send>
+        }
     } else {
-        box_html! {
+        html! {
             p : "To sign in or create a new account, please sign in via one of the following services:";
             ul {
                 li {
@@ -199,7 +195,7 @@ pub(crate) enum RaceTimeCallbackError {
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
-    #[error(transparent)] Time(#[from] time::error::ConversionRange),
+    #[error(transparent)] Time(#[from] rocket::time::error::ConversionRange),
     #[error(transparent)] TryFromInt(#[from] std::num::TryFromIntError),
 }
 
@@ -223,7 +219,7 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, ur
         RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
             p {
                 : "This racetime.gg account is not associated with a Mido's House account, but you are signed in as ";
-                : me.to_html();
+                : me;
                 : ".";
             }
             ul {
@@ -260,7 +256,7 @@ pub(crate) enum DiscordCallbackError {
     #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
-    #[error(transparent)] Time(#[from] time::error::ConversionRange),
+    #[error(transparent)] Time(#[from] rocket::time::error::ConversionRange),
     #[error(transparent)] TryFromInt(#[from] std::num::TryFromIntError),
 }
 
@@ -284,7 +280,7 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, uri
         RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
             p {
                 : "This Discord account is not associated with a Mido's House account, but you are signed in as ";
-                : me.to_html();
+                : me;
                 : ".";
             }
             ul {

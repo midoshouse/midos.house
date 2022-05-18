@@ -8,13 +8,6 @@ use {
         str::FromStr,
     },
     derive_more::From,
-    horrorshow::{
-        RenderBox,
-        RenderOnce,
-        TemplateBuffer,
-        box_html,
-        html,
-    },
     itertools::Itertools as _,
     rand::prelude::*,
     rocket::{
@@ -44,10 +37,14 @@ use {
         },
         response::{
             Redirect,
-            content::Html,
+            content::RawHtml,
         },
     },
     rocket_csrf::CsrfToken,
+    rocket_util::{
+        ToHtml,
+        html,
+    },
     sqlx::{
         Database,
         Decode,
@@ -73,28 +70,6 @@ impl<F: CsrfForm> ContextualExt for Contextual<'_, F> {
             match token.as_ref().map(|token| token.verify(value.csrf())) {
                 Some(Ok(())) => {}
                 Some(Err(rocket_csrf::VerificationFailure)) | None => self.context.push_error(form::Error::validation("Please submit the form again to confirm your identity.").with_name("csrf")),
-            }
-        }
-    }
-}
-
-pub(crate) trait CsrfTokenExt {
-    fn to_html(&self) -> Box<dyn RenderBox + '_>;
-}
-
-impl CsrfTokenExt for CsrfToken {
-    fn to_html(&self) -> Box<dyn RenderBox + '_> {
-        box_html! {
-            input(type = "hidden", name = "csrf", value = self.authenticity_token());
-        }
-    }
-}
-
-impl CsrfTokenExt for Option<CsrfToken> {
-    fn to_html(&self) -> Box<dyn RenderBox + '_> {
-        box_html! {
-            @if let Some(csrf) = self {
-                : csrf.to_html();
             }
         }
     }
@@ -268,14 +243,14 @@ impl From<Origin<'_>> for Cow<'_, str> {
     }
 }
 
-pub(crate) fn natjoin<'a, T: RenderOnce + Send + 'a>(elts: impl IntoIterator<Item = T>) -> Option<Box<dyn RenderBox + Send + 'a>> {
+pub(crate) fn natjoin<T: ToHtml>(elts: impl IntoIterator<Item = T>) -> Option<RawHtml<String>> {
     let mut elts = elts.into_iter().fuse();
     match (elts.next(), elts.next(), elts.next()) {
         (None, _, _) => None,
-        (Some(elt), None, _) => Some(box_html! {
+        (Some(elt), None, _) => Some(html! {
             : elt;
         }),
-        (Some(elt1), Some(elt2), None) => Some(box_html! {
+        (Some(elt1), Some(elt2), None) => Some(html! {
             : elt1;
             : " and ";
             : elt2;
@@ -283,7 +258,7 @@ pub(crate) fn natjoin<'a, T: RenderOnce + Send + 'a>(elts: impl IntoIterator<Ite
         (Some(elt1), Some(elt2), Some(elt3)) => {
             let mut rest = iter::once(elt3).chain(elts).collect_vec();
             let last = rest.pop().expect("rest contains at least elt3");
-            Some(box_html! {
+            Some(html! {
                 : elt1;
                 : ", ";
                 : elt2;
@@ -301,23 +276,23 @@ pub(crate) fn natjoin<'a, T: RenderOnce + Send + 'a>(elts: impl IntoIterator<Ite
 #[derive(Responder)]
 pub(crate) enum RedirectOrContent {
     Redirect(Redirect),
-    Content(Html<String>),
+    Content(RawHtml<String>),
 }
 
-pub(crate) fn render_form_error(tmpl: &mut TemplateBuffer<'_>, error: &form::Error<'_>) {
-    tmpl << html! {
+pub(crate) fn render_form_error(error: &form::Error<'_>) -> RawHtml<String> {
+    html! {
         p(class = "error") : error.to_string();
-    };
+    }
 }
 
-pub(crate) fn field_errors(tmpl: &mut TemplateBuffer<'_>, errors: &mut Vec<&form::Error<'_>>, name: &str) {
+pub(crate) fn field_errors(errors: &mut Vec<&form::Error<'_>>, name: &str) -> RawHtml<String> {
     let field_errors;
     (field_errors, *errors) = mem::take(errors).into_iter().partition(|error| error.is_for(name));
-    tmpl << html! {
+    html! {
         @for error in field_errors {
-            |tmpl| render_form_error(tmpl, error);
+            : render_form_error(error);
         }
-    };
+    }
 }
 
 #[derive(Responder, From)]
@@ -333,14 +308,14 @@ impl From<sqlx::Error> for StatusOrError<PageError> {
     }
 }
 
-pub(crate) fn favicon(url: &Url) -> Box<dyn RenderBox> {
+pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
     match url.host_str() {
-        Some("racetime.gg") => box_html! {
+        Some("racetime.gg") => html! {
             img(class = "favicon", alt = "external link (racetime.gg)", src = "https://racetime.gg/favicon.ico", width = "16", height = "16");
         },
-        Some("twitch.tv") | Some("www.twitch.tv") => box_html! {
+        Some("twitch.tv") | Some("www.twitch.tv") => html! {
             img(class = "favicon", alt = "external link (twitch.tv)", src = "https://static.twitchcdn.net/assets/favicon-16-52e571ffea063af7a7f4.png", width = "16", height = "16", srcset = "https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png 2x");
         },
-        _ => box_html! {}, //TODO generic “external link” image?
+        _ => html! {}, //TODO generic “external link” image?
     }
 }

@@ -1,14 +1,13 @@
 use {
-    horrorshow::{
-        RenderBox,
-        box_html,
-        html,
-    },
     rocket::{
         State,
         http::Status,
-        response::content::Html,
+        response::content::RawHtml,
         uri,
+    },
+    rocket_util::{
+        ToHtml,
+        html,
     },
     sqlx::PgPool,
     crate::{
@@ -81,16 +80,12 @@ impl User {
             DisplaySource::Discord => self.discord_display_name.as_ref().expect("user with Discord display preference but no Discord display name"),
         }
     }
+}
 
-    pub(crate) fn to_html<'a>(&'a self) -> Box<dyn RenderBox + 'a> {
-        box_html! {
+impl ToHtml for User {
+    fn to_html(&self) -> RawHtml<String> {
+        html! {
             a(href = uri!(profile(self.id)).to_string()) : self.display_name();
-        }
-    }
-
-    pub(crate) fn into_html(self) -> Box<dyn RenderBox + Send> {
-        box_html! {
-            a(href = uri!(profile(self.id)).to_string()) : self.display_name().to_owned();
         }
     }
 }
@@ -104,7 +99,7 @@ impl PartialEq for User {
 impl Eq for User {}
 
 #[rocket::get("/user/<id>")]
-pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, id: Id) -> Result<Html<String>, StatusOrError<PageError>> {
+pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, id: Id) -> Result<RawHtml<String>, StatusOrError<PageError>> {
     let user = if let Some(user) = User::from_id(pool, id).await? {
         user
     } else {

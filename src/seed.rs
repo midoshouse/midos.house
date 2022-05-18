@@ -11,9 +11,10 @@ use {
         StreamExt as _,
         TryStreamExt as _,
     },
-    horrorshow::{
-        RenderBox,
-        box_html,
+    rocket::response::content::RawHtml,
+    rocket_util::{
+        ToHtml,
+        html,
     },
     serde::{
         Deserialize,
@@ -90,8 +91,8 @@ enum HashIcon {
 
 derive_display_from_serialize!(HashIcon);
 
-impl HashIcon {
-    fn to_html(&self) -> Box<dyn RenderBox + '_> {
+impl ToHtml for HashIcon {
+    fn to_html(&self) -> RawHtml<String> {
         let url_part = self.to_string().to_ascii_lowercase().replace(' ', "-");
         match self {
             Self::Bombchu |
@@ -103,10 +104,10 @@ impl HashIcon {
             Self::Map |
             Self::MasterSword |
             Self::SoldOut |
-            Self::StoneOfAgony => box_html! {
+            Self::StoneOfAgony => html! {
                 img(class = "hash-icon", alt = self.to_string(), src = format!("/static/hash-icon/{url_part}.png"), srcset = format!("/static/hash-icon-500/{url_part}.png 10x"));
             },
-            _ => box_html! {
+            _ => html! {
                 img(class = "hash-icon", alt = self.to_string(), src = format!("/static/hash-icon/{url_part}.png"));
             },
         }
@@ -146,7 +147,7 @@ pub(crate) struct SpoilerLogSettings {
     pub(crate) correct_chest_appearances: Option<CorrectChestAppearances>,
 }
 
-pub(crate) async fn table(seeds: impl Stream<Item = Data>) -> io::Result<Box<dyn RenderBox + Send>> {
+pub(crate) async fn table(seeds: impl Stream<Item = Data>) -> io::Result<RawHtml<String>> {
     let now = Utc::now();
     let seeds = seeds.then(|seed| async move {
         // ootrandomizer.com seeds are deleted after 90 days
@@ -156,7 +157,7 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>) -> io::Result<Box<dyn
         let spoiler_contents = serde_json::from_str(&fs::read_to_string(&spoiler_path).await?)?;
         io::Result::Ok((seed, web_id, spoiler_file_name, spoiler_contents))
     }).try_collect::<Vec<(_, _, _, SpoilerLog)>>().await?;
-    Ok(box_html! {
+    Ok(html! {
         table {
             thead {
                 tr {
@@ -170,7 +171,7 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>) -> io::Result<Box<dyn
                     tr {
                         td {
                             @for hash_icon in spoiler_contents.file_hash {
-                                : hash_icon.to_html();
+                                : hash_icon;
                             }
                         }
                         @if let Some(web_id) = web_id {
