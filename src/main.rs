@@ -6,6 +6,8 @@ use {
         io,
         time::Duration,
     },
+    futures::stream::TryStreamExt as _,
+    rand::prelude::*,
     rocket::{
         Request,
         State,
@@ -127,10 +129,10 @@ async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageSty
                 div {
                     nav(class? = matches!(style.kind, PageKind::Index).then(|| "index")) {
                         a(class = "nav", href? = (!matches!(style.kind, PageKind::Index)).then(|| uri!(index).to_string())) {
-                            //TODO get 128px images, use those (with 256 as a 2x srcset)
+                            //TODO get smaller versions of the images, then use those with width-based srcsets
                             div(class = "logo") {
                                 @for chest in style.chests.0 {
-                                    img(class = "chest", src = format!("/static/chest/{}256.png", char::from(chest.texture)));
+                                    img(class = "chest", src = format!("/static/chest/{}512.png", char::from(chest.texture)));
                                 }
                             }
                             h1 : "Mido's House";
@@ -190,8 +192,14 @@ async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageSty
 }
 
 #[rocket::get("/")]
-async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
-    page(pool, &me, &uri, PageStyle { kind: PageKind::Index, ..PageStyle::default() }, "Mido's House", html! {
+async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
+    //TODO list ongoing events separately
+    let upcoming_events = sqlx::query!("SELECT series, event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW())")
+        .fetch(&**pool).map_err(event::DataError::from)
+        .and_then(|row| async move { Ok(event::Data::new((**pool).clone(), row.series, row.event).await?.expect("event deleted during page load")) }) //TODO use a transaction to enforce consistency?
+        .try_collect::<Vec<_>>().await?;
+    let chests = upcoming_events.choose(&mut thread_rng()).map_or_else(|| ChestAppearances::random(), |event| event.chests());
+    Ok(page(pool, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", html! {
         p {
             : "Mido's House is a platform where ";
             a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
@@ -199,26 +207,45 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageR
         }
         h1 : "Upcoming events";
         ul {
-            i : "(none currently)";
+            @if upcoming_events.is_empty() {
+                i : "(none currently)";
+            } else {
+                @for event in upcoming_events {
+                    li {
+                        a(href = uri!(event::info(&*event.series, &*event.event)).to_string()) : event.display_name;
+                    }
+                }
+            }
         }
         p {
             a(href = uri!(archive).to_string()) : "Past events";
             : " • ";
             a(href = uri!(new_event).to_string()) : "Planning an event?";
         }
-    }).await
+    }).await?)
 }
 
 #[rocket::get("/archive")]
-async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
-    page(pool, &me, &uri, PageStyle::default(), "Event Archive — Mido's House", html! {
+async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
+    let past_events = sqlx::query!("SELECT series, event FROM events WHERE listed AND end_time IS NOT NULL AND end_time <= NOW()")
+        .fetch(&**pool).map_err(event::DataError::from)
+        .and_then(|row| async move { Ok(event::Data::new((**pool).clone(), row.series, row.event).await?.expect("event deleted during page load")) }) //TODO use a transaction to enforce consistency?
+        .try_collect::<Vec<_>>().await?;
+    let chests = past_events.choose(&mut thread_rng()).map_or_else(|| ChestAppearances::random(), |event| event.chests());
+    Ok(page(pool, &me, &uri, PageStyle { chests, ..PageStyle::default() }, "Event Archive — Mido's House", html! {
         h1 : "Past events";
         ul {
-            li {
-                a(href = uri!(event::info("pic", "rs1")).to_string()) : "1st Random Settings Pictionary Spoiler Log Race";
+            @if past_events.is_empty() {
+                i : "(none currently)";
+            } else {
+                @for event in past_events {
+                    li {
+                        a(href = uri!(event::info(&*event.series, &*event.event)).to_string()) : event.display_name;
+                    }
+                }
             }
         }
-    }).await
+    }).await?)
 }
 
 #[rocket::get("/new")]
@@ -238,7 +265,7 @@ async fn not_found(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool, &me, &uri, PageStyle { kind: PageKind::Banner, ..PageStyle::default() }, "Not Found — Mido's House", html! {
+    page(pool, &me, &uri, PageStyle { kind: PageKind::Banner, ..PageStyle::default() /*TODO dashed outlines indicating invisible chests? */ }, "Not Found — Mido's House", html! {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }

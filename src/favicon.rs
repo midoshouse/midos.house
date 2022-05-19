@@ -141,9 +141,11 @@ pub(crate) struct SpoilerLogLocations {
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum ChestTexture { //TODO new variants for PR #1500
+pub(crate) enum ChestTexture {
     Normal,
+    OldMajor,
     Major,
+    OldSmallKey,
     SmallKey,
     BossKey,
     Token,
@@ -155,8 +157,10 @@ impl TryFrom<char> for ChestTexture {
     fn try_from(c: char) -> Result<Self, char> {
         match c {
             'n' => Ok(Self::Normal),
-            'm' => Ok(Self::Major),
-            'k' => Ok(Self::SmallKey),
+            'm' => Ok(Self::OldMajor),
+            'i' => Ok(Self::Major),
+            'k' => Ok(Self::OldSmallKey),
+            'y' => Ok(Self::SmallKey),
             'b' => Ok(Self::BossKey),
             's' => Ok(Self::Token),
             _ => Err(c),
@@ -168,8 +172,10 @@ impl From<ChestTexture> for char {
     fn from(texture: ChestTexture) -> Self {
         match texture {
             ChestTexture::Normal => 'n',
-            ChestTexture::Major => 'm',
-            ChestTexture::SmallKey => 'k',
+            ChestTexture::OldMajor => 'm',
+            ChestTexture::Major => 'i',
+            ChestTexture::OldSmallKey => 'k',
+            ChestTexture::SmallKey => 'y',
             ChestTexture::BossKey => 'b',
             ChestTexture::Token => 's',
         }
@@ -311,7 +317,51 @@ impl ChestAppearance {
             "Small Key Ring (Bottom of the Well)" |
             "Small Key Ring (Gerudo Training Ground)" |
             "Small Key Ring (Thieves Hideout)" |
-            "Small Key Ring (Ganons Castle)" => match camc_kind {
+            "Small Key Ring (Ganons Castle)" |
+            "Silver Rupee (Dodongos Cavern Staircase)" |
+            "Silver Rupee (Ice Cavern Spinning Scythe)" |
+            "Silver Rupee (Ice Cavern Push Block)" |
+            "Silver Rupee (Bottom of the Well Basement)" |
+            "Silver Rupee (Shadow Temple Scythe Shortcut)" |
+            "Silver Rupee (Shadow Temple Invisible Blades)" |
+            "Silver Rupee (Shadow Temple Huge Pit)" |
+            "Silver Rupee (Shadow Temple Invisible Spikes)" |
+            "Silver Rupee (Gerudo Training Ground Slopes)" |
+            "Silver Rupee (Gerudo Training Ground Lava)" |
+            "Silver Rupee (Gerudo Training Ground Water)" |
+            "Silver Rupee (Spirit Temple Child Early Torches)" |
+            "Silver Rupee (Spirit Temple Adult Boulders)" |
+            "Silver Rupee (Spirit Temple Lobby and Lower Adult)" |
+            "Silver Rupee (Spirit Temple Sun Block)" |
+            "Silver Rupee (Spirit Temple Adult Climb)" |
+            "Silver Rupee (Ganons Castle Spirit Trial)" |
+            "Silver Rupee (Ganons Castle Light Trial)" |
+            "Silver Rupee (Ganons Castle Fire Trial)" |
+            "Silver Rupee (Ganons Castle Shadow Trial)" |
+            "Silver Rupee (Ganons Castle Water Trial)" |
+            "Silver Rupee (Ganons Castle Forest Trial)" |
+            "Silver Rupee Pouch (Dodongos Cavern Staircase)" |
+            "Silver Rupee Pouch (Ice Cavern Spinning Scythe)" |
+            "Silver Rupee Pouch (Ice Cavern Push Block)" |
+            "Silver Rupee Pouch (Bottom of the Well Basement)" |
+            "Silver Rupee Pouch (Shadow Temple Scythe Shortcut)" |
+            "Silver Rupee Pouch (Shadow Temple Invisible Blades)" |
+            "Silver Rupee Pouch (Shadow Temple Huge Pit)" |
+            "Silver Rupee Pouch (Shadow Temple Invisible Spikes)" |
+            "Silver Rupee Pouch (Gerudo Training Ground Slopes)" |
+            "Silver Rupee Pouch (Gerudo Training Ground Lava)" |
+            "Silver Rupee Pouch (Gerudo Training Ground Water)" |
+            "Silver Rupee Pouch (Spirit Temple Child Early Torches)" |
+            "Silver Rupee Pouch (Spirit Temple Adult Boulders)" |
+            "Silver Rupee Pouch (Spirit Temple Lobby and Lower Adult)" |
+            "Silver Rupee Pouch (Spirit Temple Sun Block)" |
+            "Silver Rupee Pouch (Spirit Temple Adult Climb)" |
+            "Silver Rupee Pouch (Ganons Castle Spirit Trial)" |
+            "Silver Rupee Pouch (Ganons Castle Light Trial)" |
+            "Silver Rupee Pouch (Ganons Castle Fire Trial)" |
+            "Silver Rupee Pouch (Ganons Castle Shadow Trial)" |
+            "Silver Rupee Pouch (Ganons Castle Water Trial)" |
+            "Silver Rupee Pouch (Ganons Castle Forest Trial)" => match camc_kind {
                 CorrectChestAppearances::Off => unreachable!(),
                 CorrectChestAppearances::Classic => ChestAppearance { texture: ChestTexture::BossKey, big: false },
                 CorrectChestAppearances::Textures => ChestAppearance { texture: ChestTexture::SmallKey, big: false },
@@ -399,7 +449,8 @@ impl ChestAppearances {
     pub(crate) const VANILLA: Self = Self([ChestAppearance::VANILLA; 4]);
 
     pub(crate) fn random() -> Self {
-        static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../assets/chests-rsl-da4dae5.json")).expect("failed to parse chest weights"));
+        //TODO automatically keep up to date with the dev-fenhl branch of the RSL script
+        static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../assets/chests-rsl-d177a92.json")).expect("failed to parse chest weights"));
 
         WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
     }

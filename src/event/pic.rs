@@ -46,7 +46,6 @@ use {
             InfoError,
             Tab,
         },
-        favicon::ChestAppearances,
         page,
         seed,
         user::User,
@@ -397,13 +396,13 @@ impl<'v> EnterFormDefaults<'v> {
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
 pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, defaults: EnterFormDefaults<'_>) -> PageResult {
     let header = data.header(&me, Tab::Enter).await?;
-    page(&data.pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
+    page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
         let mut errors = defaults.errors();
         let form_content = html! {
             : csrf;
             legend {
                 : "Fill out this form to enter the race as a team. Your teammate will receive an invitation they have to accept to confirm the signup. If you don't have a team yet, you can ";
-                a(href = uri!(super::find_team(data.series, data.event)).to_string()) : "look for a teammate";
+                a(href = uri!(super::find_team(&*data.series, &*data.event)).to_string()) : "look for a teammate";
                 : " instead.";
             }
             fieldset {
@@ -432,7 +431,7 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
         };
         html! {
             : header;
-            form(action = uri!(enter_post(data.event)).to_string(), method = "post") {
+            form(action = uri!(enter_post(&*data.event)).to_string(), method = "post") {
                 @for error in errors {
                     : render_form_error(error);
                 }
@@ -444,7 +443,7 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
             : header;
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(super::enter(data.series, data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(super::enter(&*data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to enter this race.";
                 }
             }
@@ -541,7 +540,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
     let header = data.header(&me, Tab::FindTeam).await?;
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
-    let mut looking_for_team_query = sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series, data.event).fetch(&data.pool);
+    let mut looking_for_team_query = sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, &data.series, &data.event).fetch(&data.pool);
     while let Some(row) = looking_for_team_query.try_next().await? {
         let user = User::from_id(&data.pool, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
         if me.as_ref().map_or(false, |me| user.id == me.id) { my_role = Some(row.role) }
@@ -575,7 +574,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
                 }
             };
             Some(html! {
-                form(action = uri!(find_team_post(data.event)).to_string(), method = "post") {
+                form(action = uri!(find_team_post(&*data.event)).to_string(), method = "post") {
                     @for error in errors {
                         : render_form_error(error);
                     }
@@ -589,7 +588,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
         Some(html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(super::find_team(data.series, data.event))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(super::find_team(&*data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to add yourself to this list.";
                 }
             }
@@ -610,7 +609,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
             },
         })))
         .collect_vec();
-    Ok(page(&data.pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, "Find Teammates — 1st Random Settings Pictionary Spoiler Log Race", html! { //TODO don't hardcode event name
+    Ok(page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, "Find Teammates — 1st Random Settings Pictionary Spoiler Log Race", html! { //TODO don't hardcode event name
         : header;
         : form;
         table {
@@ -638,7 +637,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
                             @if can_invite_any {
                                 td {
                                     @if let Some(my_role) = invite {
-                                        a(class = "button", href = uri!(super::enter(data.series, data.event, my_role, Some(user.id))).to_string()) : "Invite";
+                                        a(class = "button", href = uri!(super::enter(&*data.series, &*data.event, my_role, Some(user.id))).to_string()) : "Invite";
                                     }
                                 }
                             }

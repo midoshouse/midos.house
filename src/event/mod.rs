@@ -1,5 +1,8 @@
 use {
-    std::io,
+    std::{
+        borrow::Cow,
+        io,
+    },
     chrono::prelude::*,
     chrono_tz::{
         America,
@@ -113,11 +116,11 @@ impl TeamConfig {
     }
 }
 
-struct Data<'a> {
+pub(crate) struct Data<'a> {
     pool: PgPool,
-    series: &'a str,
-    event: &'a str,
-    display_name: String,
+    pub(crate) series: Cow<'a, str>,
+    pub(crate) event: Cow<'a, str>,
+    pub(crate) display_name: String,
     start: Option<DateTime<Utc>>,
     end: Option<DateTime<Utc>>,
     url: Option<Url>,
@@ -131,7 +134,9 @@ pub(crate) enum DataError {
 }
 
 impl<'a> Data<'a> {
-    async fn new(pool: PgPool, series: &'a str, event: &'a str) -> Result<Option<Data<'a>>, DataError> {
+    pub(crate) async fn new(pool: PgPool, series: impl Into<Cow<'a, str>>, event: impl Into<Cow<'a, str>>) -> Result<Option<Data<'a>>, DataError> {
+        let series = series.into();
+        let event = event.into();
         Ok(
             sqlx::query!(r#"SELECT display_name, start, end_time, url, video_url FROM events WHERE series = $1 AND event = $2"#, &series, &event).fetch_optional(&pool).await?
                 .map(|row| Ok::<_, DataError>(Self {
@@ -147,7 +152,7 @@ impl<'a> Data<'a> {
     }
 
     fn team_config(&self) -> TeamConfig {
-        match self.series {
+        match &*self.series {
             "mw" => TeamConfig::Multiworld,
             "pic" => TeamConfig::Pictionary,
             _ => unimplemented!(),
@@ -162,6 +167,14 @@ impl<'a> Data<'a> {
         self.end.map_or(false, |end| end <= Utc::now())
     }
 
+    pub(crate) fn chests(&self) -> ChestAppearances {
+        match (&*self.series, &*self.event) {
+            ("mw", "3") => ChestAppearances::random(), //TODO update after preliminary base settings exist
+            ("pic", _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
+            (_, _) => unimplemented!(),
+        }
+    }
+
     async fn header(&self, me: &Option<User>, tab: Tab) -> sqlx::Result<RawHtml<String>> {
         let signed_up = if let Some(me) = me {
             sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
@@ -170,7 +183,7 @@ impl<'a> Data<'a> {
                 AND event = $2
                 AND member = $3
                 AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-            ) AS "exists!""#, self.series, self.event, i64::from(me.id)).fetch_one(&self.pool).await?
+            ) AS "exists!""#, &self.series, &self.event, i64::from(me.id)).fetch_one(&self.pool).await?
         } else {
             false
         };
@@ -181,7 +194,7 @@ impl<'a> Data<'a> {
         ));
         Ok(html! {
             h1 {
-                a(class = "nav", href? = (!matches!(tab, Tab::Info)).then(|| uri!(info(self.series, self.event)).to_string())) : &self.display_name;
+                a(class = "nav", href? = (!matches!(tab, Tab::Info)).then(|| uri!(info(&*self.series, &*self.event)).to_string())) : &self.display_name;
             }
             @if let Some((start_utc, start_berlin, start_new_york)) = start {
                 h2 {
@@ -197,29 +210,29 @@ impl<'a> Data<'a> {
                 @if let Tab::Info = tab {
                     span(class = "button selected") : "Info";
                 } else {
-                    a(class = "button", href = uri!(info(self.series, self.event)).to_string()) : "Info";
+                    a(class = "button", href = uri!(info(&*self.series, &*self.event)).to_string()) : "Info";
                 }
                 @if let Tab::Teams = tab {
                     span(class = "button selected") : "Teams";
                 } else {
-                    a(class = "button", href = uri!(teams(self.series, self.event)).to_string()) : "Teams";
+                    a(class = "button", href = uri!(teams(&*self.series, &*self.event)).to_string()) : "Teams";
                 }
                 @if signed_up {
                     @if let Tab::MyStatus = tab {
                         span(class = "button selected") : "My Status";
                     } else {
-                        a(class = "button", href = uri!(status(self.series, self.event)).to_string()) : "My Status";
+                        a(class = "button", href = uri!(status(&*self.series, &*self.event)).to_string()) : "My Status";
                     }
                 } else {
                     @if let Tab::Enter = tab {
                         span(class = "button selected") : "Enter";
                     } else {
-                        a(class = "button", href = uri!(enter(self.series, self.event, _, _)).to_string()) : "Enter";
+                        a(class = "button", href = uri!(enter(&*self.series, &*self.event, _, _)).to_string()) : "Enter";
                     }
                     @if let Tab::FindTeam = tab {
                         span(class = "button selected") : "Find Teammates";
                     } else {
-                        a(class = "button", href = uri!(find_team(self.series, self.event)).to_string()) : "Find Teammates";
+                        a(class = "button", href = uri!(find_team(&*self.series, &*self.event)).to_string()) : "Find Teammates";
                     }
                 }
                 //a(class = "button") : "Volunteer"; //TODO
@@ -296,7 +309,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
     };
     let data = Data::new((**pool).clone(), series, event).await.map_err(InfoError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&me, Tab::Info).await.map_err(InfoError::Sql)?;
-    page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &data.display_name, html! {
+    page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
         : header;
         : content;
     }).await.map_err(|e| StatusOrError::Err(InfoError::Page(e)))
@@ -336,7 +349,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             .try_collect::<Vec<_>>().await?;
         signups.push((team.name, members));
     }
-    page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
+    page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
         : header;
         table {
             thead {
@@ -378,7 +391,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&me, Tab::MyStatus).await?;
-    Ok(page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
+    Ok(page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
         if let Some(ref me) = me {
             if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name FROM teams, team_members WHERE
                 id = team
@@ -515,7 +528,7 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
     if data.is_ended() {
         return Err(StatusOrError::Status(Status::Forbidden))
     }
-    Ok(page(pool, &me, &uri, PageStyle { chests: ChestAppearances::VANILLA, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
+    Ok(page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
         //TODO different wording if the event has started
         p {
             : "Are you sure you want to retract your team's registration from ";
