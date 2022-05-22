@@ -135,10 +135,11 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                 li : "40 and 50 skulls disabled";
                 li : "shuffled ocarinas";
                 li : "shuffled Gerudo card";
+                li : "shuffled cows";
             }
             p {
                 : "Settings string for version 6.2: ";
-                code: "AJTWFCHYKAA8KLAH2CASAHCCYCHGLTDDAKJ8S8AAJAEAC2AJSDGBLADLED7JKQUXEANKCAJAAENAABFAB";
+                code: "AJTWFCHYKAA8KLAH2UASAHCCYCHGLTDDAKJ8S8AAJAEAC2AJSDGBLADLED7JKQUXEANKCAJAAENAABFAB";
             }
         },
         _ => unimplemented!(),
