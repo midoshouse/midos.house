@@ -29,6 +29,7 @@ use {
     rocket_csrf::CsrfToken,
     rocket_util::{
         Origin,
+        ToHtml,
         html,
     },
     sqlx::PgPool,
@@ -254,6 +255,14 @@ impl<'a> Data<'a> {
                 }
             }
         })
+    }
+}
+
+impl ToHtml for Data<'_> {
+    fn to_html(&self) -> RawHtml<String> {
+        html! {
+            a(href = uri!(info(&*self.series, &*self.event)).to_string()) : self.display_name;
+        }
     }
 }
 
@@ -532,7 +541,7 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
         //TODO different wording if the event has started
         p {
             : "Are you sure you want to retract your team's registration from ";
-            a(href = uri!(info(series, event)).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event name
+            : data;
             : "? If you change your mind later, you will need to invite your teammates again.";
         }
         div(class = "button-row") {

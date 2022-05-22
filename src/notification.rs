@@ -26,6 +26,7 @@ use {
         User,
         auth,
         event::{
+            self,
             Role,
             SignupStatus,
             pic,
@@ -41,8 +42,11 @@ use {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum Error {
+    #[error(transparent)] Event(#[from] event::DataError),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("unknown event")]
+    UnknownEvent,
     #[error("unknown user")]
     UnknownUser,
 }
@@ -81,30 +85,33 @@ impl Notification {
                     SimpleNotificationKind::Accept => {
                         let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
                         let sender = User::from_id(pool, row.sender).await?.ok_or(Error::UnknownUser)?;
+                        let event = event::Data::new(pool.clone(), row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
                             : sender;
                             : " accepted your invitation to join a team for ";
-                            a(href = uri!(crate::event::info(row.series, row.event)).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event
+                            : event;
                             : ".";
                         }
                     }
                     SimpleNotificationKind::Decline => {
                         let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
                         let sender = User::from_id(pool, row.sender).await?.ok_or(Error::UnknownUser)?;
+                        let event = event::Data::new(pool.clone(), row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
                             : sender;
                             : " declined your invitation to form a team for ";
-                            a(href = uri!(crate::event::info(row.series, row.event)).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event
+                            : event;
                             : ".";
                         }
                     }
                     SimpleNotificationKind::Resign => {
                         let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
                         let sender = User::from_id(pool, row.sender).await?.ok_or(Error::UnknownUser)?;
+                        let event = event::Data::new(pool.clone(), row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
                             : sender;
                             : " resigned your team from ";
-                            a(href = uri!(crate::event::info(row.series, row.event)).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event
+                            : event;
                             : ".";
                         }
                     }
@@ -121,6 +128,7 @@ impl Notification {
             }
             Self::TeamInvite(team_id) => {
                 let team_row = sqlx::query!("SELECT series, event, name FROM teams WHERE id = $1", i64::from(team_id)).fetch_one(pool).await?;
+                let event = event::Data::new(pool.clone(), team_row.series, team_row.event).await?.ok_or(Error::UnknownEvent)?;
                 let mut creator = None;
                 let mut my_role = None;
                 let mut teammates = Vec::default();
@@ -169,7 +177,7 @@ impl Notification {
                         : "”";
                     }
                     : " for ";
-                    a(href = uri!(crate::event::info(&team_row.series, &team_row.event)).to_string()) : "the 1st Random Settings Pictionary Spoiler Log Race"; //TODO don't hardcode event
+                    : event;
                     @if let Ok(role) = pic::Role::try_from(my_role) {
                         : " as ";
                         : role;
@@ -183,12 +191,12 @@ impl Notification {
                         @if my_role == Role::Sheikah && me.racetime_id.is_none() {
                             a(class = "button", href = uri!(crate::auth::racetime_login(Some(uri!(notifications)))).to_string()) : "Connect racetime.gg Account to Accept";
                         } else {
-                            form(action = uri!(crate::event::confirm_signup(&team_row.series, &team_row.event, team_id)).to_string(), method = "post") {
+                            form(action = uri!(crate::event::confirm_signup(&*event.series, &*event.event, team_id)).to_string(), method = "post") {
                                 : csrf;
                                 input(type = "submit", value = "Accept");
                             }
                         }
-                        form(action = uri!(crate::event::resign_post(team_row.series, team_row.event, team_id)).to_string(), method = "post") {
+                        form(action = uri!(crate::event::resign_post(&*event.series, &*event.event, team_id)).to_string(), method = "post") {
                             : csrf;
                             input(type = "submit", value = "Decline");
                         }

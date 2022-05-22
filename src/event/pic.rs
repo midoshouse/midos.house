@@ -610,7 +610,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
             },
         })))
         .collect_vec();
-    Ok(page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, "Find Teammates — 1st Random Settings Pictionary Spoiler Log Race", html! { //TODO don't hardcode event name
+    Ok(page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
         : header;
         : form;
         table {

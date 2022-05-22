@@ -211,9 +211,7 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
                 i : "(none currently)";
             } else {
                 @for event in upcoming_events {
-                    li {
-                        a(href = uri!(event::info(&*event.series, &*event.event)).to_string()) : event.display_name;
-                    }
+                    li : event;
                 }
             }
         }
@@ -239,9 +237,7 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Res
                 i : "(none currently)";
             } else {
                 @for event in past_events {
-                    li {
-                        a(href = uri!(event::info(&*event.series, &*event.event)).to_string()) : event.display_name;
-                    }
+                    li : event;
                 }
             }
         }
