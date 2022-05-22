@@ -65,6 +65,11 @@ body > div {
     padding: 0 16px;
 }
 
+.button-row form {
+    padding-left: 0;
+    padding-right: 0;
+}
+
 input[type="submit"],
 .button {
     background-color: white;
@@ -72,13 +77,13 @@ input[type="submit"],
     padding: 8px;
 }
 
-input[type="submit"]:nth-child(1),
+.button-row form:nth-child(1) input[type="submit"],
 .button:nth-child(1) {
     border-top-left-radius: 8px;
     border-bottom-left-radius: 8px;
 }
 
-input[type="submit"]:nth-last-child(1),
+.button-row form:nth-last-child(1) input[type="submit"],
 .button:nth-last-child(1) {
     border-top-right-radius: 8px;
     border-bottom-right-radius: 8px;
