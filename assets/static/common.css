@@ -77,12 +77,14 @@ input[type="submit"],
     padding: 8px;
 }
 
+fieldset input[type="submit"],
 .button-row form:nth-child(1) input[type="submit"],
 .button:nth-child(1) {
     border-top-left-radius: 8px;
     border-bottom-left-radius: 8px;
 }
 
+fieldset input[type="submit"],
 .button-row form:nth-last-child(1) input[type="submit"],
 .button:nth-last-child(1) {
     border-top-right-radius: 8px;
