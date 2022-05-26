@@ -179,33 +179,45 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
                 .error_for_status()?
                 .json::<RaceTimeUser>().await?;
             let mut errors = context.errors().collect_vec();
-            let form_content = html! {
-                : csrf;
-                fieldset {
-                    : field_errors(&mut errors, "racetime_team");
-                    label(for = "racetime_team") : "racetime.gg Team:";
-                    select(name = "racetime_team") {
-                        @for team in racetime_user.teams {
-                            option(value = team.slug) : team.name;
+            if racetime_user.teams.is_empty() {
+                html! {
+                    : header;
+                    article {
+                        p {
+                            a(href = "https://racetime.gg/account/teams/create") : "Create a racetime.gg team";
+                            : " to enter this tournament.";
                         }
                     }
-                    label(class = "help") {
-                        : "(Or ";
-                        a(href = "https://racetime.gg/account/teams/create") : "create a new team";
-                        : ", then come back here.)";
-                    }
                 }
-                fieldset {
-                    input(type = "submit", value = "Submit");
-                }
-            };
-            html! {
-                : header;
-                form(action = uri!(enter_post(&*data.event)).to_string(), method = "post") {
-                    @for error in errors {
-                        : render_form_error(error);
+            } else {
+                let form_content = html! {
+                    : csrf;
+                    fieldset {
+                        : field_errors(&mut errors, "racetime_team");
+                        label(for = "racetime_team") : "racetime.gg Team:";
+                        select(name = "racetime_team") {
+                            @for team in racetime_user.teams {
+                                option(value = team.slug) : team.name;
+                            }
+                        }
+                        label(class = "help") {
+                            : "(Or ";
+                            a(href = "https://racetime.gg/account/teams/create") : "create a new team";
+                            : ", then come back here.)";
+                        }
                     }
-                    : form_content;
+                    fieldset {
+                        input(type = "submit", value = "Submit");
+                    }
+                };
+                html! {
+                    : header;
+                    form(action = uri!(enter_post(&*data.event)).to_string(), method = "post") {
+                        @for error in errors {
+                            : render_form_error(error);
+                        }
+                        : form_content;
+                    }
                 }
             }
         } else {
