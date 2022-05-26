@@ -30,6 +30,7 @@ use {
     rocket_csrf::CsrfToken,
     rocket_util::{
         Origin,
+        ToHtml,
         html,
     },
     serde::Deserialize,
@@ -106,6 +107,35 @@ impl fmt::Display for Role {
             Self::Power => write!(f, "player 1"),
             Self::Wisdom => write!(f, "player 2"),
             Self::Courage => write!(f, "player 3"),
+        }
+    }
+}
+
+impl ToHtml for Role {
+    fn to_html(&self) -> RawHtml<String> {
+        match self {
+            Self::Power => html! {
+                span(class = "power") : "player 1";
+            },
+            Self::Wisdom => html! {
+                span(class = "wisdom") : "player 2";
+            },
+            Self::Courage => html! {
+                span(class = "courage") : "player 3";
+            },
+        }
+    }
+}
+
+impl TryFrom<super::Role> for Role {
+    type Error = ();
+
+    fn try_from(role: super::Role) -> Result<Self, ()> {
+        match role {
+            super::Role::Power => Ok(Self::Power),
+            super::Role::Wisdom => Ok(Self::Wisdom),
+            super::Role::Courage => Ok(Self::Courage),
+            _ => Err(()),
         }
     }
 }

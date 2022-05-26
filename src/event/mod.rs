@@ -96,7 +96,7 @@ impl Role {
     }
 }
 
-enum TeamConfig {
+pub(crate) enum TeamConfig {
     Pictionary,
     Multiworld,
 }
@@ -152,7 +152,7 @@ impl<'a> Data<'a> {
         )
     }
 
-    fn team_config(&self) -> TeamConfig {
+    pub(crate) fn team_config(&self) -> TeamConfig {
         match &*self.series {
             "mw" => TeamConfig::Multiworld,
             "pic" => TeamConfig::Pictionary,
@@ -345,7 +345,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     let data = Data::new((**pool).clone(), series, event).await.map_err(TeamsError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(me.as_ref(), Tab::Teams).await.map_err(TeamsError::Sql)?;
     let mut signups = Vec::default();
-    let mut teams_query = sqlx::query!(r#"SELECT id AS "id!: Id", name FROM teams WHERE
+    let mut teams_query = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug FROM teams WHERE
         series = $1
         AND event = $2
         AND (
@@ -363,7 +363,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                 Ok::<_, TeamsError>((role, user, is_confirmed))
             })
             .try_collect::<Vec<_>>().await?;
-        signups.push((team.name, members));
+        signups.push((team.name, team.racetime_slug, members));
     }
     page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
         : header;
@@ -384,9 +384,21 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                         }
                     }
                 } else {
-                    @for (team_name, members) in signups {
+                    @for (team_name, racetime_slug, members) in signups {
                         tr {
-                            td : team_name.unwrap_or_default();
+                            @if let Some(racetime_slug) = racetime_slug {
+                                td {
+                                    a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
+                                        @if let Some(team_name) = team_name {
+                                            : team_name;
+                                        } else {
+                                            i : "(unnamed)";
+                                        }
+                                    }
+                                }
+                            } else {
+                                td : team_name.unwrap_or_default();
+                            }
                             @for (role, user, is_confirmed) in members {
                                 td(class = role.css_class()) {
                                     : user;
@@ -409,7 +421,7 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
     let header = data.header(me.as_ref(), Tab::MyStatus).await?;
     Ok(page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
         if let Some(ref me) = me {
-            if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name FROM teams, team_members WHERE
+            if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name, racetime_slug FROM teams, team_members WHERE
                 id = team
                 AND series = $1
                 AND event = $2
@@ -420,10 +432,20 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
                     : header;
                     p {
                         : "You are signed up as part of ";
-                        @if let Some(name) = row.name {
-                            i : name;
+                        @if let Some(racetime_slug) = row.racetime_slug {
+                            a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
+                                @if let Some(name) = row.name {
+                                    i : name;
+                                } else {
+                                    : "an unnamed team";
+                                }
+                            }
                         } else {
-                            : "an unnamed team";
+                            @if let Some(name) = row.name {
+                                i : name;
+                            } else {
+                                : "an unnamed team";
+                            }
                         }
                         //TODO list teammates
                         : ".";

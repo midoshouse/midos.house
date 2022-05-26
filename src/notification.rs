@@ -29,6 +29,8 @@ use {
             self,
             Role,
             SignupStatus,
+            TeamConfig,
+            mw,
             pic,
         },
         page,
@@ -127,7 +129,7 @@ impl Notification {
                 }
             }
             Self::TeamInvite(team_id) => {
-                let team_row = sqlx::query!("SELECT series, event, name FROM teams WHERE id = $1", i64::from(team_id)).fetch_one(pool).await?;
+                let team_row = sqlx::query!("SELECT series, event, name, racetime_slug FROM teams WHERE id = $1", i64::from(team_id)).fetch_one(pool).await?;
                 let event = event::Data::new(pool.clone(), team_row.series, team_row.event).await?.ok_or(Error::UnknownEvent)?;
                 let mut creator = None;
                 let mut my_role = None;
@@ -149,9 +151,15 @@ impl Notification {
                         teammates.push(html! {
                             : user;
                             : " (";
-                            @if let Ok(role) = pic::Role::try_from(member.role) {
-                                : role;
-                                : ", ";
+                            @match event.team_config() {
+                                TeamConfig::Multiworld => {
+                                    : mw::Role::try_from(member.role).expect("non-multiworld role in multiworld team");
+                                    : ", ";
+                                }
+                                TeamConfig::Pictionary => {
+                                    : pic::Role::try_from(member.role).expect("non-Pictionary role in Pictionary team");
+                                    : ", ";
+                                }
                             }
                             @if is_confirmed {
                                 : "confirmed)";
@@ -164,29 +172,44 @@ impl Notification {
                 let (creator, creator_role) = creator.ok_or(Error::UnknownUser)?;
                 let my_role = my_role.ok_or(Error::UnknownUser)?;
                 html! {
-                    : creator;
-                    @if let Ok(role) = pic::Role::try_from(creator_role) {
-                        : " (";
-                        : role;
-                        : ")";
+                    @match event.team_config() {
+                        TeamConfig::Multiworld => {
+                            : creator;
+                            : " (";
+                            : mw::Role::try_from(creator_role).expect("non-multiworld role in multiworld team");
+                            : ") invited you to enter ";
+                            : event;
+                            : " as ";
+                            : mw::Role::try_from(my_role).expect("non-multiworld role in multiworld team");
+                            : " for team ";
+                            a(href = format!("https://racetime.gg/team/{}", team_row.racetime_slug.expect("multiworld team without racetime slug"))) : team_row.name;
+                            @if let Some(teammates) = natjoin(teammates) {
+                                : " together with ";
+                                : teammates;
+                            }
+                            : ".";
+                        }
+                        TeamConfig::Pictionary => {
+                            : creator;
+                            : " (";
+                            : pic::Role::try_from(creator_role).expect("non-Pictionary role in Pictionary team");
+                            : ") invited you to join their team"; //TODO adjust pronouns based on racetime.gg user data?
+                            @if let Some(team_name) = team_row.name {
+                                : " “";
+                                : team_name;
+                                : "”";
+                            }
+                            : " for ";
+                            : event;
+                            : " as ";
+                            : pic::Role::try_from(my_role).expect("non-Pictionary role in Pictionary team");
+                            @if let Some(teammates) = natjoin(teammates) {
+                                : " together with ";
+                                : teammates;
+                            }
+                            : ".";
+                        }
                     }
-                    : " invited you to join their team"; //TODO adjust pronouns based on racetime.gg user data?
-                    @if let Some(team_name) = team_row.name {
-                        : " “";
-                        : team_name;
-                        : "”";
-                    }
-                    : " for ";
-                    : event;
-                    @if let Ok(role) = pic::Role::try_from(my_role) {
-                        : " as ";
-                        : role;
-                    }
-                    @if let Some(teammates) = natjoin(teammates) {
-                        : " together with ";
-                        : teammates;
-                    }
-                    : ".";
                     div(class = "button-row") {
                         @if my_role == Role::Sheikah && me.racetime_id.is_none() {
                             a(class = "button", href = uri!(crate::auth::racetime_login(Some(uri!(notifications)))).to_string()) : "Connect racetime.gg Account to Accept";
