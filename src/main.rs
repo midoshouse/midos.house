@@ -246,7 +246,7 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Res
 
 #[rocket::get("/new")]
 async fn new_event(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
-    let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+    let fenhl = User::from_id(&**pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
     page(pool, &me, &uri, PageStyle::default(), "New Event — Mido's House", html! {
         p {
             : "If you are planning a tournament, community race, or other event for the Ocarina of Time randomizer community, or if you would like Mido's House to archive data about a past event you organized, please contact ";
@@ -359,6 +359,8 @@ async fn main(Args { is_dev }: Args) -> Result<(), Error> {
         event::confirm_signup,
         event::resign,
         event::resign_post,
+        event::mw::enter_post,
+        event::mw::enter_post_step2,
         event::pic::enter_post,
         event::pic::find_team_post,
         favicon::favicon_ico,

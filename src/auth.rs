@@ -76,7 +76,7 @@ impl<'r> FromRequest<'r> for User {
                         {
                             Ok(response) => {
                                 let user_data = guard_try!(response.json::<RaceTimeUser>().await);
-                                if let Some(user) = guard_try!(User::from_racetime(pool, &user_data.id).await) {
+                                if let Some(user) = guard_try!(User::from_racetime(&**pool, &user_data.id).await) {
                                     guard_try!(sqlx::query!("UPDATE users SET racetime_display_name = $1 WHERE id = $2", user_data.name, i64::from(user.id)).execute(&**pool).await);
                                     Outcome::Success(user)
                                 } else {
@@ -97,7 +97,7 @@ impl<'r> FromRequest<'r> for User {
                         {
                             Ok(response) => {
                                 let user_data = guard_try!(response.json::<DiscordUser>().await);
-                                if let Some(user) = guard_try!(User::from_discord(pool, guard_try!(user_data.id.parse())).await) {
+                                if let Some(user) = guard_try!(User::from_discord(&**pool, guard_try!(user_data.id.parse())).await) {
                                     guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1 WHERE id = $2", user_data.username, i64::from(user.id)).execute(&**pool).await);
                                     Outcome::Success(user)
                                 } else {
@@ -215,7 +215,7 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, ur
         .error_for_status()?
         .json::<RaceTimeUser>().await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::index), |uri| uri.into_owned());
-    Ok(if User::from_racetime(pool, &racetime_user.id).await?.is_some() {
+    Ok(if User::from_racetime(&**pool, &racetime_user.id).await?.is_some() {
         RedirectOrContent::Redirect(Redirect::to(redirect_uri))
     } else if let Some(me) = me {
         RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
@@ -276,7 +276,7 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, uri
         .error_for_status()?
         .json::<DiscordUser>().await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::index), |uri| uri.into_owned());
-    Ok(if User::from_discord(pool, discord_user.id.parse()?).await?.is_some() {
+    Ok(if User::from_discord(&**pool, discord_user.id.parse()?).await?.is_some() {
         RedirectOrContent::Redirect(Redirect::to(redirect_uri))
     } else if let Some(me) = me {
         RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {

@@ -36,7 +36,6 @@ use {
     },
     sqlx::PgPool,
     crate::{
-        PageResult,
         PageStyle,
         auth,
         event::{
@@ -395,9 +394,9 @@ impl<'v> EnterFormDefaults<'v> {
 }
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
-pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, defaults: EnterFormDefaults<'_>) -> PageResult {
-    let header = data.header(&me, Tab::Enter).await?;
-    page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
+pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, defaults: EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
+    let header = data.header(me.as_ref(), Tab::Enter).await?;
+    Ok(page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
         let mut errors = defaults.errors();
         let form_content = html! {
             : csrf;
@@ -449,7 +448,7 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
                 }
             }
         }
-    }).await
+    }).await?)
 }
 
 #[derive(FromForm)]
@@ -538,7 +537,7 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
 pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
-    let header = data.header(&me, Tab::FindTeam).await?;
+    let header = data.header(me.as_ref(), Tab::FindTeam).await?;
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
     let mut looking_for_team_query = sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, &data.series, &data.event).fetch(&data.pool);

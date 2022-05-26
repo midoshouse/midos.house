@@ -55,7 +55,7 @@ use {
 pub(crate) mod mw;
 pub(crate) mod pic;
 
-#[derive(Debug, sqlx::Decode)]
+#[derive(Debug, sqlx::Type)]
 #[sqlx(type_name = "signup_status", rename_all = "snake_case")]
 pub(crate) enum SignupStatus {
     Created,
@@ -176,7 +176,7 @@ impl<'a> Data<'a> {
         }
     }
 
-    async fn header(&self, me: &Option<User>, tab: Tab) -> sqlx::Result<RawHtml<String>> {
+    async fn header(&self, me: Option<&User>, tab: Tab) -> sqlx::Result<RawHtml<String>> {
         let signed_up = if let Some(me) = me {
             sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
                 id = team
@@ -278,6 +278,7 @@ enum Tab {
 pub(crate) enum Error {
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Page(#[from] PageError),
+    #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
 }
 
@@ -290,6 +291,12 @@ impl From<DataError> for StatusOrError<Error> {
 impl From<PageError> for StatusOrError<Error> {
     fn from(e: PageError) -> Self {
         Self::Err(Error::Page(e))
+    }
+}
+
+impl From<reqwest::Error> for StatusOrError<Error> {
+    fn from(e: reqwest::Error) -> Self {
+        Self::Err(Error::Reqwest(e))
     }
 }
 
@@ -317,7 +324,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
         _ => unimplemented!(),
     };
     let data = Data::new((**pool).clone(), series, event).await.map_err(InfoError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&me, Tab::Info).await.map_err(InfoError::Sql)?;
+    let header = data.header(me.as_ref(), Tab::Info).await.map_err(InfoError::Sql)?;
     page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
         : header;
         : content;
@@ -336,7 +343,7 @@ pub(crate) enum TeamsError {
 #[rocket::get("/event/<series>/<event>/teams")]
 pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<RawHtml<String>, StatusOrError<TeamsError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(TeamsError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&me, Tab::Teams).await.map_err(TeamsError::Sql)?;
+    let header = data.header(me.as_ref(), Tab::Teams).await.map_err(TeamsError::Sql)?;
     let mut signups = Vec::default();
     let mut teams_query = sqlx::query!(r#"SELECT id AS "id!: Id", name FROM teams WHERE
         series = $1
@@ -352,7 +359,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             .then(|&(role, _)| async move {
                 let row = sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1 AND role = $2"#, i64::from(team.id), role as _).fetch_one(&**pool).await?;
                 let is_confirmed = row.status.is_confirmed();
-                let user = User::from_id(pool, row.id).await?.ok_or(TeamsError::NonexistentUser)?;
+                let user = User::from_id(&**pool, row.id).await?.ok_or(TeamsError::NonexistentUser)?;
                 Ok::<_, TeamsError>((role, user, is_confirmed))
             })
             .try_collect::<Vec<_>>().await?;
@@ -399,7 +406,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 #[rocket::get("/event/<series>/<event>/status")]
 pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&me, Tab::MyStatus).await?;
+    let header = data.header(me.as_ref(), Tab::MyStatus).await?;
     Ok(page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
         if let Some(ref me) = me {
             if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name FROM teams, team_members WHERE
@@ -452,10 +459,10 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
 }
 
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
-pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, my_role: Option<crate::event::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: &str, event: &str, my_role: Option<crate::event::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(match data.team_config() {
-        TeamConfig::Multiworld => unimplemented!(), //TODO
+        TeamConfig::Multiworld => mw::enter_form(me, uri, csrf, data, Context::default(), client).await?,
         TeamConfig::Pictionary => pic::enter_form(me, uri, csrf, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?,
     })
 }

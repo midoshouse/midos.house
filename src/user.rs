@@ -10,7 +10,10 @@ use {
         ToHtml,
         html,
     },
-    sqlx::PgPool,
+    sqlx::{
+        PgExecutor,
+        PgPool,
+    },
     crate::{
         PageError,
         PageKind,
@@ -41,7 +44,7 @@ pub(crate) struct User {
 }
 
 impl User {
-    pub(crate) async fn from_id(pool: &PgPool, id: Id) -> sqlx::Result<Option<Self>> {
+    pub(crate) async fn from_id(pool: impl PgExecutor<'_>, id: Id) -> sqlx::Result<Option<Self>> {
         sqlx::query_as!(Self, r#"SELECT
             id AS "id: Id",
             display_source AS "display_source: DisplaySource",
@@ -52,7 +55,7 @@ impl User {
         FROM users WHERE id = $1"#, i64::from(id)).fetch_optional(pool).await
     }
 
-    pub(crate) async fn from_racetime(pool: &PgPool, racetime_id: &str) -> sqlx::Result<Option<Self>> {
+    pub(crate) async fn from_racetime(pool: impl PgExecutor<'_>, racetime_id: &str) -> sqlx::Result<Option<Self>> {
         sqlx::query_as!(Self, r#"SELECT
             id AS "id: Id",
             display_source AS "display_source: DisplaySource",
@@ -63,7 +66,7 @@ impl User {
         FROM users WHERE racetime_id = $1"#, racetime_id).fetch_optional(pool).await
     }
 
-    pub(crate) async fn from_discord(pool: &PgPool, discord_id: u64) -> sqlx::Result<Option<Self>> {
+    pub(crate) async fn from_discord(pool: impl PgExecutor<'_>, discord_id: u64) -> sqlx::Result<Option<Self>> {
         sqlx::query_as!(Self, r#"SELECT
             id AS "id: Id",
             display_source AS "display_source: DisplaySource",
@@ -100,7 +103,7 @@ impl Eq for User {}
 
 #[rocket::get("/user/<id>")]
 pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, id: Id) -> Result<RawHtml<String>, StatusOrError<PageError>> {
-    let user = if let Some(user) = User::from_id(pool, id).await? {
+    let user = if let Some(user) = User::from_id(&**pool, id).await? {
         user
     } else {
         return Err(StatusOrError::Status(Status::NotFound))

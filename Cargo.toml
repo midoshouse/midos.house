@@ -8,6 +8,7 @@ anyhow = "1"
 base64 = "0.13"
 chrono = "0.4"
 chrono-tz = "0.6"
+enum-iterator = "0.8"
 futures = "0.3"
 itertools = "0.10"
 once_cell = "1"
@@ -37,7 +38,7 @@ features = ["png"]
 [dependencies.reqwest]
 version = "0.11"
 default-features = false
-features = ["json", "rustls-tls", "trust-dns"]
+features = ["blocking", "json", "rustls-tls", "trust-dns"]
 
 [dependencies.rocket_csrf]
 git = "https://github.com/fenhl/rocket_csrf"
