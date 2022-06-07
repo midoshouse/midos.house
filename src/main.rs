@@ -46,6 +46,7 @@ use {
     },
     tokio::process::Command,
     crate::{
+        auth::ViewAs,
         config::Config,
         event::Series,
         favicon::{
@@ -338,10 +339,17 @@ impl Fairing for SeedDownloadFairing {
     }
 }
 
+fn parse_view_as(arg: &str) -> Result<(Id, Id), anyhow::Error> {
+    let (from, to) = arg.split_once(':').ok_or(anyhow::anyhow!("missing colon in view-as option"))?;
+    Ok((from.parse()?, to.parse()?))
+}
+
 #[derive(clap::Parser)]
 struct Args {
     #[clap(long = "dev")]
     is_dev: bool,
+    #[clap(long, parse(try_from_str = parse_view_as))]
+    view_as: Vec<(Id, Id)>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -354,7 +362,7 @@ enum Error {
 }
 
 #[wheel::main(rocket, debug)]
-async fn main(Args { is_dev }: Args) -> Result<(), Error> {
+async fn main(Args { is_dev, view_as }: Args) -> Result<(), Error> {
     let config = Config::load().await?;
     let _ = rocket::custom(rocket::Config {
         port: if is_dev { 24814 } else { 24812 },
@@ -426,6 +434,7 @@ async fn main(Args { is_dev }: Args) -> Result<(), Error> {
         }.to_string()),
     )))
     .attach(SeedDownloadFairing)
+    .manage(ViewAs(view_as.into_iter().collect()))
     .manage(PgPool::connect_with(PgConnectOptions::default().username("mido").database("midos_house").application_name("midos-house")).await?)
     .manage(reqwest::Client::builder()
         .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION")))

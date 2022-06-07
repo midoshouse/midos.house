@@ -1,5 +1,8 @@
 use {
-    std::time::Duration,
+    std::{
+        collections::HashMap,
+        time::Duration,
+    },
     anyhow::{
         Error,
         Result,
@@ -51,6 +54,8 @@ use {
     },
 };
 
+pub(crate) struct ViewAs(pub(crate) HashMap<Id, Id>);
+
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for User {
     type Error = Error;
@@ -67,50 +72,70 @@ impl<'r> FromRequest<'r> for User {
 
         match req.guard::<&State<PgPool>>().await {
             Outcome::Success(pool) => match req.guard::<&CookieJar<'_>>().await {
-                Outcome::Success(cookies) => if let Some(token) = cookies.get_private("racetime_token") {
-                    match req.guard::<&State<reqwest::Client>>().await {
-                        Outcome::Success(client) => match client.get("https://racetime.gg/o/userinfo")
-                            .bearer_auth(token.value())
-                            .send().await
-                            .and_then(|response| response.error_for_status())
-                        {
-                            Ok(response) => {
-                                let user_data = guard_try!(response.json::<RaceTimeUser>().await);
-                                if let Some(user) = guard_try!(User::from_racetime(&**pool, &user_data.id).await) {
-                                    guard_try!(sqlx::query!("UPDATE users SET racetime_display_name = $1 WHERE id = $2", user_data.name, i64::from(user.id)).execute(&**pool).await);
-                                    Outcome::Success(user)
-                                } else {
-                                    Outcome::Failure((Status::Unauthorized, anyhow!("this racetime.gg account is not associated with a Mido's House account")))
+                Outcome::Success(cookies) => match req.guard::<&State<ViewAs>>().await {
+                    Outcome::Success(view_as) => if let Some(token) = cookies.get_private("racetime_token") {
+                        match req.guard::<&State<reqwest::Client>>().await {
+                            Outcome::Success(client) => match client.get("https://racetime.gg/o/userinfo")
+                                .bearer_auth(token.value())
+                                .send().await
+                                .and_then(|response| response.error_for_status())
+                            {
+                                Ok(response) => {
+                                    let user_data = guard_try!(response.json::<RaceTimeUser>().await);
+                                    if let Some(user) = guard_try!(User::from_racetime(&**pool, &user_data.id).await) {
+                                        guard_try!(sqlx::query!("UPDATE users SET racetime_display_name = $1 WHERE id = $2", user_data.name, i64::from(user.id)).execute(&**pool).await);
+                                        if let Some(&user_id) = view_as.inner().0.get(&user.id) {
+                                            if let Some(user) = guard_try!(User::from_id(&**pool, user_id).await) {
+                                                Outcome::Success(user)
+                                            } else {
+                                                Outcome::Failure((Status::InternalServerError, anyhow!("user to view as does not exist")))
+                                            }
+                                        } else {
+                                            Outcome::Success(user)
+                                        }
+                                    } else {
+                                        Outcome::Failure((Status::Unauthorized, anyhow!("this racetime.gg account is not associated with a Mido's House account")))
+                                    }
                                 }
-                            }
-                            Err(e) => Outcome::Failure((Status::BadGateway, anyhow!(e))),
-                        },
-                        Outcome::Failure((status, ())) => Outcome::Failure((status, anyhow!("missing HTTP client"))),
-                        Outcome::Forward(()) => Outcome::Forward(()),
-                    }
-                } else if let Some(token) = cookies.get_private("discord_token") {
-                    match req.guard::<&State<reqwest::Client>>().await {
-                        Outcome::Success(client) => match client.get("https://discord.com/api/v9/users/@me")
-                            .bearer_auth(token.value())
-                            .send().await
-                            .and_then(|response| response.error_for_status())
-                        {
-                            Ok(response) => {
-                                let user_data = guard_try!(response.json::<DiscordUser>().await);
-                                if let Some(user) = guard_try!(User::from_discord(&**pool, guard_try!(user_data.id.parse())).await) {
-                                    guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1 WHERE id = $2", user_data.username, i64::from(user.id)).execute(&**pool).await);
-                                    Outcome::Success(user)
-                                } else {
-                                    Outcome::Failure((Status::Unauthorized, anyhow!("this Discord account is not associated with a Mido's House account")))
-                                }
+                                Err(e) => Outcome::Failure((Status::BadGateway, anyhow!(e))),
                             },
-                            Err(e) => Outcome::Failure((Status::BadGateway, anyhow!(e))),
-                        },
-                        Outcome::Failure((status, ())) => Outcome::Failure((status, anyhow!("missing HTTP client"))),
-                        Outcome::Forward(()) => Outcome::Forward(()),
-                    }
-                } else {
-                    Outcome::Failure((Status::Unauthorized, anyhow!("neither racetime_token cookie nor discord_token cookie present")))
+                            Outcome::Failure((status, ())) => Outcome::Failure((status, anyhow!("missing HTTP client"))),
+                            Outcome::Forward(()) => Outcome::Forward(()),
+                        }
+                    } else if let Some(token) = cookies.get_private("discord_token") {
+                        match req.guard::<&State<reqwest::Client>>().await {
+                            Outcome::Success(client) => match client.get("https://discord.com/api/v9/users/@me")
+                                .bearer_auth(token.value())
+                                .send().await
+                                .and_then(|response| response.error_for_status())
+                            {
+                                Ok(response) => {
+                                    let user_data = guard_try!(response.json::<DiscordUser>().await);
+                                    if let Some(user) = guard_try!(User::from_discord(&**pool, guard_try!(user_data.id.parse())).await) {
+                                        guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1 WHERE id = $2", user_data.username, i64::from(user.id)).execute(&**pool).await);
+                                        if let Some(&user_id) = view_as.inner().0.get(&user.id) {
+                                            if let Some(user) = guard_try!(User::from_id(&**pool, user_id).await) {
+                                                Outcome::Success(user)
+                                            } else {
+                                                Outcome::Failure((Status::InternalServerError, anyhow!("user to view as does not exist")))
+                                            }
+                                        } else {
+                                            Outcome::Success(user)
+                                        }
+                                    } else {
+                                        Outcome::Failure((Status::Unauthorized, anyhow!("this Discord account is not associated with a Mido's House account")))
+                                    }
+                                },
+                                Err(e) => Outcome::Failure((Status::BadGateway, anyhow!(e))),
+                            },
+                            Outcome::Failure((status, ())) => Outcome::Failure((status, anyhow!("missing HTTP client"))),
+                            Outcome::Forward(()) => Outcome::Forward(()),
+                        }
+                    } else {
+                        Outcome::Failure((Status::Unauthorized, anyhow!("neither racetime_token cookie nor discord_token cookie present")))
+                    },
+                    Outcome::Failure((status, ())) => Outcome::Failure((status, anyhow!("missing view-as map"))),
+                    Outcome::Forward(()) => Outcome::Forward(()),
                 },
                 Outcome::Failure((_, never)) => match never {},
                 Outcome::Forward(()) => Outcome::Forward(()),
