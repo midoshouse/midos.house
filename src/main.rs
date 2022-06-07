@@ -44,6 +44,7 @@ use {
         PgPool,
         postgres::PgConnectOptions,
     },
+    tokio::process::Command,
     crate::{
         config::Config,
         favicon::{
@@ -271,7 +272,7 @@ async fn not_found(request: &Request<'_>) -> PageResult {
 
 #[rocket::catch(500)]
 async fn internal_server_error(request: &Request<'_>) -> PageResult {
-    //TODO report
+    let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
