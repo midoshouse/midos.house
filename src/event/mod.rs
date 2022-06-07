@@ -644,7 +644,7 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, me: User, team: Id, csr
         }
         for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, i64::from(team)).fetch_all(&mut transaction).await.map_err(AcceptError::Sql)? {
             let id = Id::new(&mut transaction, IdTable::Notifications).await.map_err(AcceptError::Sql)?;
-            sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', $3, $4, $5)", i64::from(id), i64::from(member), series as _, event, i64::from(me.id)).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
+            sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', $3, $4, $5)", id as _, member as _, series as _, event, me.id as _).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
         }
         sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", i64::from(team), i64::from(me.id)).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
         // if this confirms the team, remove all members from looking_for_team
@@ -715,7 +715,7 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<Csr
         for member in delete {
             if member.id != me.id && member.status.is_confirmed() {
                 let id = Id::new(&mut transaction, IdTable::Notifications).await.map_err(ResignError::Sql)?;
-                sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", i64::from(id), i64::from(member.id), notification_kind as _, series as _, event, i64::from(me.id)).execute(&mut transaction).await.map_err(ResignError::Sql)?;
+                sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", id as _, member.id as _, notification_kind as _, series as _, event, me.id as _).execute(&mut transaction).await.map_err(ResignError::Sql)?;
             }
         }
         sqlx::query!("DELETE FROM teams WHERE id = $1", i64::from(team)).execute(&mut transaction).await.map_err(ResignError::Sql)?;

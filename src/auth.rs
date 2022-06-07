@@ -330,7 +330,7 @@ pub(crate) async fn register_racetime(pool: &State<PgPool>, me: Option<User>, cl
             Redirect::to(uri!(crate::user::profile(me.id)))
         } else {
             let id = Id::new(&mut transaction, IdTable::Users).await.map_err(Error::from)?;
-            sqlx::query!("INSERT INTO users (id, display_source, racetime_id, racetime_display_name) VALUES ($1, 'racetime', $2, $3)", i64::from(id), racetime_user.id, racetime_user.name).execute(&mut transaction).await.map_err(Error::from)?;
+            sqlx::query!("INSERT INTO users (id, display_source, racetime_id, racetime_display_name) VALUES ($1, 'racetime', $2, $3)", id as _, racetime_user.id, racetime_user.name).execute(&mut transaction).await.map_err(Error::from)?;
             transaction.commit().await.map_err(Error::from)?;
             Redirect::to(uri!(crate::user::profile(id)))
         }
@@ -357,7 +357,7 @@ pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, cli
             Redirect::to(uri!(crate::user::profile(me.id)))
         } else {
             let id = Id::new(&mut transaction, IdTable::Users).await.map_err(Error::from)?;
-            sqlx::query!("INSERT INTO users (id, display_source, discord_id, discord_display_name) VALUES ($1, 'discord', $2, $3)", i64::from(id), snowflake as i64, discord_user.username).execute(&mut transaction).await.map_err(Error::from)?;
+            sqlx::query!("INSERT INTO users (id, display_source, discord_id, discord_display_name) VALUES ($1, 'discord', $2, $3)", id as _, snowflake as i64, discord_user.username).execute(&mut transaction).await.map_err(Error::from)?;
             transaction.commit().await.map_err(Error::from)?;
             Redirect::to(uri!(crate::user::profile(id)))
         }

@@ -482,11 +482,11 @@ pub(crate) async fn enter_post_step2(pool: &State<PgPool>, me: User, uri: Origin
             RedirectOrContent::Content(enter_form_step2(Some(me), uri, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
-            sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug) VALUES ($1, 'mw', $2, $3, $4)", i64::from(id), event, (!team_name.is_empty()).then(|| team_name), team_slug).execute(&mut transaction).await?;
+            sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug) VALUES ($1, 'mw', $2, $3, $4)", id as _, event, (!team_name.is_empty()).then(|| team_name), team_slug).execute(&mut transaction).await?;
             for (user, role) in users.into_iter().zip_eq(roles) {
                 sqlx::query!(
                     "INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, $3, $4)",
-                    i64::from(id), i64::from(user.id), if user == me { SignupStatus::Created } else { SignupStatus::Unconfirmed } as _, super::Role::from(role) as _,
+                    id as _, user.id as _, if user == me { SignupStatus::Created } else { SignupStatus::Unconfirmed } as _, super::Role::from(role) as _,
                 ).execute(&mut transaction).await?;
             }
             transaction.commit().await?;

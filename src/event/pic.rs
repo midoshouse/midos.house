@@ -570,9 +570,9 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
             RedirectOrContent::Content(enter_form(Some(me), uri, csrf, data, EnterFormDefaults::Context(form.context)).await?)
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
-            sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, 'pic', $2, $3)", i64::from(id), event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
-            sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", i64::from(id), i64::from(me.id), super::Role::from(value.my_role) as _).execute(&mut transaction).await?;
-            sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", i64::from(id), i64::from(value.teammate), match value.my_role { Role::Sheikah => super::Role::Gerudo, Role::Gerudo => super::Role::Sheikah } as _).execute(&mut transaction).await?;
+            sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, 'pic', $2, $3)", id as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
+            sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, super::Role::from(value.my_role) as _).execute(&mut transaction).await?;
+            sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", id as _, value.teammate as _, match value.my_role { Role::Sheikah => super::Role::Gerudo, Role::Gerudo => super::Role::Sheikah } as _).execute(&mut transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(super::teams(SERIES, event))))
         }
@@ -735,7 +735,7 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(find_team_form(Some(me), uri, csrf, data, form.context).await?)
         } else {
-            sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role) VALUES ('pic', $1, $2, $3)", event, i64::from(me.id), value.role as _).execute(&mut transaction).await.map_err(FindTeamError::Sql)?;
+            sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role) VALUES ('pic', $1, $2, $3)", event, me.id as _, value.role as _).execute(&mut transaction).await.map_err(FindTeamError::Sql)?;
             transaction.commit().await.map_err(FindTeamError::Sql)?;
             RedirectOrContent::Redirect(Redirect::to(uri!(super::find_team(SERIES, event))))
         }
