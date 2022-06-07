@@ -251,12 +251,17 @@ impl From<sqlx::Error> for StatusOrError<PageError> {
 
 pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
     match url.host_str() {
+        Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("spreadsheets") => html! {
+            img(class = "favicon", alt = "external link (docs.google.com/spreadsheets)", src = "https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico", width = "16", height = "16");
+        },
         Some("racetime.gg") => html! {
             img(class = "favicon", alt = "external link (racetime.gg)", src = "https://racetime.gg/favicon.ico", width = "16", height = "16");
         },
         Some("twitch.tv") | Some("www.twitch.tv") => html! {
             img(class = "favicon", alt = "external link (twitch.tv)", src = "https://static.twitchcdn.net/assets/favicon-16-52e571ffea063af7a7f4.png", width = "16", height = "16", srcset = "https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png 2x");
         },
-        _ => html! {}, //TODO generic “external link” image?
+        _ => html! {
+            : "🌐";
+        },
     }
 }

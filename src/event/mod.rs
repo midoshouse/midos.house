@@ -125,6 +125,7 @@ pub(crate) struct Data<'a> {
     start: Option<DateTime<Utc>>,
     end: Option<DateTime<Utc>>,
     url: Option<Url>,
+    teams_url: Option<Url>,
     video_url: Option<Url>,
 }
 
@@ -139,12 +140,13 @@ impl<'a> Data<'a> {
         let series = series.into();
         let event = event.into();
         Ok(
-            sqlx::query!(r#"SELECT display_name, start, end_time, url, video_url FROM events WHERE series = $1 AND event = $2"#, &series, &event).fetch_optional(&pool).await?
+            sqlx::query!(r#"SELECT display_name, start, end_time, url, teams_url, video_url FROM events WHERE series = $1 AND event = $2"#, &series, &event).fetch_optional(&pool).await?
                 .map(|row| Ok::<_, DataError>(Self {
                     display_name: row.display_name,
                     start: row.start,
                     end: row.end_time,
                     url: row.url.map(|url| url.parse()).transpose()?,
+                    teams_url: row.teams_url.map(|url| url.parse()).transpose()?,
                     video_url: row.video_url.map(|url| url.parse()).transpose()?,
                     pool, series, event,
                 }))
@@ -215,6 +217,11 @@ impl<'a> Data<'a> {
                 }
                 @if let Tab::Teams = tab {
                     span(class = "button selected") : "Teams";
+                } else if let Some(ref teams_url) = self.teams_url {
+                    a(class = "button", href = teams_url.to_string()) {
+                        : favicon(teams_url);
+                        : "Teams";
+                    }
                 } else {
                     a(class = "button", href = uri!(teams(&*self.series, &*self.event)).to_string()) : "Teams";
                 }
@@ -224,7 +231,7 @@ impl<'a> Data<'a> {
                     } else {
                         a(class = "button", href = uri!(status(&*self.series, &*self.event)).to_string()) : "My Status";
                     }
-                } else {
+                } else if !self.is_started() {
                     @if let Tab::Enter = tab {
                         span(class = "button selected") : "Enter";
                     } else {

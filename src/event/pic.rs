@@ -65,6 +65,43 @@ use {
 pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, InfoError> {
     let is_random_settings = event.starts_with("rs");
     let settings = match event {
+        "5" => html! {
+            ul {
+                li : "S5 base";
+                li : "CSMC off";
+                li : "no hints (including altar)";
+                li : "Ganon boss key on 20 hearts";
+                li : "vanilla bridge (Shadow and Spirit medallions + light arrows)";
+                li : "cowsanity";
+                li : "dungeon skulls";
+                li : "30/40/50 skulls disabled";
+                li : "shops 4 (reminder: no numbers allowed)";
+            }
+            p {
+                : "The seed will be rolled on ";
+                a(href = "https://github.com/fenhl/OoT-Randomizer/tree/valentine-pictionary") : "a custom branch";
+                : " to support the heart wincon. The branch is based on Dev 6.2.1 and contains these settings as a preset called “5th Pictionary Spoiler Log Race”.";
+            }
+        },
+        "6" => html! {
+            p : "The settings are mostly a repeat of the 3rd Pictionary spoiler log race (the first one we organized), with the difference that cows are shuffled and 40 and 50 skulls are turned off:";
+            ul {
+                li : "S5 base";
+                li : "CSMC off";
+                li : "no hints (including altar)";
+                li : "2 medallion bridge";
+                li : "Ganon boss key on 6 medallions";
+                li : "all skulls shuffled";
+                li : "40 and 50 skulls disabled";
+                li : "shuffled ocarinas";
+                li : "shuffled Gerudo card";
+                li : "shuffled cows";
+            }
+            p {
+                : "Settings string for version 6.2: ";
+                code: "AJTWFCHYKAA8KLAH2UASAHCCYCHGLTDDAKJ8S8AAJAEAC2AJSDGBLADLED7JKQUXEANKCAJAAENAABFAB";
+            }
+        },
         "rs1" => html! {
             p {
                 : "The seed will be rolled on ";
@@ -122,28 +159,16 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                 : ".";
             }
         },
-        "6" => html! {
-            p : "The settings are mostly a repeat of the 3rd Pictionary spoiler log race (the first one we organized), with the difference that cows are shuffled and 40 and 50 skulls are turned off:";
-            ul {
-                li : "S5 base";
-                li : "CSMC off";
-                li : "no hints (including altar)";
-                li : "2 medallion bridge";
-                li : "Ganon boss key on 6 medallions";
-                li : "all skulls shuffled";
-                li : "40 and 50 skulls disabled";
-                li : "shuffled ocarinas";
-                li : "shuffled Gerudo card";
-                li : "shuffled cows";
-            }
-            p {
-                : "Settings string for version 6.2: ";
-                code: "AJTWFCHYKAA8KLAH2UASAHCCYCHGLTDDAKJ8S8AAJAEAC2AJSDGBLADLED7JKQUXEANKCAJAAENAABFAB";
-            }
-        },
         _ => unimplemented!(),
     };
     let sample_seeds = match event {
+        "5" => Some(seed::table(stream::iter(vec![
+            seed::Data { web: None, file_stem: Cow::Borrowed("OoT_F35CF_7F1NK3FEGY") },
+            seed::Data { web: None, file_stem: Cow::Borrowed("OoT_F35CF_XULLQE310I") },
+            seed::Data { web: None, file_stem: Cow::Borrowed("OoT_F35CF_3PT90NK69D") },
+            seed::Data { web: None, file_stem: Cow::Borrowed("OoT_F35CF_I7BN7K3S2Z") },
+            seed::Data { web: None, file_stem: Cow::Borrowed("OoT_F35CF_99YI7I0K6O") },
+        ])).await.map_err(InfoError::Io)?),
         "rs1" => Some(seed::table(stream::iter(vec![
             seed::Data { web: Some(seed::OotrWebData { id: 1079630, gen_time: Utc.ymd(2022, 4, 22).and_hms(15, 59, 36) }), file_stem: Cow::Borrowed("OoTR_1079630_V6516H22IW") },
             seed::Data { web: Some(seed::OotrWebData { id: 1079637, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 1, 5) }), file_stem: Cow::Borrowed("OoTR_1079637_HAH75EOAHQ") },
@@ -252,6 +277,24 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                     : ", we've prepared some sample seeds:";
                 }
                 : sample_seeds;
+                @if event == "5" {
+                    p {
+                        a(href = "https://ootr.fenhl.net/static/pictionary5-sample-seeds-batch2.zip") : "Download all";
+                    }
+                    p {
+                        : "You can apply these patch files using ";
+                        a(href = "https://ootrandomizer.com/generator") : "the regular web patcher";
+                        : ".";
+                    }
+                    p {
+                        strong : "Note:";
+                        : " These sample seeds were posted on February 11, replacing ";
+                        a(href = "https://ootr.fenhl.net/static/pictionary5-sample-seeds.zip") : "the original batch";
+                        : " which had a bug where the spoiler log would show the wrong prices for most right-side shop items. Special thanks to ShadowShine57 who found ";
+                        a(href = "https://github.com/TestRunnerSRL/OoT-Randomizer/pull/1505") : "the fix";
+                        : " for that bug.";
+                    }
+                }
             }
             h2 : "Further information";
             p {
