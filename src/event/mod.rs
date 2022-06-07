@@ -325,13 +325,13 @@ pub(crate) enum InfoError {
 
 #[rocket::get("/event/<series>/<event>")]
 pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
+    let data = Data::new((**pool).clone(), series, event).await.map_err(InfoError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let header = data.header(me.as_ref(), Tab::Info).await.map_err(InfoError::Sql)?;
     let content = match series {
         "mw" => mw::info(pool, event).await?,
         "pic" => pic::info(pool, event).await?,
         _ => unimplemented!(),
     };
-    let data = Data::new((**pool).clone(), series, event).await.map_err(InfoError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(me.as_ref(), Tab::Info).await.map_err(InfoError::Sql)?;
     page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
         : header;
         : content;
