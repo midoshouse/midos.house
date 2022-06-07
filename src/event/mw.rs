@@ -42,6 +42,7 @@ use {
             Data,
             Error,
             InfoError,
+            Series,
             SignupStatus,
             Tab,
         },
@@ -60,6 +61,8 @@ use {
         },
     },
 };
+
+const SERIES: Series = Series::Multiworld;
 
 pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, InfoError> {
     Ok(match event {
@@ -255,7 +258,7 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
                 : header;
                 article {
                     p {
-                        a(href = uri!(crate::auth::racetime_login(Some(uri!(super::enter(&*data.series, &*data.event, _, _))))).to_string()) : "Connect a racetime.gg account to your Mido's House account";
+                        a(href = uri!(crate::auth::racetime_login(Some(uri!(super::enter(data.series, &*data.event, _, _))))).to_string()) : "Connect a racetime.gg account to your Mido's House account";
                         : " to enter this tournament.";
                     }
                 }
@@ -266,7 +269,7 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
             : header;
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(super::enter(&*data.series, &*data.event, _, _))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(super::enter(data.series, &*data.event, _, _))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to enter this tournament.";
                 }
             }
@@ -287,7 +290,7 @@ impl CsrfForm for EnterForm { //TODO derive
 
 #[rocket::post("/event/mw/<event>/enter", data = "<form>")]
 pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let data = Data::new((**pool).clone(), "mw", event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let data = Data::new((**pool).clone(), SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if data.is_started() {
@@ -407,7 +410,7 @@ impl CsrfForm for EnterFormStep2 { //TODO derive
 
 #[rocket::post("/event/mw/<event>/enter/step2", data = "<form>")]
 pub(crate) async fn enter_post_step2(pool: &State<PgPool>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, EnterFormStep2>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let data = Data::new((**pool).clone(), "mw", event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let data = Data::new((**pool).clone(), SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if data.is_started() {
@@ -488,7 +491,7 @@ pub(crate) async fn enter_post_step2(pool: &State<PgPool>, me: User, uri: Origin
             }
             transaction.commit().await?;
             //TODO create and assign Discord roles
-            RedirectOrContent::Redirect(Redirect::to(uri!(super::teams("mw", event))))
+            RedirectOrContent::Redirect(Redirect::to(uri!(super::teams(SERIES, event))))
         }
     } else {
         RedirectOrContent::Content(enter_form_step2(Some(me), uri, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)

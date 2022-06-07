@@ -10,6 +10,7 @@ chrono = "0.4"
 chrono-tz = "0.6"
 enum-iterator = "0.8"
 futures = "0.3"
+ics = "0.5"
 itertools = "0.10"
 once_cell = "1"
 rand = "0.8"
@@ -47,7 +48,7 @@ branch = "impl-error"
 [dependencies.rocket-util]
 git = "https://github.com/fenhl/rocket-util"
 branch = "main"
-features = ["image", "rocket_csrf"]
+features = ["ics", "image", "rocket_csrf"]
 
 [dependencies.serde]
 version = "1"

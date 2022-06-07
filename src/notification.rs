@@ -28,6 +28,7 @@ use {
         event::{
             self,
             Role,
+            Series,
             SignupStatus,
             TeamConfig,
             mw,
@@ -85,7 +86,7 @@ impl Notification {
             Self::Simple(id) => {
                 let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await? {
                     SimpleNotificationKind::Accept => {
-                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
+                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
                         let sender = User::from_id(pool, row.sender).await?.ok_or(Error::UnknownUser)?;
                         let event = event::Data::new(pool.clone(), row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
@@ -96,7 +97,7 @@ impl Notification {
                         }
                     }
                     SimpleNotificationKind::Decline => {
-                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
+                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
                         let sender = User::from_id(pool, row.sender).await?.ok_or(Error::UnknownUser)?;
                         let event = event::Data::new(pool.clone(), row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
@@ -107,7 +108,7 @@ impl Notification {
                         }
                     }
                     SimpleNotificationKind::Resign => {
-                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
+                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
                         let sender = User::from_id(pool, row.sender).await?.ok_or(Error::UnknownUser)?;
                         let event = event::Data::new(pool.clone(), row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
@@ -129,7 +130,7 @@ impl Notification {
                 }
             }
             Self::TeamInvite(team_id) => {
-                let team_row = sqlx::query!("SELECT series, event, name, racetime_slug FROM teams WHERE id = $1", i64::from(team_id)).fetch_one(pool).await?;
+                let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, i64::from(team_id)).fetch_one(pool).await?;
                 let event = event::Data::new(pool.clone(), team_row.series, team_row.event).await?.ok_or(Error::UnknownEvent)?;
                 let mut creator = None;
                 let mut my_role = None;
@@ -214,12 +215,12 @@ impl Notification {
                         @if my_role == Role::Sheikah && me.racetime_id.is_none() {
                             a(class = "button", href = uri!(crate::auth::racetime_login(Some(uri!(notifications)))).to_string()) : "Connect racetime.gg Account to Accept";
                         } else {
-                            form(action = uri!(crate::event::confirm_signup(&*event.series, &*event.event, team_id)).to_string(), method = "post") {
+                            form(action = uri!(crate::event::confirm_signup(event.series, &*event.event, team_id)).to_string(), method = "post") {
                                 : csrf;
                                 input(type = "submit", value = "Accept");
                             }
                         }
-                        form(action = uri!(crate::event::resign_post(&*event.series, &*event.event, team_id)).to_string(), method = "post") {
+                        form(action = uri!(crate::event::resign_post(event.series, &*event.event, team_id)).to_string(), method = "post") {
                             : csrf;
                             input(type = "submit", value = "Decline");
                         }

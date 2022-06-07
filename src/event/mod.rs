@@ -1,8 +1,11 @@
 use {
     std::{
         borrow::Cow,
+        fmt,
         io,
+        str::FromStr,
     },
+    anyhow::anyhow,
     chrono::prelude::*,
     chrono_tz::{
         America,
@@ -19,7 +22,18 @@ use {
             Context,
             Form,
         },
-        http::Status,
+        http::{
+            Status,
+            impl_from_uri_param_identity,
+            uri::{
+                self,
+                fmt::{
+                    Path,
+                    UriDisplay,
+                },
+            },
+        },
+        request::FromParam,
         response::{
             Redirect,
             content::RawHtml,
@@ -32,7 +46,17 @@ use {
         ToHtml,
         html,
     },
-    sqlx::PgPool,
+    sqlx::{
+        Decode,
+        Encode,
+        postgres::{
+            Postgres,
+            PgArgumentBuffer,
+            PgPool,
+            PgTypeInfo,
+            PgValueRef,
+        },
+    },
     url::Url,
     crate::{
         PageError,
@@ -74,7 +98,7 @@ impl SignupStatus {
 pub(crate) enum Role {
     /// “runner” in Pictionary
     Sheikah,
-    /// “pilot” in Pictionary
+    /// “pilot” in Pictionary
     Gerudo,
     /// world 1
     Power,
@@ -95,6 +119,90 @@ impl Role {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Series {
+    Multiworld,
+    Pictionary,
+}
+
+impl Series {
+    fn to_str(&self) -> &'static str {
+        match self {
+            Self::Multiworld => "mw",
+            Self::Pictionary => "pic",
+        }
+    }
+}
+
+impl FromStr for Series {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, ()> {
+        match s {
+            "mw" => Ok(Self::Multiworld),
+            "pic" => Ok(Self::Pictionary),
+            _ => Err(()),
+        }
+    }
+}
+
+impl fmt::Display for Series {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self.to_str(), f)
+    }
+}
+
+impl<'r> Decode<'r, Postgres> for Series {
+    fn decode(value: PgValueRef<'r>) -> Result<Self, Box<dyn std::error::Error + 'static + Send + Sync>> {
+        let series = <&str>::decode(value)?;
+        series.parse().map_err(|()| anyhow!("unknown series: {series}").into())
+    }
+}
+
+impl<'q> Encode<'q, Postgres> for Series {
+    fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> sqlx::encode::IsNull {
+        self.to_str().encode(buf)
+    }
+
+    fn encode(self, buf: &mut PgArgumentBuffer) -> sqlx::encode::IsNull {
+        self.to_str().encode(buf)
+    }
+
+    fn produces(&self) -> Option<PgTypeInfo> {
+        self.to_str().produces()
+    }
+
+    fn size_hint(&self) -> usize {
+        Encode::size_hint(&self.to_str())
+    }
+}
+
+impl sqlx::Type<Postgres> for Series {
+    fn type_info() -> PgTypeInfo {
+        <&str>::type_info()
+    }
+
+    fn compatible(ty: &PgTypeInfo) -> bool {
+        <&str>::compatible(ty)
+    }
+}
+
+impl<'a> FromParam<'a> for Series {
+    type Error = &'a str;
+
+    fn from_param(param: &'a str) -> Result<Self, Self::Error> {
+        param.parse().map_err(|()| param)
+    }
+}
+
+impl UriDisplay<Path> for Series {
+    fn fmt(&self, f: &mut uri::fmt::Formatter<'_, Path>) -> fmt::Result {
+        UriDisplay::fmt(self.to_str(), f) // assume all series names are URI safe
+    }
+}
+
+impl_from_uri_param_identity!([Path] Series);
 
 pub(crate) enum TeamConfig {
     Pictionary,
@@ -119,28 +227,27 @@ impl TeamConfig {
 
 pub(crate) struct Data<'a> {
     pool: PgPool,
-    pub(crate) series: Cow<'a, str>,
+    pub(crate) series: Series,
     pub(crate) event: Cow<'a, str>,
     pub(crate) display_name: String,
-    start: Option<DateTime<Utc>>,
-    end: Option<DateTime<Utc>>,
+    pub(crate) start: Option<DateTime<Utc>>,
+    pub(crate) end: Option<DateTime<Utc>>,
     url: Option<Url>,
     teams_url: Option<Url>,
     video_url: Option<Url>,
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum DataError {
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
 }
 
 impl<'a> Data<'a> {
-    pub(crate) async fn new(pool: PgPool, series: impl Into<Cow<'a, str>>, event: impl Into<Cow<'a, str>>) -> Result<Option<Data<'a>>, DataError> {
-        let series = series.into();
+    pub(crate) async fn new(pool: PgPool, series: Series, event: impl Into<Cow<'a, str>>) -> Result<Option<Data<'a>>, DataError> {
         let event = event.into();
         Ok(
-            sqlx::query!(r#"SELECT display_name, start, end_time, url, teams_url, video_url FROM events WHERE series = $1 AND event = $2"#, &series, &event).fetch_optional(&pool).await?
+            sqlx::query!(r#"SELECT display_name, start, end_time, url, teams_url, video_url FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(&pool).await?
                 .map(|row| Ok::<_, DataError>(Self {
                     display_name: row.display_name,
                     start: row.start,
@@ -155,10 +262,9 @@ impl<'a> Data<'a> {
     }
 
     pub(crate) fn team_config(&self) -> TeamConfig {
-        match &*self.series {
-            "mw" => TeamConfig::Multiworld,
-            "pic" => TeamConfig::Pictionary,
-            _ => unimplemented!(),
+        match self.series {
+            Series::Multiworld => TeamConfig::Multiworld,
+            Series::Pictionary => TeamConfig::Pictionary,
         }
     }
 
@@ -171,9 +277,9 @@ impl<'a> Data<'a> {
     }
 
     pub(crate) fn chests(&self) -> ChestAppearances {
-        match (&*self.series, &*self.event) {
-            ("mw", "3") => ChestAppearances::random(), //TODO update after preliminary base settings exist
-            ("pic", _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
+        match (self.series, &*self.event) {
+            (Series::Multiworld, "3") => ChestAppearances::random(), //TODO update after preliminary base settings exist
+            (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
             (_, _) => unimplemented!(),
         }
     }
@@ -186,7 +292,7 @@ impl<'a> Data<'a> {
                 AND event = $2
                 AND member = $3
                 AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-            ) AS "exists!""#, &self.series, &self.event, i64::from(me.id)).fetch_one(&self.pool).await?
+            ) AS "exists!""#, self.series.to_str(), &self.event, i64::from(me.id)).fetch_one(&self.pool).await?
         } else {
             false
         };
@@ -197,7 +303,7 @@ impl<'a> Data<'a> {
         ));
         Ok(html! {
             h1 {
-                a(class = "nav", href? = (!matches!(tab, Tab::Info)).then(|| uri!(info(&*self.series, &*self.event)).to_string())) : &self.display_name;
+                a(class = "nav", href? = (!matches!(tab, Tab::Info)).then(|| uri!(info(self.series, &*self.event)).to_string())) : &self.display_name;
             }
             @if let Some((start_utc, start_berlin, start_new_york)) = start {
                 h2 {
@@ -213,7 +319,7 @@ impl<'a> Data<'a> {
                 @if let Tab::Info = tab {
                     span(class = "button selected") : "Info";
                 } else {
-                    a(class = "button", href = uri!(info(&*self.series, &*self.event)).to_string()) : "Info";
+                    a(class = "button", href = uri!(info(self.series, &*self.event)).to_string()) : "Info";
                 }
                 @if let Tab::Teams = tab {
                     span(class = "button selected") : "Teams";
@@ -223,24 +329,24 @@ impl<'a> Data<'a> {
                         : "Teams";
                     }
                 } else {
-                    a(class = "button", href = uri!(teams(&*self.series, &*self.event)).to_string()) : "Teams";
+                    a(class = "button", href = uri!(teams(self.series, &*self.event)).to_string()) : "Teams";
                 }
                 @if signed_up {
                     @if let Tab::MyStatus = tab {
                         span(class = "button selected") : "My Status";
                     } else {
-                        a(class = "button", href = uri!(status(&*self.series, &*self.event)).to_string()) : "My Status";
+                        a(class = "button", href = uri!(status(self.series, &*self.event)).to_string()) : "My Status";
                     }
                 } else if !self.is_started() {
                     @if let Tab::Enter = tab {
                         span(class = "button selected") : "Enter";
                     } else {
-                        a(class = "button", href = uri!(enter(&*self.series, &*self.event, _, _)).to_string()) : "Enter";
+                        a(class = "button", href = uri!(enter(self.series, &*self.event, _, _)).to_string()) : "Enter";
                     }
                     @if let Tab::FindTeam = tab {
                         span(class = "button selected") : "Find Teammates";
                     } else {
-                        a(class = "button", href = uri!(find_team(&*self.series, &*self.event)).to_string()) : "Find Teammates";
+                        a(class = "button", href = uri!(find_team(self.series, &*self.event)).to_string()) : "Find Teammates";
                     }
                 }
                 //a(class = "button") : "Volunteer"; //TODO
@@ -268,7 +374,7 @@ impl<'a> Data<'a> {
 impl ToHtml for Data<'_> {
     fn to_html(&self) -> RawHtml<String> {
         html! {
-            a(href = uri!(info(&*self.series, &*self.event)).to_string()) : self.display_name;
+            a(href = uri!(info(self.series, &*self.event)).to_string()) : self.display_name;
         }
     }
 }
@@ -324,13 +430,12 @@ pub(crate) enum InfoError {
 }
 
 #[rocket::get("/event/<series>/<event>")]
-pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
+pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(InfoError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(me.as_ref(), Tab::Info).await.map_err(InfoError::Sql)?;
-    let content = match series {
-        "mw" => mw::info(pool, event).await?,
-        "pic" => pic::info(pool, event).await?,
-        _ => unimplemented!(),
+    let content = match data.series {
+        Series::Multiworld => mw::info(pool, event).await?,
+        Series::Pictionary => pic::info(pool, event).await?,
     };
     page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
         : header;
@@ -348,7 +453,7 @@ pub(crate) enum TeamsError {
 }
 
 #[rocket::get("/event/<series>/<event>/teams")]
-pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<RawHtml<String>, StatusOrError<TeamsError>> {
+pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<TeamsError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(TeamsError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(me.as_ref(), Tab::Teams).await.map_err(TeamsError::Sql)?;
     let mut signups = Vec::default();
@@ -359,7 +464,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
             OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
         )
-    "#, series, event, me.as_ref().map(|me| i64::from(me.id))).fetch(&**pool);
+    "#, series.to_str(), event, me.as_ref().map(|me| i64::from(me.id))).fetch(&**pool);
     let roles = data.team_config().roles();
     while let Some(team) = teams_query.try_next().await.map_err(TeamsError::Sql)? {
         let members = stream::iter(&roles)
@@ -423,7 +528,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
-pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: &str, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(me.as_ref(), Tab::MyStatus).await?;
     Ok(page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
@@ -434,7 +539,7 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
                 AND event = $2
                 AND member = $3
                 AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-            "#, series, event, i64::from(me.id)).fetch_optional(&**pool).await? {
+            "#, series.to_str(), event, i64::from(me.id)).fetch_optional(&**pool).await? {
                 html! {
                     : header;
                     p {
@@ -488,7 +593,7 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
 }
 
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
-pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: &str, event: &str, my_role: Option<crate::event::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<crate::event::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(match data.team_config() {
         TeamConfig::Multiworld => mw::enter_form(me, uri, csrf, data, Context::default(), client).await?,
@@ -506,7 +611,7 @@ pub(crate) enum FindTeamError {
 }
 
 #[rocket::get("/event/<series>/<event>/find-team")]
-pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
+pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(match data.team_config() {
         TeamConfig::Multiworld => unimplemented!(), //TODO “find team” form for multiworld, without invite feature
@@ -528,7 +633,7 @@ pub(crate) enum AcceptError {
 }
 
 #[rocket::post("/event/<series>/<event>/confirm/<team>", data = "<form>")]
-pub(crate) async fn confirm_signup(pool: &State<PgPool>, me: User, team: Id, csrf: Option<CsrfToken>, series: &str, event: &str, form: Form<EmptyForm>) -> Result<Redirect, StatusOrError<AcceptError>> {
+pub(crate) async fn confirm_signup(pool: &State<PgPool>, me: User, team: Id, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<EmptyForm>) -> Result<Redirect, StatusOrError<AcceptError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(AcceptError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     form.verify(&csrf).map_err(AcceptError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_started() { return Err(AcceptError::EventStarted.into()) }
@@ -539,7 +644,7 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, me: User, team: Id, csr
         }
         for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, i64::from(team)).fetch_all(&mut transaction).await.map_err(AcceptError::Sql)? {
             let id = Id::new(&mut transaction, IdTable::Notifications).await.map_err(AcceptError::Sql)?;
-            sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', $3, $4, $5)", i64::from(id), i64::from(member), series, event, i64::from(me.id)).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
+            sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', $3, $4, $5)", i64::from(id), i64::from(member), series as _, event, i64::from(me.id)).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
         }
         sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", i64::from(team), i64::from(me.id)).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
         // if this confirms the team, remove all members from looking_for_team
@@ -568,7 +673,7 @@ pub(crate) enum ResignError {
 }
 
 #[rocket::get("/event/<series>/<event>/resign/<team>")]
-pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: &str, event: &str, team: Id) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() {
         return Err(StatusOrError::Status(Status::Forbidden))
@@ -590,7 +695,7 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
 }
 
 #[rocket::post("/event/<series>/<event>/resign/<team>", data = "<form>")]
-pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, series: &str, event: &str, team: Id, form: Form<EmptyForm>) -> Result<Redirect, StatusOrError<ResignError>> {
+pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id, form: Form<EmptyForm>) -> Result<Redirect, StatusOrError<ResignError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(ResignError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     form.verify(&csrf).map_err(ResignError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_ended() { return Err(ResignError::EventEnded.into()) }
@@ -610,7 +715,7 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<Csr
         for member in delete {
             if member.id != me.id && member.status.is_confirmed() {
                 let id = Id::new(&mut transaction, IdTable::Notifications).await.map_err(ResignError::Sql)?;
-                sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", i64::from(id), i64::from(member.id), notification_kind as _, series, event, i64::from(me.id)).execute(&mut transaction).await.map_err(ResignError::Sql)?;
+                sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", i64::from(id), i64::from(member.id), notification_kind as _, series as _, event, i64::from(me.id)).execute(&mut transaction).await.map_err(ResignError::Sql)?;
             }
         }
         sqlx::query!("DELETE FROM teams WHERE id = $1", i64::from(team)).execute(&mut transaction).await.map_err(ResignError::Sql)?;

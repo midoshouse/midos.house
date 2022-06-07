@@ -47,6 +47,7 @@ use {
     tokio::process::Command,
     crate::{
         config::Config,
+        event::Series,
         favicon::{
             ChestAppearances,
             ChestTextures,
@@ -59,6 +60,7 @@ use {
 };
 
 mod auth;
+mod cal;
 mod config;
 mod event;
 mod favicon;
@@ -195,7 +197,7 @@ async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageSty
 #[rocket::get("/")]
 async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
     //TODO list ongoing events separately
-    let upcoming_events = sqlx::query!("SELECT series, event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW())")
+    let upcoming_events = sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW())"#)
         .fetch(&**pool).map_err(event::DataError::from)
         .and_then(|row| async move { Ok(event::Data::new((**pool).clone(), row.series, row.event).await?.expect("event deleted during page load")) }) //TODO use a transaction to enforce consistency?
         .try_collect::<Vec<_>>().await?;
@@ -221,12 +223,31 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
             : " • ";
             a(href = uri!(new_event).to_string()) : "Planning an event?";
         }
+        h1 : "Calendar";
+        p {
+            : "A calendar of all races across all events can be found at ";
+            code : uri!("https://midos.house", cal::index).to_string();
+            : " — by pasting this link into most calendar apps' “subscribe” feature instead of downloading it, you can get automatic updates as races are scheduled:";
+            ul {
+                li {
+                    : "In Google Calendar, select ";
+                    a(href = "https://calendar.google.com/calendar/u/0/r/settings/addbyurl") : "Add calendar → From URL";
+                }
+                li {
+                    : "In Apple Calendar, press ";
+                    kbd : "⌥";
+                    kbd : "⌘";
+                    kbd : "S";
+                    : " or select File → New Calendar Subscription";
+                }
+            }
+        }
     }).await?)
 }
 
 #[rocket::get("/archive")]
 async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
-    let past_events = sqlx::query!("SELECT series, event FROM events WHERE listed AND end_time IS NOT NULL AND end_time <= NOW()")
+    let past_events = sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed AND end_time IS NOT NULL AND end_time <= NOW()"#)
         .fetch(&**pool).map_err(event::DataError::from)
         .and_then(|row| async move { Ok(event::Data::new((**pool).clone(), row.series, row.event).await?.expect("event deleted during page load")) }) //TODO use a transaction to enforce consistency?
         .try_collect::<Vec<_>>().await?;
@@ -352,6 +373,7 @@ async fn main(Args { is_dev }: Args) -> Result<(), Error> {
         auth::discord_login,
         auth::register_racetime,
         auth::register_discord,
+        cal::index,
         event::info,
         event::teams,
         event::status,

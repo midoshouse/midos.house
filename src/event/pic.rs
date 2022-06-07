@@ -43,6 +43,7 @@ use {
             Error,
             FindTeamError,
             InfoError,
+            Series,
             Tab,
         },
         page,
@@ -61,6 +62,8 @@ use {
         },
     },
 };
+
+const SERIES: Series = Series::Pictionary;
 
 pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, InfoError> {
     let is_random_settings = event.starts_with("rs");
@@ -99,7 +102,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
             }
             p {
                 : "Settings string for version 6.2: ";
-                code: "AJTWFCHYKAA8KLAH2UASAHCCYCHGLTDDAKJ8S8AAJAEAC2AJSDGBLADLED7JKQUXEANKCAJAAENAABFAB";
+                code : "AJTWFCHYKAA8KLAH2UASAHCCYCHGLTDDAKJ8S8AAJAEAC2AJSDGBLADLED7JKQUXEANKCAJAAENAABFAB";
             }
         },
         "rs1" => html! {
@@ -445,7 +448,7 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
             : csrf;
             legend {
                 : "Fill out this form to enter the race as a team. Your teammate will receive an invitation they have to accept to confirm the signup. If you don't have a team yet, you can ";
-                a(href = uri!(super::find_team(&*data.series, &*data.event)).to_string()) : "look for a teammate";
+                a(href = uri!(super::find_team(data.series, &*data.event)).to_string()) : "look for a teammate";
                 : " instead.";
             }
             fieldset {
@@ -486,7 +489,7 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
             : header;
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(super::enter(&*data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(super::enter(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to enter this race.";
                 }
             }
@@ -509,7 +512,7 @@ impl CsrfForm for EnterForm { //TODO derive
 
 #[rocket::post("/event/pic/<event>/enter", data = "<form>")]
 pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let data = Data::new((**pool).clone(), "pic", event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let data = Data::new((**pool).clone(), SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if data.is_started() {
@@ -571,7 +574,7 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
             sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", i64::from(id), i64::from(me.id), super::Role::from(value.my_role) as _).execute(&mut transaction).await?;
             sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", i64::from(id), i64::from(value.teammate), match value.my_role { Role::Sheikah => super::Role::Gerudo, Role::Gerudo => super::Role::Sheikah } as _).execute(&mut transaction).await?;
             transaction.commit().await?;
-            RedirectOrContent::Redirect(Redirect::to(uri!(super::teams("pic", event))))
+            RedirectOrContent::Redirect(Redirect::to(uri!(super::teams(SERIES, event))))
         }
     } else {
         RedirectOrContent::Content(enter_form(Some(me), uri, csrf, data, EnterFormDefaults::Context(form.context)).await?)
@@ -583,7 +586,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
     let header = data.header(me.as_ref(), Tab::FindTeam).await?;
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
-    let mut looking_for_team_query = sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, &data.series, &data.event).fetch(&data.pool);
+    let mut looking_for_team_query = sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series.to_str(), &data.event).fetch(&data.pool);
     while let Some(row) = looking_for_team_query.try_next().await? {
         let user = User::from_id(&data.pool, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
         if me.as_ref().map_or(false, |me| user.id == me.id) { my_role = Some(row.role) }
@@ -631,7 +634,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
         Some(html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(super::find_team(&*data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(super::find_team(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to add yourself to this list.";
                 }
             }
@@ -680,7 +683,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
                             @if can_invite_any {
                                 td {
                                     @if let Some(my_role) = invite {
-                                        a(class = "button", href = uri!(super::enter(&*data.series, &*data.event, my_role, Some(user.id))).to_string()) : "Invite";
+                                        a(class = "button", href = uri!(super::enter(data.series, &*data.event, my_role, Some(user.id))).to_string()) : "Invite";
                                     }
                                 }
                             }
@@ -705,7 +708,7 @@ impl CsrfForm for FindTeamForm { //TODO derive
 
 #[rocket::post("/event/pic/<event>/find-team", data = "<form>")]
 pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
-    let data = Data::new((**pool).clone(), "pic", event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let data = Data::new((**pool).clone(), SERIES, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if data.is_started() {
@@ -734,7 +737,7 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
         } else {
             sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role) VALUES ('pic', $1, $2, $3)", event, i64::from(me.id), value.role as _).execute(&mut transaction).await.map_err(FindTeamError::Sql)?;
             transaction.commit().await.map_err(FindTeamError::Sql)?;
-            RedirectOrContent::Redirect(Redirect::to(uri!(super::find_team("pic", event))))
+            RedirectOrContent::Redirect(Redirect::to(uri!(super::find_team(SERIES, event))))
         }
     } else {
         RedirectOrContent::Content(find_team_form(Some(me), uri, csrf, data, form.context).await?)
