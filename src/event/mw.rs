@@ -4,10 +4,17 @@ use {
         fmt,
     },
     enum_iterator::IntoEnumIterator,
-    futures::stream::{
-        self,
-        StreamExt as _,
-        TryStreamExt as _,
+    futures::{
+        future::{
+            self,
+            Future,
+            FutureExt as _,
+        },
+        stream::{
+            self,
+            StreamExt as _,
+            TryStreamExt as _,
+        },
     },
     itertools::Itertools as _,
     rocket::{
@@ -240,7 +247,7 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
                         }
                     }
                     fieldset {
-                        input(type = "submit", value = "Submit");
+                        input(type = "submit", value = "Next");
                     }
                 };
                 html! {
@@ -323,6 +330,13 @@ impl<'v> EnterFormStep2Defaults<'v> {
         }
     }
 
+    fn racetime_team_name(&self) -> Option<&str> {
+        match self {
+            Self::Context(ctx) => ctx.field_value("racetime_team_name"),
+            Self::Values { racetime_team: RaceTimeTeamData { name, .. } } => Some(name),
+        }
+    }
+
     fn racetime_team_slug(&self) -> Option<&str> {
         match self {
             Self::Context(ctx) => ctx.field_value("racetime_team"),
@@ -331,18 +345,22 @@ impl<'v> EnterFormStep2Defaults<'v> {
     }
 
     //TODO fix the lifetime issues and make the HTTP request async
-    fn racetime_members(&self) -> reqwest::Result<Vec<RaceTimeTeamMember>> {
-        Ok(match self {
+    fn racetime_members(&self) -> impl Future<Output = reqwest::Result<Vec<RaceTimeTeamMember>>> {
+        match self {
             Self::Context(ctx) => if let Some(team_slug) = ctx.field_value("racetime_team") {
-                reqwest::blocking::get(format!("https://racetime.gg/team/{team_slug}/data"))?
-                    .error_for_status()?
-                    .json::<RaceTimeTeamData>()?
-                    .members
+                let url = format!("https://racetime.gg/team/{team_slug}/data");
+                async move {
+                    Ok(reqwest::get(url).await?
+                        .error_for_status()?
+                        .json::<RaceTimeTeamData>().await?
+                        .members
+                    )
+                }.boxed()
             } else {
-                Vec::default()
+                future::ok(Vec::default()).boxed()
             }
-            Self::Values { racetime_team } => racetime_team.members.clone(),
-        })
+            Self::Values { racetime_team } => future::ok(racetime_team.members.clone()).boxed(),
+        }
     }
 
     fn world_number(&self, racetime_id: &str) -> Option<Role> {
@@ -358,42 +376,54 @@ impl<'v> EnterFormStep2Defaults<'v> {
     }
 }
 
-async fn enter_form_step2(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, defaults: EnterFormStep2Defaults<'_>) -> Result<RawHtml<String>, Error> {
-    let header = data.header(me.as_ref(), Tab::Enter).await?;
-    let page_content = {
-        let mut errors = defaults.errors();
-        let team_members = defaults.racetime_members()?;
-        let form_content = html! {
-            : csrf;
-            input(type = "hidden", name = "racetime_team", value = defaults.racetime_team_slug());
-            @for team_member in team_members {
+fn enter_form_step2<'a>(me: Option<User>, uri: Origin<'a>, csrf: Option<CsrfToken>, data: Data<'a>, defaults: EnterFormStep2Defaults<'a>) -> impl Future<Output = Result<RawHtml<String>, Error>> + 'a {
+    let team_members = defaults.racetime_members();
+    async move {
+        let header = data.header(me.as_ref(), Tab::Enter).await?;
+        let page_content = {
+            let team_members = team_members.await?;
+            let mut errors = defaults.errors();
+            let form_content = html! {
+                : csrf;
                 fieldset {
-                    : field_errors(&mut errors, &format!("world_number[{}]", team_member.id));
-                    label(for = &format!("world_number[{}]", team_member.id)) : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
-                    input(id = &format!("world_number[{}]-power", team_member.id), class = "power", type = "radio", name = &format!("world_number[{}]", team_member.id), value = "power", checked? = defaults.world_number(&team_member.id) == Some(Role::Power));
-                    label(class = "power", for = &format!("world_number[{}]-power", team_member.id)) : "World 1";
-                    input(id = &format!("world_number[{}]-wisdom", team_member.id), class = "wisdom", type = "radio", name = &format!("world_number[{}]", team_member.id), value = "wisdom", checked? = defaults.world_number(&team_member.id) == Some(Role::Wisdom));
-                    label(class = "wisdom", for = &format!("world_number[{}]-wisdom", team_member.id)) : "World 2";
-                    input(id = &format!("world_number[{}]-courage", team_member.id), class = "courage", type = "radio", name = &format!("world_number[{}]", team_member.id), value = "courage", checked? = defaults.world_number(&team_member.id) == Some(Role::Courage));
-                    label(class = "courage", for = &format!("world_number[{}]-courage", team_member.id)) : "World 3";
+                    label(for = "racetime_team") {
+                        : "racetime.gg Team: ";
+                        a(href = format!("https://racetime.gg/team/{}", defaults.racetime_team_slug().expect("missing racetime team slug"))) : defaults.racetime_team_name().expect("missing racetime team name");
+                        : " • ";
+                        a(href = uri!(super::enter(data.series, &*data.event, _, _)).to_string()) : "Change";
+                    }
+                    input(type = "hidden", name = "racetime_team", value = defaults.racetime_team_slug());
+                    input(type = "hidden", name = "racetime_team_name", value = defaults.racetime_team_name());
                 }
-            }
-            //TODO restream consent?
-            fieldset {
-                input(type = "submit", value = "Submit");
+                @for team_member in team_members {
+                    fieldset {
+                        : field_errors(&mut errors, &format!("world_number[{}]", team_member.id));
+                        label(for = &format!("world_number[{}]", team_member.id)) : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
+                        input(id = &format!("world_number[{}]-power", team_member.id), class = "power", type = "radio", name = &format!("world_number[{}]", team_member.id), value = "power", checked? = defaults.world_number(&team_member.id) == Some(Role::Power));
+                        label(class = "power", for = &format!("world_number[{}]-power", team_member.id)) : "World 1";
+                        input(id = &format!("world_number[{}]-wisdom", team_member.id), class = "wisdom", type = "radio", name = &format!("world_number[{}]", team_member.id), value = "wisdom", checked? = defaults.world_number(&team_member.id) == Some(Role::Wisdom));
+                        label(class = "wisdom", for = &format!("world_number[{}]-wisdom", team_member.id)) : "World 2";
+                        input(id = &format!("world_number[{}]-courage", team_member.id), class = "courage", type = "radio", name = &format!("world_number[{}]", team_member.id), value = "courage", checked? = defaults.world_number(&team_member.id) == Some(Role::Courage));
+                        label(class = "courage", for = &format!("world_number[{}]-courage", team_member.id)) : "World 3";
+                    }
+                }
+                //TODO restream consent?
+                fieldset {
+                    input(type = "submit", value = "Submit");
+                }
+            };
+            html! {
+                : header;
+                form(action = uri!(enter_post_step2(&*data.event)).to_string(), method = "post") {
+                    @for error in errors {
+                        : render_form_error(error);
+                    }
+                    : form_content;
+                }
             }
         };
-        html! {
-            : header;
-            form(action = uri!(enter_post_step2(&*data.event)).to_string(), method = "post") {
-                @for error in errors {
-                    : render_form_error(error);
-                }
-                : form_content;
-            }
-        }
-    };
-    Ok(page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), page_content).await?)
+        Ok(page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), page_content).await?)
+    }
 }
 
 #[derive(FromForm)]
@@ -409,7 +439,7 @@ impl CsrfForm for EnterFormStep2 { //TODO derive
 }
 
 #[rocket::post("/event/mw/<event>/enter/step2", data = "<form>")]
-pub(crate) async fn enter_post_step2(pool: &State<PgPool>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, EnterFormStep2>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, me: User, uri: Origin<'a>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, event: &'a str, form: Form<Contextual<'a, EnterFormStep2>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -420,6 +450,7 @@ pub(crate) async fn enter_post_step2(pool: &State<PgPool>, me: User, uri: Origin
         let mut transaction = pool.begin().await?;
         // verify team again since it's sent by the client
         let (team_slug, team_name, users, roles) = if let Some(racetime_team) = validate_team(&me, client, &mut form.context, &value.racetime_team).await? {
+            let mut all_accounts_exist = true;
             let mut users = Vec::default();
             let mut roles = Vec::default();
             for member in &racetime_team.members {
@@ -439,6 +470,7 @@ pub(crate) async fn enter_post_step2(pool: &State<PgPool>, me: User, uri: Origin
                     users.push(user);
                 } else {
                     form.context.push_error(form::Error::validation("This racetime.gg account is not associated with a Mido's House account.").with_name(format!("world_number[{}]", member.id)));
+                    all_accounts_exist = false;
                 }
                 if let Some(&role) = value.world_number.get(&member.id) {
                     roles.push(role);
@@ -446,17 +478,19 @@ pub(crate) async fn enter_post_step2(pool: &State<PgPool>, me: User, uri: Origin
                     form.context.push_error(form::Error::validation("This field is required.").with_name(format!("world_number[{}]", member.id)));
                 }
             }
-            match &*users {
-                [u1, u2, u3] => if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
-                    series = 'mw'
-                    AND event = $1
-                    AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $2)
-                    AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
-                    AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)
-                ) AS "exists!""#, event, i64::from(u1.id), i64::from(u2.id), i64::from(u3.id)).fetch_one(&mut transaction).await? {
-                    form.context.push_error(form::Error::validation("A team with these members is already proposed for this race. Check your notifications to accept the invite, and/or ask your teammates to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
+            if all_accounts_exist {
+                match &*users {
+                    [u1, u2, u3] => if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
+                        series = 'mw'
+                        AND event = $1
+                        AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $2)
+                        AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
+                        AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)
+                    ) AS "exists!""#, event, i64::from(u1.id), i64::from(u2.id), i64::from(u3.id)).fetch_one(&mut transaction).await? {
+                        form.context.push_error(form::Error::validation("A team with these members is already proposed for this race. Check your notifications to accept the invite, and/or ask your teammates to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
+                    },
+                    _ => unimplemented!("exact proposed team check for {} members", users.len()),
                 }
-                _ => unimplemented!("exact proposed team check for {} members", racetime_team.members.len()),
             }
             for role in Role::into_enum_iter() {
                 let mut found = false;
