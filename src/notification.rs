@@ -212,7 +212,7 @@ impl Notification {
                         }
                     }
                     div(class = "button-row") {
-                        @if my_role == Role::Sheikah && me.racetime_id.is_none() {
+                        @if matches!(event.team_config(), TeamConfig::Pictionary) && my_role == Role::Sheikah && me.racetime_id.is_none() {
                             a(class = "button", href = uri!(crate::auth::racetime_login(Some(uri!(notifications)))).to_string()) : "Connect racetime.gg Account to Accept";
                         } else {
                             form(action = uri!(crate::event::confirm_signup(event.series, &*event.event, team_id)).to_string(), method = "post") {

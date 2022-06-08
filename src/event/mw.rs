@@ -485,7 +485,7 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, me: User, uri: Or
                         AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
                         AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)
                     ) AS "exists!""#, event, i64::from(u1.id), i64::from(u2.id), i64::from(u3.id)).fetch_one(&mut transaction).await? {
-                        form.context.push_error(form::Error::validation("A team with these members is already proposed for this race. Check your notifications to accept the invite, and/or ask your teammates to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
+                        form.context.push_error(form::Error::validation("A team with these members is already proposed for this tournament. Check your notifications to accept the invite, and/or ask your teammates to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
                     },
                     _ => unimplemented!("exact proposed team check for {} members", users.len()),
                 }

@@ -60,9 +60,17 @@ body > div {
 }
 
 .button-row {
-    display: flex;
     flex-flow: row wrap;
+}
+
+div.button-row {
+    display: flex;
     padding: 0 16px;
+}
+
+span.button-row {
+    display: inline-flex;
+    padding: 0;
 }
 
 .button-row form {

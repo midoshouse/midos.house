@@ -425,7 +425,7 @@ pub(crate) enum InfoError {
     #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
-    #[error("missing user data for a race organizer")]
+    #[error("missing user data for an event organizer")]
     OrganizerUserData,
 }
 
@@ -453,7 +453,7 @@ pub(crate) enum TeamsError {
 }
 
 #[rocket::get("/event/<series>/<event>/teams")]
-pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<TeamsError>> {
+pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<TeamsError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(TeamsError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(me.as_ref(), Tab::Teams).await.map_err(TeamsError::Sql)?;
     let mut signups = Vec::default();
@@ -475,7 +475,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                 Ok::<_, TeamsError>((role, user, is_confirmed))
             })
             .try_collect::<Vec<_>>().await?;
-        signups.push((team.name, team.racetime_slug, members));
+        signups.push((team.id, team.name, team.racetime_slug, members));
     }
     page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
         : header;
@@ -496,7 +496,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                         }
                     }
                 } else {
-                    @for (team_name, racetime_slug, members) in signups {
+                    @for (team_id, team_name, racetime_slug, members) in signups {
                         tr {
                             @if let Some(racetime_slug) = racetime_slug {
                                 td {
@@ -515,7 +515,22 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                 td(class = role.css_class()) {
                                     : user;
                                     @if !is_confirmed {
-                                        : " (unconfirmed)";
+                                        : " ";
+                                        @if me == Some(user) {
+                                            span(class = "button-row") {
+                                                form(action = uri!(confirm_signup(series, event, team_id)).to_string(), method = "post") {
+                                                    : csrf;
+                                                    input(type = "submit", value = "Accept");
+                                                }
+                                                form(action = uri!(resign_post(series, event, team_id)).to_string(), method = "post") {
+                                                    : csrf;
+                                                    input(type = "submit", value = "Decline");
+                                                }
+                                                //TODO options to block sender or event
+                                            }
+                                        } else {
+                                            : "(unconfirmed)";
+                                        }
                                     }
                                 }
                             }
@@ -573,7 +588,7 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
                 html! {
                     : header;
                     article {
-                        p : "You are not signed up for this race.";
+                        p : "You are not signed up for this event.";
                         //p : "You can accept, decline, or retract unconfirmed team invitations on the teams page."; //TODO
                     }
                 }
@@ -584,7 +599,7 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
                 article {
                     p {
                         a(href = uri!(auth::login(Some(uri!(status(series, event))))).to_string()) : "Sign in or create a Mido's House account";
-                        : " to view your status for this race.";
+                        : " to view your status for this event.";
                     }
                 }
             }
