@@ -62,7 +62,7 @@ use {
             IdTable,
             RedirectOrContent,
             StatusOrError,
-            field_errors,
+            form_field,
             natjoin,
             render_form_error,
         },
@@ -232,8 +232,7 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
             } else {
                 let form_content = html! {
                     : csrf;
-                    fieldset {
-                        : field_errors(&mut errors, "racetime_team");
+                    : form_field("racetime_team", &mut errors, html! {
                         label(for = "racetime_team") : "racetime.gg Team:";
                         select(name = "racetime_team") {
                             @for team in racetime_user.teams {
@@ -245,7 +244,7 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
                             a(href = "https://racetime.gg/account/teams/create") : "create a new team";
                             : ", then come back here.)";
                         }
-                    }
+                    });
                     fieldset {
                         input(type = "submit", value = "Next");
                     }
@@ -385,7 +384,7 @@ fn enter_form_step2<'a>(me: Option<User>, uri: Origin<'a>, csrf: Option<CsrfToke
             let mut errors = defaults.errors();
             let form_content = html! {
                 : csrf;
-                fieldset {
+                : form_field("racetime_team", &mut errors, html! {
                     label(for = "racetime_team") {
                         : "racetime.gg Team: ";
                         a(href = format!("https://racetime.gg/team/{}", defaults.racetime_team_slug().expect("missing racetime team slug"))) : defaults.racetime_team_name().expect("missing racetime team name");
@@ -394,10 +393,9 @@ fn enter_form_step2<'a>(me: Option<User>, uri: Origin<'a>, csrf: Option<CsrfToke
                     }
                     input(type = "hidden", name = "racetime_team", value = defaults.racetime_team_slug());
                     input(type = "hidden", name = "racetime_team_name", value = defaults.racetime_team_name());
-                }
+                });
                 @for team_member in team_members {
-                    fieldset {
-                        : field_errors(&mut errors, &format!("world_number[{}]", team_member.id));
+                    : form_field(&format!("world_number[{}]", team_member.id), &mut errors, html! {
                         label(for = &format!("world_number[{}]", team_member.id)) : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
                         input(id = &format!("world_number[{}]-power", team_member.id), class = "power", type = "radio", name = &format!("world_number[{}]", team_member.id), value = "power", checked? = defaults.world_number(&team_member.id) == Some(Role::Power));
                         label(class = "power", for = &format!("world_number[{}]-power", team_member.id)) : "World 1";
@@ -405,7 +403,7 @@ fn enter_form_step2<'a>(me: Option<User>, uri: Origin<'a>, csrf: Option<CsrfToke
                         label(class = "wisdom", for = &format!("world_number[{}]-wisdom", team_member.id)) : "World 2";
                         input(id = &format!("world_number[{}]-courage", team_member.id), class = "courage", type = "radio", name = &format!("world_number[{}]", team_member.id), value = "courage", checked? = defaults.world_number(&team_member.id) == Some(Role::Courage));
                         label(class = "courage", for = &format!("world_number[{}]-courage", team_member.id)) : "World 3";
-                    }
+                    });
                 }
                 //TODO restream consent?
                 fieldset {

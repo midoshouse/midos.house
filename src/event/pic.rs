@@ -56,7 +56,7 @@ use {
             IdTable,
             RedirectOrContent,
             StatusOrError,
-            field_errors,
+            form_field,
             natjoin,
             render_form_error,
         },
@@ -451,26 +451,23 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
                 a(href = uri!(super::find_team(data.series, &*data.event)).to_string()) : "look for a teammate";
                 : " instead.";
             }
-            fieldset {
-                : field_errors(&mut errors, "team_name");
+            : form_field("team_name", &mut errors, html! {
                 label(for = "team_name") : "Team Name:";
                 input(type = "text", name = "team_name", value? = defaults.team_name());
                 label(class = "help") : "(Optional unless you want to be on restream. Can be changed later. Organizers may remove inappropriate team names.)";
-            }
-            fieldset {
-                : field_errors(&mut errors, "my_role");
+            });
+            : form_field("my_role", &mut errors, html! {
                 label(for = "my_role") : "My Role:";
                 input(id = "my_role-sheikah", class = "sheikah", type = "radio", name = "my_role", value = "sheikah", checked? = defaults.my_role() == Some(Role::Sheikah));
                 label(class = "sheikah", for = "my_role-sheikah") : "Runner";
                 input(id = "my_role-gerudo", class = "gerudo", type = "radio", name = "my_role", value = "gerudo", checked? = defaults.my_role() == Some(Role::Gerudo));
                 label(class = "gerudo", for = "my_role-gerudo") : "Pilot";
-            }
-            fieldset {
-                : field_errors(&mut errors, "teammate");
+            });
+            : form_field("teammate", &mut errors, html! {
                 label(for = "teammate") : "Teammate:";
                 input(type = "text", name = "teammate", value? = defaults.teammate_text().as_deref());
                 label(class = "help") : "(Enter your teammate's Mido's House user ID. It can be found on their profile page.)"; //TODO add JS-based user search?
-            }
+            });
             fieldset {
                 input(type = "submit", value = "Submit");
             }
@@ -601,8 +598,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
                 legend {
                     : "Fill out this form to add yourself to the list below.";
                 }
-                fieldset {
-                    : field_errors(&mut errors, "role");
+                : form_field("role", &mut errors, html! {
                     label(for = "role") : "Role:";
                     input(id = "role-sheikah_only", class = "sheikah", type = "radio", name = "role", value = "sheikah_only", checked? = context.field_value("role") == Some("sheikah_only"));
                     label(class = "sheikah", for = "role-sheikah_only") : "Runner only";
@@ -614,7 +610,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
                     label(class = "gerudo", for = "role-gerudo_preferred") : "Pilot preferred";
                     input(id = "role-gerudo_only", class = "gerudo", type = "radio", name = "role", value = "gerudo_only", checked? = context.field_value("role") == Some("gerudo_only"));
                     label(class = "gerudo", for = "role-gerudo_only") : "Pilot only";
-                }
+                });
                 fieldset {
                     input(type = "submit", value = "Submit");
                 }

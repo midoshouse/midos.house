@@ -226,12 +226,15 @@ pub(crate) fn render_form_error(error: &form::Error<'_>) -> RawHtml<String> {
     }
 }
 
-pub(crate) fn field_errors(errors: &mut Vec<&form::Error<'_>>, name: &str) -> RawHtml<String> {
+pub(crate) fn form_field(name: &str, errors: &mut Vec<&form::Error<'_>>, content: impl ToHtml) -> RawHtml<String> {
     let field_errors;
     (field_errors, *errors) = mem::take(errors).into_iter().partition(|error| error.is_for(name));
     html! {
-        @for error in field_errors {
-            : render_form_error(error);
+        fieldset(class? = (!field_errors.is_empty()).then(|| "error")) {
+            @for error in field_errors {
+                : render_form_error(error);
+            }
+            : content;
         }
     }
 }

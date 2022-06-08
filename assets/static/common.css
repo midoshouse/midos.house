@@ -199,8 +199,11 @@ label.help {
 }
 
 .error {
-    background-color: #ffc0c0;
     border: 1px solid #c00000;
+}
+
+p.error {
+    background-color: #ffc0c0;
     padding: 8px;
 }
 
