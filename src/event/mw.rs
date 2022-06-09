@@ -3,7 +3,7 @@ use {
         collections::HashMap,
         fmt,
     },
-    enum_iterator::IntoEnumIterator,
+    enum_iterator::Sequence,
     futures::{
         future::{
             self,
@@ -101,7 +101,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
     })
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, FromFormField, IntoEnumIterator)]
+#[derive(Clone, Copy, PartialEq, Eq, FromFormField, Sequence)]
 pub(crate) enum Role {
     #[field(value = "power")]
     Power,
@@ -490,7 +490,7 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, me: User, uri: Or
                     _ => unimplemented!("exact proposed team check for {} members", users.len()),
                 }
             }
-            for role in Role::into_enum_iter() {
+            for role in enum_iterator::all::<Role>() {
                 let mut found = false;
                 for (member_id, world_number) in &value.world_number {
                     if *world_number == role {
