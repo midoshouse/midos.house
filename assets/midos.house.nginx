@@ -23,6 +23,10 @@ server {
         proxy_pass http://localhost:24812;
     }
 
+    location /static/ {
+        root /opt/git/github.com/midoshouse/midos.house/master/assets;
+    }
+
     error_page 502 /error/502.html;
 
     location /error/ {
