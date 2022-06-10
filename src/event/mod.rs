@@ -548,7 +548,7 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
     let header = data.header(me.as_ref(), Tab::MyStatus).await?;
     Ok(page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
         if let Some(ref me) = me {
-            if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name, racetime_slug FROM teams, team_members WHERE
+            if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name, racetime_slug, role AS "role: Role" FROM teams, team_members WHERE
                 id = team
                 AND series = $1
                 AND event = $2
@@ -577,6 +577,28 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
                         //TODO list teammates
                         : ".";
                     }
+                    @match data.series {
+                        Series::Multiworld => p : "Waiting for the qualifier async to be published. Keep an eye out for an announcement on Discord."; //TODO
+                        Series::Pictionary => @if data.is_ended() {
+                            p : "This race has been completed."; //TODO ranking and finish time
+                        } else if let Some(ref race_room) = data.url {
+                            @match row.role.try_into().expect("non-Pictionary role in Pictionary team") {
+                                pic::Role::Sheikah => p {
+                                    : "Please join ";
+                                    a(href = race_room.to_string()) : "the race room";
+                                    : " as soon as possible. You will receive further instructions there.";
+                                }
+                                pic::Role::Gerudo => p {
+                                    : "Please keep an eye on ";
+                                    a(href = race_room.to_string()) : "the race room";
+                                    : " (but do not join). The spoiler log will be posted there.";
+                                }
+                            }
+                        } else {
+                            : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
+                        }
+                    }
+                    h2 : "Options";
                     p : "More options coming soon"; //TODO options to change team name, swap roles, or opt in/out for restreaming
                     @if !data.is_ended() {
                         p {
