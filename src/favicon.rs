@@ -194,7 +194,7 @@ impl ChestAppearance {
         big: false,
     };
 
-    fn from_item(camc_kind: CorrectChestAppearances, chus_in_logic: bool, token_wincon: bool, heart_wincon: bool, item: Item) -> Self {
+    fn from_item(camc_kind: CorrectChestAppearances, chus_in_logic: bool, token_wincon: bool, heart_wincon: bool, item: &Item) -> Self {
         if let CorrectChestAppearances::Off = camc_kind { return Self::VANILLA }
         let item_name = if item.item == "Ice Trap" {
             item.model.as_deref().expect("ice trap without model in CSMC")
@@ -466,11 +466,12 @@ impl From<SpoilerLog> for ChestAppearances {
             .unwrap_or_else(|| if settings.correct_chest_sizes { CorrectChestAppearances::Classic } else { CorrectChestAppearances::Off });
         let token_wincon = matches!(settings.bridge, Bridge::Tokens) || matches!(settings.lacs_condition, LacsCondition::Tokens) || matches!(settings.shuffle_ganon_bosskey, ShuffleGanonBosskey::Tokens);
         let heart_wincon = matches!(settings.bridge, Bridge::Hearts) || matches!(settings.lacs_condition, LacsCondition::Hearts) || matches!(settings.shuffle_ganon_bosskey, ShuffleGanonBosskey::Hearts);
+        let locations = locations.choose(&mut thread_rng()).expect("no worlds in location list");
         Self([
-            ChestAppearance::from_item(camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, locations.kf_midos_top_left_chest),
-            ChestAppearance::from_item(camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, locations.kf_midos_top_right_chest),
-            ChestAppearance::from_item(camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, locations.kf_midos_bottom_left_chest),
-            ChestAppearance::from_item(camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, locations.kf_midos_bottom_right_chest),
+            ChestAppearance::from_item(camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_top_left_chest),
+            ChestAppearance::from_item(camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_top_right_chest),
+            ChestAppearance::from_item(camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_bottom_left_chest),
+            ChestAppearance::from_item(camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_bottom_right_chest),
         ])
     }
 }

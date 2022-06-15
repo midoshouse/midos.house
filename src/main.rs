@@ -390,6 +390,8 @@ async fn main(Args { is_dev, view_as }: Args) -> Result<(), Error> {
         event::confirm_signup,
         event::resign,
         event::resign_post,
+        event::request_async,
+        event::submit_async,
         event::mw::enter_post,
         event::mw::enter_post_step2,
         event::pic::enter_post,

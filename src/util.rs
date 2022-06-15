@@ -3,9 +3,16 @@ use {
         iter,
         mem,
         str::FromStr,
+        time::Duration,
+    },
+    chrono::prelude::*,
+    chrono_tz::{
+        America,
+        Europe,
     },
     derive_more::From,
     itertools::Itertools as _,
+    lazy_regex::regex_captures,
     rand::prelude::*,
     rocket::{
         FromForm,
@@ -14,7 +21,6 @@ use {
         UriDisplayQuery,
         form::{
             self,
-            Contextual,
             FromFormField,
         },
         http::Status,
@@ -39,25 +45,6 @@ use {
     url::Url,
     crate::PageError,
 };
-
-pub(crate) trait CsrfForm {
-    fn csrf(&self) -> &String;
-}
-
-pub(crate) trait ContextualExt {
-    fn verify(&mut self, token: &Option<CsrfToken>);
-}
-
-impl<F: CsrfForm> ContextualExt for Contextual<'_, F> {
-    fn verify(&mut self, token: &Option<CsrfToken>) {
-        if let Some(ref value) = self.value {
-            match token.as_ref().map(|token| token.verify(value.csrf())) {
-                Some(Ok(())) => {}
-                Some(Err(rocket_csrf::VerificationFailure)) | None => self.context.push_error(form::Error::validation("Please submit the form again to confirm your identity.").with_name("csrf")),
-            }
-        }
-    }
-}
 
 /// A form that only holds a CSRF token
 #[derive(FromForm)]
@@ -266,5 +253,46 @@ pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
         _ => html! {
             : "🌐";
         },
+    }
+}
+
+pub(crate) fn parse_duration(s: &str) -> Option<Duration> {
+    if let Some((_, hours, minutes, seconds)) = regex_captures!("^ *(?:([0-9]+) *h)? *(?:([0-9]+) *m(?:in)?)? *(?:([0-9]+) *s(?:ec)?)? *$"i, s) {
+        let hours = if hours.is_empty() { 0 } else { hours.parse().ok()? };
+        let minutes = if minutes.is_empty() { 0 } else { minutes.parse().ok()? };
+        let seconds = if seconds.is_empty() { 0 } else { seconds.parse().ok()? };
+        Some(Duration::from_secs((60 * hours + minutes) * 60 + seconds))
+    } else if let Some((_, hours, minutes, seconds)) = regex_captures!("^ *([0-9]+) *: *([0-9]+) *: *([0-9]+) *$", s) {
+        let hours = if hours.is_empty() { 0 } else { hours.parse().ok()? };
+        let minutes = if minutes.is_empty() { 0 } else { minutes.parse().ok()? };
+        let seconds = if seconds.is_empty() { 0 } else { seconds.parse().ok()? };
+        Some(Duration::from_secs((60 * hours + minutes) * 60 + seconds))
+    } else {
+        None
+    }
+}
+
+pub(crate) fn format_datetime<Tz: TimeZone>(datetime: DateTime<Tz>, running_text: bool) -> RawHtml<String> {
+    let utc = datetime.with_timezone(&Utc);
+    let berlin = datetime.with_timezone(&Europe::Berlin);
+    let new_york = datetime.with_timezone(&America::New_York);
+    html! {
+        : utc.format("%A, %B %-d, %Y, %H:%M UTC").to_string();
+        @if running_text {
+            : " (";
+        } else {
+            : " • ";
+        }
+        : berlin.format(if berlin.date() == utc.date() { "%H:%M %Z" } else { "%A %H:%M %Z" }).to_string();
+        @if running_text {
+            : ", ";
+        } else {
+            : " • ";
+        }
+        : new_york.format(if new_york.date() == utc.date() { "%-I:%M %p %Z" } else { "%A %-I:%M %p %Z" }).to_string(); //TODO omit minutes if 0
+        @if running_text {
+            : ")";
+        }
+        //TODO allow users to set timezone and format preferences, fall back to JS APIs
     }
 }

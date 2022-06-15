@@ -7,19 +7,18 @@ use {
     },
     anyhow::anyhow,
     chrono::prelude::*,
-    chrono_tz::{
-        America,
-        Europe,
-    },
     futures::stream::{
         self,
         StreamExt as _,
         TryStreamExt as _,
     },
     rocket::{
+        FromForm,
         State,
         form::{
+            self,
             Context,
+            Contextual,
             Form,
         },
         http::{
@@ -42,6 +41,8 @@ use {
     },
     rocket_csrf::CsrfToken,
     rocket_util::{
+        ContextualExt as _,
+        CsrfForm,
         Origin,
         ToHtml,
         html,
@@ -70,8 +71,11 @@ use {
             EmptyForm,
             Id,
             IdTable,
+            RedirectOrContent,
             StatusOrError,
             favicon,
+            format_datetime,
+            parse_duration,
         },
     },
 };
@@ -296,24 +300,12 @@ impl<'a> Data<'a> {
         } else {
             false
         };
-        let start = self.start.map(|start| (
-            start,
-            start.with_timezone(&Europe::Berlin),
-            start.with_timezone(&America::New_York),
-        ));
         Ok(html! {
             h1 {
                 a(class = "nav", href? = (!matches!(tab, Tab::Info)).then(|| uri!(info(self.series, &*self.event)).to_string())) : &self.display_name;
             }
-            @if let Some((start_utc, start_berlin, start_new_york)) = start {
-                h2 {
-                    : start_utc.format("%A, %B %-d, %Y, %H:%M UTC").to_string();
-                    : " • ";
-                    : start_berlin.format(if start_berlin.date() == start_utc.date() { "%H:%M %Z" } else { "%A %H:%M %Z" }).to_string();
-                    : " • ";
-                    : start_new_york.format(if start_new_york.date() == start_utc.date() { "%-I:%M %p %Z" } else { "%A %-I:%M %p %Z" }).to_string(); //TODO omit minutes if 0
-                    //TODO allow users to set timezone and format preferences, fall back to JS APIs
-                }
+            @if let Some(start) = self.start {
+                h2 : format_datetime(start, false);
             }
             div(class = "button-row") {
                 @if let Tab::Info = tab {
@@ -542,9 +534,8 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     }).await.map_err(|e| StatusOrError::Err(TeamsError::Page(e)))
 }
 
-#[rocket::get("/event/<series>/<event>/status")]
-pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+async fn status_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, context: Context<'_>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    let data = Data::new(pool.clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(me.as_ref(), Tab::MyStatus).await?;
     Ok(page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
         if let Some(ref me) = me {
@@ -554,7 +545,7 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
                 AND event = $2
                 AND member = $3
                 AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-            "#, series.to_str(), event, i64::from(me.id)).fetch_optional(&**pool).await? {
+            "#, series.to_str(), event, i64::from(me.id)).fetch_optional(pool).await? {
                 html! {
                     : header;
                     p {
@@ -578,7 +569,7 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
                         : ".";
                     }
                     @match data.series {
-                        Series::Multiworld => p : "Waiting for the qualifier async to be published. Keep an eye out for an announcement on Discord."; //TODO
+                        Series::Multiworld => : mw::status(pool, csrf, &data, row.id, context).await?;
                         Series::Pictionary => @if data.is_ended() {
                             p : "This race has been completed."; //TODO ranking and finish time
                         } else if let Some(ref race_room) = data.url {
@@ -627,6 +618,11 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
             }
         }
     }).await?)
+}
+
+#[rocket::get("/event/<series>/<event>/status")]
+pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    status_page(pool, me, uri, csrf, series, event, Context::default()).await
 }
 
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
@@ -762,4 +758,129 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<Csr
         transaction.rollback().await.map_err(ResignError::Sql)?;
         Err(ResignError::NotInTeam.into())
     }
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct RequestAsyncForm {
+    #[field(default = String::new())]
+    csrf: String,
+    confirm: bool,
+}
+
+#[rocket::post("/event/<series>/<event>/request-async", data = "<form>")]
+pub(crate) async fn request_async(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, RequestAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    if data.is_started() {
+        form.context.push_error(form::Error::validation("You can no longer request the qualifier async since the event has already started."));
+    }
+    let mut transaction = pool.begin().await?;
+    //TODO error if async already requested
+    Ok(if let Some(ref value) = form.value {
+        let team_id = sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM teams, team_members WHERE
+            id = team
+            AND series = $1
+            AND event = $2
+            AND member = $3
+            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+        "#, series.to_str(), event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
+        if team_id.is_none() {
+            form.context.push_error(form::Error::validation("You are not signed up for this event."));
+        }
+        if !value.confirm {
+            form.context.push_error(form::Error::validation("This field is required.").with_name("confirm"));
+        }
+        if form.context.errors().next().is_some() {
+            transaction.rollback().await?;
+            RedirectOrContent::Content(status_page(pool, Some(me), uri, csrf, series, event, form.context).await?)
+        } else {
+            let team_id = team_id.expect("validated");
+            sqlx::query!("INSERT INTO async_teams (team, requested) VALUES ($1, $2)", team_id as _, Utc::now()).execute(&mut transaction).await?;
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(status(series, event))))
+        }
+    } else {
+        transaction.rollback().await?;
+        RedirectOrContent::Content(status_page(pool, Some(me), uri, csrf, series, event, form.context).await?)
+    })
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct SubmitAsyncForm {
+    #[field(default = String::new())]
+    csrf: String,
+    time1: String,
+    vod1: String,
+    time2: String,
+    vod2: String,
+    time3: String,
+    vod3: String,
+    fpa: String,
+}
+
+#[rocket::post("/event/<series>/<event>/submit-async", data = "<form>")]
+pub(crate) async fn submit_async(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, SubmitAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    if data.is_started() {
+        form.context.push_error(form::Error::validation("You can no longer submit the qualifier async since the event has already started."));
+    }
+    let mut transaction = pool.begin().await?;
+    //TODO error if async not yet requested
+    Ok(if let Some(ref value) = form.value {
+        let team_id = sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM teams, team_members WHERE
+            id = team
+            AND series = $1
+            AND event = $2
+            AND member = $3
+            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+        "#, series.to_str(), event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
+        if team_id.is_none() {
+            form.context.push_error(form::Error::validation("You are not signed up for this event."));
+        }
+        let time1 = if value.time1.is_empty() {
+            None
+        } else if let Some(time) = parse_duration(&value.time1) {
+            Some(time)
+        } else {
+            form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("time1"));
+            None
+        };
+        let time2 = if value.time2.is_empty() {
+            None
+        } else if let Some(time) = parse_duration(&value.time2) {
+            Some(time)
+        } else {
+            form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("time2"));
+            None
+        };
+        let time3 = if value.time3.is_empty() {
+            None
+        } else if let Some(time) = parse_duration(&value.time3) {
+            Some(time)
+        } else {
+            form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("time3"));
+            None
+        };
+        if form.context.errors().next().is_some() {
+            transaction.rollback().await?;
+            RedirectOrContent::Content(status_page(pool, Some(me), uri, csrf, series, event, form.context).await?)
+        } else {
+            let team_id = team_id.expect("validated");
+            sqlx::query!("UPDATE async_teams SET submitted = $1, fpa = $2 WHERE team = $3", Utc::now(), (!value.fpa.is_empty()).then(|| &value.fpa), i64::from(team_id)).execute(&mut transaction).await?;
+            let player1 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'power'"#, i64::from(team_id)).fetch_one(&mut transaction).await?;
+            sqlx::query!("INSERT INTO async_players (series, event, player, time, vod) VALUES ($1, $2, $3, $4, $5)", series as _, event, player1 as _, time1 as _, (!value.vod1.is_empty()).then(|| &value.vod1)).execute(&mut transaction).await?;
+            let player2 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'wisdom'"#, i64::from(team_id)).fetch_one(&mut transaction).await?;
+            sqlx::query!("INSERT INTO async_players (series, event, player, time, vod) VALUES ($1, $2, $3, $4, $5)", series as _, event, player2 as _, time2 as _, (!value.vod2.is_empty()).then(|| &value.vod2)).execute(&mut transaction).await?;
+            let player3 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'courage'"#, i64::from(team_id)).fetch_one(&mut transaction).await?;
+            sqlx::query!("INSERT INTO async_players (series, event, player, time, vod) VALUES ($1, $2, $3, $4, $5)", series as _, event, player3 as _, time3 as _, (!value.vod3.is_empty()).then(|| &value.vod3)).execute(&mut transaction).await?;
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(status(series, event))))
+        }
+    } else {
+        transaction.rollback().await?;
+        RedirectOrContent::Content(status_page(pool, Some(me), uri, csrf, series, event, form.context).await?)
+    })
 }

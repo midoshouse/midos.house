@@ -122,6 +122,7 @@ form {
     border: 1px solid black;
     margin: 8px;
     padding: 8px;
+    background-color: white;
 }
 
 .button-row form {
@@ -215,6 +216,18 @@ p.error {
     padding: 8px;
 }
 
+.info {
+    border: 1px solid #00c0c0;
+    padding: 8px;
+    background-color: #c0ffff;
+}
+
+textarea {
+    display: block;
+    width: 100%;
+    resize: vertical;
+}
+
 .banner {
     min-height: 0;
     object-fit: contain;
@@ -277,6 +290,7 @@ footer {
     article,
     form {
         border-color: white;
+        background-color: black;
     }
 
     table,
@@ -306,8 +320,16 @@ footer {
     }
 
     .error {
-        background-color: #400000;
         border-color: #ff4040;
+    }
+
+    p.error {
+        background-color: #400000;
+    }
+
+    .info {
+        border-color: #40ffff;
+        background-color: #004040;
     }
 }
 

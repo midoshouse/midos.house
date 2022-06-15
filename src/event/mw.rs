@@ -1,8 +1,11 @@
 use {
     std::{
+        borrow::Cow,
         collections::HashMap,
         fmt,
+        iter,
     },
+    chrono::prelude::*,
     enum_iterator::Sequence,
     futures::{
         future::{
@@ -36,6 +39,8 @@ use {
     },
     rocket_csrf::CsrfToken,
     rocket_util::{
+        ContextualExt as _,
+        CsrfForm,
         Origin,
         ToHtml,
         html,
@@ -54,15 +59,15 @@ use {
             Tab,
         },
         page,
+        seed,
         user::User,
         util::{
-            ContextualExt as _,
-            CsrfForm,
             Id,
             IdTable,
             RedirectOrContent,
             StatusOrError,
             form_field,
+            format_datetime,
             natjoin,
             render_form_error,
         },
@@ -283,15 +288,11 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
     }).await?)
 }
 
-#[derive(FromForm)]
+#[derive(FromForm, CsrfForm)]
 pub(crate) struct EnterForm {
     #[field(default = String::new())]
     csrf: String,
     racetime_team: String,
-}
-
-impl CsrfForm for EnterForm { //TODO derive
-    fn csrf(&self) -> &String { &self.csrf }
 }
 
 #[rocket::post("/event/mw/<event>/enter", data = "<form>")]
@@ -424,16 +425,12 @@ fn enter_form_step2<'a>(me: Option<User>, uri: Origin<'a>, csrf: Option<CsrfToke
     }
 }
 
-#[derive(FromForm)]
+#[derive(FromForm, CsrfForm)]
 pub(crate) struct EnterFormStep2 {
     #[field(default = String::new())]
     csrf: String,
     racetime_team: String,
     world_number: HashMap<String, Role>,
-}
-
-impl CsrfForm for EnterFormStep2 { //TODO derive
-    fn csrf(&self) -> &String { &self.csrf }
 }
 
 #[rocket::post("/event/mw/<event>/enter/step2", data = "<form>")]
@@ -527,5 +524,125 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, me: User, uri: Or
         }
     } else {
         RedirectOrContent::Content(enter_form_step2(Some(me), uri, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
+    })
+}
+
+pub(super) async fn status(pool: &PgPool, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> sqlx::Result<RawHtml<String>> {
+    Ok(if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2) AS "exists!""#, data.series as _, &data.event).fetch_one(pool).await? {
+        if let Some(row) = sqlx::query!("SELECT requested, submitted FROM async_teams WHERE team = $1", i64::from(team_id)).fetch_optional(pool).await? {
+            if row.submitted.is_some() {
+                //TODO if any vods are still missing, show form to add them
+                html! {
+                    p : "Waiting for the start of the tournament and round 1 pairings. Keep an eye out for an announcement on Discord."; //TODO include start date?
+                }
+            } else {
+                let seed = seed::Data { web: Some(seed::OotrWebData { id: 1114700, gen_time: Utc.ymd(2022, 6, 11).and_hms(19, 1, 32) }), file_stem: Cow::Borrowed("OoTR_1114700_T639YJS1TZ") }; //TODO replace with mw/3 qualifier async, get seed data from database
+                let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
+                let mut errors = context.errors().collect_vec();
+                let form_content = html! {
+                    : csrf;
+                    : form_field("time1", &mut errors, html! {
+                        label(for = "time1", class = "power") : "Player 1 Finishing Time:";
+                        input(type = "text", name = "time1", value? = context.field_value("time1")); //TODO h:m:s fields?
+                        label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
+                    });
+                    : form_field("vod1", &mut errors, html! {
+                        label(for = "vod1", class = "power") : "Player 1 VoD:";
+                        input(type = "text", name = "vod1", value? = context.field_value("vod1"));
+                        label(class = "help") : "(If you plan on uploading the VoD to YouTube later, leave this field blank and DM an admin once it is ready.)"; //TODO option to submit vods later
+                    });
+                    : form_field("time2", &mut errors, html! {
+                        label(for = "time2", class = "wisdom") : "Player 2 Finishing Time:";
+                        input(type = "text", name = "time2", value? = context.field_value("time2")); //TODO h:m:s fields?
+                        label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
+                    });
+                    : form_field("vod2", &mut errors, html! {
+                        label(for = "vod2", class = "wisdom") : "Player 2 VoD:";
+                        input(type = "text", name = "vod2", value? = context.field_value("vod2"));
+                        label(class = "help") : "(If you plan on uploading the VoD to YouTube later, leave this field blank and DM an admin once it is ready.)"; //TODO option to submit vods later
+                    });
+                    : form_field("time3", &mut errors, html! {
+                        label(for = "time3", class = "courage") : "Player 3 Finishing Time:";
+                        input(type = "text", name = "time3", value? = context.field_value("time3")); //TODO h:m:s fields?
+                        label(class = "help") : "(If player 3 did not finish, leave this field blank.)";
+                    });
+                    : form_field("vod3", &mut errors, html! {
+                        label(for = "vod3", class = "courage") : "Player 3 VoD:";
+                        input(type = "text", name = "vod3", value? = context.field_value("vod3"));
+                        label(class = "help") : "(If you plan on uploading the VoD to YouTube later, leave this field blank and DM an admin once it is ready.)"; //TODO option to submit vods later
+                    });
+                    : form_field("fpa", &mut errors, html! {
+                        label(for = "fpa") {
+                            : "If you would like to invoke the ";
+                            a(href = "https://docs.google.com/document/d/1BbvHJF8vtyrte76jpoCVQBTy9MYStpN3vr2PLdiCIMk/edit") : "Fair Play Agreement";
+                            : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
+                        }
+                        textarea(name = "fpa");
+                    });
+                    fieldset {
+                        input(type = "submit", value = "Submit");
+                    }
+                };
+                html! {
+                    div(class = "info") {
+                        p {
+                            : "You requested the qualifier async on ";
+                            : format_datetime(row.requested, true);
+                            : ".";
+                        };
+                        : seed_table;
+                        p : "After playing the async, fill out the form below.";
+                        form(action = uri!(super::submit_async(data.series, &*data.event)).to_string(), method = "post") {
+                            @for error in errors {
+                                : render_form_error(error);
+                            }
+                            : form_content;
+                        }
+                    }
+                }
+            }
+        } else {
+            let mut errors = context.errors().collect_vec();
+            let form_content = html! {
+                : csrf;
+                : form_field("confirm", &mut errors, html! {
+                    input(type = "checkbox", id = "confirm", name = "confirm");
+                    label(for = "confirm") : "We have read the above and are ready to play the seed";
+                });
+                fieldset {
+                    input(type = "submit", value = "Request Now");
+                }
+            };
+            html! {
+                div(class = "info") {
+                    p : "Play the qualifier async to qualify for the tournament.";
+                    p : "Rules:";
+                    ol {
+                        li : "This seed must be attempted in order to play in the tournament. In the event of a forfeit, you will be granted a bottom-half seed for the first Swiss round.";
+                        li : "The time must be submitted by the starting time of the tournament, which is yet to be announced."; //TODO explicitly state deadline if there is one
+                        li : "You must start the seed within 30 minutes of obtaining it and submit your time within 30 minutes of the last finish. Any additional time taken will be added to your final time. If anything prevents you from obtaining the seed/submitting your time, please DM an admin (or ping the Discord role) to get it sorted out.";
+                        li : "While required for the tournament, the results from the qualifier seed will only be used in the first round of Swiss pairings. The teams in the top half of finishers will be paired with a team from the bottom half of finishers for the first round. After the first round, pairings will be purely based on Swiss matchmaking.";
+                        li : "While you are not strictly required to stream, you must have video proof of your run. Feel free to simply record your run and upload it to YouTube and provide a link. If you do stream or make your upload public, please make sure it is clearly marked so people can avoid spoilers. If you're a big streamer, be extra sure to note what is happening, as several of your viewers are likely going to want to participate as well.";
+                        li : "Do not spoil yourself on this seed by watching another playthrough. If you do stream, you are responsible for what your chat says, so either do not read chat, set it to emote only, or take the risk at your own discretion. If you do get spoiled, please report it to the admins, we will try to work out something equitable.";
+                        li : "You must use the world numbers with which you signed up for this seed. Once you request the seed, the world numbers you selected are the world numbers you play with for the rest of the tournament. If you wish to change your player order, do not request the qualifier and contact an admin."; //TODO allow changing player order in options below
+                        li {
+                            : "This should be run like an actual race. In the event of a technical issue, teams are allowed to invoke the ";
+                            a(href = "https://docs.google.com/document/d/1BbvHJF8vtyrte76jpoCVQBTy9MYStpN3vr2PLdiCIMk/edit") : "Fair Play Agreement";
+                            : " and have up to a 15 minute time where the affected runner can try to catch back up. If you do this, you must fill out the appropriate field when submitting your time so it can be authenticated.";
+                        }
+                    }
+                    form(action = uri!(super::request_async(data.series, &*data.event)).to_string(), method = "post") {
+                        @for error in errors {
+                            : render_form_error(error);
+                        }
+                        : form_content;
+                    }
+                }
+            }
+        }
+    } else {
+        html! {
+            p : "Waiting for the qualifier async to be published. Keep an eye out for an announcement on Discord.";
+        }
     })
 }

@@ -30,6 +30,8 @@ use {
     },
     rocket_csrf::CsrfToken,
     rocket_util::{
+        ContextualExt as _,
+        CsrfForm,
         Origin,
         ToHtml,
         html,
@@ -50,8 +52,6 @@ use {
         seed,
         user::User,
         util::{
-            ContextualExt as _,
-            CsrfForm,
             Id,
             IdTable,
             RedirectOrContent,
@@ -171,14 +171,14 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
             seed::Data { web: None, file_stem: Cow::Borrowed("OoT_F35CF_3PT90NK69D") },
             seed::Data { web: None, file_stem: Cow::Borrowed("OoT_F35CF_I7BN7K3S2Z") },
             seed::Data { web: None, file_stem: Cow::Borrowed("OoT_F35CF_99YI7I0K6O") },
-        ])).await.map_err(InfoError::Io)?),
+        ]), true).await.map_err(InfoError::Io)?),
         "rs1" => Some(seed::table(stream::iter(vec![
             seed::Data { web: Some(seed::OotrWebData { id: 1079630, gen_time: Utc.ymd(2022, 4, 22).and_hms(15, 59, 36) }), file_stem: Cow::Borrowed("OoTR_1079630_V6516H22IW") },
             seed::Data { web: Some(seed::OotrWebData { id: 1079637, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 1, 5) }), file_stem: Cow::Borrowed("OoTR_1079637_HAH75EOAHQ") },
             seed::Data { web: Some(seed::OotrWebData { id: 1079645, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 3, 19) }), file_stem: Cow::Borrowed("OoTR_1079645_6XZJOSDCRW") },
             seed::Data { web: Some(seed::OotrWebData { id: 1079646, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 3, 53) }), file_stem: Cow::Borrowed("OoTR_1079646_AJZWAB1X3U") },
             seed::Data { web: Some(seed::OotrWebData { id: 1079648, gen_time: Utc.ymd(2022, 4, 22).and_hms(16, 4, 11) }), file_stem: Cow::Borrowed("OoTR_1079648_1DHCCQB5AC") },
-        ])).await.map_err(InfoError::Io)?),
+        ]), true).await.map_err(InfoError::Io)?),
         _ => None,
     };
     let organizers = stream::iter([
@@ -494,17 +494,13 @@ pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<C
     }).await?)
 }
 
-#[derive(FromForm)]
+#[derive(FromForm, CsrfForm)]
 pub(crate) struct EnterForm {
     #[field(default = String::new())]
     csrf: String,
     team_name: String,
     my_role: Role,
     teammate: Id,
-}
-
-impl CsrfForm for EnterForm { //TODO derive
-    fn csrf(&self) -> &String { &self.csrf }
 }
 
 #[rocket::post("/event/pic/<event>/enter", data = "<form>")]
@@ -691,15 +687,11 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
     }).await?)
 }
 
-#[derive(FromForm)]
+#[derive(FromForm, CsrfForm)]
 pub(crate) struct FindTeamForm {
     #[field(default = String::new())]
     csrf: String,
     role: RolePreference,
-}
-
-impl CsrfForm for FindTeamForm { //TODO derive
-    fn csrf(&self) -> &String { &self.csrf }
 }
 
 #[rocket::post("/event/pic/<event>/find-team", data = "<form>")]
