@@ -188,7 +188,7 @@ async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageSty
                         : " • ";
                         a(href = "https://github.com/midoshouse/midos.house") : "source code";
                     }
-                    p : "Special thanks to Maplestar for the chest icons used in the logo, and to Xopar and shiroaeli for some of the seed hash icons!";
+                    p : "Special thanks to Maplestar for some of the chest icons used in the logo, and to Xopar and shiroaeli for some of the seed hash icons!";
                 }
             }
         }
@@ -284,7 +284,7 @@ async fn not_found(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool, &me, &uri, PageStyle { kind: PageKind::Banner, ..PageStyle::default() /*TODO dashed outlines indicating invisible chests? */ }, "Not Found — Mido's House", html! {
+    page(pool, &me, &uri, PageStyle { kind: PageKind::Banner, chests: ChestAppearances::INVISIBLE, ..PageStyle::default() }, "Not Found — Mido's House", html! {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }

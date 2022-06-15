@@ -334,6 +334,8 @@ footer {
 }
 
 @media not (prefers-color-scheme: dark) {
+    img[src="/static/chest/d256.png"],
+    img[src="/static/chest/d512.png"],
     .hash-icon[alt="SOLD OUT"] {
         filter: invert(1);
     }

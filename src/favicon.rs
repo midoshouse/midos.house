@@ -149,6 +149,7 @@ pub(crate) enum ChestTexture {
     SmallKey,
     BossKey,
     Token,
+    Invisible,
 }
 
 impl TryFrom<char> for ChestTexture {
@@ -163,6 +164,7 @@ impl TryFrom<char> for ChestTexture {
             'y' => Ok(Self::SmallKey),
             'b' => Ok(Self::BossKey),
             's' => Ok(Self::Token),
+            'd' => Ok(Self::Invisible),
             _ => Err(c),
         }
     }
@@ -178,6 +180,7 @@ impl From<ChestTexture> for char {
             ChestTexture::SmallKey => 'y',
             ChestTexture::BossKey => 'b',
             ChestTexture::Token => 's',
+            ChestTexture::Invisible => 'd',
         }
     }
 }
@@ -191,6 +194,11 @@ pub(crate) struct ChestAppearance {
 impl ChestAppearance {
     const VANILLA: Self = Self {
         texture: ChestTexture::Normal,
+        big: false,
+    };
+
+    const INVISIBLE: Self = Self {
+        texture: ChestTexture::Invisible,
         big: false,
     };
 
@@ -447,6 +455,7 @@ pub(crate) struct ChestAppearances(pub(crate) [ChestAppearance; 4]);
 
 impl ChestAppearances {
     pub(crate) const VANILLA: Self = Self([ChestAppearance::VANILLA; 4]);
+    pub(crate) const INVISIBLE: Self = Self([ChestAppearance::INVISIBLE; 4]);
 
     pub(crate) fn random() -> Self {
         //TODO automatically keep up to date with the dev-fenhl branch of the RSL script
