@@ -229,20 +229,22 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
             : "A calendar of all races across all events can be found at ";
             code : uri!("https://midos.house", cal::index).to_string();
             : " — by pasting this link into most calendar apps' “subscribe” feature instead of downloading it, you can get automatic updates as races are scheduled:";
-            ul {
-                li {
-                    : "In Google Calendar, select ";
-                    a(href = "https://calendar.google.com/calendar/u/0/r/settings/addbyurl") : "Add calendar → From URL";
-                }
-                li {
-                    : "In Apple Calendar, press ";
-                    kbd : "⌥";
-                    kbd : "⌘";
-                    kbd : "S";
-                    : " or select File → New Calendar Subscription";
-                }
-            }
         }
+        ul {
+            li {
+                : "In Google Calendar, select ";
+                a(href = "https://calendar.google.com/calendar/u/0/r/settings/addbyurl") : "Add calendar → From URL";
+            }
+            li {
+                : "In Apple Calendar, press ";
+                kbd : "⌥";
+                kbd : "⌘";
+                kbd : "S";
+                : " or select File → New Calendar Subscription";
+            }
+            li : "In Mozilla Thunderbird, select New Calendar → On the Network. Paste the link into the “Location” field and click “Find Calendars”, then “Properties”. Enable “Read Only” and click “OK”, then “Subscribe”.";
+        }
+        //p : "You can also find calendar links for individual events on their pages."; //TODO figure out where to put these calendar links (below the date for single races, “Schedule” tab for tournaments?)
     }).await?)
 }
 
@@ -382,6 +384,7 @@ async fn main(Args { is_dev, view_as }: Args) -> Result<(), Error> {
         auth::register_racetime,
         auth::register_discord,
         cal::index,
+        cal::for_event,
         event::info,
         event::teams,
         event::status,

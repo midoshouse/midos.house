@@ -282,6 +282,7 @@ impl<'a> Data<'a> {
 
     pub(crate) fn chests(&self) -> ChestAppearances {
         match (self.series, &*self.event) {
+            (Series::Multiworld, "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
             (Series::Multiworld, "3") => ChestAppearances::random(), //TODO update after preliminary base settings exist
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
             (_, _) => unimplemented!(),

@@ -1,0 +1,2530 @@
+[
+    {
+        "async": false,
+        "end": "2021-05-01T00:08:09.877Z",
+        "restream": "https://twitch.tv/videos/1022107186",
+        "room": "invincible-saria-8953",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Shuffle Dungeon Entrances",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-04-30T19:00:00Z",
+        "team1": "The 3 Ahegaos",
+        "team2": "slideshow &co"
+    },
+    {
+        "async": false,
+        "end": "2021-05-01T04:06:01.998Z",
+        "room": "fancy-jabu-1760",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-04-30T23:00:00Z",
+        "team1": "Cojiro Boiz",
+        "team2": "Anju's Secret"
+    },
+    {
+        "async": false,
+        "end": "2021-05-01T22:35:41.630Z",
+        "room": "comic-impa-1547",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Forest",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-05-01T18:00:00Z",
+        "team1": "That one Awesome Scrubs team",
+        "team2": "Clowns in der Dose"
+    },
+    {
+        "async": true,
+        "end": "2021-05-02T06:08:52.798Z",
+        "room": "grumpy-dodongo-8869",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-05-01T23:30:00Z",
+        "team1": "Backup Strats",
+        "team2": "We're picking 12 MQ"
+    },
+    {
+        "async": true,
+        "end": "2021-05-02T17:25:40.661Z",
+        "room": "sublime-morpha-3787",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-05-02T12:00:00Z",
+        "team1": "We're picking 12 MQ",
+        "team2": "Backup Strats"
+    },
+    {
+        "async": false,
+        "end": "2021-05-02T20:22:17.331Z",
+        "room": "helpful-twinrova-8799",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances"
+        ],
+        "start": "2021-05-02T15:00:00Z",
+        "team1": "King Zordongo",
+        "team2": "Legend of Pukei-Pukei"
+    },
+    {
+        "async": false,
+        "end": "2021-05-02T21:05:47.310Z",
+        "room": "vanilla-saria-8844",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle"
+        ],
+        "start": "2021-05-02T16:30:00Z",
+        "team1": "Richard The Dog",
+        "team2": "Going HAM"
+    },
+    {
+        "async": false,
+        "end": "2021-05-03T00:16:17.874Z",
+        "room": "lucky-lizalfos-6531",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Zora's Fountain",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-05-02T20:00:00Z",
+        "team1": "Ruto Akimbo",
+        "team2": "Oops AD Boys"
+    },
+    {
+        "async": false,
+        "end": "2021-05-03T22:31:49.730Z",
+        "restream": "https://twitch.tv/videos/1022107486",
+        "room": "legendary-fado-2300",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Zora's Fountain",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-05-03T18:00:00Z",
+        "team1": "A Creative Team Name",
+        "team2": "The Try Too Hards"
+    },
+    {
+        "async": false,
+        "end": "2021-05-08T04:53:42.625Z",
+        "room": "fancy-likelike-3527",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-07T23:00:00Z",
+        "team1": "Double BK Mode w/ Cheese",
+        "team2": "RandoWorld United"
+    },
+    {
+        "async": false,
+        "end": "2021-05-08T05:21:49.931Z",
+        "room": "priceless-jiro-2060",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Tokensanity",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-08T00:30:00Z",
+        "team1": "Team Mom Jeans",
+        "team2": "Real Sexy Lizalfos"
+    },
+    {
+        "async": false,
+        "end": "2021-05-08T22:15:11.628Z",
+        "room": "puzzled-navi-4466",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-05-08T17:00:00Z",
+        "team1": "Salt and Pepega",
+        "team2": "Team WAX"
+    },
+    {
+        "async": false,
+        "end": "2021-05-08T22:07:51.790Z",
+        "room": "gnarly-ganon-2818",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-05-08T17:00:00Z",
+        "team1": "Fuck Riley",
+        "team2": "DAD"
+    },
+    {
+        "async": false,
+        "end": "2021-05-08T23:08:31.639Z",
+        "room": "sublime-twinrova-2180",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-05-08T18:00:00Z",
+        "team1": "Le Bretzel et les 2 Quiches",
+        "team2": "Shotgun Fist Fight"
+    },
+    {
+        "async": false,
+        "end": "2021-05-08T22:41:38.478Z",
+        "room": "scrawny-ganon-6565",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Zora's Fountain",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-08T18:00:00Z",
+        "team1": "DO NOT RELOAD THE ROM",
+        "team2": "NA Aim"
+    },
+    {
+        "async": false,
+        "end": "2021-05-08T23:29:40.251Z",
+        "room": "fancy-dampe-8439",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-05-08T18:00:00Z",
+        "team1": "Team Redhead",
+        "team2": "Baguettes du temps"
+    },
+    {
+        "async": false,
+        "end": "2021-05-09T04:39:36.962Z",
+        "room": "fancy-barinade-0469",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Shuffle Dungeon Entrances",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-09T01:00:00Z",
+        "team1": "Snack Pack",
+        "team2": "30 Skulls Please"
+    },
+    {
+        "async": false,
+        "end": "2021-05-09T22:17:19.293Z",
+        "restream": "https://twitch.tv/videos/1027417445",
+        "room": "adequate-ichiro-3693",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Zora's Fountain",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-05-09T17:00:00Z",
+        "team1": "Gecklamatee",
+        "team2": "Dimitri The Dodongo"
+    },
+    {
+        "async": false,
+        "end": "2021-05-10T00:16:20.732Z",
+        "room": "proud-bongobongo-2014",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [],
+        "start": "2021-05-09T19:00:00Z",
+        "team1": "The Sexy Gohmas",
+        "team2": "TatlTaelrs"
+    },
+    {
+        "async": false,
+        "end": "2021-05-11T19:23:36.729Z",
+        "room": "speedy-epona-4191",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest",
+            "Zora's Fountain",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-05-11T14:00:00Z",
+        "team1": "Hyrule Goddesses",
+        "team2": "The Aussie Boiiz"
+    },
+    {
+        "async": false,
+        "end": "2021-05-12T03:14:47.253Z",
+        "restream": "https://twitch.tv/videos/1027418515",
+        "room": "frantic-volvagia-6835",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-11T22:00:00Z",
+        "team1": "The Gaming Grandpas",
+        "team2": "Hot Mess"
+    },
+    {
+        "async": false,
+        "end": "2021-05-14T02:24:23.990Z",
+        "restream": "https://twitch.tv/videos/1034469136",
+        "room": "epic-saburo-9949",
+        "round": "Swiss Round 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-05-13T22:00:00Z",
+        "team1": "Raid: Shadow Temple",
+        "team2": "Gamblers Anonymous"
+    },
+    {
+        "async": true,
+        "end": "2021-05-16T00:31:30.652Z",
+        "room": "daring-jiro-4277",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card"
+        ],
+        "start": "2021-05-15T19:00:00Z",
+        "team1": "slideshow &co",
+        "team2": "TatlTaelrs"
+    },
+    {
+        "async": false,
+        "end": "2021-05-16T21:34:46.184Z",
+        "room": "splendid-darunia-7285",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Forest",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-05-16T17:00:00Z",
+        "team1": "Salt and Pepega",
+        "team2": "Clowns in der Dose"
+    },
+    {
+        "async": false,
+        "end": "2021-05-17T06:01:05.815Z",
+        "room": "crazy-mamamu-1929",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Zora's Fountain",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-05-17T00:00:00Z",
+        "team1": "Backup Strats",
+        "team2": "Shotgun Fist Fight"
+    },
+    {
+        "async": false,
+        "end": "2021-05-20T03:28:47.497Z",
+        "room": "cunning-biggoron-7108",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-19T23:00:00Z",
+        "team1": "Double BK Mode w/ Cheese",
+        "team2": "Team Mom Jeans"
+    },
+    {
+        "async": false,
+        "end": "2021-05-20T21:36:22.167Z",
+        "room": "intrepid-jiro-0176",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Shuffle Dungeon Entrances",
+            "Shuffle Gerudo Card"
+        ],
+        "start": "2021-05-20T18:00:00Z",
+        "team1": "Hyrule Goddesses",
+        "team2": "Legend of Pukei-Pukei"
+    },
+    {
+        "async": true,
+        "end": "2021-05-21T05:01:51.906Z",
+        "room": "crazy-ingo-8113",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-05-20T22:30:00Z",
+        "team1": "Cojiro Boiz",
+        "team2": "Oops AD Boys"
+    },
+    {
+        "async": false,
+        "end": "2021-05-22T04:41:46.888Z",
+        "room": "powerful-medigoron-1217",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Zora's Fountain",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-22T00:30:00Z",
+        "team1": "DO NOT RELOAD THE ROM",
+        "team2": "Snack Pack"
+    },
+    {
+        "async": false,
+        "end": "2021-05-22T21:40:25.556Z",
+        "room": "disco-zelda-8425",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances"
+        ],
+        "start": "2021-05-22T16:00:00Z",
+        "team1": "RandoWorld United",
+        "team2": "Real Sexy Lizalfos"
+    },
+    {
+        "async": false,
+        "end": "2021-05-22T19:14:48.847Z",
+        "room": "cunning-nabooru-4738",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Shuffle Dungeon Entrances",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-22T16:00:00Z",
+        "team1": "Dimitri The Dodongo",
+        "team2": "Richard The Dog"
+    },
+    {
+        "async": false,
+        "end": "2021-05-23T00:09:07.320Z",
+        "room": "travelling-mamamu-5800",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-22T19:00:00Z",
+        "team1": "Anju's Secret",
+        "team2": "A Creative Team Name"
+    },
+    {
+        "async": false,
+        "end": "2021-05-23T00:33:49.332Z",
+        "room": "fancy-kakariko-9684",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-05-22T19:00:00Z",
+        "team1": "Going HAM",
+        "team2": "Gecklamatee"
+    },
+    {
+        "async": false,
+        "end": "2021-05-22T23:39:14.271Z",
+        "room": "powerful-twinrova-4198",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-05-22T19:00:00Z",
+        "team1": "The Sexy Gohmas",
+        "team2": "The 3 Ahegaos"
+    },
+    {
+        "async": true,
+        "end": "2021-05-23T09:03:50.574Z",
+        "room": "sublime-terry-1746",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-05-23T04:00:00Z",
+        "team1": "Oops AD Boys",
+        "team2": "Cojiro Boiz"
+    },
+    {
+        "async": false,
+        "end": "2021-05-23T17:00:21.995Z",
+        "room": "critical-stalfos-4002",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-23T12:00:00Z",
+        "team1": "We're picking 12 MQ",
+        "team2": "Can You Please Just Find My Fucking Go Mode?"
+    },
+    {
+        "async": false,
+        "end": "2021-05-23T21:12:33.974Z",
+        "room": "trusty-sheik-6141",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-05-23T16:00:00Z",
+        "team1": "Team WAX",
+        "team2": "King Zordongo"
+    },
+    {
+        "async": false,
+        "end": "2021-05-23T22:19:04.306Z",
+        "room": "funky-saria-2689",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-23T19:00:00Z",
+        "team1": "Raid: Shadow Temple",
+        "team2": "Ruto Akimbo"
+    },
+    {
+        "async": false,
+        "end": "2021-05-24T22:15:55.496Z",
+        "room": "wild-kakariko-1896",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-24T18:00:00Z",
+        "team1": "Le Bretzel et les 2 Quiches",
+        "team2": "DAD"
+    },
+    {
+        "async": false,
+        "end": "2021-05-26T02:44:05.227Z",
+        "room": "smart-twinrova-7069",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-25T21:00:00Z",
+        "team1": "Hot Mess",
+        "team2": "Baguettes du temps"
+    },
+    {
+        "async": true,
+        "end": "2021-05-25T22:18:34.625Z",
+        "room": "artful-talon-4749",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Shuffle Dungeon Entrances",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-25T22:00:00Z",
+        "team1": "The Gaming Grandpas",
+        "team2": "30 Skulls Please"
+    },
+    {
+        "async": true,
+        "end": "2021-05-26T03:17:55.096Z",
+        "room": "kind-heylisten-8653",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Shuffle Dungeon Entrances",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-26T01:00:00Z",
+        "team1": "30 Skulls Please",
+        "team2": "The Gaming Grandpas"
+    },
+    {
+        "async": false,
+        "end": "2021-05-28T04:21:01.908Z",
+        "room": "helpful-bigocto-5899",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-05-27T22:00:00Z",
+        "team1": "Gamblers Anonymous",
+        "team2": "Fuck Riley"
+    },
+    {
+        "async": false,
+        "end": "2021-05-28T04:21:52.115Z",
+        "room": "silly-morpha-3722",
+        "round": "Swiss Round 2",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Gerudo Card",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-05-27T23:00:00Z",
+        "team1": "NA Aim",
+        "team2": "The Try Too Hards"
+    },
+    {
+        "async": false,
+        "end": "2021-06-02T21:29:01.566Z",
+        "room": "casual-gohma-3575",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-06-02T15:00:00Z",
+        "team1": "Hot Mess",
+        "team2": "Going HAM"
+    },
+    {
+        "async": false,
+        "end": "2021-06-03T22:05:45.912Z",
+        "room": "wild-blametrez-9465",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-06-03T18:00:00Z",
+        "team1": "Le Bretzel et les 2 Quiches",
+        "team2": "Team Mom Jeans"
+    },
+    {
+        "async": false,
+        "end": "2021-06-04T23:48:56.225Z",
+        "room": "crazy-lizalfos-5329",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest",
+            "Ganon's Boss Key",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-04T19:00:00Z",
+        "team1": "Baguettes du temps",
+        "team2": "slideshow &co"
+    },
+    {
+        "async": false,
+        "end": "2021-06-05T05:00:27.300Z",
+        "room": "amused-pierre-9092",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-06-05T00:00:00Z",
+        "team1": "DO NOT RELOAD THE ROM",
+        "team2": "King Zordongo"
+    },
+    {
+        "async": false,
+        "end": "2021-06-05T21:31:43.090Z",
+        "room": "frantic-fado-6344",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Zora's Fountain",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-05T18:00:00Z",
+        "team1": "Salt and Pepega",
+        "team2": "We're picking 12 MQ"
+    },
+    {
+        "async": true,
+        "end": "2021-06-05T22:54:32.501Z",
+        "room": "dazzling-impa-5437",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-06-05T18:00:00Z",
+        "team1": "Team Redhead",
+        "team2": "Double BK Mode w/ Cheese"
+    },
+    {
+        "async": false,
+        "end": "2021-06-05T23:18:38.027Z",
+        "room": "sublime-sheik-0029",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-05T19:00:00Z",
+        "team1": "Fuck Riley",
+        "team2": "Anju's Secret"
+    },
+    {
+        "async": false,
+        "end": "2021-06-05T23:46:15.824Z",
+        "room": "tasty-jabu-1045",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Zora's Fountain",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-05T19:30:00Z",
+        "team1": "A Creative Team Name",
+        "team2": "Raid: Shadow Temple"
+    },
+    {
+        "async": false,
+        "end": "2021-06-06T02:00:55.368Z",
+        "room": "lucky-ingo-2808",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-05T21:00:00Z",
+        "team1": "The Sexy Gohmas",
+        "team2": "Backup Strats"
+    },
+    {
+        "async": false,
+        "end": "2021-06-06T19:43:57.933Z",
+        "restream": "https://youtube.com/watch?v=r0ypgOxSU_0",
+        "room": "charming-kakariko-8561",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-06T16:00:00Z",
+        "team1": "Snack Pack",
+        "team2": "Richard The Dog"
+    },
+    {
+        "async": false,
+        "end": "2021-06-07T04:41:05.155Z",
+        "room": "virtual-fado-0374",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-06-06T22:30:00Z",
+        "team1": "Shotgun Fist Fight",
+        "team2": "The Gaming Grandpas"
+    },
+    {
+        "async": true,
+        "end": "2021-06-08T03:33:03.351Z",
+        "room": "powerful-dampe-8614",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-06-07T23:00:00Z",
+        "team1": "Double BK Mode w/ Cheese",
+        "team2": "Team Redhead"
+    },
+    {
+        "async": true,
+        "end": "2021-06-10T21:36:43.371Z",
+        "room": "classic-cucco-5947",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Forest",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-10T16:30:00Z",
+        "team1": "Team WAX",
+        "team2": "RandoWorld United"
+    },
+    {
+        "async": true,
+        "end": "2021-06-10T23:04:34.273Z",
+        "room": "sublime-nabooru-7614",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Forest",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-10T18:00:00Z",
+        "team1": "RandoWorld United",
+        "team2": "Team WAX"
+    },
+    {
+        "async": false,
+        "end": "2021-06-11T03:06:32.443Z",
+        "room": "mysterious-cucco-5775",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-10T22:00:00Z",
+        "team1": "The Try Too Hards",
+        "team2": "Gamblers Anonymous"
+    },
+    {
+        "async": false,
+        "end": "2021-06-11T02:37:23.803Z",
+        "room": "classic-heylisten-4918",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-10T23:00:00Z",
+        "team1": "Ruto Akimbo",
+        "team2": "TatlTaelrs"
+    },
+    {
+        "async": false,
+        "end": "2021-06-11T20:24:39.755Z",
+        "room": "superb-zora-4653",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Shuffle Dungeon Entrances",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-11T17:00:00Z",
+        "team1": "DAD",
+        "team2": "Hyrule Goddesses"
+    },
+    {
+        "async": false,
+        "end": "2021-06-12T01:36:24.754Z",
+        "room": "vanilla-shiro-0863",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-11T21:00:00Z",
+        "team1": "Cojiro Boiz",
+        "team2": "30 Skulls Please"
+    },
+    {
+        "async": false,
+        "end": "2021-06-12T17:13:44.295Z",
+        "room": "gnarly-sheik-1543",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-12T13:00:00Z",
+        "team1": "The 3 Ahegaos",
+        "team2": "Legend of Pukei-Pukei"
+    },
+    {
+        "async": false,
+        "end": "2021-06-12T21:10:16.038Z",
+        "room": "salty-ironknuckle-3780",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-12T16:00:00Z",
+        "team1": "The Aussie Boiiz",
+        "team2": "Real Sexy Lizalfos"
+    },
+    {
+        "async": false,
+        "end": "2021-06-12T22:56:10.125Z",
+        "room": "clean-pierre-0118",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-12T17:00:00Z",
+        "team1": "Dimitri The Dodongo",
+        "team2": "NA Aim"
+    },
+    {
+        "async": false,
+        "end": "2021-06-13T20:33:59.494Z",
+        "room": "smart-meg-9589",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Forest",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-06-13T16:00:00Z",
+        "team1": "Gecklamatee",
+        "team2": "Can You Please Just Find My Fucking Go Mode?"
+    },
+    {
+        "async": false,
+        "end": "2021-06-13T20:56:59.743Z",
+        "room": "priceless-wolfos-3089",
+        "round": "Swiss Round 3",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-06-13T17:00:00Z",
+        "team1": "Clowns in der Dose",
+        "team2": "Oops AD Boys"
+    },
+    {
+        "async": true,
+        "end": "2021-06-16T21:45:34.381Z",
+        "room": "casual-jiro-9815",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Zora's Fountain"
+        ],
+        "start": "2021-06-16T17:00:00Z",
+        "team1": "Team WAX",
+        "team2": "Backup Strats"
+    },
+    {
+        "async": false,
+        "end": "2021-06-19T02:20:18.504Z",
+        "room": "foolish-heylisten-2811",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Shuffle Dungeon Entrances",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-18T22:00:00Z",
+        "team1": "The Gaming Grandpas",
+        "team2": "Snack Pack"
+    },
+    {
+        "async": true,
+        "end": "2021-06-19T03:26:47.635Z",
+        "room": "dapper-navi-6351",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Zora's Fountain"
+        ],
+        "start": "2021-06-18T22:00:00Z",
+        "team1": "Backup Strats",
+        "team2": "Team WAX"
+    },
+    {
+        "async": false,
+        "end": "2021-06-19T21:27:04.927Z",
+        "room": "lucky-biggoron-7503",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Shuffle Dungeon Entrances",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-06-19T17:00:00Z",
+        "team1": "Hyrule Goddesses",
+        "team2": "Ruto Akimbo"
+    },
+    {
+        "async": false,
+        "end": "2021-06-19T22:41:43.376Z",
+        "room": "artful-dodongo-8130",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-19T18:00:00Z",
+        "team1": "We're picking 12 MQ",
+        "team2": "Real Sexy Lizalfos"
+    },
+    {
+        "async": false,
+        "end": "2021-06-20T20:03:44.778Z",
+        "room": "critical-epona-6335",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-20T16:00:00Z",
+        "team1": "DAD",
+        "team2": "Richard The Dog"
+    },
+    {
+        "async": true,
+        "end": "2021-06-20T21:19:09.147Z",
+        "room": "invincible-mamamu-6627",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-06-20T17:00:00Z",
+        "team1": "Clowns in der Dose",
+        "team2": "The Sexy Gohmas"
+    },
+    {
+        "async": true,
+        "end": "2021-06-21T01:55:49.477Z",
+        "room": "bonus-mido-9814",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-06-20T20:00:00Z",
+        "team1": "The Sexy Gohmas",
+        "team2": "Clowns in der Dose"
+    },
+    {
+        "async": false,
+        "end": "2021-06-21T00:46:54.547Z",
+        "room": "perfect-navi-7419",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Ganon's Boss Key",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-20T20:30:00Z",
+        "team1": "slideshow &co",
+        "team2": "Raid: Shadow Temple"
+    },
+    {
+        "async": false,
+        "end": "2021-06-22T22:12:55.222Z",
+        "room": "witty-medigoron-9386",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-06-22T16:00:00Z",
+        "team1": "The Try Too Hards",
+        "team2": "30 Skulls Please"
+    },
+    {
+        "async": true,
+        "end": "2021-06-23T18:39:41.678Z",
+        "room": "classic-deadhand-5157",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest"
+        ],
+        "start": "2021-06-23T18:30:00Z",
+        "team1": "Going HAM",
+        "team2": "Baguettes du temps"
+    },
+    {
+        "async": true,
+        "end": "2021-06-25T03:04:51.843Z",
+        "room": "shiny-sheik-3246",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-24T22:00:00Z",
+        "team1": "Fuck Riley",
+        "team2": "Hot Mess"
+    },
+    {
+        "async": true,
+        "end": "2021-06-25T02:28:32.840Z",
+        "room": "eager-kakariko-1700",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-24T22:00:00Z",
+        "team1": "Gamblers Anonymous",
+        "team2": "Legend of Pukei-Pukei"
+    },
+    {
+        "async": true,
+        "end": "2021-06-25T07:05:52.145Z",
+        "room": "powerful-dodongo-4047",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-25T01:30:00Z",
+        "team1": "Hot Mess",
+        "team2": "Fuck Riley"
+    },
+    {
+        "async": true,
+        "end": "2021-06-25T16:37:44.492Z",
+        "room": "clean-sheik-3984",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-25T12:00:00Z",
+        "team1": "The Aussie Boiiz",
+        "team2": "Cojiro Boiz"
+    },
+    {
+        "async": true,
+        "end": "2021-06-26T00:54:21.208Z",
+        "room": "cute-navi-8807",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-25T19:30:00Z",
+        "team1": "Cojiro Boiz",
+        "team2": "The Aussie Boiiz"
+    },
+    {
+        "async": false,
+        "end": "2021-06-26T02:30:59.808Z",
+        "room": "innocent-ichiro-6702",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Forest",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-06-25T22:00:00Z",
+        "team1": "TatlTaelrs",
+        "team2": "Gecklamatee"
+    },
+    {
+        "async": false,
+        "end": "2021-06-26T04:01:56.284Z",
+        "room": "powerful-sheik-4949",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-26T00:00:00Z",
+        "team1": "King Zordongo",
+        "team2": "Double BK Mode w/ Cheese"
+    },
+    {
+        "async": false,
+        "end": "2021-06-26T04:56:00.806Z",
+        "room": "snug-pierre-4687",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-26T00:30:00Z",
+        "team1": "DO NOT RELOAD THE ROM",
+        "team2": "Team Redhead"
+    },
+    {
+        "async": true,
+        "end": "2021-06-26T17:38:52.242Z",
+        "room": "proud-ingo-5588",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-26T12:00:00Z",
+        "team1": "The 3 Ahegaos",
+        "team2": "Team Mom Jeans"
+    },
+    {
+        "async": false,
+        "end": "2021-06-26T23:34:12.377Z",
+        "room": "scrawny-twinrova-3019",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-06-26T18:00:00Z",
+        "team1": "RandoWorld United",
+        "team2": "Shotgun Fist Fight"
+    },
+    {
+        "async": false,
+        "end": "2021-06-26T23:13:16.290Z",
+        "room": "gentle-zelda-9821",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-26T18:00:00Z",
+        "team1": "Salt and Pepega",
+        "team2": "Le Bretzel et les 2 Quiches"
+    },
+    {
+        "async": false,
+        "end": "2021-06-27T00:41:52.516Z",
+        "room": "magic-epona-3305",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Zora's Fountain",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-26T19:00:00Z",
+        "team1": "NA Aim",
+        "team2": "Can You Please Just Find My Fucking Go Mode?"
+    },
+    {
+        "async": true,
+        "end": "2021-06-27T17:18:33.101Z",
+        "room": "cunning-dampe-9003",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-27T13:00:00Z",
+        "team1": "Legend of Pukei-Pukei",
+        "team2": "Gamblers Anonymous"
+    },
+    {
+        "async": false,
+        "end": "2021-06-27T21:38:52.044Z",
+        "room": "gnarly-wolfos-7977",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-06-27T17:00:00Z",
+        "team1": "Anju's Secret",
+        "team2": "Oops AD Boys"
+    },
+    {
+        "async": false,
+        "end": "2021-06-27T22:40:34.375Z",
+        "room": "powerful-mido-7098",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Zora's Fountain",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-06-27T18:30:00Z",
+        "team1": "A Creative Team Name",
+        "team2": "Dimitri The Dodongo"
+    },
+    {
+        "async": true,
+        "end": "2021-06-29T01:47:22.033Z",
+        "room": "mini-ichiro-6418",
+        "round": "Swiss Round 4",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-06-28T21:00:00Z",
+        "team1": "Team Mom Jeans",
+        "team2": "The 3 Ahegaos"
+    },
+    {
+        "async": false,
+        "end": "2021-07-04T00:19:40.015Z",
+        "room": "dynamax-nabooru-5922",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-07-03T18:00:00Z",
+        "team1": "Hyrule Goddesses",
+        "team2": "Shotgun Fist Fight"
+    },
+    {
+        "async": false,
+        "end": "2021-07-06T00:06:56.056Z",
+        "room": "chaotic-jiro-9470",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-05T20:00:00Z",
+        "team1": "Raid: Shadow Temple",
+        "team2": "Salt and Pepega"
+    },
+    {
+        "async": true,
+        "end": "2021-07-07T05:33:50.818Z",
+        "room": "comic-bigocto-8148",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-06T23:00:00Z",
+        "team1": "TatlTaelrs",
+        "team2": "NA Aim"
+    },
+    {
+        "async": true,
+        "end": "2021-07-07T18:43:51.069Z",
+        "room": "banzai-ruto-7596",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-07T13:00:00Z",
+        "team1": "Team Mom Jeans",
+        "team2": "Going HAM"
+    },
+    {
+        "async": true,
+        "end": "2021-07-07T22:16:08.528Z",
+        "room": "splendid-saria-1891",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Shuffle Gerudo Card"
+        ],
+        "start": "2021-07-07T17:00:00Z",
+        "team1": "Team WAX",
+        "team2": "Cojiro Boiz"
+    },
+    {
+        "async": true,
+        "end": "2021-07-08T05:41:22.279Z",
+        "room": "gorgeous-ingo-3539",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-07T23:00:00Z",
+        "team1": "NA Aim",
+        "team2": "TatlTaelrs"
+    },
+    {
+        "async": false,
+        "end": "2021-07-08T23:29:46.317Z",
+        "room": "smart-zora-6677",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-08T18:00:00Z",
+        "team1": "Fuck Riley",
+        "team2": "The Gaming Grandpas"
+    },
+    {
+        "async": false,
+        "end": "2021-07-09T23:29:26.393Z",
+        "room": "clean-cucco-0145",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Tokensanity",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-09T19:00:00Z",
+        "team1": "RandoWorld United",
+        "team2": "Can You Please Just Find My Fucking Go Mode?"
+    },
+    {
+        "async": true,
+        "end": "2021-07-10T00:49:36.992Z",
+        "room": "jolly-likelike-1006",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Shuffle Gerudo Card"
+        ],
+        "start": "2021-07-09T20:00:00Z",
+        "team1": "Cojiro Boiz",
+        "team2": "Team WAX"
+    },
+    {
+        "async": false,
+        "end": "2021-07-10T22:51:34.614Z",
+        "room": "quick-blametrez-7928",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-10T17:00:00Z",
+        "team1": "Dimitri The Dodongo",
+        "team2": "Gamblers Anonymous"
+    },
+    {
+        "async": false,
+        "end": "2021-07-13T02:09:28.825Z",
+        "room": "superb-mido-2803",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Forest",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-07-11T16:00:00Z",
+        "team1": "Ruto Akimbo",
+        "team2": "Richard The Dog"
+    },
+    {
+        "async": false,
+        "end": "2021-07-11T19:34:13.902Z",
+        "room": "kind-shikashi-3859",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-11T16:00:00Z",
+        "team1": "DO NOT RELOAD THE ROM",
+        "team2": "Clowns in der Dose"
+    },
+    {
+        "async": false,
+        "end": "2021-07-11T20:00:09.279Z",
+        "room": "hungry-morpha-6351",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-07-11T16:00:00Z",
+        "team1": "Oops AD Boys",
+        "team2": "The 3 Ahegaos"
+    },
+    {
+        "async": true,
+        "end": "2021-07-11T21:32:36.290Z",
+        "room": "grumpy-malon-8475",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-07-11T17:00:00Z",
+        "team1": "Gecklamatee",
+        "team2": "Baguettes du temps"
+    },
+    {
+        "async": false,
+        "end": "2021-07-11T23:03:18.439Z",
+        "room": "crafty-ruto-9598",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-11T18:00:00Z",
+        "team1": "Anju's Secret",
+        "team2": "Real Sexy Lizalfos"
+    },
+    {
+        "async": false,
+        "end": "2021-07-12T01:25:23.601Z",
+        "room": "perfect-sheik-0539",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-11T22:00:00Z",
+        "team1": "A Creative Team Name",
+        "team2": "Snack Pack"
+    },
+    {
+        "async": true,
+        "end": "2021-07-12T06:38:04.028Z",
+        "room": "crazy-ingo-7796",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-07-12T00:30:00Z",
+        "team1": "Backup Strats",
+        "team2": "The Try Too Hards"
+    },
+    {
+        "async": true,
+        "end": "2021-07-12T17:08:13.075Z",
+        "room": "critical-navi-8526",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-07-12T09:30:00Z",
+        "team1": "The Aussie Boiiz",
+        "team2": "The Sexy Gohmas"
+    },
+    {
+        "async": true,
+        "end": "2021-07-12T20:08:21.834Z",
+        "room": "dynamax-likelike-4592",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-12T15:00:00Z",
+        "team1": "Going HAM",
+        "team2": "Team Mom Jeans"
+    },
+    {
+        "async": true,
+        "end": "2021-07-12T20:42:09.855Z",
+        "room": "gentle-cucco-5458",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Ganon's Boss Key",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-12T17:00:00Z",
+        "team1": "DAD",
+        "team2": "slideshow &co"
+    },
+    {
+        "async": true,
+        "end": "2021-07-12T22:16:52.214Z",
+        "room": "tasty-dekutree-3986",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-07-12T17:00:00Z",
+        "team1": "The Sexy Gohmas",
+        "team2": "The Aussie Boiiz"
+    },
+    {
+        "async": true,
+        "end": "2021-07-13T00:55:14.051Z",
+        "room": "swag-pierre-5991",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-07-12T19:00:00Z",
+        "team1": "The Try Too Hards",
+        "team2": "Backup Strats"
+    },
+    {
+        "async": true,
+        "end": "2021-07-13T04:45:53.733Z",
+        "room": "daring-ironknuckle-0154",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-13T00:00:00Z",
+        "team1": "Double BK Mode w/ Cheese",
+        "team2": "We're picking 12 MQ"
+    },
+    {
+        "async": true,
+        "end": "2021-07-13T22:20:13.490Z",
+        "room": "secret-dekutree-4140",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-13T18:00:00Z",
+        "team1": "We're picking 12 MQ",
+        "team2": "Double BK Mode w/ Cheese"
+    },
+    {
+        "async": true,
+        "end": "2021-07-13T23:00:04.506Z",
+        "room": "powerful-pierre-2806",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-07-13T18:30:00Z",
+        "team1": "Baguettes du temps",
+        "team2": "Gecklamatee"
+    },
+    {
+        "async": true,
+        "end": "2021-07-14T00:12:34.314Z",
+        "room": "speedy-mido-4441",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Ganon's Boss Key",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-13T20:00:00Z",
+        "team1": "slideshow &co",
+        "team2": "DAD"
+    },
+    {
+        "async": false,
+        "end": "2021-07-14T04:27:05.862Z",
+        "room": "kind-shikashi-3222",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-07-14T00:00:00Z",
+        "team1": "King Zordongo",
+        "team2": "Hot Mess"
+    },
+    {
+        "async": true,
+        "end": "2021-07-14T15:55:11.045Z",
+        "room": "cunning-dampe-9252",
+        "round": "Swiss Round 5",
+        "settingsNotDefault": [
+            "Forest",
+            "Zora's Fountain",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-14T12:00:00Z",
+        "team1": "Le Bretzel et les 2 Quiches",
+        "team2": "Team Redhead"
+    },
+    {
+        "async": true,
+        "end": "2021-07-15T21:02:53.310Z",
+        "room": "vanilla-cucco-9821",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-07-15T16:00:00Z",
+        "team1": "Team WAX",
+        "team2": "Hot Mess"
+    },
+    {
+        "async": false,
+        "end": "2021-07-17T01:10:58.525Z",
+        "room": "tactical-medigoron-0700",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-07-16T19:00:00Z",
+        "team1": "RandoWorld United",
+        "team2": "Cojiro Boiz"
+    },
+    {
+        "async": true,
+        "end": "2021-07-17T04:10:40.402Z",
+        "room": "reliable-nabooru-7464",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Starting Age/Randomize Overworld Spawns",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-16T21:45:00Z",
+        "team1": "TatlTaelrs",
+        "team2": "Backup Strats"
+    },
+    {
+        "async": false,
+        "end": "2021-07-17T18:34:58.964Z",
+        "room": "elegant-darunia-3561",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Shuffle Gerudo Card"
+        ],
+        "start": "2021-07-17T14:00:00Z",
+        "team1": "Hyrule Goddesses",
+        "team2": "The 3 Ahegaos"
+    },
+    {
+        "async": false,
+        "end": "2021-07-18T21:11:13.461Z",
+        "room": "virtual-flaredancer-3110",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-18T18:00:00Z",
+        "team1": "Salt and Pepega",
+        "team2": "DAD"
+    },
+    {
+        "async": true,
+        "end": "2021-07-19T04:14:30.683Z",
+        "room": "chaotic-ruto-6774",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Starting Age/Randomize Overworld Spawns",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-18T22:30:00Z",
+        "team1": "Backup Strats",
+        "team2": "TatlTaelrs"
+    },
+    {
+        "async": false,
+        "end": "2021-07-19T23:15:27.614Z",
+        "room": "lawful-impa-4264",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-19T20:00:00Z",
+        "team1": "Raid: Shadow Temple",
+        "team2": "Anju's Secret"
+    },
+    {
+        "async": false,
+        "end": "2021-07-21T05:48:30.705Z",
+        "room": "casual-mamamu-1390",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-21T01:00:00Z",
+        "team1": "Team Mom Jeans",
+        "team2": "Snack Pack"
+    },
+    {
+        "async": true,
+        "end": "2021-07-21T21:35:39.176Z",
+        "room": "travelling-shiro-2063",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-21T18:00:00Z",
+        "team1": "We're picking 12 MQ",
+        "team2": "Gamblers Anonymous"
+    },
+    {
+        "async": true,
+        "end": "2021-07-22T00:28:02.330Z",
+        "room": "classic-impa-8654",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Forest",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-21T18:30:00Z",
+        "team1": "Can You Please Just Find My Fucking Go Mode?",
+        "team2": "The Try Too Hards"
+    },
+    {
+        "async": true,
+        "end": "2021-07-22T23:24:59.994Z",
+        "room": "zany-kakariko-2328",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Starting Age/Randomize Overworld Spawns",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-22T18:30:00Z",
+        "team1": "Fuck Riley",
+        "team2": "30 Skulls Please"
+    },
+    {
+        "async": true,
+        "end": "2021-07-23T00:13:04.836Z",
+        "room": "smart-epona-2889",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-22T19:00:00Z",
+        "team1": "Baguettes du temps",
+        "team2": "DO NOT RELOAD THE ROM"
+    },
+    {
+        "async": true,
+        "end": "2021-07-23T01:22:34.746Z",
+        "room": "proud-morpha-7236",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-22T23:00:00Z",
+        "team1": "Gamblers Anonymous",
+        "team2": "We're picking 12 MQ"
+    },
+    {
+        "async": true,
+        "end": "2021-07-23T04:23:20.989Z",
+        "room": "dapper-mamamu-0417",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-07-22T23:24:00Z",
+        "team1": "Hot Mess",
+        "team2": "Team WAX"
+    },
+    {
+        "async": true,
+        "end": "2021-07-23T05:35:49.923Z",
+        "room": "foolish-gohma-7249",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Forest",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-23T00:00:00Z",
+        "team1": "The Try Too Hards",
+        "team2": "Can You Please Just Find My Fucking Go Mode?"
+    },
+    {
+        "async": false,
+        "end": "2021-07-24T09:57:48.434Z",
+        "room": "funky-pierre-5112",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-07-24T04:00:00Z",
+        "team1": "Double BK Mode w/ Cheese",
+        "team2": "Oops AD Boys"
+    },
+    {
+        "async": true,
+        "end": "2021-07-24T15:56:43.319Z",
+        "room": "mega-medigoron-9578",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-24T12:00:00Z",
+        "team1": "Legend of Pukei-Pukei",
+        "team2": "Dimitri The Dodongo"
+    },
+    {
+        "async": false,
+        "end": "2021-07-24T17:17:56.641Z",
+        "room": "gorgeous-shikashi-9289",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Zora's Fountain"
+        ],
+        "start": "2021-07-24T13:00:00Z",
+        "team1": "A Creative Team Name",
+        "team2": "Going HAM"
+    },
+    {
+        "async": true,
+        "end": "2021-07-24T20:42:42.189Z",
+        "room": "grumpy-blametrez-6718",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-24T16:00:00Z",
+        "team1": "DO NOT RELOAD THE ROM",
+        "team2": "Baguettes du temps"
+    },
+    {
+        "async": false,
+        "end": "2021-07-24T23:38:15.406Z",
+        "room": "lurking-twinrova-5400",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-07-24T19:00:00Z",
+        "team1": "Gecklamatee",
+        "team2": "The Sexy Gohmas"
+    },
+    {
+        "async": true,
+        "end": "2021-07-25T20:35:29.315Z",
+        "room": "scruffy-heylisten-0200",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-07-25T15:00:00Z",
+        "team1": "King Zordongo",
+        "team2": "The Aussie Boiiz"
+    },
+    {
+        "async": false,
+        "end": "2021-07-25T20:34:14.102Z",
+        "room": "obedient-sheik-1335",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-25T16:00:00Z",
+        "team1": "Clowns in der Dose",
+        "team2": "Shotgun Fist Fight"
+    },
+    {
+        "async": true,
+        "end": "2021-07-25T21:23:30.666Z",
+        "room": "cute-volvagia-3606",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-25T17:00:00Z",
+        "team1": "Dimitri The Dodongo",
+        "team2": "Legend of Pukei-Pukei"
+    },
+    {
+        "async": false,
+        "end": "2021-07-25T21:35:33.439Z",
+        "room": "lurking-ruto-9000",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-25T18:00:00Z",
+        "team1": "Le Bretzel et les 2 Quiches",
+        "team2": "Richard The Dog"
+    },
+    {
+        "async": false,
+        "end": "2021-07-25T23:47:12.007Z",
+        "room": "mega-shikashi-3213",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-07-25T19:00:00Z",
+        "team1": "slideshow &co",
+        "team2": "Ruto Akimbo"
+    },
+    {
+        "async": true,
+        "end": "2021-07-26T16:00:26.970Z",
+        "room": "banzai-dodongo-6370",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Scrub Shuffle",
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-07-26T08:30:00Z",
+        "team1": "The Aussie Boiiz",
+        "team2": "King Zordongo"
+    },
+    {
+        "async": false,
+        "end": "2021-07-29T05:36:49.543Z",
+        "room": "amazing-shikashi-1391",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Shuffle Gerudo Card",
+            "Starting Age/Randomize Overworld Spawns"
+        ],
+        "start": "2021-07-29T01:00:00Z",
+        "team1": "Team Redhead",
+        "team2": "Real Sexy Lizalfos"
+    },
+    {
+        "async": true,
+        "end": "2021-07-31T03:07:31.645Z",
+        "room": "cute-dodongo-5966",
+        "round": "Swiss Round 6",
+        "settingsNotDefault": [
+            "Shopsanity",
+            "Tokensanity",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-07-30T23:00:00Z",
+        "team1": "NA Aim",
+        "team2": "The Gaming Grandpas"
+    },
+    {
+        "async": false,
+        "end": "2021-08-05T23:11:16.697Z",
+        "room": "mysterious-cucco-0303",
+        "round": "Quarterfinals Game 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Ganon's Boss Key",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-08-05T19:00:00Z",
+        "team1": "slideshow &co",
+        "team2": "DAD"
+    },
+    {
+        "async": false,
+        "end": "2021-08-07T22:30:44.124Z",
+        "room": "dizzy-likelike-5016",
+        "round": "Quarterfinals Game 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-08-07T18:00:00Z",
+        "team1": "Raid: Shadow Temple",
+        "team2": "Team Mom Jeans"
+    },
+    {
+        "async": false,
+        "end": "2021-08-08T05:11:53.543Z",
+        "room": "smart-biggoron-1587",
+        "round": "Quarterfinals Game 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-08-08T01:00:00Z",
+        "team1": "Salt and Pepega",
+        "team2": "Snack Pack"
+    },
+    {
+        "async": false,
+        "end": "2021-08-09T02:15:41.056Z",
+        "room": "perfect-cucco-2374",
+        "round": "Quarterfinals Game 1",
+        "settingsNotDefault": [
+            "Zora's Fountain"
+        ],
+        "start": "2021-08-08T23:00:00Z",
+        "team1": "Ruto Akimbo",
+        "team2": "Richard The Dog"
+    },
+    {
+        "async": false,
+        "end": "2021-08-14T22:31:59.229Z",
+        "room": "bonus-stalfos-6198",
+        "round": "Quarterfinals Game 2",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Forest",
+            "Zora's Fountain",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-08-14T19:00:00Z",
+        "team1": "DAD",
+        "team2": "slideshow &co"
+    },
+    {
+        "async": false,
+        "end": "2021-08-15T04:34:56.626Z",
+        "room": "silly-kokiri-3091",
+        "round": "Quarterfinals Game 2",
+        "settingsNotDefault": [
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-08-15T01:00:00Z",
+        "team1": "Salt and Pepega",
+        "team2": "Snack Pack"
+    },
+    {
+        "async": false,
+        "end": "2021-08-20T22:25:36.368Z",
+        "room": "clumsy-flaredancer-6309",
+        "round": "Quarterfinals Game 3",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Shuffle Gerudo Card",
+            "Ganon's Boss Key",
+            "Rainbow Bridge"
+        ],
+        "start": "2021-08-20T19:00:00Z",
+        "team1": "slideshow &co",
+        "team2": "DAD"
+    },
+    {
+        "async": false,
+        "end": "2021-08-21T19:36:44.855Z",
+        "room": "frantic-jiro-2671",
+        "round": "Quarterfinals Game 2",
+        "settingsNotDefault": [
+            "Zora's Fountain",
+            "Ganon's Boss Key"
+        ],
+        "start": "2021-08-21T16:00:00Z",
+        "team1": "Ruto Akimbo",
+        "team2": "Richard The Dog"
+    },
+    {
+        "async": false,
+        "end": "2021-08-23T04:49:35.892Z",
+        "room": "lurking-sheik-8822",
+        "round": "Quarterfinals Game 2",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Forest",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-08-23T00:30:00Z",
+        "team1": "Raid: Shadow Temple",
+        "team2": "Team Mom Jeans"
+    },
+    {
+        "async": false,
+        "end": "2021-08-26T02:51:31.245Z",
+        "room": "sublime-nabooru-3833",
+        "round": "Semifinals Game 1",
+        "settingsNotDefault": [
+            "Zora's Fountain",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-08-25T23:00:00Z",
+        "team1": "Salt and Pepega",
+        "team2": "Richard The Dog"
+    },
+    {
+        "async": false,
+        "end": "2021-08-30T21:58:23.436Z",
+        "restream": "https://twitch.tv/videos/1141855903",
+        "room": "mega-pierre-8170",
+        "round": "Semifinals Game 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Ganon's Boss Key",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-08-30T18:00:00Z",
+        "team1": "Raid: Shadow Temple",
+        "team2": "DAD"
+    },
+    {
+        "async": false,
+        "end": "2021-09-06T19:37:32.389Z",
+        "room": "famous-likelike-0158",
+        "round": "Semifinals Game 2",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Rainbow Bridge",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-09-06T16:00:00Z",
+        "team1": "Salt and Pepega",
+        "team2": "Richard The Dog"
+    },
+    {
+        "async": false,
+        "end": "2021-09-06T21:37:56.828Z",
+        "restream": "https://youtube.com/watch?v=OF0szEdUmV0&list=PLoBQgkYcUe0UyZ66vu-K1-jWBEWPPnHXp",
+        "room": "crafty-ganon-6770",
+        "round": "Semifinals Game 2",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Zora's Fountain",
+            "Ganon's Boss Key",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-09-06T17:00:00Z",
+        "team1": "Raid: Shadow Temple",
+        "team2": "DAD"
+    },
+    {
+        "async": false,
+        "end": "2021-09-18T19:50:29.156Z",
+        "room": "artful-ruto-5586",
+        "round": "Semifinals Game 3",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain"
+        ],
+        "start": "2021-09-18T16:00:00Z",
+        "team1": "Salt and Pepega",
+        "team2": "Richard The Dog"
+    },
+    {
+        "async": false,
+        "end": "2021-10-16T21:40:39.666Z",
+        "restream": "https://youtube.com/watch?v=XynyC3l3HiE",
+        "room": "agreeable-zora-1864",
+        "round": "Finals Game 1",
+        "settingsNotDefault": [
+            "Tokensanity",
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-10-16T18:00:00Z",
+        "team1": "DAD",
+        "team2": "Salt and Pepega"
+    },
+    {
+        "async": false,
+        "end": "2021-11-06T23:07:42.917Z",
+        "restream": "https://youtube.com/watch?v=jUlCGsmbrf0",
+        "room": "innocent-sheik-1493",
+        "round": "Finals Game 2",
+        "settingsNotDefault": [
+            "Shuffle Dungeon Entrances",
+            "Zora's Fountain",
+            "Chest Size Matches Contents"
+        ],
+        "start": "2021-11-06T19:00:00Z",
+        "team1": "DAD",
+        "team2": "Salt and Pepega"
+    }
+]

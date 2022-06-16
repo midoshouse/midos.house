@@ -78,6 +78,39 @@ const SERIES: Series = Series::Multiworld;
 
 pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, InfoError> {
     Ok(match event {
+        "2" => {
+            let organizers = stream::iter([
+                10663518306823692018, // Alaszun
+                12937129924130129092, // Hamsda
+            ])
+                .map(Id)
+                .then(|id| async move { User::from_id(pool, id).await?.ok_or(InfoError::OrganizerUserData) })
+                .try_collect::<Vec<_>>().await?;
+            html! {
+                article {
+                    p {
+                        : "This is an archive of the second Ocarina of Time randomizer multiworld tournament, organized by ";
+                        : natjoin(organizers);
+                        : ". Click the “teams” link above to see the results of the qualifier async.";
+                    }
+                    h2 : "See also";
+                    ul {
+                        li {
+                            a(href = "https://docs.google.com/document/d/e/2PACX-1vS6vGCH8ZTA5bDCv3Z8meiUK4hMEfWN3vLttjNIOXbIAbRFNuGi-NzwJ68o31gVJgUigblLmW2tkZRu/pub") : "Tournament format, rules, and settings";
+                        }
+                        li {
+                            a(href = "https://challonge.com/OoTRMWSeason2Swiss") : "Swiss results";
+                        }
+                        li {
+                            a(href = "https://docs.google.com/spreadsheets/d/101zNpL1uvmIONb59kXYVyoa7YaHy8Y_OJv3M3vOKdBA/edit#gid=104642672") : "Tiebreaker scoresheet";
+                        }
+                        li {
+                            a(href = "https://challonge.com/OoTRMWSeason2Finals") : "Top 8 results";
+                        }
+                    }
+                }
+            }
+        }
         "3" => {
             let organizers = stream::iter([
                 11983715422555811980, // ACreativeUsername
