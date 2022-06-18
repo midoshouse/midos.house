@@ -60,12 +60,14 @@ use {
     },
     url::Url,
     crate::{
-        PageError,
-        PageStyle,
         auth,
         favicon::ChestAppearances,
+        http::{
+            PageError,
+            PageStyle,
+            page,
+        },
         notification::SimpleNotificationKind,
-        page,
         user::User,
         util::{
             EmptyForm,

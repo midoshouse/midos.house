@@ -48,7 +48,6 @@ use {
     serde::Deserialize,
     sqlx::PgPool,
     crate::{
-        PageStyle,
         auth,
         event::{
             Data,
@@ -58,7 +57,10 @@ use {
             SignupStatus,
             Tab,
         },
-        page,
+        http::{
+            PageStyle,
+            page,
+        },
         seed,
         user::User,
         util::{

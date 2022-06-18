@@ -43,7 +43,7 @@ use {
         Transaction,
     },
     url::Url,
-    crate::PageError,
+    crate::http::PageError,
 };
 
 /// A form that only holds a CSRF token

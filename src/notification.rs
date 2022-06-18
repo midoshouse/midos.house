@@ -20,10 +20,6 @@ use {
     },
     sqlx::PgPool,
     crate::{
-        PageError,
-        PageKind,
-        PageStyle,
-        User,
         auth,
         event::{
             self,
@@ -34,7 +30,13 @@ use {
             mw,
             pic,
         },
-        page,
+        http::{
+            PageError,
+            PageKind,
+            PageStyle,
+            page,
+        },
+        user::User,
         util::{
             EmptyForm,
             Id,

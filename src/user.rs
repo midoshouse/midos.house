@@ -15,10 +15,12 @@ use {
         PgPool,
     },
     crate::{
-        PageError,
-        PageKind,
-        PageStyle,
-        page,
+        http::{
+            PageError,
+            PageKind,
+            PageStyle,
+            page,
+        },
         util::{
             Id,
             StatusOrError,

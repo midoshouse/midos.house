@@ -40,11 +40,13 @@ use {
     serde::Deserialize,
     sqlx::PgPool,
     crate::{
-        PageError,
-        PageKind,
-        PageResult,
-        PageStyle,
-        page,
+        http::{
+            PageError,
+            PageKind,
+            PageResult,
+            PageStyle,
+            page,
+        },
         user::User,
         util::{
             Id,
@@ -239,7 +241,7 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, ur
         .send().await?
         .error_for_status()?
         .json::<RaceTimeUser>().await?;
-    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::index), |uri| uri.into_owned());
+    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(if User::from_racetime(&**pool, &racetime_user.id).await?.is_some() {
         RedirectOrContent::Redirect(Redirect::to(redirect_uri))
     } else if let Some(me) = me {
@@ -300,7 +302,7 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, uri
         .send().await?
         .error_for_status()?
         .json::<DiscordUser>().await?;
-    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::index), |uri| uri.into_owned());
+    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(if User::from_discord(&**pool, discord_user.id.parse()?).await?.is_some() {
         RedirectOrContent::Redirect(Redirect::to(redirect_uri))
     } else if let Some(me) = me {
@@ -395,5 +397,5 @@ pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, cli
 pub(crate) fn logout(cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Redirect {
     cookies.remove_private(Cookie::named("racetime_token"));
     cookies.remove_private(Cookie::named("discord_token"));
-    Redirect::to(redirect_to.map_or_else(|| uri!(crate::index), |uri| uri.0.into_owned()))
+    Redirect::to(redirect_to.map_or_else(|| uri!(crate::http::index), |uri| uri.0.into_owned()))
 }

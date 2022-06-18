@@ -38,7 +38,6 @@ use {
     },
     sqlx::PgPool,
     crate::{
-        PageStyle,
         auth,
         event::{
             Data,
@@ -48,7 +47,10 @@ use {
             Series,
             Tab,
         },
-        page,
+        http::{
+            PageStyle,
+            page,
+        },
         seed,
         user::User,
         util::{
