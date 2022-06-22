@@ -369,7 +369,10 @@ pub(crate) async fn rocket(pool: PgPool, config: &Config, is_dev: bool, view_as:
         notification::dismiss,
         user::profile,
     ])
-    .mount("/seed", FileServer::new(seed::DIR, rocket::fs::Options::None))
+    .mount("/seed", {
+        #[cfg(unix)] { FileServer::new(seed::DIR, rocket::fs::Options::None) }
+        #[cfg(windows)] { Vec::default() }
+    })
     .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))
     .register("/", rocket::catchers![
         not_found,

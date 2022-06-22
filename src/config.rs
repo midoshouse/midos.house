@@ -1,13 +1,14 @@
 use {
-    anyhow::{
-        Result,
-        bail,
-    },
+    anyhow::Result,
     serde::Deserialize,
     serenity::model::prelude::*,
-    tokio::fs,
-    xdg::BaseDirectories,
 };
+#[cfg(unix)] use {
+    anyhow::bail,
+    xdg::BaseDirectories,
+    tokio::fs,
+};
+#[cfg(windows)] use tokio::process::Command;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -27,11 +28,16 @@ pub(crate) struct Config {
 
 impl Config {
     pub(crate) async fn load() -> Result<Self> {
-        if let Some(config_path) = BaseDirectories::new()?.find_config_file("midos-house.json") {
-            let buf = fs::read(config_path).await?;
-            Ok(serde_json::from_slice(&buf)?)
-        } else {
-            bail!("missing config file")
+        #[cfg(unix)] {
+            if let Some(config_path) = BaseDirectories::new()?.find_config_file("midos-house.json") {
+                let buf = fs::read(config_path).await?;
+                Ok(serde_json::from_slice(&buf)?)
+            } else {
+                bail!("missing config file")
+            }
+        }
+        #[cfg(windows)] { // allow testing without having rust-analyzer slow down mercredi
+            Ok(serde_json::from_slice(&Command::new("ssh").arg("mercredi").arg("cat").arg("/etc/xdg/midos-house.json").output().await?.stdout)?)
         }
     }
 }
