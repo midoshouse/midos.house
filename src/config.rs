@@ -4,6 +4,7 @@ use {
         bail,
     },
     serde::Deserialize,
+    serenity::model::prelude::*,
     tokio::fs,
     xdg::BaseDirectories,
 };
@@ -11,8 +12,16 @@ use {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct Config {
-    pub(crate) racetime: ConfigRaceTime,
-    pub(crate) discord: ConfigDiscord,
+    #[allow(unused)] //TODO
+    racetime_bot: ConfigRaceTime,
+    #[serde(rename = "racetimeOAuth")]
+    pub(crate) racetime_oauth: ConfigRaceTime,
+    pub(crate) discord_production: ConfigDiscord,
+    pub(crate) discord_dev: ConfigDiscord,
+    #[allow(unused)] //TODO
+    startgg_production: String,
+    #[allow(unused)] //TODO
+    startgg_dev: String,
     pub(crate) secret_key: String,
 }
 
@@ -39,9 +48,8 @@ pub(crate) struct ConfigRaceTime {
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct ConfigDiscord {
     #[serde(rename = "clientID")]
-    pub(crate) client_id: String,
+    pub(crate) client_id: ApplicationId,
     pub(crate) client_secret: String,
-    #[serde(rename = "devClientID")]
-    pub(crate) dev_client_id: String,
-    pub(crate) dev_client_secret: String,
+    #[allow(unused)] //TODO
+    pub(crate) bot_token: String,
 }

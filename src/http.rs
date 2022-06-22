@@ -328,10 +328,11 @@ impl Fairing for SeedDownloadFairing {
     }
 }
 
-pub(crate) fn rocket(pool: PgPool, config: Config, is_dev: bool, view_as: HashMap<Id, Id>) -> Result<Rocket<rocket::Build>, Error> {
+pub(crate) async fn rocket(pool: PgPool, config: &Config, is_dev: bool, view_as: HashMap<Id, Id>) -> Result<Rocket<rocket::Ignite>, Error> {
+    let discord_config = if is_dev { &config.discord_dev } else { &config.discord_production };
     Ok(rocket::custom(rocket::Config {
         port: if is_dev { 24814 } else { 24812 },
-        secret_key: SecretKey::from(&base64::decode(config.secret_key)?),
+        secret_key: SecretKey::from(&base64::decode(&config.secret_key)?),
         ..rocket::Config::default()
     })
     .mount("/", rocket::routes![
@@ -380,8 +381,8 @@ pub(crate) fn rocket(pool: PgPool, config: Config, is_dev: bool, view_as: HashMa
             auth_uri: "https://racetime.gg/o/authorize".into(),
             token_uri: "https://racetime.gg/o/token".into(),
         },
-        config.racetime.client_id,
-        config.racetime.client_secret,
+        config.racetime_oauth.client_id.clone(),
+        config.racetime_oauth.client_secret.clone(),
         Some(if is_dev {
             uri!("https://dev.midos.house", auth::racetime_callback)
         } else {
@@ -393,8 +394,8 @@ pub(crate) fn rocket(pool: PgPool, config: Config, is_dev: bool, view_as: HashMa
             auth_uri: "https://discord.com/api/oauth2/authorize".into(),
             token_uri: "https://discord.com/api/oauth2/token".into(),
         },
-        if is_dev { config.discord.dev_client_id } else { config.discord.client_id },
-        if is_dev { config.discord.dev_client_secret } else { config.discord.client_secret },
+        discord_config.client_id.to_string(),
+        discord_config.client_secret.to_string(),
         Some(if is_dev {
             uri!("https://dev.midos.house", auth::discord_callback)
         } else {
@@ -411,5 +412,6 @@ pub(crate) fn rocket(pool: PgPool, config: Config, is_dev: bool, view_as: HashMa
         .trust_dns(true)
         .https_only(true)
         .build()?
-    ))
+    )
+    .ignite().await?)
 }

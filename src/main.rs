@@ -49,6 +49,6 @@ enum Error {
 async fn main(Args { is_dev, view_as }: Args) -> Result<(), Error> {
     let config = Config::load().await?;
     let pool = PgPool::connect_with(PgConnectOptions::default().username("mido").database("midos_house").application_name("midos-house")).await?;
-    let _ = http::rocket(pool, config, is_dev, view_as.into_iter().collect())?.launch().await?;
+    let _ = http::rocket(pool, &config, is_dev, view_as.into_iter().collect()).await?.launch().await?;
     Ok(())
 }

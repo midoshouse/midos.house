@@ -354,10 +354,10 @@ impl<'a> Data<'a> {
                 @if let Some(ref url) = self.url {
                     a(class = "button", href = url.to_string()) {
                         : favicon(url);
-                        @if url.host_str() == Some("racetime.gg") {
-                            : "Race Room";
-                        } else {
-                            : "Website";
+                        @match url.host_str() {
+                            Some("racetime.gg") => : "Race Room";
+                            Some("start.gg" | "www.start.gg") => : "Brackets";
+                            _ => : "Website";
                         }
                     }
                 }
