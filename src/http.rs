@@ -54,6 +54,7 @@ use {
         seed::SpoilerLog,
         user::User,
         util::{
+            DateTimeFormat,
             Id,
             format_date_range,
             format_datetime,
@@ -119,6 +120,7 @@ pub(crate) async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, sty
                 link(rel = "icon", sizes = "512x512", type = "image/png", href = uri!(favicon::favicon_png(style.chests.textures(), Suffix(512, "png"))).to_string());
                 link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(style.chests.textures(), Suffix(1024, "png"))).to_string());
                 link(rel = "stylesheet", href = "/static/common.css");
+                script(defer, src = "/static/common.js");
             }
             body(class = matches!(style.kind, PageKind::Banner).then(|| "fullscreen")) {
                 div {
@@ -210,7 +212,7 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
                         : event;
                         @if let Some(start) = event.start {
                             : " — ";
-                            : format_datetime(start, false);
+                            : format_datetime(start, DateTimeFormat { long: false, running_text: false });
                         }
                     }
                 }
@@ -262,7 +264,7 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Res
                     li {
                         : event;
                         : " — ";
-                        : format_date_range(event.start.expect("ended event with no start date").date().naive_utc(), event.end.expect("checked above").date().naive_utc());
+                        : format_date_range(event.start.expect("ended event with no start date"), event.end.expect("checked above"));
                     };
                 }
             }

@@ -70,6 +70,7 @@ use {
         notification::SimpleNotificationKind,
         user::User,
         util::{
+            DateTimeFormat,
             EmptyForm,
             Id,
             IdTable,
@@ -308,7 +309,7 @@ impl<'a> Data<'a> {
                 a(class = "nav", href? = (!matches!(tab, Tab::Info)).then(|| uri!(info(self.series, &*self.event)).to_string())) : &self.display_name;
             }
             @if let Some(start) = self.start {
-                h2 : format_datetime(start, false);
+                h2 : format_datetime(start, DateTimeFormat { long: true, running_text: false });
             }
             div(class = "button-row") {
                 @if let Tab::Info = tab {

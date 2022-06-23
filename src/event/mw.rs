@@ -64,6 +64,7 @@ use {
         seed,
         user::User,
         util::{
+            DateTimeFormat,
             Id,
             IdTable,
             RedirectOrContent,
@@ -622,7 +623,7 @@ pub(super) async fn status(pool: &PgPool, csrf: Option<CsrfToken>, data: &Data<'
                     div(class = "info") {
                         p {
                             : "You requested the qualifier async on ";
-                            : format_datetime(row.requested, true);
+                            : format_datetime(row.requested, DateTimeFormat { long: true, running_text: true });
                             : ".";
                         };
                         : seed_table;

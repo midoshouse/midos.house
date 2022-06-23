@@ -1,5 +1,6 @@
 use {
     std::{
+        fmt,
         iter,
         mem,
         str::FromStr,
@@ -278,53 +279,58 @@ pub(crate) fn parse_duration(s: &str) -> Option<Duration> {
     }
 }
 
-pub(crate) fn format_datetime<Tz: TimeZone>(datetime: DateTime<Tz>, running_text: bool) -> RawHtml<String> {
+pub(crate) struct DateTimeFormat {
+    pub(crate) long: bool,
+    pub(crate) running_text: bool,
+}
+
+pub(crate) fn format_datetime<Tz: TimeZone>(datetime: DateTime<Tz>, format: DateTimeFormat) -> RawHtml<String> {
     let utc = datetime.with_timezone(&Utc);
     let berlin = datetime.with_timezone(&Europe::Berlin);
     let new_york = datetime.with_timezone(&America::New_York);
     html! {
-        : utc.format("%A, %B %-d, %Y, %H:%M UTC").to_string();
-        @if running_text {
-            : " (";
-        } else {
-            : " • ";
+        span(class = "datetime", data_timestamp = datetime.timestamp_millis(), data_long = format.long.to_string());
+        noscript {
+            : utc.format("%A, %B %-d, %Y, %H:%M UTC").to_string();
+            @if format.running_text {
+                : " (";
+            } else {
+                : " • ";
+            }
+            : berlin.format(if berlin.date() == utc.date() { "%H:%M %Z" } else { "%A %H:%M %Z" }).to_string();
+            @if format.running_text {
+                : ", ";
+            } else {
+                : " • ";
+            }
+            : new_york.format(if new_york.date() == utc.date() { "%-I:%M %p %Z" } else { "%A %-I:%M %p %Z" }).to_string(); //TODO omit minutes if 0
+            @if format.running_text {
+                : ")";
+            }
         }
-        : berlin.format(if berlin.date() == utc.date() { "%H:%M %Z" } else { "%A %H:%M %Z" }).to_string();
-        @if running_text {
-            : ", ";
-        } else {
-            : " • ";
-        }
-        : new_york.format(if new_york.date() == utc.date() { "%-I:%M %p %Z" } else { "%A %-I:%M %p %Z" }).to_string(); //TODO omit minutes if 0
-        @if running_text {
-            : ")";
-        }
-        //TODO allow users to set timezone and format preferences, fall back to JS APIs
     }
 }
 
-pub(crate) fn format_date_range(start: NaiveDate, end: NaiveDate) -> RawHtml<String> {
-    if start.year() != end.year() {
-        html! {
-            : start.format("%B %-d, %Y").to_string();
-            : "–";
-            : end.format("%B %-d, %Y").to_string();
-        }
-    } else if start.month() != end.month() {
-        html! {
-            : start.format("%B %-d").to_string();
-            : "–";
-            : end.format("%B %-d, %Y").to_string();
-        }
-    } else if start.day() != end.day() {
-        html! {
-            : start.format("%B %-d").to_string();
-            : "–";
-            : end.format("%-d, %Y").to_string();
-        }
-    } else {
-        html! {
-            : start.format("%B %-d, %Y").to_string();
+pub(crate) fn format_date_range<Tz: TimeZone>(start: DateTime<Tz>, end: DateTime<Tz>) -> RawHtml<String>
+where Tz::Offset: fmt::Display {
+    html! {
+        span(class = "daterange", data_start = start.timestamp_millis(), data_end = end.timestamp_millis());
+        noscript {
+            @if start.year() != end.year() {
+                : start.format("%B %-d, %Y").to_string();
+                : "–";
+                : end.format("%B %-d, %Y").to_string();
+            } else if start.month() != end.month() {
+                : start.format("%B %-d").to_string();
+                : "–";
+                : end.format("%B %-d, %Y").to_string();
+            } else if start.day() != end.day() {
+                : start.format("%B %-d").to_string();
+                : "–";
+                : end.format("%-d, %Y").to_string();
+            } else {
+                : start.format("%B %-d, %Y").to_string();
+            }
         }
     }
 }
