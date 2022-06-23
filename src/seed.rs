@@ -41,7 +41,8 @@ use {
     },
 };
 
-pub(crate) const DIR: &str = "/var/www/midos.house/seed";
+#[cfg(unix)] pub(crate) const DIR: &str = "/var/www/midos.house/seed";
+#[cfg(windows)] pub(crate) const DIR: &str = "C:/Users/fenhl/games/zelda/oot/midos-house-seeds";
 
 #[derive(Deserialize, Serialize)]
 enum HashIcon {

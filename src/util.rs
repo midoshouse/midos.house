@@ -242,16 +242,19 @@ impl From<sqlx::Error> for StatusOrError<PageError> {
 pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
     match url.host_str() {
         Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("spreadsheets") => html! {
-            img(class = "favicon", alt = "external link (docs.google.com/spreadsheets)", src = "https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico", width = "16", height = "16");
+            img(class = "favicon", alt = "external link (docs.google.com/spreadsheets)", src = "https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico");
+        },
+        Some("youtube.com" | "www.youtube.com") => html! {
+            img(class = "favicon", alt = "external link (youtube.com)", srcset = "https://www.youtube.com/s/desktop/435d54f2/img/favicon.ico 16w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_32x32.png 32w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_48x48.png 48w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_96x96.png 96w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_144x144.png 144w");
         },
         Some("racetime.gg") => html! {
-            img(class = "favicon", alt = "external link (racetime.gg)", src = "https://racetime.gg/favicon.ico", width = "16", height = "16");
+            img(class = "favicon", alt = "external link (racetime.gg)", src = "https://racetime.gg/favicon.ico");
         },
-        Some("start.gg") | Some("www.start.gg") => html! {
-            img(class = "favicon", alt = "external link (start.gg)", src = "https://www.start.gg/__static/images/favicon/favicon.ico", width = "16", height = "16");
+        Some("start.gg" | "www.start.gg") => html! {
+            img(class = "favicon", alt = "external link (start.gg)", src = "https://www.start.gg/__static/images/favicon/favicon.ico");
         },
-        Some("twitch.tv") | Some("www.twitch.tv") => html! {
-            img(class = "favicon", alt = "external link (twitch.tv)", src = "https://static.twitchcdn.net/assets/favicon-16-52e571ffea063af7a7f4.png", width = "16", height = "16", srcset = "https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png 2x");
+        Some("twitch.tv" | "www.twitch.tv") => html! {
+            img(class = "favicon", alt = "external link (twitch.tv)", srcset = "https://static.twitchcdn.net/assets/favicon-16-52e571ffea063af7a7f4.png 16w, https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png 32w");
         },
         _ => html! {
             : "🌐";
