@@ -302,3 +302,29 @@ pub(crate) fn format_datetime<Tz: TimeZone>(datetime: DateTime<Tz>, running_text
         //TODO allow users to set timezone and format preferences, fall back to JS APIs
     }
 }
+
+pub(crate) fn format_date_range(start: NaiveDate, end: NaiveDate) -> RawHtml<String> {
+    if start.year() != end.year() {
+        html! {
+            : start.format("%B %-d, %Y").to_string();
+            : "–";
+            : end.format("%B %-d, %Y").to_string();
+        }
+    } else if start.month() != end.month() {
+        html! {
+            : start.format("%B %-d").to_string();
+            : "–";
+            : end.format("%B %-d, %Y").to_string();
+        }
+    } else if start.day() != end.day() {
+        html! {
+            : start.format("%B %-d").to_string();
+            : "–";
+            : end.format("%-d, %Y").to_string();
+        }
+    } else {
+        html! {
+            : start.format("%B %-d, %Y").to_string();
+        }
+    }
+}

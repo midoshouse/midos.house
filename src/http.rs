@@ -53,7 +53,11 @@ use {
         notification::Notification,
         seed::SpoilerLog,
         user::User,
-        util::Id,
+        util::{
+            Id,
+            format_date_range,
+            format_datetime,
+        },
     },
 };
 
@@ -185,7 +189,7 @@ pub(crate) async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, sty
 #[rocket::get("/")]
 async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
     //TODO list ongoing events separately
-    let upcoming_events = sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW())"#)
+    let upcoming_events = sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW()) ORDER BY start ASC NULLS LAST"#)
         .fetch(&**pool).map_err(event::DataError::from)
         .and_then(|row| async move { Ok(event::Data::new((**pool).clone(), row.series, row.event).await?.expect("event deleted during page load")) }) //TODO use a transaction to enforce consistency?
         .try_collect::<Vec<_>>().await?;
@@ -202,7 +206,13 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
                 i : "(none currently)";
             } else {
                 @for event in upcoming_events {
-                    li : event;
+                    li {
+                        : event;
+                        @if let Some(start) = event.start {
+                            : " — ";
+                            : format_datetime(start, false);
+                        }
+                    }
                 }
             }
         }
@@ -237,7 +247,7 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
 
 #[rocket::get("/archive")]
 async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
-    let past_events = sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed AND end_time IS NOT NULL AND end_time <= NOW()"#)
+    let past_events = sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed AND end_time IS NOT NULL AND end_time <= NOW() ORDER BY end_time DESC"#)
         .fetch(&**pool).map_err(event::DataError::from)
         .and_then(|row| async move { Ok(event::Data::new((**pool).clone(), row.series, row.event).await?.expect("event deleted during page load")) }) //TODO use a transaction to enforce consistency?
         .try_collect::<Vec<_>>().await?;
@@ -249,7 +259,11 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Res
                 i : "(none currently)";
             } else {
                 @for event in past_events {
-                    li : event;
+                    li {
+                        : event;
+                        : " — ";
+                        : format_date_range(event.start.expect("ended event with no start date").date().naive_utc(), event.end.expect("checked above").date().naive_utc());
+                    };
                 }
             }
         }
