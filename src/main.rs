@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 use {
+    futures::future::FutureExt as _,
     sqlx::{
         PgPool,
         postgres::PgConnectOptions,
@@ -19,6 +20,7 @@ mod event;
 mod favicon;
 mod http;
 mod notification;
+mod racetime_bot;
 mod seed;
 mod user;
 mod util;
@@ -40,15 +42,28 @@ struct Args {
 enum Error {
     #[error(transparent)] Any(#[from] anyhow::Error),
     #[error(transparent)] Base64(#[from] base64::DecodeError),
+    #[error(transparent)] Racetime(#[from] racetime::Error),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Rocket(#[from] rocket::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Task(#[from] tokio::task::JoinError),
 }
 
 #[wheel::main(rocket, debug)]
 async fn main(Args { is_dev, view_as }: Args) -> Result<(), Error> {
     let config = Config::load().await?;
     let pool = PgPool::connect_with(PgConnectOptions::default().username("mido").database("midos_house").application_name("midos-house")).await?;
-    let _ = http::rocket(pool, &config, is_dev, view_as.into_iter().collect()).await?.launch().await?;
+    let rocket = http::rocket(pool, &config, is_dev, view_as.into_iter().collect()).await?;
+    let racetime_task = tokio::spawn(racetime_bot::main(config.racetime_bot.clone(), rocket.shutdown())).map(|res| match res {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(Error::from(e)),
+        Err(e) => Err(Error::from(e)),
+    });
+    let rocket_task = tokio::spawn(rocket.launch()).map(|res| match res {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(e)) => Err(Error::from(e)),
+        Err(e) => Err(Error::from(e)),
+    });
+    let ((), ()) = tokio::try_join!(racetime_task, rocket_task)?;
     Ok(())
 }

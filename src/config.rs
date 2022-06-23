@@ -13,8 +13,7 @@ use {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct Config {
-    #[allow(unused)] //TODO
-    racetime_bot: ConfigRaceTime,
+    pub(crate) racetime_bot: ConfigRaceTime,
     #[serde(rename = "racetimeOAuth")]
     pub(crate) racetime_oauth: ConfigRaceTime,
     pub(crate) discord_production: ConfigDiscord,
@@ -42,7 +41,7 @@ impl Config {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct ConfigRaceTime {
     #[serde(rename = "clientID")]
