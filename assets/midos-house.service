@@ -5,9 +5,6 @@ Wants=network-online.target
 
 [Service]
 Restart=always
-ExecStartPre=+/usr/bin/git pull
-# build as fenhl to ensure Rust is up to date
-ExecStartPre=+/usr/bin/sudo -u fenhl /home/fenhl/.cargo/bin/cargo build --release
 ExecStart=/opt/git/github.com/midoshouse/midos.house/master/target/release/midos-house
 User=mido
 Group=nogroup
