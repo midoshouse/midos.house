@@ -358,6 +358,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
 
 [[package]]
+name = "command_attr"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8862b532587a5efe6f20a750a0d01f390111f3570870581c13374024affc46dc"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -461,6 +472,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "049bb91fb4aaf0e3c7efa6cd5ef877dbbbd15b39dad06d9948de4ec8a75761ea"
 dependencies = [
  "cipher 0.3.0",
+]
+
+[[package]]
+name = "dashmap"
+version = "5.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3495912c9c1ccf2e18976439f4443f3fee0fd61f424ff99fde6a66b15ecb448f"
+dependencies = [
+ "cfg-if",
+ "hashbrown 0.12.1",
+ "lock_api",
+ "parking_lot_core 0.9.3",
+ "serde",
 ]
 
 [[package]]
@@ -633,6 +657,16 @@ dependencies = [
  "toml",
  "uncased",
  "version_check",
+]
+
+[[package]]
+name = "flate2"
+version = "1.0.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f82b0f4c27ad9f8bfd1f3208d882da2b09c301bc1c828fd3a00d0216d2fbbff6"
+dependencies = [
+ "crc32fast",
+ "miniz_oxide",
 ]
 
 [[package]]
@@ -1003,6 +1037,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "if_chain"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb56e1aa765b4b4f3aadfab769793b7087bb03a4ea4920644a6d238e2df5b9ed"
+
+[[package]]
 name = "image"
 version = "0.24.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1113,6 +1153,12 @@ name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+
+[[package]]
+name = "levenshtein"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db13adb97ab515a3691f56e4dbab09283d0b86cb45abd991d8634a9d6f501760"
 
 [[package]]
 name = "libc"
@@ -1234,6 +1280,7 @@ dependencies = [
  "serde_json",
  "serde_plain",
  "serenity",
+ "serenity-utils",
  "sqlx",
  "thiserror",
  "tokio",
@@ -2167,18 +2214,55 @@ dependencies = [
  "bitflags",
  "bytes",
  "cfg-if",
+ "chrono",
+ "command_attr",
+ "dashmap",
+ "flate2",
  "futures",
+ "levenshtein",
  "mime",
  "mime_guess",
+ "parking_lot 0.12.1",
  "percent-encoding",
  "reqwest",
  "serde",
  "serde-value",
  "serde_json",
+ "static_assertions",
  "time 0.3.11",
  "tokio",
  "tracing",
+ "typemap_rev",
  "url",
+ "uwl",
+]
+
+[[package]]
+name = "serenity-utils"
+version = "0.9.0"
+source = "git+https://github.com/fenhl/serenity-utils?branch=main#cc4c0756a8b788464de21e0381fdfad9a03464a6"
+dependencies = [
+ "derive_more",
+ "futures",
+ "parking_lot 0.12.1",
+ "serenity",
+ "serenity-utils-derive",
+ "shlex",
+ "tokio",
+ "tokio-stream",
+]
+
+[[package]]
+name = "serenity-utils-derive"
+version = "0.9.0"
+source = "git+https://github.com/fenhl/serenity-utils?branch=main#cc4c0756a8b788464de21e0381fdfad9a03464a6"
+dependencies = [
+ "convert_case",
+ "if_chain",
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2211,6 +2295,12 @@ checksum = "900fba806f70c630b0a382d0d825e17a0f19fcd059a2ade1ff237bcddf446b31"
 dependencies = [
  "lazy_static",
 ]
+
+[[package]]
+name = "shlex"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43b2853a4d09f215c24cc5489c992ce46052d359b5109343cbafbf26bc62f8a3"
 
 [[package]]
 name = "signal-hook-registry"
@@ -2380,6 +2470,12 @@ checksum = "dbe866e1e51e8260c9eed836a042a5e7f6726bb2b411dffeaa712e19c388f23b"
 dependencies = [
  "loom",
 ]
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stringprep"
@@ -2775,6 +2871,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "typemap_rev"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed5b74f0a24b5454580a79abb6994393b09adf0ab8070f15827cb666255de155"
+
+[[package]]
 name = "typenum"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2891,6 +2993,12 @@ dependencies = [
  "getrandom",
  "serde",
 ]
+
+[[package]]
+name = "uwl"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4bf03e0ca70d626ecc4ba6b0763b934b6f2976e8c744088bb3c1d646fbb1ad0"
 
 [[package]]
 name = "valuable"

@@ -55,6 +55,5 @@ pub(crate) struct ConfigDiscord {
     #[serde(rename = "clientID")]
     pub(crate) client_id: ApplicationId,
     pub(crate) client_secret: String,
-    #[allow(unused)] //TODO
     pub(crate) bot_token: String,
 }

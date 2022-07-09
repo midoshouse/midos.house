@@ -32,7 +32,7 @@ impl RaceHandler for Handler {
 }
 
 pub(crate) async fn main(config: ConfigRaceTime, shutdown: rocket::Shutdown) -> Result<(), Error> {
-    let bot = racetime::Bot::new("ootr", &config.client_id, &config.client_secret).await?;
+    let bot = racetime::Bot::new("ootr", &config.client_id, &config.client_secret).await?; //TODO automatically retry on server error
     let () = bot.run_until::<Handler, _, _>(shutdown).await?;
     Ok(())
 }
