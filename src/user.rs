@@ -10,6 +10,7 @@ use {
         ToHtml,
         html,
     },
+    serenity::model::prelude::*,
     sqlx::{
         PgExecutor,
         PgPool,
@@ -29,7 +30,7 @@ use {
 };
 
 /// User preference that determines which external account a user's display name is be based on.
-#[derive(sqlx::Type)]
+#[derive(Debug, sqlx::Type)]
 #[sqlx(type_name = "user_display_source", rename_all = "lowercase")]
 enum DisplaySource {
     RaceTime,
@@ -41,42 +42,69 @@ pub(crate) struct User {
     display_source: DisplaySource, //TODO allow users with both accounts connected to set this in their preferences
     pub(crate) racetime_id: Option<String>,
     pub(crate) racetime_display_name: Option<String>,
-    pub(crate) discord_id: Option<Id>,
+    pub(crate) discord_id: Option<UserId>,
     pub(crate) discord_display_name: Option<String>,
 }
 
 impl User {
     pub(crate) async fn from_id(pool: impl PgExecutor<'_>, id: Id) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT
-            id AS "id: Id",
-            display_source AS "display_source: DisplaySource",
-            racetime_id,
-            racetime_display_name,
-            discord_id AS "discord_id: Id",
-            discord_display_name
-        FROM users WHERE id = $1"#, i64::from(id)).fetch_optional(pool).await
+        Ok(
+            sqlx::query!(r#"SELECT
+                display_source AS "display_source: DisplaySource",
+                racetime_id,
+                racetime_display_name,
+                discord_id AS "discord_id: Id",
+                discord_display_name
+            FROM users WHERE id = $1"#, i64::from(id)).fetch_optional(pool).await?
+                .map(|row| Self {
+                    display_source: row.display_source,
+                    racetime_id: row.racetime_id,
+                    racetime_display_name: row.racetime_display_name,
+                    discord_id: row.discord_id.map(|Id(id)| id.into()),
+                    discord_display_name: row.discord_display_name,
+                    id,
+                })
+        )
     }
 
     pub(crate) async fn from_racetime(pool: impl PgExecutor<'_>, racetime_id: &str) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT
-            id AS "id: Id",
-            display_source AS "display_source: DisplaySource",
-            racetime_id,
-            racetime_display_name,
-            discord_id AS "discord_id: Id",
-            discord_display_name
-        FROM users WHERE racetime_id = $1"#, racetime_id).fetch_optional(pool).await
+        Ok(
+            sqlx::query!(r#"SELECT
+                id AS "id: Id",
+                display_source AS "display_source: DisplaySource",
+                racetime_display_name,
+                discord_id AS "discord_id: Id",
+                discord_display_name
+            FROM users WHERE racetime_id = $1"#, racetime_id).fetch_optional(pool).await?
+                .map(|row| Self {
+                    id: row.id,
+                    display_source: row.display_source,
+                    racetime_id: Some(racetime_id.to_owned()),
+                    racetime_display_name: row.racetime_display_name,
+                    discord_id: row.discord_id.map(|Id(id)| id.into()),
+                    discord_display_name: row.discord_display_name,
+                })
+        )
     }
 
-    pub(crate) async fn from_discord(pool: impl PgExecutor<'_>, discord_id: u64) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT
-            id AS "id: Id",
-            display_source AS "display_source: DisplaySource",
-            racetime_id,
-            racetime_display_name,
-            discord_id AS "discord_id: Id",
-            discord_display_name
-        FROM users WHERE discord_id = $1"#, discord_id as i64).fetch_optional(pool).await
+    pub(crate) async fn from_discord(pool: impl PgExecutor<'_>, discord_id: UserId) -> sqlx::Result<Option<Self>> {
+        Ok(
+            sqlx::query!(r#"SELECT
+                id AS "id: Id",
+                display_source AS "display_source: DisplaySource",
+                racetime_id,
+                racetime_display_name,
+                discord_display_name
+            FROM users WHERE discord_id = $1"#, i64::from(discord_id)).fetch_optional(pool).await?
+                .map(|row| Self {
+                    id: row.id,
+                    display_source: row.display_source,
+                    racetime_id: row.racetime_id,
+                    racetime_display_name: row.racetime_display_name,
+                    discord_id: Some(discord_id),
+                    discord_display_name: row.discord_display_name,
+                })
+        )
     }
 
     pub(crate) fn display_name(&self) -> &str {
@@ -126,7 +154,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                 a(href = uri!(crate::auth::racetime_login(Some(uri!(profile(id))))).to_string()) : "Connect a racetime.gg account";
             }
         }
-        @if let Some(Id(discord_id)) = user.discord_id {
+        @if let Some(discord_id) = user.discord_id {
             p {
                 : "Discord: ";
                 a(href = format!("https://discord.com/users/{discord_id}")) : user.discord_display_name; //TODO Discord display name with discriminator

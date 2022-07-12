@@ -39,6 +39,8 @@ use {
         ToHtml,
         html,
     },
+    serenity::client::Context as DiscordCtx,
+    serenity_utils::RwFuture,
     sqlx::PgPool,
     tokio::process::Command,
     crate::{
@@ -126,7 +128,6 @@ pub(crate) async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, sty
                 div {
                     nav(class? = matches!(style.kind, PageKind::Index).then(|| "index")) {
                         a(class = "nav", href? = (!matches!(style.kind, PageKind::Index)).then(|| uri!(index).to_string())) {
-                            //TODO get smaller versions of the images, then use those with width-based srcsets
                             div(class = "logo") {
                                 @for chest in style.chests.0 {
                                     img(class = "chest", src = format!("/static/chest/{}512.png", char::from(chest.texture)));
@@ -344,10 +345,10 @@ impl Fairing for SeedDownloadFairing {
     }
 }
 
-pub(crate) async fn rocket(pool: PgPool, config: &Config, is_dev: bool, view_as: HashMap<Id, Id>) -> Result<Rocket<rocket::Ignite>, Error> {
-    let discord_config = if is_dev { &config.discord_dev } else { &config.discord_production };
+pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, config: &Config, env: Environment, view_as: HashMap<Id, Id>) -> Result<Rocket<rocket::Ignite>, Error> {
+    let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
     Ok(rocket::custom(rocket::Config {
-        port: if is_dev { 24814 } else { 24812 },
+        port: if env.is_dev() { 24814 } else { 24812 },
         secret_key: SecretKey::from(&base64::decode(&config.secret_key)?),
         ..rocket::Config::default()
     })
@@ -399,10 +400,10 @@ pub(crate) async fn rocket(pool: PgPool, config: &Config, is_dev: bool, view_as:
         },
         config.racetime_oauth.client_id.clone(),
         config.racetime_oauth.client_secret.clone(),
-        Some(if is_dev {
-            uri!("https://dev.midos.house", auth::racetime_callback)
-        } else {
-            uri!("https://midos.house", auth::racetime_callback)
+        Some(match env {
+            Environment::Local => uri!("http://localhost:24814", auth::racetime_callback),
+            Environment::Dev => uri!("https://dev.midos.house", auth::racetime_callback),
+            Environment::Production => uri!("https://midos.house", auth::racetime_callback),
         }.to_string()),
     )))
     .attach(OAuth2::<auth::Discord>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
@@ -412,15 +413,16 @@ pub(crate) async fn rocket(pool: PgPool, config: &Config, is_dev: bool, view_as:
         },
         discord_config.client_id.to_string(),
         discord_config.client_secret.to_string(),
-        Some(if is_dev {
-            uri!("https://dev.midos.house", auth::discord_callback)
-        } else {
-            uri!("https://midos.house", auth::discord_callback)
+        Some(match env {
+            Environment::Local => uri!("http://localhost:24814", auth::discord_callback),
+            Environment::Dev => uri!("https://dev.midos.house", auth::discord_callback),
+            Environment::Production => uri!("https://midos.house", auth::discord_callback),
         }.to_string()),
     )))
     .attach(SeedDownloadFairing)
     .manage(ViewAs(view_as))
     .manage(pool)
+    .manage(discord_ctx)
     .manage(reqwest::Client::builder()
         .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION")))
         .timeout(Duration::from_secs(30))

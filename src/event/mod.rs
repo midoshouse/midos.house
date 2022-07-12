@@ -47,6 +47,7 @@ use {
         ToHtml,
         html,
     },
+    serenity::model::prelude::*,
     sqlx::{
         Decode,
         Encode,
@@ -242,6 +243,7 @@ pub(crate) struct Data<'a> {
     url: Option<Url>,
     teams_url: Option<Url>,
     video_url: Option<Url>,
+    discord_guild: Option<GuildId>,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -253,19 +255,18 @@ pub(crate) enum DataError {
 impl<'a> Data<'a> {
     pub(crate) async fn new(pool: PgPool, series: Series, event: impl Into<Cow<'a, str>>) -> Result<Option<Data<'a>>, DataError> {
         let event = event.into();
-        Ok(
-            sqlx::query!(r#"SELECT display_name, start, end_time, url, teams_url, video_url FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(&pool).await?
-                .map(|row| Ok::<_, DataError>(Self {
-                    display_name: row.display_name,
-                    start: row.start,
-                    end: row.end_time,
-                    url: row.url.map(|url| url.parse()).transpose()?,
-                    teams_url: row.teams_url.map(|url| url.parse()).transpose()?,
-                    video_url: row.video_url.map(|url| url.parse()).transpose()?,
-                    pool, series, event,
-                }))
-                .transpose()?
-        )
+        sqlx::query!(r#"SELECT display_name, start, end_time, url, teams_url, video_url, discord_guild AS "discord_guild: Id" FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(&pool).await?
+            .map(|row| Ok::<_, DataError>(Self {
+                display_name: row.display_name,
+                start: row.start,
+                end: row.end_time,
+                url: row.url.map(|url| url.parse()).transpose()?,
+                teams_url: row.teams_url.map(|url| url.parse()).transpose()?,
+                video_url: row.video_url.map(|url| url.parse()).transpose()?,
+                discord_guild: row.discord_guild.map(|Id(id)| id.into()),
+                pool, series, event,
+            }))
+            .transpose()
     }
 
     pub(crate) fn team_config(&self) -> TeamConfig {
@@ -287,8 +288,8 @@ impl<'a> Data<'a> {
         match (self.series, &*self.event) {
             (Series::Multiworld, "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
             (Series::Multiworld, "3") => ChestAppearances::random(), //TODO update after preliminary base settings exist
+            (Series::Multiworld, _) => unimplemented!(),
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
-            (_, _) => unimplemented!(),
         }
     }
 
@@ -507,12 +508,22 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                             } else {
                                 td : team_name.unwrap_or_default();
                             }
-                            @for (role, user, is_confirmed) in members {
+                            @for (role, user, is_confirmed) in &members {
                                 td(class = role.css_class()) {
                                     : user;
-                                    @if !is_confirmed {
+                                    @if *is_confirmed {
+                                        @if me.as_ref().map_or(false, |me| me == user) && members.iter().any(|(_, _, is_confirmed)| !is_confirmed) {
+                                            : " ";
+                                            span(class = "button-row") {
+                                                form(action = uri!(resign_post(series, event, team_id)).to_string(), method = "post") {
+                                                    : csrf;
+                                                    input(type = "submit", value = "Retract");
+                                                }
+                                            }
+                                        }
+                                    } else {
                                         : " ";
-                                        @if me == Some(user) {
+                                        @if me.as_ref().map_or(false, |me| me == user) {
                                             span(class = "button-row") {
                                                 form(action = uri!(confirm_signup(series, event, team_id)).to_string(), method = "post") {
                                                     : csrf;
@@ -606,7 +617,7 @@ async fn status_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Opt
                     : header;
                     article {
                         p : "You are not signed up for this event.";
-                        //p : "You can accept, decline, or retract unconfirmed team invitations on the teams page."; //TODO
+                        p : "You can accept, decline, or retract unconfirmed team invitations on the teams page.";
                     }
                 }
             }

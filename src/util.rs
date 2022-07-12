@@ -303,7 +303,12 @@ pub(crate) fn format_datetime<Tz: TimeZone>(datetime: DateTime<Tz>, format: Date
             } else {
                 : " • ";
             }
-            : new_york.format(if new_york.date() == utc.date() { "%-I:%M %p %Z" } else { "%A %-I:%M %p %Z" }).to_string(); //TODO omit minutes if 0
+            : new_york.format(match (new_york.date() == utc.date(), new_york.minute() == 0) {
+                (false, false) => "%A %-I:%M %p %Z",
+                (false, true) => "%A %-I%p %Z",
+                (true, false) => "%-I:%M %p %Z",
+                (true, true) => "%-I%p %Z",
+            }).to_string();
             @if format.running_text {
                 : ")";
             }

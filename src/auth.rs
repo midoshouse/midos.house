@@ -38,6 +38,7 @@ use {
         html,
     },
     serde::Deserialize,
+    serenity::model::prelude::*,
     sqlx::PgPool,
     crate::{
         http::{
@@ -113,7 +114,7 @@ impl<'r> FromRequest<'r> for User {
                             {
                                 Ok(response) => {
                                     let user_data = guard_try!(response.json::<DiscordUser>().await);
-                                    if let Some(user) = guard_try!(User::from_discord(&**pool, guard_try!(user_data.id.parse())).await) {
+                                    if let Some(user) = guard_try!(User::from_discord(&**pool, user_data.id).await) {
                                         guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1 WHERE id = $2", user_data.username, i64::from(user.id)).execute(&**pool).await);
                                         if let Some(&user_id) = view_as.inner().0.get(&user.id) {
                                             if let Some(user) = guard_try!(User::from_id(&**pool, user_id).await) {
@@ -159,7 +160,7 @@ pub(crate) struct RaceTimeUser {
 
 #[derive(Deserialize)]
 pub(crate) struct DiscordUser {
-    id: String,
+    id: UserId,
     username: String,
 }
 
@@ -303,7 +304,7 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, uri
         .error_for_status()?
         .json::<DiscordUser>().await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
-    Ok(if User::from_discord(&**pool, discord_user.id.parse()?).await?.is_some() {
+    Ok(if User::from_discord(&**pool, discord_user.id).await?.is_some() {
         RedirectOrContent::Redirect(Redirect::to(redirect_uri))
     } else if let Some(me) = me {
         RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
@@ -374,17 +375,16 @@ pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, cli
             .send().await.map_err(Error::from)?
             .error_for_status().map_err(Error::from)?
             .json::<DiscordUser>().await.map_err(Error::from)?;
-        let snowflake = discord_user.id.parse::<u64>().map_err(Error::from)?;
         let mut transaction = pool.begin().await.map_err(Error::from)?;
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE discord_id = $1) AS "exists!""#, snowflake as i64).fetch_one(&mut transaction).await.map_err(Error::from)? {
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE discord_id = $1) AS "exists!""#, i64::from(discord_user.id)).fetch_one(&mut transaction).await.map_err(Error::from)? {
             return Err(Debug(anyhow!("there is already an account associated with this Discord account"))) //TODO user-facing error message
         } else if let Some(me) = me {
-            sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2 WHERE id = $3", snowflake as i64, discord_user.username, i64::from(me.id)).execute(&mut transaction).await.map_err(Error::from)?;
+            sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2 WHERE id = $3", i64::from(discord_user.id), discord_user.username, i64::from(me.id)).execute(&mut transaction).await.map_err(Error::from)?;
             transaction.commit().await.map_err(Error::from)?;
             Redirect::to(uri!(crate::user::profile(me.id)))
         } else {
             let id = Id::new(&mut transaction, IdTable::Users).await.map_err(Error::from)?;
-            sqlx::query!("INSERT INTO users (id, display_source, discord_id, discord_display_name) VALUES ($1, 'discord', $2, $3)", id as _, snowflake as i64, discord_user.username).execute(&mut transaction).await.map_err(Error::from)?;
+            sqlx::query!("INSERT INTO users (id, display_source, discord_id, discord_display_name) VALUES ($1, 'discord', $2, $3)", id as _, i64::from(discord_user.id), discord_user.username).execute(&mut transaction).await.map_err(Error::from)?;
             transaction.commit().await.map_err(Error::from)?;
             Redirect::to(uri!(crate::user::profile(id)))
         }

@@ -46,6 +46,8 @@ use {
         html,
     },
     serde::Deserialize,
+    serenity::client::Context as DiscordCtx,
+    serenity_utils::RwFuture,
     sqlx::PgPool,
     crate::{
         auth,
@@ -380,7 +382,6 @@ impl<'v> EnterFormStep2Defaults<'v> {
         }
     }
 
-    //TODO fix the lifetime issues and make the HTTP request async
     fn racetime_members(&self) -> impl Future<Output = reqwest::Result<Vec<RaceTimeTeamMember>>> {
         match self {
             Self::Context(ctx) => if let Some(team_slug) = ctx.field_value("racetime_team") {
@@ -470,7 +471,7 @@ pub(crate) struct EnterFormStep2 {
 }
 
 #[rocket::post("/event/mw/<event>/enter/step2", data = "<form>")]
-pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, me: User, uri: Origin<'a>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, event: &'a str, form: Form<Contextual<'a, EnterFormStep2>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'a>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, event: &'a str, form: Form<Contextual<'a, EnterFormStep2>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -486,7 +487,13 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, me: User, uri: Or
             let mut roles = Vec::default();
             for member in &racetime_team.members {
                 if let Some(user) = User::from_racetime(&mut transaction, &member.id).await? {
-                    if user.discord_id.is_none() { //TODO also check tournament server membership?
+                    if let Some(discord_id) = user.discord_id {
+                        if let Some(discord_guild) = data.discord_guild {
+                            if discord_guild.member(&*discord_ctx.read().await, discord_id).await.is_err() {
+                                form.context.push_error(form::Error::validation("This user has not joined the tournament's Discord server.").with_name(format!("world_number[{}]", member.id)));
+                            }
+                        }
+                    } else {
                         form.context.push_error(form::Error::validation("This Mido's House account is not associated with a Discord account.").with_name(format!("world_number[{}]", member.id)));
                     }
                     if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE

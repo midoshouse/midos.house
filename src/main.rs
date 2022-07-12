@@ -35,10 +35,29 @@ fn parse_view_as(arg: &str) -> Result<(Id, Id), anyhow::Error> {
     Ok((from.parse()?, to.parse()?))
 }
 
+#[derive(Default, Clone, Copy, clap::ValueEnum)]
+enum Environment {
+    #[cfg_attr(not(debug_assertions), default)]
+    Production,
+    #[cfg_attr(debug_assertions, default)]
+    Dev,
+    Local,
+}
+
+impl Environment {
+    fn is_dev(&self) -> bool {
+        match self {
+            Self::Production => false,
+            Self::Dev => true,
+            Self::Local => true,
+        }
+    }
+}
+
 #[derive(clap::Parser)]
 struct Args {
-    #[clap(long = "dev")]
-    is_dev: bool,
+    #[clap(long, value_enum, default_value_t)]
+    env: Environment,
     #[clap(long, parse(try_from_str = parse_view_as))]
     view_as: Vec<(Id, Id)>,
 }
@@ -56,11 +75,19 @@ enum Error {
 }
 
 #[wheel::main(rocket, debug)]
-async fn main(Args { is_dev, view_as }: Args) -> Result<(), Error> {
+async fn main(Args { env, view_as }: Args) -> Result<(), Error> {
     let config = Config::load().await?;
+    let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
+    let discord_builder = serenity_utils::builder(discord_config.client_id, discord_config.bot_token.clone()).await?;
     let pool = PgPool::connect_with(PgConnectOptions::default().username("mido").database("midos_house").application_name("midos-house")).await?;
-    let rocket = http::rocket(pool, &config, is_dev, view_as.into_iter().collect()).await?;
+    let rocket = http::rocket(pool, discord_builder.ctx_fut.clone(), &config, env, view_as.into_iter().collect()).await?;
     let shutdown = rocket.shutdown();
+    let discord_builder = discord_builder
+        .error_notifier(ErrorNotifier::User(FENHL))
+        .task(|ctx_fut, _| async move {
+            shutdown.await;
+            serenity_utils::shut_down(&*ctx_fut.read().await).await;
+        });
     let racetime_task = tokio::spawn(racetime_bot::main(config.racetime_bot.clone(), rocket.shutdown())).map(|res| match res {
         Ok(Ok(())) => Ok(()),
         Ok(Err(e)) => Err(Error::from(e)),
@@ -71,18 +98,11 @@ async fn main(Args { is_dev, view_as }: Args) -> Result<(), Error> {
         Ok(Err(e)) => Err(Error::from(e)),
         Err(e) => Err(Error::from(e)),
     });
-    let discord_config = if is_dev { &config.discord_dev } else { &config.discord_production };
-    let serenity_task = tokio::spawn(serenity_utils::builder(discord_config.client_id, discord_config.bot_token.clone()).await?
-        .error_notifier(ErrorNotifier::User(FENHL))
-        .task(|ctx_fut, _| async move {
-            shutdown.await;
-            serenity_utils::shut_down(&*ctx_fut.read().await).await;
-        })
-        .run()).map(|res| match res {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(e)) => Err(Error::from(e)),
-            Err(e) => Err(Error::from(e)),
-        });
-    let ((), (), ()) = tokio::try_join!(racetime_task, rocket_task, serenity_task)?;
+    let discord_task = tokio::spawn(discord_builder.run()).map(|res| match res {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(Error::from(e)),
+        Err(e) => Err(Error::from(e)),
+    });
+    let ((), (), ()) = tokio::try_join!(discord_task, racetime_task, rocket_task)?;
     Ok(())
 }
