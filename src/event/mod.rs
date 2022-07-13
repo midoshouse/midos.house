@@ -87,7 +87,7 @@ use {
 pub(crate) mod mw;
 pub(crate) mod pic;
 
-#[derive(Debug, sqlx::Type)]
+#[derive(Debug, Clone, Copy, sqlx::Type)]
 #[sqlx(type_name = "signup_status", rename_all = "snake_case")]
 pub(crate) enum SignupStatus {
     Created,
@@ -457,6 +457,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     let mut teams_query = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug FROM teams WHERE
         series = $1
         AND event = $2
+        AND NOT resigned
         AND (
             EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
             OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
@@ -554,7 +555,7 @@ async fn status_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Opt
     let header = data.header(me.as_ref(), Tab::MyStatus).await?;
     Ok(page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
         if let Some(ref me) = me {
-            if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name, racetime_slug, role AS "role: Role" FROM teams, team_members WHERE
+            if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name, racetime_slug, role AS "role: Role", resigned FROM teams, team_members WHERE
                 id = team
                 AND series = $1
                 AND event = $2
@@ -583,32 +584,36 @@ async fn status_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Opt
                         //TODO list teammates
                         : ".";
                     }
-                    @match data.series {
-                        Series::Multiworld => : mw::status(pool, csrf, &data, row.id, context).await?;
-                        Series::Pictionary => @if data.is_ended() {
-                            p : "This race has been completed."; //TODO ranking and finish time
-                        } else if let Some(ref race_room) = data.url {
-                            @match row.role.try_into().expect("non-Pictionary role in Pictionary team") {
-                                pic::Role::Sheikah => p {
-                                    : "Please join ";
-                                    a(href = race_room.to_string()) : "the race room";
-                                    : " as soon as possible. You will receive further instructions there.";
+                    @if row.resigned {
+                        p : "You have resigned from this event.";
+                    } else {
+                        @match data.series {
+                            Series::Multiworld => : mw::status(pool, csrf, &data, row.id, context).await?;
+                            Series::Pictionary => @if data.is_ended() {
+                                p : "This race has been completed."; //TODO ranking and finish time
+                            } else if let Some(ref race_room) = data.url {
+                                @match row.role.try_into().expect("non-Pictionary role in Pictionary team") {
+                                    pic::Role::Sheikah => p {
+                                        : "Please join ";
+                                        a(href = race_room.to_string()) : "the race room";
+                                        : " as soon as possible. You will receive further instructions there.";
+                                    }
+                                    pic::Role::Gerudo => p {
+                                        : "Please keep an eye on ";
+                                        a(href = race_room.to_string()) : "the race room";
+                                        : " (but do not join). The spoiler log will be posted there.";
+                                    }
                                 }
-                                pic::Role::Gerudo => p {
-                                    : "Please keep an eye on ";
-                                    a(href = race_room.to_string()) : "the race room";
-                                    : " (but do not join). The spoiler log will be posted there.";
-                                }
+                            } else {
+                                : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
                             }
-                        } else {
-                            : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
                         }
-                    }
-                    h2 : "Options";
-                    p : "More options coming soon"; //TODO options to change team name, swap roles, or opt in/out for restreaming
-                    @if !data.is_ended() {
-                        p {
-                            a(href = uri!(resign(series, event, row.id)).to_string()) : "Resign";
+                        h2 : "Options";
+                        p : "More options coming soon"; //TODO options to change team name, swap roles, or opt in/out for restreaming
+                        @if !data.is_ended() {
+                            p {
+                                a(href = uri!(resign(series, event, row.id)).to_string()) : "Resign";
+                            }
                         }
                     }
                 }
@@ -747,26 +752,37 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<Csr
     let data = Data::new((**pool).clone(), series, event).await.map_err(ResignError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     form.verify(&csrf).map_err(ResignError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_ended() { return Err(ResignError::EventEnded.into()) }
-    //TODO if the event has started, only mark the team as resigned, don't delete data
+    let is_started = data.is_started();
     let mut transaction = pool.begin().await.map_err(ResignError::Sql)?;
-    let delete = sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id", status AS "status: SignupStatus""#, i64::from(team)).fetch_all(&mut transaction).await.map_err(ResignError::Sql)?;
+    let members = if is_started {
+        sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, i64::from(team)).execute(&mut transaction).await.map_err(ResignError::Sql)?;
+        sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, i64::from(team)).fetch(&mut transaction)
+            .map_ok(|row| (row.id, row.status))
+            .try_collect::<Vec<_>>().await.map_err(ResignError::Sql)?
+    } else {
+        sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id", status AS "status: SignupStatus""#, i64::from(team)).fetch(&mut transaction)
+            .map_ok(|row| (row.id, row.status))
+            .try_collect().await.map_err(ResignError::Sql)?
+    };
     let mut me_in_team = false;
     let mut notification_kind = SimpleNotificationKind::Resign;
-    for member in &delete {
-        if member.id == me.id {
+    for &(member_id, status) in &members {
+        if member_id == me.id {
             me_in_team = true;
-            if !member.status.is_confirmed() { notification_kind = SimpleNotificationKind::Decline }
+            if !status.is_confirmed() { notification_kind = SimpleNotificationKind::Decline }
             break
         }
     }
     if me_in_team {
-        for member in delete {
-            if member.id != me.id && member.status.is_confirmed() {
-                let id = Id::new(&mut transaction, IdTable::Notifications).await.map_err(ResignError::Sql)?;
-                sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", id as _, member.id as _, notification_kind as _, series as _, event, me.id as _).execute(&mut transaction).await.map_err(ResignError::Sql)?;
+        for (member_id, status) in members {
+            if member_id != me.id && status.is_confirmed() {
+                let notification_id = Id::new(&mut transaction, IdTable::Notifications).await.map_err(ResignError::Sql)?;
+                sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", notification_id as _, member_id as _, notification_kind as _, series as _, event, me.id as _).execute(&mut transaction).await.map_err(ResignError::Sql)?;
             }
         }
-        sqlx::query!("DELETE FROM teams WHERE id = $1", i64::from(team)).execute(&mut transaction).await.map_err(ResignError::Sql)?;
+        if !is_started {
+            sqlx::query!("DELETE FROM teams WHERE id = $1", i64::from(team)).execute(&mut transaction).await.map_err(ResignError::Sql)?;
+        }
         transaction.commit().await.map_err(ResignError::Sql)?;
         Ok(Redirect::to(uri!(teams(series, event))))
     } else {
@@ -798,6 +814,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, me: User, uri: Origin<'_
             AND series = $1
             AND event = $2
             AND member = $3
+            AND NOT resigned
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
         "#, series.to_str(), event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
         if team_id.is_none() {
@@ -850,6 +867,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, me: User, uri: Origin<'_>
             AND series = $1
             AND event = $2
             AND member = $3
+            AND NOT resigned
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
         "#, series.to_str(), event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
         if team_id.is_none() {
