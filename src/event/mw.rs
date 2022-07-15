@@ -562,7 +562,6 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, discord_ctx: &Sta
                 ).execute(&mut transaction).await?;
             }
             transaction.commit().await?;
-            //TODO create and assign Discord roles
             RedirectOrContent::Redirect(Redirect::to(uri!(super::teams(SERIES, event))))
         }
     } else {

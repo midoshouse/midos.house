@@ -1,6 +1,7 @@
 use {
     std::{
         borrow::Cow,
+        collections::HashSet,
         fmt,
         io,
         str::FromStr,
@@ -47,7 +48,11 @@ use {
         ToHtml,
         html,
     },
-    serenity::model::prelude::*,
+    serenity::{
+        client::Context as DiscordCtx,
+        model::prelude::*,
+    },
+    serenity_utils::RwFuture,
     sqlx::{
         Decode,
         Encode,
@@ -676,6 +681,7 @@ pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origi
 pub(crate) enum AcceptError {
     #[error(transparent)] Csrf(#[from] rocket_csrf::VerificationFailure),
     #[error(transparent)] Data(#[from] DataError),
+    #[error(transparent)] Discord(#[from] serenity::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("you can no longer enter this event since it has already started")]
     EventStarted,
@@ -683,10 +689,12 @@ pub(crate) enum AcceptError {
     NotInTeam,
     #[error("a racetime.gg account is required to enter as runner")]
     RaceTimeAccountRequired,
+    #[error("too many Discord roles: {0}")]
+    TooManyRoles(#[source] std::num::TryFromIntError),
 }
 
 #[rocket::post("/event/<series>/<event>/confirm/<team>", data = "<form>")]
-pub(crate) async fn confirm_signup(pool: &State<PgPool>, me: User, team: Id, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<EmptyForm>) -> Result<Redirect, StatusOrError<AcceptError>> {
+pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, team: Id, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<EmptyForm>) -> Result<Redirect, StatusOrError<AcceptError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(AcceptError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     form.verify(&csrf).map_err(AcceptError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_started() { return Err(AcceptError::EventStarted.into()) }
@@ -700,12 +708,40 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, me: User, team: Id, csr
             sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', $3, $4, $5)", id as _, member as _, series as _, event, me.id as _).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
         }
         sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", i64::from(team), i64::from(me.id)).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
-        // if this confirms the team, remove all members from looking_for_team
-        sqlx::query!("DELETE FROM looking_for_team WHERE
-            EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND member = user_id)
-            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND status = 'unconfirmed')
-        ", i64::from(team)).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
-        //TODO also remove all other teams with member overlap, and notify
+        if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND status = 'unconfirmed') AS "exists!""#, i64::from(team)).fetch_one(&mut transaction).await.map_err(AcceptError::Sql)? {
+            // this confirms the team
+            // remove all members from looking_for_team
+            sqlx::query!("DELETE FROM looking_for_team WHERE EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND member = user_id)", i64::from(team)).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
+            //TODO also remove all other teams with member overlap, and notify
+            // create and assign Discord roles
+            if let Some(discord_guild) = data.discord_guild {
+                let mut num_roles = discord_guild.roles(&*discord_ctx.read().await).await.map_err(AcceptError::Discord)?.len();
+                for row in sqlx::query!(r#"SELECT discord_id AS "discord_id!: Id", role AS "role: Role" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, i64::from(team)).fetch_all(&mut transaction).await.map_err(AcceptError::Sql)? {
+                    if let Ok(member) = discord_guild.member(&*discord_ctx.read().await, UserId(row.discord_id.0)).await {
+                        let mut roles_to_assign = member.roles.iter().copied().collect::<HashSet<_>>();
+                        if let Some(Id(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, i64::from(discord_guild), series as _, event).fetch_optional(&mut transaction).await.map_err(AcceptError::Sql)? {
+                            roles_to_assign.insert(RoleId(participant_role));
+                        }
+                        if let Some(Id(role_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND role = $2"#, i64::from(discord_guild), row.role as _).fetch_optional(&mut transaction).await.map_err(AcceptError::Sql)? {
+                            roles_to_assign.insert(RoleId(role_role));
+                        }
+                        if let Some(racetime_slug) = sqlx::query_scalar!("SELECT racetime_slug FROM teams WHERE id = $1", i64::from(team)).fetch_one(&mut transaction).await.map_err(AcceptError::Sql)? {
+                            if let Some(Id(team_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(discord_guild), racetime_slug).fetch_optional(&mut transaction).await.map_err(AcceptError::Sql)? {
+                                roles_to_assign.insert(RoleId(team_role));
+                            } else {
+                                let team_name = sqlx::query_scalar!(r#"SELECT name AS "name!" FROM teams WHERE id = $1"#, i64::from(team)).fetch_one(&mut transaction).await.map_err(AcceptError::Sql)?;
+                                let position = num_roles.try_into().map_err(AcceptError::TooManyRoles)?;
+                                let team_role = discord_guild.create_role(&*discord_ctx.read().await, |r| r.hoist(false).mentionable(true).name(team_name).permissions(Permissions::empty()).position(position)).await.map_err(AcceptError::Discord)?.id;
+                                sqlx::query!("INSERT INTO discord_roles (id, guild, racetime_team) VALUES ($1, $2, $3)", i64::from(team_role), i64::from(discord_guild), racetime_slug).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
+                                roles_to_assign.insert(team_role);
+                                num_roles += 1;
+                            }
+                        }
+                        member.edit(&*discord_ctx.read().await, |m| m.roles(roles_to_assign)).await.map_err(AcceptError::Discord)?;
+                    }
+                }
+            }
+        }
         transaction.commit().await.map_err(AcceptError::Sql)?;
         Ok(Redirect::to(uri!(teams(series, event))))
     } else {
