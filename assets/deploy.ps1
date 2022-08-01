@@ -5,6 +5,9 @@ function ThrowOnNativeFailure {
     }
 }
 
+git push
+ThrowOnNativeFailure
+
 ssh midos.house env -C /opt/git/github.com/midoshouse/midos.house/master git pull
 ThrowOnNativeFailure
 
