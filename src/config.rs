@@ -11,13 +11,15 @@ use {
 #[cfg(windows)] use tokio::process::Command;
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Config {
+    pub(crate) discord_production: ConfigDiscord,
+    pub(crate) discord_dev: ConfigDiscord,
+    #[allow(unused)] //TODO
+    pub(crate) ootr_api_key: String,
     pub(crate) racetime_bot: ConfigRaceTime,
     #[serde(rename = "racetimeOAuth")]
     pub(crate) racetime_oauth: ConfigRaceTime,
-    pub(crate) discord_production: ConfigDiscord,
-    pub(crate) discord_dev: ConfigDiscord,
     #[allow(unused)] //TODO
     startgg_production: String,
     #[allow(unused)] //TODO
@@ -42,7 +44,7 @@ impl Config {
 }
 
 #[derive(Clone, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ConfigRaceTime {
     #[serde(rename = "clientID")]
     pub(crate) client_id: String,
@@ -50,7 +52,7 @@ pub(crate) struct ConfigRaceTime {
 }
 
 #[derive(Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct ConfigDiscord {
     #[serde(rename = "clientID")]
     pub(crate) client_id: ApplicationId,
