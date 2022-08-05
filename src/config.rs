@@ -15,9 +15,7 @@ use {
 pub(crate) struct Config {
     pub(crate) discord_production: ConfigDiscord,
     pub(crate) discord_dev: ConfigDiscord,
-    #[allow(unused)] //TODO
     pub(crate) ootr_api_key: String,
-    #[serde(alias = "racetimeBot")] //TODO remove after next deploy
     pub(crate) racetime_bot_production: ConfigRaceTime,
     pub(crate) racetime_bot_dev: ConfigRaceTime,
     #[serde(rename = "racetimeOAuth")]
