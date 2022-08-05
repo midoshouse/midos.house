@@ -560,6 +560,7 @@ impl Mw3Settings {
                 "farores_wind",
                 "lens"
             ]),
+            format!("correct_chest_appearances") => json!("classic"),
             format!("hint_dist") => json!("custom"),
             format!("hint_dist_user") => json!({
                 "name":                  "mw3",
