@@ -567,6 +567,7 @@ impl Mw3Settings {
                 "gui_name":              "3rd Multiworld Tournament",
                 "description":           "Hints used for the multiworld tournament season 3.",
                 "add_locations":         [
+                    { "location": "Sheik in Kakariko", "types": ["always"] },
                     { "location": "Song from Ocarina of Time", "types": ["always"] },
                     { "location": "Deku Theater Skull Mask", "types": ["always"] },
                     { "location": "DMC Deku Scrub", "types": ["always"] },
@@ -574,7 +575,7 @@ impl Mw3Settings {
                 "remove_locations":      [],
                 "add_items":             [],
                 "remove_items":          [
-                    { "item": "Zeldas Lullaby", "types": ["woth"] },
+                    { "item": "Zeldas Lullaby", "types": ["woth", "goal"] },
                 ],
                 "dungeons_woth_limit":   40,
                 "dungeons_barren_limit": 40,
@@ -717,11 +718,13 @@ impl Handler {
                         *state.write().await = RaceState::Rolled;
                         ctx.send_message(&format!("@entrants Here is your seed: https://midos.house/seed/{patch_filename}")).await?;
                         //ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{}_Spoiler.json", patch_filename.split_once('.').expect("patch filename with no suffix").0)).await?; //TODO add spoiler log unlocking feature
+                        //TODO update raceinfo
                     }
                     SeedRollUpdate::DoneWeb(seed_id) => {
                         *state.write().await = RaceState::Rolled;
                         ctx.send_message(&format!("@entrants Here is your seed: https://ootrandomizer.com/seed/get?id={seed_id}")).await?;
                         //ctx.send_message("The spoiler log will be available on the seed page after the race.").await?; //TODO add spoiler log unlocking feature
+                        //TODO update raceinfo
                     }
                     SeedRollUpdate::Error(msg) => {
                         eprintln!("seed roll error: {msg:?}");
