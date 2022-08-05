@@ -2,7 +2,6 @@ use {
     std::{
         collections::HashMap,
         io,
-        time::Duration,
     },
     futures::stream::TryStreamExt as _,
     rand::prelude::*,
@@ -345,7 +344,7 @@ impl Fairing for SeedDownloadFairing {
     }
 }
 
-pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, config: &Config, env: Environment, view_as: HashMap<Id, Id>) -> Result<Rocket<rocket::Ignite>, Error> {
+pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: &Config, env: Environment, view_as: HashMap<Id, Id>) -> Result<Rocket<rocket::Ignite>, Error> {
     let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
     Ok(rocket::custom(rocket::Config {
         port: if env.is_dev() { 24814 } else { 24812 },
@@ -423,13 +422,6 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, conf
     .manage(ViewAs(view_as))
     .manage(pool)
     .manage(discord_ctx)
-    .manage(reqwest::Client::builder()
-        .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION")))
-        .timeout(Duration::from_secs(30))
-        .use_rustls_tls()
-        .trust_dns(true)
-        .https_only(true)
-        .build()?
-    )
+    .manage(http_client)
     .ignite().await?)
 }

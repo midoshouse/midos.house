@@ -12,13 +12,14 @@ anyhow = "1"
 async-trait = "0.1"
 base64 = "0.13"
 chrono-tz = "0.6"
+collect-mac = "0.1"
 enum-iterator = "1"
 futures = "0.3"
 ics = "0.5"
 itertools = "0.10"
 lazy-regex = "2"
 once_cell = "1"
-racetime = "0.3.1"
+racetime = "0.5"
 rand = "0.8"
 rocket = "0.5.0-rc.2"
 rocket_oauth2 = "0.5.0-rc.1"
@@ -58,6 +59,10 @@ git = "https://github.com/fenhl/rocket-util"
 branch = "main"
 features = ["ics", "image", "rocket_csrf"]
 
+[dependencies.semver]
+version = "1"
+features = ["serde"]
+
 [dependencies.serde]
 version = "1"
 features = ["derive"]
@@ -78,7 +83,7 @@ features = ["chrono", "macros", "postgres", "runtime-tokio-rustls"]
 
 [dependencies.tokio]
 version = "1"
-features = ["fs", "process"]
+features = ["fs", "process", "sync"]
 
 [dependencies.url]
 version = "2"
@@ -91,3 +96,6 @@ features = ["rocket-beta"]
 
 [target.'cfg(unix)'.dependencies]
 xdg = "2"
+
+[target.'cfg(windows)'.dependencies]
+directories = "4"

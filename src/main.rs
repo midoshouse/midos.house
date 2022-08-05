@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 use {
+    std::time::Duration,
     futures::future::FutureExt as _,
     rocket::Rocket,
     serenity::model::prelude::*,
@@ -77,10 +78,17 @@ enum Error {
 #[wheel::main(rocket, debug)]
 async fn main(Args { env, view_as }: Args) -> Result<(), Error> {
     let config = Config::load().await?;
+    let http_client = reqwest::Client::builder()
+        .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION")))
+        .timeout(Duration::from_secs(30))
+        .use_rustls_tls()
+        .trust_dns(true)
+        .https_only(true)
+        .build()?;
     let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
     let discord_builder = serenity_utils::builder(discord_config.client_id, discord_config.bot_token.clone()).await?;
     let pool = PgPool::connect_with(PgConnectOptions::default().username("mido").database("midos_house").application_name("midos-house")).await?;
-    let rocket = http::rocket(pool, discord_builder.ctx_fut.clone(), &config, env, view_as.into_iter().collect()).await?;
+    let rocket = http::rocket(pool, discord_builder.ctx_fut.clone(), http_client.clone(), &config, env, view_as.into_iter().collect()).await?;
     let shutdown = rocket.shutdown();
     let discord_builder = discord_builder
         .error_notifier(ErrorNotifier::User(FENHL))
@@ -88,7 +96,13 @@ async fn main(Args { env, view_as }: Args) -> Result<(), Error> {
             shutdown.await;
             serenity_utils::shut_down(&*ctx_fut.read().await).await;
         });
-    let racetime_task = tokio::spawn(racetime_bot::main(config.racetime_bot.clone(), rocket.shutdown())).map(|res| match res {
+    let racetime_task = tokio::spawn(racetime_bot::main(
+        http_client,
+        config.ootr_api_key.clone(),
+        if env.is_dev() { "racetime.midos.house" } else { "racetime.gg" },
+        if env.is_dev() { config.racetime_bot_dev.clone() } else { config.racetime_bot_production.clone() },
+        rocket.shutdown(),
+    )).map(|res| match res {
         Ok(Ok(())) => Ok(()),
         Ok(Err(e)) => Err(Error::from(e)),
         Err(e) => Err(Error::from(e)),

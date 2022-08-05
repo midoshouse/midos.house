@@ -172,7 +172,7 @@ where i64: FromFormField<'v>, u64: FromFormField<'v> {
     fn default() -> Option<Self> { None }
 }
 
-pub(crate) fn natjoin<T: ToHtml>(elts: impl IntoIterator<Item = T>) -> Option<RawHtml<String>> {
+pub(crate) fn natjoin_html<T: ToHtml>(elts: impl IntoIterator<Item = T>) -> Option<RawHtml<String>> {
     let mut elts = elts.into_iter().fuse();
     match (elts.next(), elts.next(), elts.next()) {
         (None, _, _) => None,
@@ -198,6 +198,20 @@ pub(crate) fn natjoin<T: ToHtml>(elts: impl IntoIterator<Item = T>) -> Option<Ra
                 : ", and ";
                 : last;
             })
+        }
+    }
+}
+
+pub(crate) fn natjoin_str<T: fmt::Display>(elts: impl IntoIterator<Item = T>) -> Option<String> {
+    let mut elts = elts.into_iter().fuse();
+    match (elts.next(), elts.next(), elts.next()) {
+        (None, _, _) => None,
+        (Some(elt), None, _) => Some(elt.to_string()),
+        (Some(elt1), Some(elt2), None) => Some(format!("{elt1} and {elt2}")),
+        (Some(elt1), Some(elt2), Some(elt3)) => {
+            let mut rest = [elt2, elt3].into_iter().chain(elts).collect_vec();
+            let last = rest.pop().expect("rest contains at least elt2 and elt3");
+            Some(format!("{elt1}, {}, and {last}", rest.into_iter().format(", ")))
         }
     }
 }
@@ -277,6 +291,17 @@ pub(crate) fn parse_duration(s: &str) -> Option<Duration> {
     } else {
         None
     }
+}
+
+pub(crate) fn format_duration(duration: Duration) -> String {
+    let secs = duration.as_secs();
+    let hours = secs / 3600;
+    let mins = (secs % 3600) / 60;
+    let secs = secs % 60;
+    let parts = (hours > 0).then(|| format!("{hours} hour{}", if hours == 1 { "" } else { "s" })).into_iter()
+        .chain((mins > 0).then(|| format!("{mins} minute{}", if mins == 1 { "" } else { "s" })))
+        .chain((secs > 0).then(|| format!("{secs} second{}", if secs == 1 { "" } else { "s" })));
+    natjoin_str(parts).unwrap_or_else(|| format!("0 seconds"))
 }
 
 pub(crate) struct DateTimeFormat {

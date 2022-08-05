@@ -73,7 +73,7 @@ use {
             StatusOrError,
             form_field,
             format_datetime,
-            natjoin,
+            natjoin_html,
             render_form_error,
         },
     },
@@ -95,7 +95,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                 article {
                     p {
                         : "This is an archive of the second Ocarina of Time randomizer multiworld tournament, organized by ";
-                        : natjoin(organizers);
+                        : natjoin_html(organizers);
                         : ". Click the “teams” link above to see the results of the qualifier async.";
                     }
                     h2 : "See also";
@@ -134,7 +134,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                 article {
                     p {
                         : "Hello and welcome to the official rules document for the Ocarina of Time Randomizer Multiworld Tournament Season 3, organized by ";
-                        : natjoin(organizers);
+                        : natjoin_html(organizers);
                         : ".";
                     }
                     h2 : "Tournament Format";
@@ -266,15 +266,6 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                                     strong : "Adult/Off";
                                 }
                                 li : "Random/On";
-                            }
-                        }
-                        li {
-                            : "Chest Appearance Matches Contents:";
-                            ul {
-                                li {
-                                    strong : "Off";
-                                }
-                                li : "On";
                             }
                         }
                     }

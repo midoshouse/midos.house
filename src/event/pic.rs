@@ -59,7 +59,7 @@ use {
             RedirectOrContent,
             StatusOrError,
             form_field,
-            natjoin,
+            natjoin_html,
             render_form_error,
         },
     },
@@ -306,7 +306,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
             h2 : "Further information";
             p {
                 : "The race is organized by ";
-                : natjoin(organizers);
+                : natjoin_html(organizers);
                 : ". We will answer questions and inform about recent events on The Silver Gauntlets Discord in the #pictionary-spoiler-log channel (";
                 a(href = "https://discord.gg/m8z8ZqtN8H") : "invite link";
                 : " • ";

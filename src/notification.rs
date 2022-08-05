@@ -40,7 +40,7 @@ use {
         util::{
             EmptyForm,
             Id,
-            natjoin,
+            natjoin_html,
         },
     },
 };
@@ -186,7 +186,7 @@ impl Notification {
                             : mw::Role::try_from(my_role).expect("non-multiworld role in multiworld team");
                             : " for team ";
                             a(href = format!("https://racetime.gg/team/{}", team_row.racetime_slug.expect("multiworld team without racetime slug"))) : team_row.name;
-                            @if let Some(teammates) = natjoin(teammates) {
+                            @if let Some(teammates) = natjoin_html(teammates) {
                                 : " together with ";
                                 : teammates;
                             }
@@ -206,7 +206,7 @@ impl Notification {
                             : event;
                             : " as ";
                             : pic::Role::try_from(my_role).expect("non-Pictionary role in Pictionary team");
-                            @if let Some(teammates) = natjoin(teammates) {
+                            @if let Some(teammates) = natjoin_html(teammates) {
                                 : " together with ";
                                 : teammates;
                             }
