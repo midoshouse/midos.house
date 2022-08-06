@@ -51,6 +51,7 @@ use {
     serenity::{
         client::Context as DiscordCtx,
         model::prelude::*,
+        utils::MessageBuilder,
     },
     serenity_utils::RwFuture,
     sqlx::{
@@ -84,6 +85,7 @@ use {
             StatusOrError,
             favicon,
             format_datetime,
+            format_duration,
             parse_duration,
         },
     },
@@ -905,7 +907,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
     let mut transaction = pool.begin().await?;
     //TODO error if async not yet requested
     Ok(if let Some(ref value) = form.value {
-        let team_id = sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM teams, team_members WHERE
+        let team_row = sqlx::query!(r#"SELECT team AS "team: Id", name, racetime_slug FROM teams, team_members WHERE
             id = team
             AND series = $1
             AND event = $2
@@ -913,7 +915,13 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
             AND NOT resigned
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
         "#, series.to_str(), event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
-        if team_id.is_none() {
+        if let Some(ref row) = team_row {
+            match sqlx::query_scalar!(r#"SELECT submitted IS NULL AS "is_null!" FROM async_teams WHERE team = $1"#, i64::from(row.team)).fetch_optional(&mut transaction).await? {
+                Some(true) => {}
+                Some(false) => form.context.push_error(form::Error::validation("You have already submitted times for this async. To make a correction or add vods, please contact the tournament organizers.")), //TODO allow adding vods via form but no other edits
+                None => form.context.push_error(form::Error::validation("You have not requested this async yet.")),
+            }
+        } else {
             form.context.push_error(form::Error::validation("You are not signed up for this event."));
         }
         let time1 = if value.time1.is_empty() {
@@ -944,22 +952,50 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
             transaction.rollback().await?;
             RedirectOrContent::Content(status_page(pool, Some(me), uri, csrf, series, event, form.context).await?)
         } else {
-            let team_id = team_id.expect("validated");
-            sqlx::query!("UPDATE async_teams SET submitted = $1, fpa = $2 WHERE team = $3", Utc::now(), (!value.fpa.is_empty()).then(|| &value.fpa), i64::from(team_id)).execute(&mut transaction).await?;
-            let player1 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'power'"#, i64::from(team_id)).fetch_one(&mut transaction).await?;
+            let team_row = team_row.expect("validated");
+            sqlx::query!("UPDATE async_teams SET submitted = $1, fpa = $2 WHERE team = $3", Utc::now(), (!value.fpa.is_empty()).then(|| &value.fpa), i64::from(team_row.team)).execute(&mut transaction).await?;
+            let player1 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'power'"#, i64::from(team_row.team)).fetch_one(&mut transaction).await?;
             sqlx::query!("INSERT INTO async_players (series, event, player, time, vod) VALUES ($1, $2, $3, $4, $5)", series as _, event, player1 as _, time1 as _, (!value.vod1.is_empty()).then(|| &value.vod1)).execute(&mut transaction).await?;
-            let player2 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'wisdom'"#, i64::from(team_id)).fetch_one(&mut transaction).await?;
+            let player2 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'wisdom'"#, i64::from(team_row.team)).fetch_one(&mut transaction).await?;
             sqlx::query!("INSERT INTO async_players (series, event, player, time, vod) VALUES ($1, $2, $3, $4, $5)", series as _, event, player2 as _, time2 as _, (!value.vod2.is_empty()).then(|| &value.vod2)).execute(&mut transaction).await?;
-            let player3 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'courage'"#, i64::from(team_id)).fetch_one(&mut transaction).await?;
+            let player3 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'courage'"#, i64::from(team_row.team)).fetch_one(&mut transaction).await?;
             sqlx::query!("INSERT INTO async_players (series, event, player, time, vod) VALUES ($1, $2, $3, $4, $5)", series as _, event, player3 as _, time3 as _, (!value.vod3.is_empty()).then(|| &value.vod3)).execute(&mut transaction).await?;
             if let Some(discord_guild) = data.discord_guild {
-                if let Some(Id(id)) = sqlx::query_scalar!(r#"SELECT discord_role AS "id: Id" FROM asyncs WHERE series = $1 AND event = $2"#, series as _, event).fetch_one(&mut transaction).await? {
-                    let mut members = sqlx::query_scalar!(r#"SELECT discord_id AS "discord_id!: Id" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, i64::from(team_id)).fetch(&mut transaction);
-                    while let Some(discord_id) = members.try_next().await? {
-                        if let Ok(mut member) = discord_guild.member(&*discord_ctx.read().await, UserId(discord_id.0)).await {
-                            member.add_role(&*discord_ctx.read().await, id).await?;
+                let asyncs_row = sqlx::query!(r#"SELECT discord_role AS "discord_role: Id", discord_channel AS "discord_channel: Id" FROM asyncs WHERE series = $1 AND event = $2"#, series as _, event).fetch_one(&mut transaction).await?;
+                let members = sqlx::query_scalar!(r#"SELECT discord_id AS "discord_id!: Id" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, i64::from(team_row.team)).fetch_all(&mut transaction).await?;
+                if let Some(Id(discord_role)) = asyncs_row.discord_role {
+                    for &Id(user_id) in &members {
+                        if let Ok(mut member) = discord_guild.member(&*discord_ctx.read().await, user_id).await {
+                            member.add_role(&*discord_ctx.read().await, discord_role).await?;
                         }
                     }
+                }
+                if let Some(Id(discord_channel)) = asyncs_row.discord_channel {
+                    let team_role = if let Some(racetime_slug) = team_row.racetime_slug {
+                        sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(discord_guild), racetime_slug).fetch_optional(&mut transaction).await?
+                    } else {
+                        None
+                    };
+                    let mut message = MessageBuilder::default();
+                    message.push("Please welcome ");
+                    if let Some(Id(team_role)) = team_role {
+                        message.role(team_role);
+                    } else if let Some(team_name) = team_row.name {
+                        //TODO pothole if racetime slug exists?
+                        message.push_italic_safe(team_name);
+                    } else {
+                        //TODO pothole if racetime slug exists?
+                        message.push("a new team");
+                    }
+                    if let (Some(time1), Some(time2), Some(time3)) = (time1, time2, time3) {
+                        message.push(" who finished with a time of ");
+                        message.push(format_duration((time1 + time2 + time3) / 3));
+                        message.push('!');
+                    } else {
+                        message.push(" who did not finish.");
+                    };
+                    //TODO list team members and their times and vods in world order
+                    ChannelId(discord_channel).say(&*discord_ctx.read().await, message).await?;
                 }
             }
             transaction.commit().await?;
