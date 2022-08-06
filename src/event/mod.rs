@@ -392,6 +392,7 @@ enum Tab {
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum Error {
     #[error(transparent)] Data(#[from] DataError),
+    #[error(transparent)] Discord(#[from] serenity::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
@@ -400,6 +401,12 @@ pub(crate) enum Error {
 impl From<DataError> for StatusOrError<Error> {
     fn from(e: DataError) -> Self {
         Self::Err(Error::Data(e))
+    }
+}
+
+impl From<serenity::Error> for StatusOrError<Error> {
+    fn from(e: serenity::Error) -> Self {
+        Self::Err(Error::Discord(e))
     }
 }
 
@@ -888,7 +895,7 @@ pub(crate) struct SubmitAsyncForm {
 }
 
 #[rocket::post("/event/<series>/<event>/submit-async", data = "<form>")]
-pub(crate) async fn submit_async(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, SubmitAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, SubmitAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
@@ -945,6 +952,16 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, me: User, uri: Origin<'_>
             sqlx::query!("INSERT INTO async_players (series, event, player, time, vod) VALUES ($1, $2, $3, $4, $5)", series as _, event, player2 as _, time2 as _, (!value.vod2.is_empty()).then(|| &value.vod2)).execute(&mut transaction).await?;
             let player3 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'courage'"#, i64::from(team_id)).fetch_one(&mut transaction).await?;
             sqlx::query!("INSERT INTO async_players (series, event, player, time, vod) VALUES ($1, $2, $3, $4, $5)", series as _, event, player3 as _, time3 as _, (!value.vod3.is_empty()).then(|| &value.vod3)).execute(&mut transaction).await?;
+            if let Some(discord_guild) = data.discord_guild {
+                if let Some(Id(id)) = sqlx::query_scalar!(r#"SELECT discord_role AS "id: Id" FROM asyncs WHERE series = $1 AND event = $2"#, series as _, event).fetch_one(&mut transaction).await? {
+                    let mut members = sqlx::query_scalar!(r#"SELECT discord_id AS "discord_id!: Id" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, i64::from(team_id)).fetch(&mut transaction);
+                    while let Some(discord_id) = members.try_next().await? {
+                        if let Ok(mut member) = discord_guild.member(&*discord_ctx.read().await, UserId(discord_id.0)).await {
+                            member.add_role(&*discord_ctx.read().await, id).await?;
+                        }
+                    }
+                }
+            }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(status(series, event))))
         }
