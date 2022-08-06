@@ -184,7 +184,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                     p {
                         : "A ";
                         em : "ban";
-                        : "allows a team to lock in a setting of their choice to the default. A ";
+                        : " allows a team to lock in a setting of their choice to the default. A ";
                         em : "pick";
                         : " will function just like last season, allowing a team to change a setting or lock it to the default as well. This drafting procedure takes place in the scheduling thread for the match and must be completed at least 30 minutes before the scheduled starting time so the seed can be rolled.";
                     }
