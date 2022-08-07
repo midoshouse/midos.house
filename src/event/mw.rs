@@ -590,6 +590,13 @@ impl<'v> EnterFormStep2Defaults<'v> {
             Self::Values { .. } => None,
         }
     }
+
+    fn restream_consent(&self) -> bool {
+        match self {
+            Self::Context(ctx) => ctx.field_value("restream_consent") == Some("on"),
+            Self::Values { .. } => false,
+        }
+    }
 }
 
 fn enter_form_step2<'a>(me: Option<User>, uri: Origin<'a>, csrf: Option<CsrfToken>, data: Data<'a>, defaults: EnterFormStep2Defaults<'a>) -> impl Future<Output = Result<RawHtml<String>, Error>> + 'a {
@@ -622,7 +629,10 @@ fn enter_form_step2<'a>(me: Option<User>, uri: Origin<'a>, csrf: Option<CsrfToke
                         label(class = "courage", for = &format!("world_number[{}]-courage", team_member.id)) : "World 3";
                     });
                 }
-                //TODO restream consent?
+                : form_field("restream_consent", &mut errors, html! {
+                    input(type = "checkbox", id = "restream_consent", name = "restream_consent", checked? = defaults.restream_consent());
+                    label(for = "restream_consent") : "We are okay with being restreamed. (Optional for Swiss, required for top 8. Can be changed later.)"; //TODO allow changing on Status page during Swiss, except revoking while a restream is planned
+                });
                 fieldset {
                     input(type = "submit", value = "Submit");
                 }
@@ -647,6 +657,7 @@ pub(crate) struct EnterFormStep2 {
     csrf: String,
     racetime_team: String,
     world_number: HashMap<String, Role>,
+    restream_consent: bool,
 }
 
 #[rocket::post("/event/mw/<event>/enter/step2", data = "<form>")]
@@ -733,7 +744,7 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, discord_ctx: &Sta
             RedirectOrContent::Content(enter_form_step2(Some(me), uri, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
-            sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug) VALUES ($1, 'mw', $2, $3, $4)", id as _, event, (!team_name.is_empty()).then(|| team_name), team_slug).execute(&mut transaction).await?;
+            sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent) VALUES ($1, 'mw', $2, $3, $4, $5)", id as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent).execute(&mut transaction).await?;
             for (user, role) in users.into_iter().zip_eq(roles) {
                 sqlx::query!(
                     "INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, $3, $4)",
