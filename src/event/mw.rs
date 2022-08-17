@@ -172,6 +172,8 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                         li : "Excluded Locations: Kak 40/50 Gold Skulltula Reward";
                         li : "Adult Trade Quest: Claim Check Only";
                         li : "Enable Tricks: Dodongo's Cavern Scarecrow GS with Armos Statue";
+                        li : "Chest Appearance Matches Contents: Both Size and Texture";
+                        li : "Maps and Compasses Give Information: On";
                     }
                     p : "However, in every race several of the settings may be modified by the teams. The higher seed gets to pick who starts the procedure, then it will follow this pattern:";
                     ul {
@@ -293,7 +295,36 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                             }
                         }
                     }
-                    p : "The remainder of the hints will be filled out with selections from the “Sometimes” hint pool for a total of 20 paired hints.";
+                    p : "The remainder of the hints will be filled out with selections from the “Sometimes” hint pool for a total of 20 paired hints. The following additional locations are Sometimes hints (if dungeon Tokensanity is enabled):";
+                    ul {
+                        li : "Deku Tree GS Basement Back Room";
+                        li : "Water Temple GS River";
+                        li : "Spirit Temple GS Hall After Sun Block Room";
+                    }
+                    p : "Always and Sometimes hint are upgraded to Dual hints where available.";
+                    p : "The following Sometimes hints have been removed:";
+                    ul {
+                        li : "Sheik in Crater";
+                        li : "Song from Royal Familys Tomb";
+                        li : "Sheik in Forest";
+                        li : "Sheik at Temple";
+                        li : "Sheik at Colossus";
+                        li : "LH Sun";
+                        li : "GC Maze Left Chest";
+                        li : "GV Chest";
+                        li : "Graveyard Royal Familys Tomb Chest";
+                        li : "GC Pot Freestanding PoH";
+                        li : "LH Lab Dive";
+                        li : "Fire Temple Megaton Hammer Chest";
+                        li : "Fire Temple Scarecrow Chest";
+                        li : "Water Temple Boss Key Chest";
+                        li : "Water Temple GS Behind Gate";
+                        li : "Gerudo Training Ground Maze Path Final Chest";
+                        li : "Spirit Temple Silver Gauntlets Chest";
+                        li : "Spirit Temple Mirror Shield Chest";
+                        li : "Shadow Temple Freestanding Key";
+                        li : "Ganons Castle Shadow Trial Golden Gauntlets Chest";
+                    }
                     h2 : "Rules";
                     p {
                         : "This tournament will take place under the ";
