@@ -310,7 +310,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                         : "There are two plugins that can be used for the item sharing: ";
                         a(href = "https://github.com/TestRunnerSRL/bizhawk-co-op#readme") : "bizhawk-co-op";
                         : " (also known as Multiworld 1.0) and ";
-                        a(href = "https://github.com/midoshouse/ootr-multiworld#readme") : "Mido's House Multiworld"; //TODO link directly to installer?
+                        a(href = "https://github.com/midoshouse/ootr-multiworld#readme") : "Mido's House Multiworld";
                         : ". While we recommend using the Mido's House plugin since it supports Project64 in addition to BizHawk and is easier to use (see ";
                         a(href = "https://github.com/midoshouse/ootr-multiworld#feature-comparison") : "feature comparison";
                         : "), both plugins are legal in this tournament.";
@@ -628,6 +628,7 @@ fn enter_form_step2<'a>(me: Option<User>, uri: Origin<'a>, csrf: Option<CsrfToke
                         input(id = &format!("world_number[{}]-courage", team_member.id), class = "courage", type = "radio", name = &format!("world_number[{}]", team_member.id), value = "courage", checked? = defaults.world_number(&team_member.id) == Some(Role::Courage));
                         label(class = "courage", for = &format!("world_number[{}]-courage", team_member.id)) : "World 3";
                     });
+                    //TODO ask for optional start.gg user ID
                 }
                 : form_field("restream_consent", &mut errors, html! {
                     input(type = "checkbox", id = "restream_consent", name = "restream_consent", checked? = defaults.restream_consent());

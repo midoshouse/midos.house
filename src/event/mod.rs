@@ -852,7 +852,6 @@ pub(crate) async fn request_async(pool: &State<PgPool>, me: User, uri: Origin<'_
         form.context.push_error(form::Error::validation("You can no longer request the qualifier async since the event has already started."));
     }
     let mut transaction = pool.begin().await?;
-    //TODO error if async already requested
     Ok(if let Some(ref value) = form.value {
         let team_id = sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM teams, team_members WHERE
             id = team
@@ -864,6 +863,9 @@ pub(crate) async fn request_async(pool: &State<PgPool>, me: User, uri: Origin<'_
         "#, series.to_str(), event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
         if team_id.is_none() {
             form.context.push_error(form::Error::validation("You are not signed up for this event."));
+        }
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1) AS "exists!""#, team_id as _).fetch_one(&mut transaction).await? {
+            form.context.push_error(form::Error::validation("Your team has already requested this async."));
         }
         if !value.confirm {
             form.context.push_error(form::Error::validation("This field is required.").with_name("confirm"));
