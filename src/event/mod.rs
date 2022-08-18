@@ -13,6 +13,7 @@ use {
         StreamExt as _,
         TryStreamExt as _,
     },
+    rand::prelude::*,
     rocket::{
         FromForm,
         State,
@@ -294,7 +295,7 @@ impl<'a> Data<'a> {
     pub(crate) fn chests(&self) -> ChestAppearances {
         match (self.series, &*self.event) {
             (Series::Multiworld, "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
-            (Series::Multiworld, "3") => ChestAppearances::random(), //TODO update after preliminary base settings exist
+            (Series::Multiworld, "3") => mw::S3Settings::random(&mut thread_rng()).chests(),
             (Series::Multiworld, _) => unimplemented!(),
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
         }

@@ -1,6 +1,5 @@
 use {
     std::{
-        fmt,
         io::prelude::*,
         path::Path,
         process::Stdio,
@@ -8,11 +7,7 @@ use {
         time::Duration,
     },
     async_trait::async_trait,
-    collect_mac::collect,
-    enum_iterator::{
-        Sequence,
-        all,
-    },
+    enum_iterator::all,
     itertools::Itertools as _,
     racetime::{
         Error,
@@ -29,7 +24,6 @@ use {
         Value as Json,
         json,
     },
-    serde_plain::derive_fromstr_from_deserialize,
     tokio::{
         fs,
         io::AsyncWriteExt as _,
@@ -48,11 +42,9 @@ use {
     },
     crate::{
         config::ConfigRaceTime,
+        event::mw,
         seed,
-        util::{
-            format_duration,
-            natjoin_str,
-        },
+        util::format_duration,
     },
 };
 #[cfg(unix)] use xdg::BaseDirectories;
@@ -139,7 +131,7 @@ impl MwSeedQueue {
     }
 
     async fn can_roll_on_web(&self, settings: &serde_json::Map<String, Json>) -> Result<bool, RollError> {
-        if settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) != 1 { return Ok(false) } //TODO remove once the ootrandomizer.com API starts supporting multiworld seeds
+        if settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) != 1 { return Ok(false) } //TODO change to > 3 once the ootrandomizer.com API starts supporting multiworld seeds
         // check if randomizer version is available on web
         if let Ok(latest_web_version) = self.get_version("dev").await {
             if latest_web_version != RANDO_VERSION { // there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
@@ -191,7 +183,7 @@ impl MwSeedQueue {
         Err(RollError::Retries)
     }
 
-    fn roll_seed(self: Arc<Self>, settings: Mw3Settings) -> mpsc::Receiver<SeedRollUpdate> {
+    fn roll_seed(self: Arc<Self>, settings: mw::S3Settings) -> mpsc::Receiver<SeedRollUpdate> {
         let settings = settings.resolve();
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
@@ -248,414 +240,6 @@ impl MwSeedQueue {
     }
 }
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] enum Wincon { #[default] Meds, Scrubs, Th }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] enum Dungeons { #[default] Tournament, Skulls, Keyrings }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] enum Er { #[default] Off, Dungeon }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] enum Trials { #[default] Zero, Two }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] enum Shops { #[default] Four, Off }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] enum Scrubs { #[default] Affordable, Off }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] enum Fountain { #[default] Closed, Open }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] enum Spawn { #[default] Tot, Random }
-
-impl Wincon { fn arg(&self) -> &'static str { match self { Self::Meds => "meds", Self::Scrubs => "scrubs", Self::Th => "th" } } }
-impl Dungeons { fn arg(&self) -> &'static str { match self { Self::Tournament => "tournament", Self::Skulls => "skulls", Self::Keyrings => "keyrings" } } }
-impl Er { fn arg(&self) -> &'static str { match self { Self::Off => "off", Self::Dungeon => "dungeon" } } }
-impl Trials { fn arg(&self) -> &'static str { match self { Self::Zero => "0", Self::Two => "2" } } }
-impl Shops { fn arg(&self) -> &'static str { match self { Self::Four => "4", Self::Off => "off" } } }
-impl Scrubs { fn arg(&self) -> &'static str { match self { Self::Affordable => "affordable", Self::Off => "off" } } }
-impl Fountain { fn arg(&self) -> &'static str { match self { Self::Closed => "closed", Self::Open => "open" } } }
-impl Spawn { fn arg(&self) -> &'static str { match self { Self::Tot => "tot", Self::Random => "random" } } }
-
-impl fmt::Display for Wincon { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Meds => write!(f, "default wincons"), Self::Scrubs => write!(f, "Scrubs wincons"), Self::Th => write!(f, "Triforce Hunt") } } }
-impl fmt::Display for Dungeons { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Tournament => write!(f, "tournament dungeons"), Self::Skulls => write!(f, "dungeon tokens"), Self::Keyrings => write!(f, "keyrings") } } }
-impl fmt::Display for Er { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Off => write!(f, "no ER"), Self::Dungeon => write!(f, "dungeon ER") } } }
-impl fmt::Display for Trials { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Zero => write!(f, "0 trials"), Self::Two => write!(f, "2 trials") } } }
-impl fmt::Display for Shops { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Four => write!(f, "shops 4"), Self::Off => write!(f, "no shops") } } }
-impl fmt::Display for Scrubs { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Affordable => write!(f, "affordable scrubs"), Self::Off => write!(f, "no scrubs") } } }
-impl fmt::Display for Fountain { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Closed => write!(f, "closed fountain"), Self::Open => write!(f, "open fountain") } } }
-impl fmt::Display for Spawn { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Tot => write!(f, "ToT spawns"), Self::Random => write!(f, "random spawns & starting age") } } }
-
-enum Team {
-    HighSeed,
-    LowSeed,
-}
-
-impl fmt::Display for Team {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::HighSeed => write!(f, "Team A"),
-            Self::LowSeed => write!(f, "Team B"),
-        }
-    }
-}
-
-enum DraftStep {
-    GoFirst,
-    Ban {
-        prev_bans: u8,
-        team: Team,
-    },
-    Pick {
-        prev_picks: u8,
-        team: Team,
-    },
-    Done(Mw3Settings),
-}
-
-#[derive(PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-enum Mw3Setting {
-    Wincon,
-    Dungeons,
-    Er,
-    Trials,
-    Shops,
-    Scrubs,
-    Fountain,
-    Spawn,
-}
-
-derive_fromstr_from_deserialize!(Mw3Setting);
-
-#[derive(Default)]
-struct Mw3Draft {
-    went_first: Option<bool>,
-    skipped_bans: u8,
-    wincon: Option<Wincon>,
-    dungeons: Option<Dungeons>,
-    er: Option<Er>,
-    trials: Option<Trials>,
-    shops: Option<Shops>,
-    scrubs: Option<Scrubs>,
-    fountain: Option<Fountain>,
-    spawn: Option<Spawn>,
-}
-
-impl Mw3Draft {
-    fn pick_count(&self) -> u8 {
-        self.skipped_bans
-        + u8::from(self.wincon.is_some())
-        + u8::from(self.dungeons.is_some())
-        + u8::from(self.er.is_some())
-        + u8::from(self.trials.is_some())
-        + u8::from(self.shops.is_some())
-        + u8::from(self.scrubs.is_some())
-        + u8::from(self.fountain.is_some())
-        + u8::from(self.spawn.is_some())
-    }
-
-    fn next_step(&self) -> DraftStep {
-        if let Some(went_first) = self.went_first {
-            match self.pick_count() {
-                prev_bans @ 0..=1 => DraftStep::Ban {
-                    team: match (prev_bans, went_first) {
-                        (0, true) | (1, false) => Team::HighSeed,
-                        (0, false) | (1, true) => Team::LowSeed,
-                        (2.., _) => unreachable!(),
-                    },
-                    prev_bans,
-                },
-                n @ 2..=5 => DraftStep::Pick {
-                    prev_picks: n - 2,
-                    team: match (n, went_first) {
-                        (2, true) | (3, false) | (4, false) | (5, true) => Team::HighSeed,
-                        (2, false) | (3, true) | (4, true) | (5, false) => Team::LowSeed,
-                        (0..=1 | 6.., _) => unreachable!(),
-                    },
-                },
-                6.. => DraftStep::Done(Mw3Settings {
-                    wincon: self.wincon.unwrap_or_default(),
-                    dungeons: self.dungeons.unwrap_or_default(),
-                    er: self.er.unwrap_or_default(),
-                    trials: self.trials.unwrap_or_default(),
-                    shops: self.shops.unwrap_or_default(),
-                    scrubs: self.scrubs.unwrap_or_default(),
-                    fountain: self.fountain.unwrap_or_default(),
-                    spawn: self.spawn.unwrap_or_default(),
-                }),
-            }
-        } else {
-            DraftStep::GoFirst
-        }
-    }
-
-    fn available_settings(&self) -> Vec<Mw3Setting> {
-        let mut buf = Vec::with_capacity(8);
-        if self.wincon.is_none() { buf.push(Mw3Setting::Wincon) }
-        if self.dungeons.is_none() { buf.push(Mw3Setting::Dungeons) }
-        if self.er.is_none() { buf.push(Mw3Setting::Er) }
-        if self.trials.is_none() { buf.push(Mw3Setting::Trials) }
-        if self.shops.is_none() { buf.push(Mw3Setting::Shops) }
-        if self.scrubs.is_none() { buf.push(Mw3Setting::Scrubs) }
-        if self.fountain.is_none() { buf.push(Mw3Setting::Fountain) }
-        if self.spawn.is_none() { buf.push(Mw3Setting::Spawn) }
-        buf
-    }
-}
-
-#[derive(Default, Clone, Copy)]
-struct Mw3Settings {
-    wincon: Wincon,
-    dungeons: Dungeons,
-    er: Er,
-    trials: Trials,
-    shops: Shops,
-    scrubs: Scrubs,
-    fountain: Fountain,
-    spawn: Spawn,
-}
-
-impl Mw3Settings {
-    fn random(rng: &mut impl Rng) -> Self {
-        let mut draft = Mw3Draft::default();
-        loop {
-            match draft.next_step() {
-                DraftStep::GoFirst => draft.went_first = Some(rng.gen()),
-                DraftStep::Ban { .. } => {
-                    let available_settings = draft.available_settings();
-                    let idx = rng.gen_range(0..=available_settings.len());
-                    if let Some(setting) = available_settings.get(idx) {
-                        match setting {
-                            Mw3Setting::Wincon => draft.wincon = Some(Wincon::default()),
-                            Mw3Setting::Dungeons => draft.dungeons = Some(Dungeons::default()),
-                            Mw3Setting::Er => draft.er = Some(Er::default()),
-                            Mw3Setting::Trials => draft.trials = Some(Trials::default()),
-                            Mw3Setting::Shops => draft.shops = Some(Shops::default()),
-                            Mw3Setting::Scrubs => draft.scrubs = Some(Scrubs::default()),
-                            Mw3Setting::Fountain => draft.fountain = Some(Fountain::default()),
-                            Mw3Setting::Spawn => draft.spawn = Some(Spawn::default()),
-                        }
-                    } else {
-                        draft.skipped_bans += 1;
-                    }
-                }
-                DraftStep::Pick { .. } => match draft.available_settings().choose(rng).expect("no more picks in DraftStep::Pick") {
-                    Mw3Setting::Wincon => draft.wincon = Some(all().choose(rng).expect("setting values empty")),
-                    Mw3Setting::Dungeons => draft.dungeons = Some(all().choose(rng).expect("setting values empty")),
-                    Mw3Setting::Er => draft.er = Some(all().choose(rng).expect("setting values empty")),
-                    Mw3Setting::Trials => draft.trials = Some(all().choose(rng).expect("setting values empty")),
-                    Mw3Setting::Shops => draft.shops = Some(all().choose(rng).expect("setting values empty")),
-                    Mw3Setting::Scrubs => draft.scrubs = Some(all().choose(rng).expect("setting values empty")),
-                    Mw3Setting::Fountain => draft.fountain = Some(all().choose(rng).expect("setting values empty")),
-                    Mw3Setting::Spawn => draft.spawn = Some(all().choose(rng).expect("setting values empty")),
-                },
-                DraftStep::Done(settings) => break settings,
-            }
-        }
-    }
-
-    fn resolve(&self) -> serde_json::Map<String, Json> {
-        let Self { wincon, dungeons, er, trials, shops, scrubs, fountain, spawn } = self;
-        collect![
-            format!("user_message") => json!("3rd Multiworld Tournament"),
-            format!("world_count") => json!(3),
-            format!("open_forest") => json!("open"),
-            format!("open_kakariko") => json!("open"),
-            format!("open_door_of_time") => json!(true),
-            format!("zora_fountain") => match fountain {
-                Fountain::Closed => json!("closed"),
-                Fountain::Open => json!("open"),
-            },
-            format!("gerudo_fortress") => json!("fast"),
-            format!("bridge") => match wincon {
-                Wincon::Meds => json!("medallions"),
-                Wincon::Scrubs => json!("stones"),
-                Wincon::Th => json!("dungeons"),
-            },
-            format!("bridge_medallions") => json!(6),
-            format!("bridge_stones") => json!(3),
-            format!("bridge_rewards") => json!(4),
-            format!("triforce_hunt") => json!(matches!(wincon, Wincon::Th)),
-            format!("triforce_count_per_world") => json!(30),
-            format!("triforce_goal_per_world") => json!(25),
-            format!("trials") => match trials {
-                Trials::Zero => json!(0),
-                Trials::Two => json!(2),
-            },
-            format!("skip_child_zelda") => json!(true),
-            format!("no_escape_sequence") => json!(true),
-            format!("no_guard_stealth") => json!(true),
-            format!("no_epona_race") => json!(true),
-            format!("skip_some_minigame_phases") => json!(true),
-            format!("free_scarecrow") => json!(true),
-            format!("fast_bunny_hood") => json!(true),
-            format!("start_with_rupees") => json!(true),
-            format!("start_with_consumables") => json!(true),
-            format!("big_poe_count") => json!(1),
-            format!("shuffle_dungeon_entrances") => match er {
-                Er::Off => json!("off"),
-                Er::Dungeon => json!("simple"),
-            },
-            format!("spawn_positions") => json!(matches!(spawn, Spawn::Random)),
-            format!("shuffle_scrubs") => match scrubs {
-                Scrubs::Affordable => json!("low"),
-                Scrubs::Off => json!("off"),
-            },
-            format!("shopsanity") => match shops {
-                Shops::Four => json!("4"),
-                Shops::Off => json!("off"),
-            },
-            format!("tokensanity") => match dungeons {
-                Dungeons::Skulls => json!("dungeons"),
-                Dungeons::Tournament | Dungeons::Keyrings => json!("off"),
-            },
-            format!("shuffle_mapcompass") => json!("startwith"),
-            format!("shuffle_smallkeys") => match dungeons {
-                Dungeons::Tournament => json!("dungeon"),
-                Dungeons::Skulls => json!("vanilla"),
-                Dungeons::Keyrings => json!("keysanity"),
-            },
-            format!("key_rings") => match dungeons {
-                Dungeons::Keyrings => json!([
-                    "Forest Temple",
-                    "Fire Temple",
-                    "Water Temple",
-                    "Shadow Temple",
-                    "Spirit Temple",
-                    "Bottom of the Well",
-                    "Gerudo Training Ground",
-                    "Ganons Castle",
-                ]),
-                Dungeons::Tournament | Dungeons::Skulls => json!([]),
-            },
-            format!("shuffle_bosskeys") => match dungeons {
-                Dungeons::Tournament => json!("dungeon"),
-                Dungeons::Skulls | Dungeons::Keyrings => json!("vanilla"),
-            },
-            format!("shuffle_ganon_bosskey") => match wincon {
-                Wincon::Meds => json!("remove"),
-                Wincon::Scrubs => json!("on_lacs"),
-                Wincon::Th => json!("triforce"),
-            },
-            format!("disabled_locations") => json!([
-                "Deku Theater Mask of Truth",
-                "Kak 40 Gold Skulltula Reward",
-                "Kak 50 Gold Skulltula Reward"
-            ]),
-            format!("allowed_tricks") => json!([
-                "logic_fewer_tunic_requirements",
-                "logic_grottos_without_agony",
-                "logic_child_deadhand",
-                "logic_man_on_roof",
-                "logic_dc_jump",
-                "logic_rusted_switches",
-                "logic_windmill_poh",
-                "logic_crater_bean_poh_with_hovers",
-                "logic_forest_vines",
-                "logic_lens_botw",
-                "logic_lens_castle",
-                "logic_lens_gtg",
-                "logic_lens_shadow",
-                "logic_lens_shadow_platform",
-                "logic_lens_bongo",
-                "logic_lens_spirit",
-                "logic_dc_scarecrow_gs"
-            ]),
-            format!("logic_earliest_adult_trade") => json!("claim_check"),
-            format!("starting_equipment") => json!([
-                "deku_shield"
-            ]),
-            format!("starting_items") => json!([
-                "ocarina",
-                "farores_wind",
-                "lens"
-            ]),
-            format!("correct_chest_appearances") => json!("both"),
-            format!("hint_dist") => json!("custom"),
-            format!("hint_dist_user") => json!({
-                "name":                  "mw3",
-                "gui_name":              "MW Season 3",
-                "description":           "Hints used for the Multiworld Tournament Season 3.",
-                "add_locations":         [
-                    { "location": "Sheik in Kakariko", "types": ["always"] },
-                    { "location": "Song from Ocarina of Time", "types": ["always"] },
-                    { "location": "Deku Theater Skull Mask", "types": ["always"] },
-                    { "location": "DMC Deku Scrub", "types": ["always"] },
-                    { "location": "Deku Tree GS Basement Back Room", "types": ["sometimes"] },
-                    { "location": "Water Temple GS River", "types": ["sometimes"] },
-                    { "location": "Spirit Temple GS Hall After Sun Block Room", "types": ["sometimes"] },
-                ],
-                "remove_locations":      [
-                    { "location": "Sheik in Crater", "types": ["sometimes"] },
-                    { "location": "Song from Royal Familys Tomb", "types": ["sometimes"] },
-                    { "location": "Sheik in Forest", "types": ["sometimes"] },
-                    { "location": "Sheik at Temple", "types": ["sometimes"] },
-                    { "location": "Sheik at Colossus", "types": ["sometimes"] },
-                    { "location": "LH Sun", "types": ["sometimes"] },
-                    { "location": "GC Maze Left Chest", "types": ["sometimes"] },
-                    { "location": "GV Chest", "types": ["sometimes"] },
-                    { "location": "Graveyard Royal Familys Tomb Chest", "types": ["sometimes"] },
-                    { "location": "GC Pot Freestanding PoH", "types": ["sometimes"] },
-                    { "location": "LH Lab Dive", "types": ["sometimes"] },
-                    { "location": "Fire Temple Megaton Hammer Chest", "types": ["sometimes"] },
-                    { "location": "Fire Temple Scarecrow Chest", "types": ["sometimes"] },
-                    { "location": "Water Temple Boss Key Chest", "types": ["sometimes"] },
-                    { "location": "Water Temple GS Behind Gate", "types": ["sometimes"] },
-                    { "location": "Gerudo Training Ground Maze Path Final Chest", "types": ["sometimes"] },
-                    { "location": "Spirit Temple Silver Gauntlets Chest", "types": ["sometimes"] },
-                    { "location": "Spirit Temple Mirror Shield Chest", "types": ["sometimes"] },
-                    { "location": "Shadow Temple Freestanding Key", "types": ["sometimes"] },
-                    { "location": "Ganons Castle Shadow Trial Golden Gauntlets Chest", "types": ["sometimes"] },
-                ],
-                "add_items":             [],
-                "remove_items":          [
-                    { "item": "Zeldas Lullaby", "types": ["woth", "goal"] },
-                ],
-                "dungeons_woth_limit":   40,
-                "dungeons_barren_limit": 40,
-                "named_items_required":  true,
-                "vague_named_items":     false,
-                "use_default_goals":     true,
-                "upgrade_hints":         "on",
-                "distribution": {
-                    "trial":           {"order": 1, "weight": 0.0, "fixed":   0, "copies": 2},
-                    "always":          {"order": 2, "weight": 0.0, "fixed":   0, "copies": 2},
-                    "goal":            {"order": 3, "weight": 0.0, "fixed":   7, "copies": 2},
-                    "sometimes":       {"order": 4, "weight": 0.0, "fixed": 100, "copies": 2},
-                    "barren":          {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "entrance_always": {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "woth":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "entrance":        {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "random":          {"order": 0, "weight": 9.0, "fixed":   0, "copies": 0},
-                    "item":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "song":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "overworld":       {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "dungeon":         {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "junk":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "named-item":      {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "dual_always":     {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "dual":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                }
-            }),
-            format!("ice_trap_appearance") => json!("junk_only"),
-            format!("junk_ice_traps") => json!("off"),
-            format!("starting_age") => match spawn {
-                Spawn::Tot => json!("adult"),
-                Spawn::Random => json!("random"),
-            },
-        ]
-    }
-}
-
-impl fmt::Display for Mw3Settings {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut not_default = Vec::with_capacity(8);
-        if self.wincon != Wincon::default() { not_default.push(self.wincon.to_string()) }
-        if self.dungeons != Dungeons::default() { not_default.push(self.dungeons.to_string()) }
-        if self.er != Er::default() { not_default.push(self.er.to_string()) }
-        if self.trials != Trials::default() { not_default.push(self.trials.to_string()) }
-        if self.shops != Shops::default() { not_default.push(self.shops.to_string()) }
-        if self.scrubs != Scrubs::default() { not_default.push(self.scrubs.to_string()) }
-        if self.fountain != Fountain::default() { not_default.push(self.fountain.to_string()) }
-        if self.spawn != Spawn::default() { not_default.push(self.spawn.to_string()) }
-        if let Some(not_default) = natjoin_str(not_default) {
-            not_default.fmt(f)
-        } else {
-            write!(f, "base settings")
-        }
-    }
-}
-
 async fn send_presets(ctx: &RaceContext) -> Result<(), Error> {
     ctx.send_message("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
     ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
@@ -667,7 +251,7 @@ async fn send_presets(ctx: &RaceContext) -> Result<(), Error> {
 enum RaceState {
     #[default]
     Init,
-    Draft(Mw3Draft),
+    Draft(mw::S3Draft),
     Rolling,
     Rolled,
 }
@@ -683,14 +267,14 @@ impl Handler {
         if let RaceState::Draft(ref draft) = *state {
             for setting in draft.available_settings() {
                 match setting {
-                    Mw3Setting::Wincon => ctx.send_message("wincon: meds (default: 6 Medallion Bridge + Keysy BK), scrubs (3 Stone Bridge + LACS BK), or th (Triforce Hunt 25/30)").await?,
-                    Mw3Setting::Dungeons => ctx.send_message("dungeons: tournament (default: keys shuffled in own dungeon), skulls (vanilla keys, dungeon tokens), or keyrings (small keyrings anywhere, vanilla boss keys)").await?,
-                    Mw3Setting::Er => ctx.send_message("er: off (default) or dungeon").await?,
-                    Mw3Setting::Trials => ctx.send_message("trials: 0 (default) or 2").await?,
-                    Mw3Setting::Shops => ctx.send_message("shops: 4 (default) or off").await?,
-                    Mw3Setting::Scrubs => ctx.send_message("scrubs: affordable (default) or off").await?,
-                    Mw3Setting::Fountain => ctx.send_message("fountain: closed (default) or open").await?,
-                    Mw3Setting::Spawn => ctx.send_message("spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)").await?,
+                    mw::S3Setting::Wincon => ctx.send_message("wincon: meds (default: 6 Medallion Bridge + Keysy BK), scrubs (3 Stone Bridge + LACS BK), or th (Triforce Hunt 25/30)").await?,
+                    mw::S3Setting::Dungeons => ctx.send_message("dungeons: tournament (default: keys shuffled in own dungeon), skulls (vanilla keys, dungeon tokens), or keyrings (small keyrings anywhere, vanilla boss keys)").await?,
+                    mw::S3Setting::Er => ctx.send_message("er: off (default) or dungeon").await?,
+                    mw::S3Setting::Trials => ctx.send_message("trials: 0 (default) or 2").await?,
+                    mw::S3Setting::Shops => ctx.send_message("shops: 4 (default) or off").await?,
+                    mw::S3Setting::Scrubs => ctx.send_message("scrubs: affordable (default) or off").await?,
+                    mw::S3Setting::Fountain => ctx.send_message("fountain: closed (default) or open").await?,
+                    mw::S3Setting::Spawn => ctx.send_message("spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)").await?,
                 }
             }
         } else {
@@ -703,16 +287,16 @@ impl Handler {
         let state = self.state.read().await;
         if let RaceState::Draft(ref draft) = *state {
             match draft.next_step() {
-                DraftStep::GoFirst => ctx.send_message("Team A, you have the higher seed. Choose whether you want to go !first or !second").await?,
-                DraftStep::Ban { prev_bans, team } => ctx.send_message(&format!("{team}, lock a setting to its default using “!ban <setting>”, or use “!skip” if you don't want to ban anything.{}", if prev_bans == 0 { " Use “!settings” for a list of available settings." } else { "" })).await?,
-                DraftStep::Pick { prev_picks, team } => ctx.send_message(&match prev_picks {
+                mw::DraftStep::GoFirst => ctx.send_message("Team A, you have the higher seed. Choose whether you want to go !first or !second").await?,
+                mw::DraftStep::Ban { prev_bans, team } => ctx.send_message(&format!("{team}, lock a setting to its default using “!ban <setting>”, or use “!skip” if you don't want to ban anything.{}", if prev_bans == 0 { " Use “!settings” for a list of available settings." } else { "" })).await?,
+                mw::DraftStep::Pick { prev_picks, team } => ctx.send_message(&match prev_picks {
                     0 => format!("{team}, pick a setting using “!draft <setting> <value>”"),
                     1 => format!("{team}, pick two settings."),
                     2 => format!("And your second pick?"),
                     3 => format!("{team}, pick the final setting. You can also use “!skip” if you want to leave the settings as they are."),
                     _ => unreachable!(),
                 }).await?,
-                DraftStep::Done(settings) => {
+                mw::DraftStep::Done(settings) => {
                     drop(state); //TODO retain lock
                     self.roll_seed(ctx, settings).await;
                 }
@@ -723,7 +307,7 @@ impl Handler {
         Ok(())
     }
 
-    async fn roll_seed(&mut self, ctx: &RaceContext, settings: Mw3Settings) {
+    async fn roll_seed(&mut self, ctx: &RaceContext, settings: mw::S3Settings) {
         *self.state.write().await = RaceState::Rolling;
         let ctx = ctx.clone();
         let state = Arc::clone(&self.state);
@@ -802,14 +386,14 @@ impl RaceHandler<MwSeedQueue> for Handler {
                                 if let Ok(setting) = setting.parse() {
                                     if draft.available_settings().contains(&setting) {
                                         match setting {
-                                            Mw3Setting::Wincon => draft.wincon = Some(Wincon::default()),
-                                            Mw3Setting::Dungeons => draft.dungeons = Some(Dungeons::default()),
-                                            Mw3Setting::Er => draft.er = Some(Er::default()),
-                                            Mw3Setting::Trials => draft.trials = Some(Trials::default()),
-                                            Mw3Setting::Shops => draft.shops = Some(Shops::default()),
-                                            Mw3Setting::Scrubs => draft.scrubs = Some(Scrubs::default()),
-                                            Mw3Setting::Fountain => draft.fountain = Some(Fountain::default()),
-                                            Mw3Setting::Spawn => draft.spawn = Some(Spawn::default()),
+                                            mw::S3Setting::Wincon => draft.wincon = Some(mw::Wincon::default()),
+                                            mw::S3Setting::Dungeons => draft.dungeons = Some(mw::Dungeons::default()),
+                                            mw::S3Setting::Er => draft.er = Some(mw::Er::default()),
+                                            mw::S3Setting::Trials => draft.trials = Some(mw::Trials::default()),
+                                            mw::S3Setting::Shops => draft.shops = Some(mw::Shops::default()),
+                                            mw::S3Setting::Scrubs => draft.scrubs = Some(mw::Scrubs::default()),
+                                            mw::S3Setting::Fountain => draft.fountain = Some(mw::Fountain::default()),
+                                            mw::S3Setting::Spawn => draft.spawn = Some(mw::Spawn::default()),
                                         }
                                         drop(state);
                                         self.advance_draft(ctx).await?;
@@ -848,14 +432,14 @@ impl RaceHandler<MwSeedQueue> for Handler {
                             [setting] => {
                                 if let Ok(setting) = setting.parse() {
                                     ctx.send_message(&format!("Sorry {reply_to}, the value is required. Use {}", match setting {
-                                        Mw3Setting::Wincon => all::<Wincon>().map(|option| format!("“!draft wincon {}”", option.arg())).join(" or "),
-                                        Mw3Setting::Dungeons => all::<Dungeons>().map(|option| format!("“!draft dungeons {}”", option.arg())).join(" or "),
-                                        Mw3Setting::Er => all::<Er>().map(|option| format!("“!draft er {}”", option.arg())).join(" or "),
-                                        Mw3Setting::Trials => all::<Trials>().map(|option| format!("“!draft trials {}”", option.arg())).join(" or "),
-                                        Mw3Setting::Shops => all::<Shops>().map(|option| format!("“!draft shops {}”", option.arg())).join(" or "),
-                                        Mw3Setting::Scrubs => all::<Scrubs>().map(|option| format!("“!draft scrubs {}”", option.arg())).join(" or "),
-                                        Mw3Setting::Fountain => all::<Fountain>().map(|option| format!("“!draft fountain {}”", option.arg())).join(" or "),
-                                        Mw3Setting::Spawn => all::<Spawn>().map(|option| format!("“!draft spawn {}”", option.arg())).join(" or "),
+                                        mw::S3Setting::Wincon => all::<mw::Wincon>().map(|option| format!("“!draft wincon {}”", option.arg())).join(" or "),
+                                        mw::S3Setting::Dungeons => all::<mw::Dungeons>().map(|option| format!("“!draft dungeons {}”", option.arg())).join(" or "),
+                                        mw::S3Setting::Er => all::<mw::Er>().map(|option| format!("“!draft er {}”", option.arg())).join(" or "),
+                                        mw::S3Setting::Trials => all::<mw::Trials>().map(|option| format!("“!draft trials {}”", option.arg())).join(" or "),
+                                        mw::S3Setting::Shops => all::<mw::Shops>().map(|option| format!("“!draft shops {}”", option.arg())).join(" or "),
+                                        mw::S3Setting::Scrubs => all::<mw::Scrubs>().map(|option| format!("“!draft scrubs {}”", option.arg())).join(" or "),
+                                        mw::S3Setting::Fountain => all::<mw::Fountain>().map(|option| format!("“!draft fountain {}”", option.arg())).join(" or "),
+                                        mw::S3Setting::Spawn => all::<mw::Spawn>().map(|option| format!("“!draft spawn {}”", option.arg())).join(" or "),
                                     })).await?;
                                 } else {
                                     drop(state);
@@ -867,14 +451,14 @@ impl RaceHandler<MwSeedQueue> for Handler {
                                 if let Ok(setting) = setting.parse() {
                                     if draft.available_settings().contains(&setting) {
                                         match setting {
-                                            Mw3Setting::Wincon => if let Some(value) = all::<Wincon>().find(|option| option.arg() == value) { draft.wincon = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<Wincon>().map(|option| format!("“!draft wincon {}”", option.arg())).join(" or "),)).await? },
-                                            Mw3Setting::Dungeons => if let Some(value) = all::<Dungeons>().find(|option| option.arg() == value) { draft.dungeons = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<Dungeons>().map(|option| format!("“!draft dungeons {}”", option.arg())).join(" or "),)).await? },
-                                            Mw3Setting::Er => if let Some(value) = all::<Er>().find(|option| option.arg() == value) { draft.er = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<Er>().map(|option| format!("“!draft er {}”", option.arg())).join(" or "),)).await? },
-                                            Mw3Setting::Trials => if let Some(value) = all::<Trials>().find(|option| option.arg() == value) { draft.trials = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<Trials>().map(|option| format!("“!draft trials {}”", option.arg())).join(" or "),)).await? },
-                                            Mw3Setting::Shops => if let Some(value) = all::<Shops>().find(|option| option.arg() == value) { draft.shops = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<Shops>().map(|option| format!("“!draft shops {}”", option.arg())).join(" or "),)).await? },
-                                            Mw3Setting::Scrubs => if let Some(value) = all::<Scrubs>().find(|option| option.arg() == value) { draft.scrubs = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<Scrubs>().map(|option| format!("“!draft scrubs {}”", option.arg())).join(" or "),)).await? },
-                                            Mw3Setting::Fountain => if let Some(value) = all::<Fountain>().find(|option| option.arg() == value) { draft.fountain = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<Fountain>().map(|option| format!("“!draft fountain {}”", option.arg())).join(" or "),)).await? },
-                                            Mw3Setting::Spawn => if let Some(value) = all::<Spawn>().find(|option| option.arg() == value) { draft.spawn = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<Spawn>().map(|option| format!("“!draft spawn {}”", option.arg())).join(" or "),)).await? },
+                                            mw::S3Setting::Wincon => if let Some(value) = all::<mw::Wincon>().find(|option| option.arg() == value) { draft.wincon = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Wincon>().map(|option| format!("“!draft wincon {}”", option.arg())).join(" or "),)).await? },
+                                            mw::S3Setting::Dungeons => if let Some(value) = all::<mw::Dungeons>().find(|option| option.arg() == value) { draft.dungeons = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Dungeons>().map(|option| format!("“!draft dungeons {}”", option.arg())).join(" or "),)).await? },
+                                            mw::S3Setting::Er => if let Some(value) = all::<mw::Er>().find(|option| option.arg() == value) { draft.er = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Er>().map(|option| format!("“!draft er {}”", option.arg())).join(" or "),)).await? },
+                                            mw::S3Setting::Trials => if let Some(value) = all::<mw::Trials>().find(|option| option.arg() == value) { draft.trials = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Trials>().map(|option| format!("“!draft trials {}”", option.arg())).join(" or "),)).await? },
+                                            mw::S3Setting::Shops => if let Some(value) = all::<mw::Shops>().find(|option| option.arg() == value) { draft.shops = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Shops>().map(|option| format!("“!draft shops {}”", option.arg())).join(" or "),)).await? },
+                                            mw::S3Setting::Scrubs => if let Some(value) = all::<mw::Scrubs>().find(|option| option.arg() == value) { draft.scrubs = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Scrubs>().map(|option| format!("“!draft scrubs {}”", option.arg())).join(" or "),)).await? },
+                                            mw::S3Setting::Fountain => if let Some(value) = all::<mw::Fountain>().find(|option| option.arg() == value) { draft.fountain = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Fountain>().map(|option| format!("“!draft fountain {}”", option.arg())).join(" or "),)).await? },
+                                            mw::S3Setting::Spawn => if let Some(value) = all::<mw::Spawn>().find(|option| option.arg() == value) { draft.spawn = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Spawn>().map(|option| format!("“!draft spawn {}”", option.arg())).join(" or "),)).await? },
                                         }
                                     } else {
                                         drop(state);
@@ -938,15 +522,15 @@ impl RaceHandler<MwSeedQueue> for Handler {
                         }
                         ["base"] => {
                             drop(state);
-                            self.roll_seed(ctx, Mw3Settings::default()).await;
+                            self.roll_seed(ctx, mw::S3Settings::default()).await;
                         }
                         ["random"] => {
                             drop(state);
-                            let settings = Mw3Settings::random(&mut thread_rng());
+                            let settings = mw::S3Settings::random(&mut thread_rng());
                             self.roll_seed(ctx, settings).await;
                         }
                         ["draft"] => {
-                            *state = RaceState::Draft(Mw3Draft::default());
+                            *state = RaceState::Draft(mw::S3Draft::default());
                             drop(state);
                             self.advance_draft(ctx).await?;
                         }

@@ -6,7 +6,11 @@ use {
         iter,
     },
     chrono::prelude::*,
-    enum_iterator::Sequence,
+    collect_mac::collect,
+    enum_iterator::{
+        Sequence,
+        all,
+    },
     futures::{
         future::{
             self,
@@ -20,6 +24,8 @@ use {
         },
     },
     itertools::Itertools as _,
+    once_cell::sync::Lazy,
+    rand::prelude::*,
     rocket::{
         FromForm,
         FromFormField,
@@ -46,6 +52,11 @@ use {
         html,
     },
     serde::Deserialize,
+    serde_json::{
+        Value as Json,
+        json,
+    },
+    serde_plain::derive_fromstr_from_deserialize,
     serenity::client::Context as DiscordCtx,
     serenity_utils::RwFuture,
     sqlx::PgPool,
@@ -59,6 +70,7 @@ use {
             SignupStatus,
             Tab,
         },
+        favicon::ChestAppearances,
         http::{
             PageStyle,
             page,
@@ -74,12 +86,431 @@ use {
             form_field,
             format_datetime,
             natjoin_html,
+            natjoin_str,
             render_form_error,
         },
     },
 };
 
 const SERIES: Series = Series::Multiworld;
+
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Wincon { #[default] Meds, Scrubs, Th }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Dungeons { #[default] Tournament, Skulls, Keyrings }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Er { #[default] Off, Dungeon }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Trials { #[default] Zero, Two }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Shops { #[default] Four, Off }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Scrubs { #[default] Affordable, Off }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Fountain { #[default] Closed, Open }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Spawn { #[default] Tot, Random }
+
+impl Wincon { pub(crate) fn arg(&self) -> &'static str { match self { Self::Meds => "meds", Self::Scrubs => "scrubs", Self::Th => "th" } } }
+impl Dungeons { pub(crate) fn arg(&self) -> &'static str { match self { Self::Tournament => "tournament", Self::Skulls => "skulls", Self::Keyrings => "keyrings" } } }
+impl Er { pub(crate) fn arg(&self) -> &'static str { match self { Self::Off => "off", Self::Dungeon => "dungeon" } } }
+impl Trials { pub(crate) fn arg(&self) -> &'static str { match self { Self::Zero => "0", Self::Two => "2" } } }
+impl Shops { pub(crate) fn arg(&self) -> &'static str { match self { Self::Four => "4", Self::Off => "off" } } }
+impl Scrubs { pub(crate) fn arg(&self) -> &'static str { match self { Self::Affordable => "affordable", Self::Off => "off" } } }
+impl Fountain { pub(crate) fn arg(&self) -> &'static str { match self { Self::Closed => "closed", Self::Open => "open" } } }
+impl Spawn { pub(crate) fn arg(&self) -> &'static str { match self { Self::Tot => "tot", Self::Random => "random" } } }
+
+impl fmt::Display for Wincon { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Meds => write!(f, "default wincons"), Self::Scrubs => write!(f, "Scrubs wincons"), Self::Th => write!(f, "Triforce Hunt") } } }
+impl fmt::Display for Dungeons { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Tournament => write!(f, "tournament dungeons"), Self::Skulls => write!(f, "dungeon tokens"), Self::Keyrings => write!(f, "keyrings") } } }
+impl fmt::Display for Er { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Off => write!(f, "no ER"), Self::Dungeon => write!(f, "dungeon ER") } } }
+impl fmt::Display for Trials { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Zero => write!(f, "0 trials"), Self::Two => write!(f, "2 trials") } } }
+impl fmt::Display for Shops { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Four => write!(f, "shops 4"), Self::Off => write!(f, "no shops") } } }
+impl fmt::Display for Scrubs { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Affordable => write!(f, "affordable scrubs"), Self::Off => write!(f, "no scrubs") } } }
+impl fmt::Display for Fountain { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Closed => write!(f, "closed fountain"), Self::Open => write!(f, "open fountain") } } }
+impl fmt::Display for Spawn { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { match self { Self::Tot => write!(f, "ToT spawns"), Self::Random => write!(f, "random spawns & starting age") } } }
+
+pub(crate) enum Team {
+    HighSeed,
+    LowSeed,
+}
+
+impl fmt::Display for Team {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::HighSeed => write!(f, "Team A"),
+            Self::LowSeed => write!(f, "Team B"),
+        }
+    }
+}
+
+pub(crate) enum DraftStep {
+    GoFirst,
+    Ban {
+        prev_bans: u8,
+        team: Team,
+    },
+    Pick {
+        prev_picks: u8,
+        team: Team,
+    },
+    Done(S3Settings),
+}
+
+#[derive(PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum S3Setting {
+    Wincon,
+    Dungeons,
+    Er,
+    Trials,
+    Shops,
+    Scrubs,
+    Fountain,
+    Spawn,
+}
+
+derive_fromstr_from_deserialize!(S3Setting);
+
+#[derive(Default)]
+pub(crate) struct S3Draft {
+    pub(crate) went_first: Option<bool>,
+    pub(crate) skipped_bans: u8,
+    pub(crate) wincon: Option<Wincon>,
+    pub(crate) dungeons: Option<Dungeons>,
+    pub(crate) er: Option<Er>,
+    pub(crate) trials: Option<Trials>,
+    pub(crate) shops: Option<Shops>,
+    pub(crate) scrubs: Option<Scrubs>,
+    pub(crate) fountain: Option<Fountain>,
+    pub(crate) spawn: Option<Spawn>,
+}
+
+impl S3Draft {
+    pub(crate) fn pick_count(&self) -> u8 {
+        self.skipped_bans
+        + u8::from(self.wincon.is_some())
+        + u8::from(self.dungeons.is_some())
+        + u8::from(self.er.is_some())
+        + u8::from(self.trials.is_some())
+        + u8::from(self.shops.is_some())
+        + u8::from(self.scrubs.is_some())
+        + u8::from(self.fountain.is_some())
+        + u8::from(self.spawn.is_some())
+    }
+
+    pub(crate) fn next_step(&self) -> DraftStep {
+        if let Some(went_first) = self.went_first {
+            match self.pick_count() {
+                prev_bans @ 0..=1 => DraftStep::Ban {
+                    team: match (prev_bans, went_first) {
+                        (0, true) | (1, false) => Team::HighSeed,
+                        (0, false) | (1, true) => Team::LowSeed,
+                        (2.., _) => unreachable!(),
+                    },
+                    prev_bans,
+                },
+                n @ 2..=5 => DraftStep::Pick {
+                    prev_picks: n - 2,
+                    team: match (n, went_first) {
+                        (2, true) | (3, false) | (4, false) | (5, true) => Team::HighSeed,
+                        (2, false) | (3, true) | (4, true) | (5, false) => Team::LowSeed,
+                        (0..=1 | 6.., _) => unreachable!(),
+                    },
+                },
+                6.. => DraftStep::Done(S3Settings {
+                    wincon: self.wincon.unwrap_or_default(),
+                    dungeons: self.dungeons.unwrap_or_default(),
+                    er: self.er.unwrap_or_default(),
+                    trials: self.trials.unwrap_or_default(),
+                    shops: self.shops.unwrap_or_default(),
+                    scrubs: self.scrubs.unwrap_or_default(),
+                    fountain: self.fountain.unwrap_or_default(),
+                    spawn: self.spawn.unwrap_or_default(),
+                }),
+            }
+        } else {
+            DraftStep::GoFirst
+        }
+    }
+
+    pub(crate) fn available_settings(&self) -> Vec<S3Setting> {
+        let mut buf = Vec::with_capacity(8);
+        if self.wincon.is_none() { buf.push(S3Setting::Wincon) }
+        if self.dungeons.is_none() { buf.push(S3Setting::Dungeons) }
+        if self.er.is_none() { buf.push(S3Setting::Er) }
+        if self.trials.is_none() { buf.push(S3Setting::Trials) }
+        if self.shops.is_none() { buf.push(S3Setting::Shops) }
+        if self.scrubs.is_none() { buf.push(S3Setting::Scrubs) }
+        if self.fountain.is_none() { buf.push(S3Setting::Fountain) }
+        if self.spawn.is_none() { buf.push(S3Setting::Spawn) }
+        buf
+    }
+}
+
+#[derive(Default, Clone, Copy)]
+pub(crate) struct S3Settings {
+    wincon: Wincon,
+    dungeons: Dungeons,
+    er: Er,
+    trials: Trials,
+    shops: Shops,
+    scrubs: Scrubs,
+    fountain: Fountain,
+    spawn: Spawn,
+}
+
+impl S3Settings {
+    pub(crate) fn random(rng: &mut impl Rng) -> Self {
+        let mut draft = S3Draft::default();
+        loop {
+            match draft.next_step() {
+                DraftStep::GoFirst => draft.went_first = Some(rng.gen()),
+                DraftStep::Ban { .. } => {
+                    let available_settings = draft.available_settings();
+                    let idx = rng.gen_range(0..=available_settings.len());
+                    if let Some(setting) = available_settings.get(idx) {
+                        match setting {
+                            S3Setting::Wincon => draft.wincon = Some(Wincon::default()),
+                            S3Setting::Dungeons => draft.dungeons = Some(Dungeons::default()),
+                            S3Setting::Er => draft.er = Some(Er::default()),
+                            S3Setting::Trials => draft.trials = Some(Trials::default()),
+                            S3Setting::Shops => draft.shops = Some(Shops::default()),
+                            S3Setting::Scrubs => draft.scrubs = Some(Scrubs::default()),
+                            S3Setting::Fountain => draft.fountain = Some(Fountain::default()),
+                            S3Setting::Spawn => draft.spawn = Some(Spawn::default()),
+                        }
+                    } else {
+                        draft.skipped_bans += 1;
+                    }
+                }
+                DraftStep::Pick { .. } => match draft.available_settings().choose(rng).expect("no more picks in DraftStep::Pick") {
+                    S3Setting::Wincon => draft.wincon = Some(all().choose(rng).expect("setting values empty")),
+                    S3Setting::Dungeons => draft.dungeons = Some(all().choose(rng).expect("setting values empty")),
+                    S3Setting::Er => draft.er = Some(all().choose(rng).expect("setting values empty")),
+                    S3Setting::Trials => draft.trials = Some(all().choose(rng).expect("setting values empty")),
+                    S3Setting::Shops => draft.shops = Some(all().choose(rng).expect("setting values empty")),
+                    S3Setting::Scrubs => draft.scrubs = Some(all().choose(rng).expect("setting values empty")),
+                    S3Setting::Fountain => draft.fountain = Some(all().choose(rng).expect("setting values empty")),
+                    S3Setting::Spawn => draft.spawn = Some(all().choose(rng).expect("setting values empty")),
+                },
+                DraftStep::Done(settings) => break settings,
+            }
+        }
+    }
+
+    pub(crate) fn resolve(&self) -> serde_json::Map<String, Json> {
+        let Self { wincon, dungeons, er, trials, shops, scrubs, fountain, spawn } = self;
+        collect![
+            format!("user_message") => json!("3rd Multiworld Tournament"),
+            format!("world_count") => json!(3),
+            format!("open_forest") => json!("open"),
+            format!("open_kakariko") => json!("open"),
+            format!("open_door_of_time") => json!(true),
+            format!("zora_fountain") => match fountain {
+                Fountain::Closed => json!("closed"),
+                Fountain::Open => json!("open"),
+            },
+            format!("gerudo_fortress") => json!("fast"),
+            format!("bridge") => match wincon {
+                Wincon::Meds => json!("medallions"),
+                Wincon::Scrubs => json!("stones"),
+                Wincon::Th => json!("dungeons"),
+            },
+            format!("bridge_medallions") => json!(6),
+            format!("bridge_stones") => json!(3),
+            format!("bridge_rewards") => json!(4),
+            format!("triforce_hunt") => json!(matches!(wincon, Wincon::Th)),
+            format!("triforce_count_per_world") => json!(30),
+            format!("triforce_goal_per_world") => json!(25),
+            format!("trials") => match trials {
+                Trials::Zero => json!(0),
+                Trials::Two => json!(2),
+            },
+            format!("skip_child_zelda") => json!(true),
+            format!("no_escape_sequence") => json!(true),
+            format!("no_guard_stealth") => json!(true),
+            format!("no_epona_race") => json!(true),
+            format!("skip_some_minigame_phases") => json!(true),
+            format!("free_scarecrow") => json!(true),
+            format!("fast_bunny_hood") => json!(true),
+            format!("start_with_rupees") => json!(true),
+            format!("start_with_consumables") => json!(true),
+            format!("big_poe_count") => json!(1),
+            format!("shuffle_dungeon_entrances") => match er {
+                Er::Off => json!("off"),
+                Er::Dungeon => json!("simple"),
+            },
+            format!("spawn_positions") => json!(matches!(spawn, Spawn::Random)),
+            format!("shuffle_scrubs") => match scrubs {
+                Scrubs::Affordable => json!("low"),
+                Scrubs::Off => json!("off"),
+            },
+            format!("shopsanity") => match shops {
+                Shops::Four => json!("4"),
+                Shops::Off => json!("off"),
+            },
+            format!("tokensanity") => match dungeons {
+                Dungeons::Skulls => json!("dungeons"),
+                Dungeons::Tournament | Dungeons::Keyrings => json!("off"),
+            },
+            format!("shuffle_mapcompass") => json!("startwith"),
+            format!("shuffle_smallkeys") => match dungeons {
+                Dungeons::Tournament => json!("dungeon"),
+                Dungeons::Skulls => json!("vanilla"),
+                Dungeons::Keyrings => json!("keysanity"),
+            },
+            format!("key_rings") => match dungeons {
+                Dungeons::Keyrings => json!([
+                    "Forest Temple",
+                    "Fire Temple",
+                    "Water Temple",
+                    "Shadow Temple",
+                    "Spirit Temple",
+                    "Bottom of the Well",
+                    "Gerudo Training Ground",
+                    "Ganons Castle",
+                ]),
+                Dungeons::Tournament | Dungeons::Skulls => json!([]),
+            },
+            format!("shuffle_bosskeys") => match dungeons {
+                Dungeons::Tournament => json!("dungeon"),
+                Dungeons::Skulls | Dungeons::Keyrings => json!("vanilla"),
+            },
+            format!("shuffle_ganon_bosskey") => match wincon {
+                Wincon::Meds => json!("remove"),
+                Wincon::Scrubs => json!("on_lacs"),
+                Wincon::Th => json!("triforce"),
+            },
+            format!("disabled_locations") => json!([
+                "Deku Theater Mask of Truth",
+                "Kak 40 Gold Skulltula Reward",
+                "Kak 50 Gold Skulltula Reward"
+            ]),
+            format!("allowed_tricks") => json!([
+                "logic_fewer_tunic_requirements",
+                "logic_grottos_without_agony",
+                "logic_child_deadhand",
+                "logic_man_on_roof",
+                "logic_dc_jump",
+                "logic_rusted_switches",
+                "logic_windmill_poh",
+                "logic_crater_bean_poh_with_hovers",
+                "logic_forest_vines",
+                "logic_lens_botw",
+                "logic_lens_castle",
+                "logic_lens_gtg",
+                "logic_lens_shadow",
+                "logic_lens_shadow_platform",
+                "logic_lens_bongo",
+                "logic_lens_spirit",
+                "logic_dc_scarecrow_gs"
+            ]),
+            format!("logic_earliest_adult_trade") => json!("claim_check"),
+            format!("starting_equipment") => json!([
+                "deku_shield"
+            ]),
+            format!("starting_items") => json!([
+                "ocarina",
+                "farores_wind",
+                "lens"
+            ]),
+            format!("correct_chest_appearances") => json!("both"),
+            format!("hint_dist") => json!("custom"),
+            format!("hint_dist_user") => json!({
+                "name":                  "mw3",
+                "gui_name":              "MW Season 3",
+                "description":           "Hints used for the Multiworld Tournament Season 3.",
+                "add_locations":         [
+                    { "location": "Sheik in Kakariko", "types": ["always"] },
+                    { "location": "Song from Ocarina of Time", "types": ["always"] },
+                    { "location": "Deku Theater Skull Mask", "types": ["always"] },
+                    { "location": "DMC Deku Scrub", "types": ["always"] },
+                    { "location": "Deku Tree GS Basement Back Room", "types": ["sometimes"] },
+                    { "location": "Water Temple GS River", "types": ["sometimes"] },
+                    { "location": "Spirit Temple GS Hall After Sun Block Room", "types": ["sometimes"] },
+                ],
+                "remove_locations":      [
+                    { "location": "Sheik in Crater", "types": ["sometimes"] },
+                    { "location": "Song from Royal Familys Tomb", "types": ["sometimes"] },
+                    { "location": "Sheik in Forest", "types": ["sometimes"] },
+                    { "location": "Sheik at Temple", "types": ["sometimes"] },
+                    { "location": "Sheik at Colossus", "types": ["sometimes"] },
+                    { "location": "LH Sun", "types": ["sometimes"] },
+                    { "location": "GC Maze Left Chest", "types": ["sometimes"] },
+                    { "location": "GV Chest", "types": ["sometimes"] },
+                    { "location": "Graveyard Royal Familys Tomb Chest", "types": ["sometimes"] },
+                    { "location": "GC Pot Freestanding PoH", "types": ["sometimes"] },
+                    { "location": "LH Lab Dive", "types": ["sometimes"] },
+                    { "location": "Fire Temple Megaton Hammer Chest", "types": ["sometimes"] },
+                    { "location": "Fire Temple Scarecrow Chest", "types": ["sometimes"] },
+                    { "location": "Water Temple Boss Key Chest", "types": ["sometimes"] },
+                    { "location": "Water Temple GS Behind Gate", "types": ["sometimes"] },
+                    { "location": "Gerudo Training Ground Maze Path Final Chest", "types": ["sometimes"] },
+                    { "location": "Spirit Temple Silver Gauntlets Chest", "types": ["sometimes"] },
+                    { "location": "Spirit Temple Mirror Shield Chest", "types": ["sometimes"] },
+                    { "location": "Shadow Temple Freestanding Key", "types": ["sometimes"] },
+                    { "location": "Ganons Castle Shadow Trial Golden Gauntlets Chest", "types": ["sometimes"] },
+                ],
+                "add_items":             [],
+                "remove_items":          [
+                    { "item": "Zeldas Lullaby", "types": ["woth", "goal"] },
+                ],
+                "dungeons_woth_limit":   40,
+                "dungeons_barren_limit": 40,
+                "named_items_required":  true,
+                "vague_named_items":     false,
+                "use_default_goals":     true,
+                "upgrade_hints":         "on",
+                "distribution": {
+                    "trial":           {"order": 1, "weight": 0.0, "fixed":   0, "copies": 2},
+                    "always":          {"order": 2, "weight": 0.0, "fixed":   0, "copies": 2},
+                    "goal":            {"order": 3, "weight": 0.0, "fixed":   7, "copies": 2},
+                    "sometimes":       {"order": 4, "weight": 0.0, "fixed": 100, "copies": 2},
+                    "barren":          {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                    "entrance_always": {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                    "woth":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                    "entrance":        {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                    "random":          {"order": 0, "weight": 9.0, "fixed":   0, "copies": 0},
+                    "item":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                    "song":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                    "overworld":       {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                    "dungeon":         {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                    "junk":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                    "named-item":      {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                    "dual_always":     {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                    "dual":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                }
+            }),
+            format!("ice_trap_appearance") => json!("junk_only"),
+            format!("junk_ice_traps") => json!("off"),
+            format!("starting_age") => match spawn {
+                Spawn::Tot => json!("adult"),
+                Spawn::Random => json!("random"),
+            },
+        ]
+    }
+
+    pub(crate) fn chests(&self) -> ChestAppearances {
+        static WEIGHTS: Lazy<HashMap<String, Vec<(ChestAppearances, usize)>>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/chests-mw-6.2.158.json")).expect("failed to parse chest weights"));
+
+        if let Some(settings_weights) = WEIGHTS.get(&self.to_string()) {
+            settings_weights.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
+        } else {
+            ChestAppearances::INVISIBLE
+        }
+    }
+}
+
+impl fmt::Display for S3Settings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut not_default = Vec::with_capacity(8);
+        if self.wincon != Wincon::default() { not_default.push(self.wincon.to_string()) }
+        if self.dungeons != Dungeons::default() { not_default.push(self.dungeons.to_string()) }
+        if self.er != Er::default() { not_default.push(self.er.to_string()) }
+        if self.trials != Trials::default() { not_default.push(self.trials.to_string()) }
+        if self.shops != Shops::default() { not_default.push(self.shops.to_string()) }
+        if self.scrubs != Scrubs::default() { not_default.push(self.scrubs.to_string()) }
+        if self.fountain != Fountain::default() { not_default.push(self.fountain.to_string()) }
+        if self.spawn != Spawn::default() { not_default.push(self.spawn.to_string()) }
+        if let Some(not_default) = natjoin_str(not_default) {
+            not_default.fmt(f)
+        } else {
+            write!(f, "base settings")
+        }
+    }
+}
 
 pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, InfoError> {
     Ok(match event {
@@ -752,7 +1183,7 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, discord_ctx: &Sta
                     _ => unimplemented!("exact proposed team check for {} members", users.len()),
                 }
             }
-            for role in enum_iterator::all::<Role>() {
+            for role in all::<Role>() {
                 let mut found = false;
                 for (member_id, world_number) in &value.world_number {
                     if *world_number == role {

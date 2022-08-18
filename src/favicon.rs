@@ -33,31 +33,53 @@ use {
         Response,
         Suffix,
     },
+    semver::Version,
     serde::Deserialize,
     crate::seed::SpoilerLog,
 };
 
-#[derive(Deserialize)]
+#[derive(Clone, Copy)]
+enum CamcVersion {
+    /// The original “Chest Size Matches Contents” setting, added in [commit 9866777](https://github.com/TestRunnerSRL/OoT-Randomizer/tree/9866777f66083dfc8dde90fba5a71302b34459fb)
+    Classic,
+    /// The initial iteration of “Chest Appearance Matches Contents”, added in [PR #1429](https://github.com/TestRunnerSRL/OoT-Randomizer/pull/1429), [version 6.2.4](https://github.com/TestRunnerSRL/OoT-Randomizer/tree/0e8c66a6a3b3a35df0920b220eb5188b1479cfa1)
+    Initial,
+    /// The second iteration of “Chest Appearance Matches Contents” which updated the textures for major items and small keys to make them more distinctive, and reintroduced the classic behavior as an option.
+    /// Added in [PR #1500](https://github.com/TestRunnerSRL/OoT-Randomizer/pull/1500), [version 6.2.54](https://github.com/TestRunnerSRL/OoT-Randomizer/tree/1e39a95e8a4629e962634bd7e02f71d7d3602353)
+    Current,
+}
+
+impl CamcVersion {
+    fn from_rando_version(rando_version: &str) -> Self {
+        let rando_base_version = rando_version.split_once(' ').expect("invalid randomizer version").0.parse::<Version>().expect("failed to parse randomizer version");
+        if rando_base_version >= Version::new(6, 2, 54) {
+            Self::Current
+        } else if rando_base_version >= Version::new(6, 2, 4) {
+            Self::Initial
+        } else {
+            // CSMC seems to have been introduced before the current versioning scheme
+            Self::Classic
+        }
+    }
+}
+
+#[derive(Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Bridge {
     Open,
     Vanilla,
     Stones,
+    #[default]
     Medallions,
     Dungeons,
     Tokens,
     Hearts,
 }
 
-impl Default for Bridge {
-    fn default() -> Self {
-        Self::Medallions
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum LacsCondition {
+    #[default]
     Vanilla,
     Stones,
     Medallions,
@@ -66,17 +88,12 @@ pub(crate) enum LacsCondition {
     Hearts,
 }
 
-impl Default for LacsCondition {
-    fn default() -> Self {
-        Self::Vanilla
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ShuffleGanonBosskey {
     Remove,
     Vanilla,
+    #[default]
     Dungeon,
     Overworld,
     AnyDungeon,
@@ -89,15 +106,10 @@ pub(crate) enum ShuffleGanonBosskey {
     Hearts,
 }
 
-impl Default for ShuffleGanonBosskey {
-    fn default() -> Self {
-        Self::Dungeon
-    }
-}
-
-#[derive(Clone, Copy, Deserialize)]
+#[derive(Default, Clone, Copy, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum CorrectChestAppearances {
+    #[default]
     Off,
     Classic,
     Textures,
@@ -131,12 +143,16 @@ impl From<JsonItem> for Item {
     }
 }
 
+fn make_blue_rupee() -> Item { Item { item: format!("Rupees (5)"), model: None } }
+fn make_green_rupee() -> Item { Item { item: format!("Rupee (1)"), model: None } }
+fn make_recovery_heart() -> Item { Item { item: format!("Recovery Heart"), model: None } }
+
 #[derive(Deserialize)]
 pub(crate) struct SpoilerLogLocations {
-    #[serde(rename = "KF Midos Top Left Chest")] kf_midos_top_left_chest: Item,
-    #[serde(rename = "KF Midos Top Right Chest")] kf_midos_top_right_chest: Item,
-    #[serde(rename = "KF Midos Bottom Left Chest")] kf_midos_bottom_left_chest: Item,
-    #[serde(rename = "KF Midos Bottom Right Chest")] kf_midos_bottom_right_chest: Item,
+    #[serde(rename = "KF Midos Top Left Chest", default = "make_blue_rupee")] kf_midos_top_left_chest: Item,
+    #[serde(rename = "KF Midos Top Right Chest", default = "make_blue_rupee")] kf_midos_top_right_chest: Item,
+    #[serde(rename = "KF Midos Bottom Left Chest", default = "make_green_rupee")] kf_midos_bottom_left_chest: Item,
+    #[serde(rename = "KF Midos Bottom Right Chest", default = "make_recovery_heart")] kf_midos_bottom_right_chest: Item,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -202,14 +218,15 @@ impl ChestAppearance {
         big: false,
     };
 
-    fn from_item(camc_kind: CorrectChestAppearances, chus_in_logic: bool, token_wincon: bool, heart_wincon: bool, item: &Item) -> Self {
+    fn from_item(invisible_chests: bool, camc_version: CamcVersion, camc_kind: CorrectChestAppearances, chus_in_logic: bool, token_wincon: bool, heart_wincon: bool, item: &Item) -> Self {
+        if invisible_chests { return Self::INVISIBLE }
         if let CorrectChestAppearances::Off = camc_kind { return Self::VANILLA }
         let item_name = if item.item == "Ice Trap" {
             item.model.as_deref().expect("ice trap without model in CSMC")
         } else {
             &item.item
         };
-        match item_name {
+        let mut appearance = match item_name {
             "Bow" |
             "Slingshot" |
             "Boomerang" |
@@ -445,7 +462,15 @@ impl ChestAppearance {
             "Deku Stick Capacity" |
             "Deku Nut Capacity" => ChestAppearance { texture: ChestTexture::Normal, big: false },
             _ => unimplemented!(),
+        };
+        if let CamcVersion::Initial = camc_version {
+            appearance.texture = match appearance.texture {
+                ChestTexture::Major => ChestTexture::OldMajor,
+                ChestTexture::SmallKey => ChestTexture::OldSmallKey,
+                texture => texture,
+            };
         }
+        appearance
     }
 }
 
@@ -470,17 +495,20 @@ impl ChestAppearances {
 }
 
 impl From<SpoilerLog> for ChestAppearances {
-    fn from(SpoilerLog { settings, locations, .. }: SpoilerLog) -> Self {
-        let camc_kind = settings.correct_chest_appearances
-            .unwrap_or_else(|| if settings.correct_chest_sizes { CorrectChestAppearances::Classic } else { CorrectChestAppearances::Off });
+    fn from(SpoilerLog { version, settings, locations, .. }: SpoilerLog) -> Self {
+        let camc_version = CamcVersion::from_rando_version(&version);
+        let camc_kind = match camc_version {
+            CamcVersion::Classic => if settings.correct_chest_sizes { CorrectChestAppearances::Classic } else { CorrectChestAppearances::Off },
+            CamcVersion::Initial | CamcVersion::Current => settings.correct_chest_appearances.unwrap_or_default(),
+        };
         let token_wincon = matches!(settings.bridge, Bridge::Tokens) || matches!(settings.lacs_condition, LacsCondition::Tokens) || matches!(settings.shuffle_ganon_bosskey, ShuffleGanonBosskey::Tokens);
         let heart_wincon = matches!(settings.bridge, Bridge::Hearts) || matches!(settings.lacs_condition, LacsCondition::Hearts) || matches!(settings.shuffle_ganon_bosskey, ShuffleGanonBosskey::Hearts);
         let locations = locations.choose(&mut thread_rng()).expect("no worlds in location list");
         Self([
-            ChestAppearance::from_item(camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_top_left_chest),
-            ChestAppearance::from_item(camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_top_right_chest),
-            ChestAppearance::from_item(camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_bottom_left_chest),
-            ChestAppearance::from_item(camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_bottom_right_chest),
+            ChestAppearance::from_item(settings.invisible_chests, camc_version, camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_top_left_chest),
+            ChestAppearance::from_item(settings.invisible_chests, camc_version, camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_top_right_chest),
+            ChestAppearance::from_item(settings.invisible_chests, camc_version, camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_bottom_left_chest),
+            ChestAppearance::from_item(settings.invisible_chests, camc_version, camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_bottom_right_chest),
         ])
     }
 }

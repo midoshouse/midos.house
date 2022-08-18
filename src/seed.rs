@@ -185,6 +185,8 @@ fn deserialize_multiworld<'de, D: Deserializer<'de>, T: Deserialize<'de>>(deseri
 #[derive(Deserialize)]
 pub(crate) struct SpoilerLog {
     file_hash: [HashIcon; 5],
+    #[serde(rename = ":version")]
+    pub(crate) version: String,
     pub(crate) settings: SpoilerLogSettings,
     #[serde(deserialize_with = "deserialize_multiworld")]
     pub(crate) locations: Vec<SpoilerLogLocations>,
@@ -204,6 +206,8 @@ pub(crate) struct SpoilerLogSettings {
     #[serde(default)]
     pub(crate) correct_chest_sizes: bool,
     pub(crate) correct_chest_appearances: Option<CorrectChestAppearances>,
+    #[serde(default)]
+    pub(crate) invisible_chests: bool,
 }
 
 pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -> io::Result<RawHtml<String>> {
