@@ -1288,7 +1288,7 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, csrf: Option<
     ) AS "exists!""#, event, i64::from(me.id)).fetch_one(&mut transaction).await.map_err(FindTeamError::Sql)? {
         return Err(FindTeamError::AlreadySignedUp.into())
     }
-    sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role) VALUES ('pic', $1, $2, 'no_preference')", event, me.id as _).execute(&mut transaction).await.map_err(FindTeamError::Sql)?;
+    sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role) VALUES ('mw', $1, $2, 'no_preference')", event, me.id as _).execute(&mut transaction).await.map_err(FindTeamError::Sql)?;
     transaction.commit().await.map_err(FindTeamError::Sql)?;
     Ok(RedirectOrContent::Redirect(Redirect::to(uri!(super::find_team(SERIES, event)))))
 }
