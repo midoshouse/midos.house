@@ -915,7 +915,6 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         form.context.push_error(form::Error::validation("You can no longer submit the qualifier async since the event has already started."));
     }
     let mut transaction = pool.begin().await?;
-    //TODO error if async not yet requested
     Ok(if let Some(ref value) = form.value {
         let team_row = sqlx::query!(r#"SELECT team AS "team: Id", name, racetime_slug FROM teams, team_members WHERE
             id = team

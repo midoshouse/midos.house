@@ -131,7 +131,7 @@ pub(crate) struct Data {
 }
 
 pub(crate) struct OotrWebData {
-    pub(crate) id: usize,
+    pub(crate) id: u64,
     pub(crate) gen_time: DateTime<Utc>,
 }
 

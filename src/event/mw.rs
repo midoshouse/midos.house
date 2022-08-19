@@ -5,7 +5,6 @@ use {
         fmt,
         iter,
     },
-    chrono::prelude::*,
     collect_mac::collect,
     enum_iterator::{
         Sequence,
@@ -1294,15 +1293,21 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, csrf: Option<
 }
 
 pub(super) async fn status(pool: &PgPool, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> sqlx::Result<RawHtml<String>> {
-    Ok(if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2) AS "exists!""#, data.series as _, &data.event).fetch_one(pool).await? {
-        if let Some(row) = sqlx::query!("SELECT requested, submitted FROM async_teams WHERE team = $1", i64::from(team_id)).fetch_optional(pool).await? {
-            if row.submitted.is_some() {
+    Ok(if let Some(async_row) = sqlx::query!(r#"SELECT web_id as "web_id: Id", web_gen_time, file_stem FROM asyncs WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_optional(pool).await? {
+        if let Some(team_row) = sqlx::query!("SELECT requested, submitted FROM async_teams WHERE team = $1", i64::from(team_id)).fetch_optional(pool).await? {
+            if team_row.submitted.is_some() {
                 //TODO if any vods are still missing, show form to add them
                 html! {
                     p : "Waiting for the start of the tournament and round 1 pairings. Keep an eye out for an announcement on Discord."; //TODO include start date?
                 }
             } else {
-                let seed = seed::Data { web: Some(seed::OotrWebData { id: 1114700, gen_time: Utc.ymd(2022, 6, 11).and_hms(19, 1, 32) }), file_stem: Cow::Borrowed("OoTR_1114700_T639YJS1TZ") }; //TODO replace with mw/3 qualifier async, get seed data from database
+                let web = match (async_row.web_id, async_row.web_gen_time) {
+                    (Some(Id(id)), Some(gen_time)) => Some(seed::OotrWebData { id, gen_time }),
+                    (Some(_), None) => unreachable!("qualifier async has web ID but no gen time"), // unreachable due to SQL constraint
+                    (None, Some(_)) => unreachable!("qualifier async has web gen time but no ID"), // unreachable due to SQL constraint
+                    (None, None) => None,
+                };
+                let seed = seed::Data { web, file_stem: Cow::Owned(async_row.file_stem) };
                 let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
                 let mut errors = context.errors().collect_vec();
                 let form_content = html! {
@@ -1353,7 +1358,7 @@ pub(super) async fn status(pool: &PgPool, csrf: Option<CsrfToken>, data: &Data<'
                     div(class = "info") {
                         p {
                             : "You requested the qualifier async on ";
-                            : format_datetime(row.requested, DateTimeFormat { long: true, running_text: true });
+                            : format_datetime(team_row.requested, DateTimeFormat { long: true, running_text: true });
                             : ".";
                         };
                         : seed_table;
