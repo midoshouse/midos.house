@@ -585,7 +585,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                     h2 : "Fair Play Agreement";
                     p {
                         : "By joining this tournament, teams must accept the terms of the ";
-                        a(href = "https://docs.google.com/document/d/e/2PACX-1vTgTE54IqLGtbqMYqmenrV0ejVYXpsKjV5SALwWwkIe0keY1ewpcnG3piaji9iUCQBnGLu150JxE5LH/pub") : "Fair Play Agreement (FPA)";
+                        a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement (FPA)";
                         : ", a system that can be invoked in the event of technical issues. If playing on BizHawk, it is a strong, strong suggestion to make sure you enable backup saves as documented ";
                         a(href = "https://wiki.ootrandomizer.com/index.php?title=Bizhawk#Enable_Save_Backup_In_Case_of_Crashes") : "here";
                         : ".";
