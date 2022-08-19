@@ -65,6 +65,7 @@ use {
         event::{
             Data,
             Error,
+            FindTeamError,
             InfoError,
             Series,
             SignupStatus,
@@ -79,6 +80,7 @@ use {
         user::User,
         util::{
             DateTimeFormat,
+            EmptyForm,
             Id,
             IdTable,
             RedirectOrContent,
@@ -1190,6 +1192,105 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, discord_ctx: &Sta
     } else {
         RedirectOrContent::Content(enter_form_step2(Some(me), uri, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
     })
+}
+
+pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+    let header = data.header(me.as_ref(), Tab::FindTeam).await?;
+    let mut me_listed = false;
+    let mut looking_for_team = Vec::default();
+    let mut looking_for_team_query = sqlx::query!(r#"SELECT user_id AS "user!: Id" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series.to_str(), &data.event).fetch(&data.pool);
+    while let Some(row) = looking_for_team_query.try_next().await? {
+        let user = User::from_id(&data.pool, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
+        if me.as_ref().map_or(false, |me| user.id == me.id) { me_listed = true }
+        looking_for_team.push(user);
+    }
+    let form = if me.is_some() {
+        let errors = context.errors().collect_vec();
+        if me_listed {
+            None
+        } else {
+            let form_content = html! {
+                : csrf;
+                legend {
+                    //TODO replace form with button-row form?
+                    : "Click this button to add yourself to the list below.";
+                }
+                fieldset {
+                    input(type = "submit", value = "Looking for Team");
+                }
+            };
+            Some(html! {
+                form(action = uri!(find_team_post(&*data.event)).to_string(), method = "post") {
+                    @for error in errors {
+                        : render_form_error(error);
+                    }
+                    : form_content;
+                }
+            })
+        }
+    } else {
+        Some(html! {
+            article {
+                p {
+                    a(href = uri!(auth::login(Some(uri!(super::find_team(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
+                    : " to add yourself to this list.";
+                }
+            }
+        })
+    };
+    Ok(page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+        : header;
+        : form;
+        table {
+            thead {
+                tr {
+                    th : "User";
+                }
+            }
+            tbody {
+                @if looking_for_team.is_empty() {
+                    tr {
+                        td {
+                            i : "(no one currently looking for teammates)";
+                        }
+                    }
+                } else {
+                    @for user in looking_for_team {
+                        tr {
+                            td : user;
+                        }
+                    }
+                }
+            }
+        }
+    }).await?)
+}
+
+#[rocket::post("/event/mw/<event>/find-team", data = "<form>")]
+pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, event: &str, form: Form<EmptyForm>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
+    let data = Data::new((**pool).clone(), SERIES, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    form.verify(&csrf).map_err(FindTeamError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
+    if data.is_started() { return Err(FindTeamError::EventStarted.into()) }
+    let mut transaction = pool.begin().await.map_err(FindTeamError::Sql)?;
+    if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM looking_for_team WHERE
+        series = 'mw'
+        AND event = $1
+        AND user_id = $2
+    ) AS "exists!""#, event, i64::from(me.id)).fetch_one(&mut transaction).await.map_err(FindTeamError::Sql)? {
+        return Err(FindTeamError::AlreadyOnList.into())
+    }
+    if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+        id = team
+        AND series = 'mw'
+        AND event = $1
+        AND member = $2
+        AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+    ) AS "exists!""#, event, i64::from(me.id)).fetch_one(&mut transaction).await.map_err(FindTeamError::Sql)? {
+        return Err(FindTeamError::AlreadySignedUp.into())
+    }
+    sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role) VALUES ('pic', $1, $2, 'no_preference')", event, me.id as _).execute(&mut transaction).await.map_err(FindTeamError::Sql)?;
+    transaction.commit().await.map_err(FindTeamError::Sql)?;
+    Ok(RedirectOrContent::Redirect(Redirect::to(uri!(super::find_team(SERIES, event)))))
 }
 
 pub(super) async fn status(pool: &PgPool, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> sqlx::Result<RawHtml<String>> {

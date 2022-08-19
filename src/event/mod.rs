@@ -671,9 +671,16 @@ pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum FindTeamError {
+    #[error(transparent)] Csrf(#[from] rocket_csrf::VerificationFailure),
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("you are already on the list")]
+    AlreadyOnList,
+    #[error("you are already signed up for this race")]
+    AlreadySignedUp,
+    #[error("you can no longer enter this event since it has already started")]
+    EventStarted,
     #[error("unknown user")]
     UnknownUser,
 }
@@ -682,7 +689,7 @@ pub(crate) enum FindTeamError {
 pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
     let data = Data::new((**pool).clone(), series, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(match data.team_config() {
-        TeamConfig::Multiworld => unimplemented!(), //TODO “find team” form for multiworld, without invite feature
+        TeamConfig::Multiworld => mw::find_team_form(me, uri, csrf, data, Context::default()).await?,
         TeamConfig::Pictionary => pic::find_team_form(me, uri, csrf, data, Context::default()).await?,
     })
 }
