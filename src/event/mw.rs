@@ -1053,6 +1053,13 @@ impl<'v> EnterFormStep2Defaults<'v> {
         }
     }
 
+    fn startgg_id(&self, racetime_id: &str) -> Option<&str> {
+        match self {
+            Self::Context(ctx) => ctx.field_value(&*format!("startgg_id[{racetime_id}]")),
+            Self::Values { .. } => None,
+        }
+    }
+
     fn restream_consent(&self) -> bool {
         match self {
             Self::Context(ctx) => ctx.field_value("restream_consent") == Some("on"),
@@ -1090,7 +1097,15 @@ fn enter_form_step2<'a>(me: Option<User>, uri: Origin<'a>, csrf: Option<CsrfToke
                         input(id = &format!("world_number[{}]-courage", team_member.id), class = "courage", type = "radio", name = &format!("world_number[{}]", team_member.id), value = "courage", checked? = defaults.world_number(&team_member.id) == Some(Role::Courage));
                         label(class = "courage", for = &format!("world_number[{}]-courage", team_member.id)) : "World 3";
                     });
-                    //TODO ask for optional start.gg user ID
+                    : form_field(&format!("startgg_id[{}]", team_member.id), &mut errors, html! {
+                        label(for = &format!("startgg_id[{}]", team_member.id)) : "start.gg User ID:";
+                        input(type = "text", name = &format!("startgg_id[{}]", team_member.id), value? = defaults.startgg_id(&team_member.id));
+                        label(class = "help") {
+                            : "(Optional. Can be found by going to your ";
+                            a(href = "https://start.gg/") : "start.gg";
+                            : " profile and clicking your name.)";
+                        }
+                    });
                 }
                 : form_field("restream_consent", &mut errors, html! {
                     input(type = "checkbox", id = "restream_consent", name = "restream_consent", checked? = defaults.restream_consent());
@@ -1120,6 +1135,7 @@ pub(crate) struct EnterFormStep2 {
     csrf: String,
     racetime_team: String,
     world_number: HashMap<String, Role>,
+    startgg_id: HashMap<String, String>,
     restream_consent: bool,
 }
 
@@ -1134,10 +1150,11 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, discord_ctx: &Sta
     Ok(if let Some(ref value) = form.value {
         let mut transaction = pool.begin().await?;
         // verify team again since it's sent by the client
-        let (team_slug, team_name, users, roles) = if let Some(racetime_team) = validate_team(&me, client, &mut form.context, &value.racetime_team).await? {
+        let (team_slug, team_name, users, roles, startgg_ids) = if let Some(racetime_team) = validate_team(&me, client, &mut form.context, &value.racetime_team).await? {
             let mut all_accounts_exist = true;
             let mut users = Vec::default();
             let mut roles = Vec::default();
+            let mut startgg_ids = Vec::default();
             for member in &racetime_team.members {
                 if let Some(user) = User::from_racetime(&mut transaction, &member.id).await? {
                     if let Some(discord_id) = user.discord_id {
@@ -1167,6 +1184,17 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, discord_ctx: &Sta
                     roles.push(role);
                 } else {
                     form.context.push_error(form::Error::validation("This field is required.").with_name(format!("world_number[{}]", member.id)));
+                }
+                if let Some(id) = value.startgg_id.get(&member.id) {
+                    if id.is_empty() {
+                        startgg_ids.push(None);
+                    } else if id.len() != 8 {
+                        form.context.push_error(form::Error::validation("User IDs on start.gg are exactly 8 characters in length.").with_name(format!("startgg_id[{}]", member.id)));
+                    } else {
+                        startgg_ids.push(Some(id.clone()));
+                    }
+                } else {
+                    startgg_ids.push(None);
                 }
             }
             if all_accounts_exist {
@@ -1198,7 +1226,7 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, discord_ctx: &Sta
                     form.context.push_error(form::Error::validation(format!("No team member is assigned as {role}.")));
                 }
             }
-            (racetime_team.slug, racetime_team.name, users, roles)
+            (racetime_team.slug, racetime_team.name, users, roles, startgg_ids)
         } else {
             Default::default()
         };
@@ -1208,10 +1236,10 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, discord_ctx: &Sta
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
             sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent) VALUES ($1, 'mw', $2, $3, $4, $5)", id as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent).execute(&mut transaction).await?;
-            for (user, role) in users.into_iter().zip_eq(roles) {
+            for ((user, role), startgg_id) in users.into_iter().zip_eq(roles).zip_eq(startgg_ids) {
                 sqlx::query!(
-                    "INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, $3, $4)",
-                    id as _, user.id as _, if user == me { SignupStatus::Created } else { SignupStatus::Unconfirmed } as _, super::Role::from(role) as _,
+                    "INSERT INTO team_members (team, member, status, role, startgg_id) VALUES ($1, $2, $3, $4, $5)",
+                    id as _, user.id as _, if user == me { SignupStatus::Created } else { SignupStatus::Unconfirmed } as _, super::Role::from(role) as _, startgg_id,
                 ).execute(&mut transaction).await?;
             }
             transaction.commit().await?;
