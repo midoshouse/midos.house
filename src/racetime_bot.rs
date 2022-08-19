@@ -53,7 +53,9 @@ use {
 #[cfg(unix)] const PYTHON: &str = "python3";
 #[cfg(windows)] const PYTHON: &str = "py";
 
-const RANDO_VERSION: Version = Version::new(6, 2, 158); //TODO decide on an official version for the tournament
+const RANDO_VERSION: Version = Version::new(6, 2, 181);
+/// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
+const KNOWN_GOOD_WEB_VERSIONS: [Version; 1] = [Version::new(6, 2, 181)];
 
 #[derive(Debug, thiserror::Error)]
 enum RollError {
@@ -133,14 +135,16 @@ impl MwSeedQueue {
     async fn can_roll_on_web(&self, settings: &serde_json::Map<String, Json>) -> Result<bool, RollError> {
         if settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) != 1 { return Ok(false) } //TODO change to > 3 once the ootrandomizer.com API starts supporting multiworld seeds
         // check if randomizer version is available on web
-        if let Ok(latest_web_version) = self.get_version("dev").await {
-            if latest_web_version != RANDO_VERSION { // there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
-                println!("web version mismatch: we need {RANDO_VERSION} but latest is {latest_web_version}");
+        if !KNOWN_GOOD_WEB_VERSIONS.contains(&RANDO_VERSION) {
+            if let Ok(latest_web_version) = self.get_version("dev").await {
+                if latest_web_version != RANDO_VERSION { // there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
+                    println!("web version mismatch: we need {RANDO_VERSION} but latest is {latest_web_version}");
+                    return Ok(false)
+                }
+            } else {
+                // the version API endpoint sometimes returns HTML instead of the expected JSON, fallback to generating locally when that happens
                 return Ok(false)
             }
-        } else {
-            // the version API endpoint sometimes returns HTML instead of the expected JSON, fallback to generating locally when that happens
-            return Ok(false)
         }
         Ok(true)
     }

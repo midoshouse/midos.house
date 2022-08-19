@@ -407,72 +407,7 @@ impl S3Settings {
                 "lens"
             ]),
             format!("correct_chest_appearances") => json!("both"),
-            format!("hint_dist") => json!("custom"),
-            format!("hint_dist_user") => json!({
-                "name":                  "mw3",
-                "gui_name":              "MW Season 3",
-                "description":           "Hints used for the Multiworld Tournament Season 3.",
-                "add_locations":         [
-                    { "location": "Sheik in Kakariko", "types": ["always"] },
-                    { "location": "Song from Ocarina of Time", "types": ["always"] },
-                    { "location": "Deku Theater Skull Mask", "types": ["always"] },
-                    { "location": "DMC Deku Scrub", "types": ["always"] },
-                    { "location": "Deku Tree GS Basement Back Room", "types": ["sometimes"] },
-                    { "location": "Water Temple GS River", "types": ["sometimes"] },
-                    { "location": "Spirit Temple GS Hall After Sun Block Room", "types": ["sometimes"] },
-                ],
-                "remove_locations":      [
-                    { "location": "Sheik in Crater", "types": ["sometimes"] },
-                    { "location": "Song from Royal Familys Tomb", "types": ["sometimes"] },
-                    { "location": "Sheik in Forest", "types": ["sometimes"] },
-                    { "location": "Sheik at Temple", "types": ["sometimes"] },
-                    { "location": "Sheik at Colossus", "types": ["sometimes"] },
-                    { "location": "LH Sun", "types": ["sometimes"] },
-                    { "location": "GC Maze Left Chest", "types": ["sometimes"] },
-                    { "location": "GV Chest", "types": ["sometimes"] },
-                    { "location": "Graveyard Royal Familys Tomb Chest", "types": ["sometimes"] },
-                    { "location": "GC Pot Freestanding PoH", "types": ["sometimes"] },
-                    { "location": "LH Lab Dive", "types": ["sometimes"] },
-                    { "location": "Fire Temple Megaton Hammer Chest", "types": ["sometimes"] },
-                    { "location": "Fire Temple Scarecrow Chest", "types": ["sometimes"] },
-                    { "location": "Water Temple Boss Key Chest", "types": ["sometimes"] },
-                    { "location": "Water Temple GS Behind Gate", "types": ["sometimes"] },
-                    { "location": "Gerudo Training Ground Maze Path Final Chest", "types": ["sometimes"] },
-                    { "location": "Spirit Temple Silver Gauntlets Chest", "types": ["sometimes"] },
-                    { "location": "Spirit Temple Mirror Shield Chest", "types": ["sometimes"] },
-                    { "location": "Shadow Temple Freestanding Key", "types": ["sometimes"] },
-                    { "location": "Ganons Castle Shadow Trial Golden Gauntlets Chest", "types": ["sometimes"] },
-                ],
-                "add_items":             [],
-                "remove_items":          [
-                    { "item": "Zeldas Lullaby", "types": ["woth", "goal"] },
-                ],
-                "dungeons_woth_limit":   40,
-                "dungeons_barren_limit": 40,
-                "named_items_required":  true,
-                "vague_named_items":     false,
-                "use_default_goals":     true,
-                "upgrade_hints":         "on",
-                "distribution": {
-                    "trial":           {"order": 1, "weight": 0.0, "fixed":   0, "copies": 2},
-                    "always":          {"order": 2, "weight": 0.0, "fixed":   0, "copies": 2},
-                    "goal":            {"order": 3, "weight": 0.0, "fixed":   7, "copies": 2},
-                    "sometimes":       {"order": 4, "weight": 0.0, "fixed": 100, "copies": 2},
-                    "barren":          {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "entrance_always": {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "woth":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "entrance":        {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "random":          {"order": 0, "weight": 9.0, "fixed":   0, "copies": 0},
-                    "item":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "song":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "overworld":       {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "dungeon":         {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "junk":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "named-item":      {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "dual_always":     {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                    "dual":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                }
-            }),
+            format!("hint_dist") => json!("mw3"),
             format!("ice_trap_appearance") => json!("junk_only"),
             format!("junk_ice_traps") => json!("off"),
             format!("starting_age") => match spawn {
@@ -591,6 +526,11 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                         : ".";
                     }
                     h2 : "Seed Settings";
+                    p {
+                        : "All tournament matches will be played on ";
+                        a(href = "https://ootrandomizer.com/generatorDev?version=dev_6.2.181") : "version 6.2.181";
+                        : " of the randomizer.";
+                    }
                     p : "The default settings for each race have the following differences to the S5 tournament preset:";
                     ul {
                         li : "Forest: Open";
@@ -606,6 +546,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                         li : "Chest Appearance Matches Contents: Both Size and Texture";
                         li : "Maps and Compasses Give Information: On";
                     }
+                    p : "You can use the “Multiworld Tournament Season 3” preset to load these settings.";
                     p : "However, in every race several of the settings may be modified by the teams. The higher seed gets to pick who starts the procedure, then it will follow this pattern:";
                     ul {
                         li(class = "sheikah") : "Ban";
