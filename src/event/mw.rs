@@ -373,6 +373,7 @@ impl S3Settings {
                 Wincon::Scrubs => json!("on_lacs"),
                 Wincon::Th => json!("triforce"),
             },
+            format!("enhance_map_compass") => json!(true),
             format!("disabled_locations") => json!([
                 "Deku Theater Mask of Truth",
                 "Kak 40 Gold Skulltula Reward",
