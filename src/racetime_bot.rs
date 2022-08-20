@@ -20,7 +20,11 @@ use {
         model::*,
     },
     rand::prelude::*,
-    reqwest::StatusCode,
+    reqwest::{
+        IntoUrl,
+        RequestBuilder,
+        StatusCode,
+    },
     semver::Version,
     serde::Deserialize,
     serde_json::{
@@ -126,6 +130,7 @@ enum SeedRollUpdate {
 struct MwSeedQueue {
     http_client: reqwest::Client,
     ootr_api_key: String,
+    next_request: Mutex<Instant>,
     next_seed: Mutex<Instant>,
     seed_rollers: Semaphore,
     waiting: Mutex<Vec<mpsc::UnboundedSender<()>>>,
@@ -134,11 +139,26 @@ struct MwSeedQueue {
 impl MwSeedQueue {
     pub fn new(http_client: reqwest::Client, ootr_api_key: String) -> Self {
         Self {
+            next_request: Mutex::new(Instant::now() + Duration::from_millis(500)),
             next_seed: Mutex::new(Instant::now() + Duration::from_secs(5 * 60)), // we have to wait 5 minutes between starting each seed
             seed_rollers: Semaphore::new(2), // we're allowed to roll a maximum of 2 multiworld seeds at the same time
             waiting: Mutex::default(),
             http_client, ootr_api_key,
         }
+    }
+
+    async fn get(&self, uri: impl IntoUrl) -> RequestBuilder {
+        let mut next_request = self.next_request.lock().await;
+        sleep_until(*next_request).await;
+        *next_request = Instant::now() + Duration::from_millis(500);
+        self.http_client.get(uri)
+    }
+
+    async fn post(&self, uri: impl IntoUrl) -> RequestBuilder {
+        let mut next_request = self.next_request.lock().await;
+        sleep_until(*next_request).await;
+        *next_request = Instant::now() + Duration::from_millis(500);
+        self.http_client.post(uri)
     }
 
     async fn get_version(&self, branch: &str) -> Result<Version, RollError> {
@@ -149,7 +169,7 @@ impl MwSeedQueue {
         }
 
         //TODO rate limiting
-        Ok(self.http_client.get("https://ootrandomizer.com/api/version")
+        Ok(self.get("https://ootrandomizer.com/api/version").await
             .query(&[("key", &*self.ootr_api_key), ("branch", branch)])
             .send().await?
             .error_for_status()?
@@ -226,7 +246,7 @@ impl MwSeedQueue {
                 next_seed
             };
             update_tx.send(SeedRollUpdate::Started).await?;
-            let seed_id = self.http_client.post("https://ootrandomizer.com/api/v2/seed/create")
+            let seed_id = self.post("https://ootrandomizer.com/api/v2/seed/create").await
                 .query(&[("key", &*self.ootr_api_key), ("version", &*format!("dev_{RANDO_VERSION}")), ("locked", "1")])
                 .json(&settings)
                 .send().await?
@@ -237,7 +257,7 @@ impl MwSeedQueue {
             drop(next_seed);
             loop {
                 sleep(Duration::from_secs(1)).await;
-                let resp = self.http_client.get("https://ootrandomizer.com/api/v2/seed/status")
+                let resp = self.get("https://ootrandomizer.com/api/v2/seed/status").await
                     .query(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])
                     .send().await?;
                 if resp.status() == StatusCode::NO_CONTENT { continue }
@@ -245,13 +265,13 @@ impl MwSeedQueue {
                 match resp.json::<SeedStatusResponse>().await?.status {
                     0 => continue, // still generating
                     1 => { // generated success
-                        let _ /*file_hash*/ = self.http_client.get("https://ootrandomizer.com/api/v2/seed/details")
+                        let _ /*file_hash*/ = self.get("https://ootrandomizer.com/api/v2/seed/details").await
                             .query(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])
                             .send().await?
                             .error_for_status()?
                             .json::<SeedDetailsResponse>().await?
                             .spoiler_log.file_hash;
-                        let patch_response = self.http_client.get("https://ootrandomizer.com/api/v2/seed/patch")
+                        let patch_response = self.get("https://ootrandomizer.com/api/v2/seed/patch").await
                             .query(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])
                             .send().await?
                             .error_for_status()?;
