@@ -28,6 +28,7 @@ use {
         json,
     },
     serde_with::{
+        DisplayFromStr,
         json::JsonString,
         serde_as,
     },
@@ -194,8 +195,10 @@ impl MwSeedQueue {
     }
 
     async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, settings: serde_json::Map<String, Json>) -> Result<u64, RollError> {
+        #[serde_as]
         #[derive(Deserialize)]
         struct CreateSeedResponse {
+            #[serde_as(as = "DisplayFromStr")]
             id: u64,
         }
 
