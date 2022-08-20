@@ -154,13 +154,13 @@ pub(crate) enum Discord {}
 
 #[derive(Deserialize)]
 pub(crate) struct RaceTimeUser {
-    id: String,
+    pub(crate) id: String,
     name: String,
 }
 
 #[derive(Deserialize)]
 pub(crate) struct DiscordUser {
-    id: UserId,
+    pub(crate) id: UserId,
     username: String,
 }
 
@@ -391,6 +391,53 @@ pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, cli
     } else {
         Redirect::to(uri!(discord_login(_)))
     })
+}
+
+#[rocket::get("/merge-accounts")]
+pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, client: &State<reqwest::Client>, cookies: &CookieJar<'_>) -> Result<Redirect, Debug<Error>> {
+    let mut transaction = pool.begin().await.map_err(Error::from)?;
+    match (me.racetime_id, me.discord_id) {
+        (Some(_), Some(_)) => return Err(anyhow!("accounts already merged").into()),
+        (Some(_), None) => if let Some(token) = cookies.get_private("discord_token") {
+            if let Ok(response) = client.get("https://discord.com/api/v9/users/@me")
+                .bearer_auth(token.value())
+                .send().await
+                .and_then(|response| response.error_for_status())
+            {
+                if let Ok(user_data) = response.json::<DiscordUser>().await {
+                    if let Ok(Some(discord_user)) = User::from_discord(&**pool, user_data.id).await { //TODO use transaction
+                        if discord_user.racetime_id.is_none() {
+                            sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2 WHERE id = $3", i64::from(discord_user.discord_id.expect("Discord user without Discord ID")), discord_user.discord_display_name, i64::from(me.id)).execute(&mut transaction).await.map_err(Error::from)?;
+                            sqlx::query!("DELETE FROM users WHERE id = $1", i64::from(discord_user.id)).execute(&mut transaction).await.map_err(Error::from)?;
+                            transaction.commit().await.map_err(Error::from)?;
+                            return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
+                        }
+                    }
+                }
+            }
+        },
+        (None, Some(_)) => if let Some(token) = cookies.get_private("racetime_token") {
+            if let Ok(response) = client.get("https://racetime.gg/o/userinfo")
+                .bearer_auth(token.value())
+                .send().await
+                .and_then(|response| response.error_for_status())
+            {
+                if let Ok(user_data) = response.json::<RaceTimeUser>().await {
+                    if let Ok(Some(racetime_user)) = User::from_racetime(&**pool, &user_data.id).await { //TODO use transaction
+                        if racetime_user.discord_id.is_none() {
+                            sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2 WHERE id = $3", racetime_user.racetime_id, racetime_user.racetime_display_name, i64::from(me.id)).execute(&mut transaction).await.map_err(Error::from)?;
+                            sqlx::query!("DELETE FROM users WHERE id = $1", i64::from(racetime_user.id)).execute(&mut transaction).await.map_err(Error::from)?;
+                            transaction.commit().await.map_err(Error::from)?;
+                            return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
+                        }
+                    }
+                }
+            }
+        },
+        (None, None) => unreachable!("signed in but nether account connected"),
+    }
+    transaction.rollback().await.map_err(Error::from)?;
+    Err(anyhow!("failed to merge accounts").into())
 }
 
 #[rocket::get("/logout?<redirect_to>")]
