@@ -5,19 +5,12 @@ use {
     std::time::Duration,
     futures::future::FutureExt as _,
     rocket::Rocket,
-    serenity::{
-        model::prelude::*,
-        prelude::*,
-    },
-    serenity_utils::{
-        builder::ErrorNotifier,
-        handler::HandlerMethods as _,
-    },
+    serenity::model::prelude::*,
+    serenity_utils::builder::ErrorNotifier,
     sqlx::{
         PgPool,
         postgres::PgConnectOptions,
     },
-    tokio::sync::broadcast,
     crate::{
         config::Config,
         util::Id,
@@ -37,12 +30,6 @@ mod user;
 mod util;
 
 const FENHL: UserId = UserId(86841168427495424);
-
-enum RoleReceiver {}
-
-impl TypeMapKey for RoleReceiver {
-    type Value = broadcast::Sender<Role>;
-}
 
 fn parse_view_as(arg: &str) -> Result<(Id, Id), anyhow::Error> {
     let (from, to) = arg.split_once(':').ok_or(anyhow::anyhow!("missing colon in view-as option"))?;
@@ -104,12 +91,7 @@ async fn main(Args { env, view_as }: Args) -> Result<(), Error> {
     let rocket = http::rocket(pool, discord_builder.ctx_fut.clone(), http_client.clone(), &config, env, view_as.into_iter().collect()).await?;
     let shutdown = rocket.shutdown();
     let discord_builder = discord_builder
-        .data::<RoleReceiver>(broadcast::channel(1024).0)
         .error_notifier(ErrorNotifier::User(FENHL))
-        .on_guild_role_create(|ctx, role| Box::pin(async move {
-            let _ = ctx.data.read().await.get::<RoleReceiver>().expect("missing role create sender").send(role.clone());
-            Ok(())
-        }))
         .task(|ctx_fut, _| async move {
             shutdown.await;
             serenity_utils::shut_down(&*ctx_fut.read().await).await;
