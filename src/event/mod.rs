@@ -5,7 +5,6 @@ use {
         fmt,
         io,
         str::FromStr,
-        time::Duration,
     },
     anyhow::anyhow,
     chrono::prelude::*,
@@ -67,7 +66,7 @@ use {
             PgValueRef,
         },
     },
-    tokio::time::sleep,
+    tokio::sync::broadcast,
     url::Url,
     crate::{
         auth,
@@ -691,6 +690,7 @@ pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origi
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum AcceptError {
+    #[error(transparent)] Broadcast(#[from] broadcast::error::RecvError),
     #[error(transparent)] Csrf(#[from] rocket_csrf::VerificationFailure),
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Discord(#[from] serenity::Error),
@@ -727,9 +727,10 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
             //TODO also remove all other teams with member overlap, and notify
             // create and assign Discord roles
             if let Some(discord_guild) = data.discord_guild {
-                let mut num_roles = discord_guild.roles(&*discord_ctx.read().await).await.map_err(AcceptError::Discord)?.len();
+                let discord_ctx = discord_ctx.read().await;
+                let mut num_roles = discord_guild.roles(&*discord_ctx).await.map_err(AcceptError::Discord)?.len();
                 for row in sqlx::query!(r#"SELECT discord_id AS "discord_id!: Id", role AS "role: Role" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, i64::from(team)).fetch_all(&mut transaction).await.map_err(AcceptError::Sql)? {
-                    if let Ok(member) = discord_guild.member(&*discord_ctx.read().await, UserId(row.discord_id.0)).await {
+                    if let Ok(member) = discord_guild.member(&*discord_ctx, UserId(row.discord_id.0)).await {
                         let mut roles_to_assign = member.roles.iter().copied().collect::<HashSet<_>>();
                         if let Some(Id(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, i64::from(discord_guild), series as _, event).fetch_optional(&mut transaction).await.map_err(AcceptError::Sql)? {
                             roles_to_assign.insert(RoleId(participant_role));
@@ -743,14 +744,18 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
                             } else {
                                 let team_name = sqlx::query_scalar!(r#"SELECT name AS "name!" FROM teams WHERE id = $1"#, i64::from(team)).fetch_one(&mut transaction).await.map_err(AcceptError::Sql)?;
                                 let position = num_roles.try_into().map_err(AcceptError::TooManyRoles)?;
-                                let team_role = discord_guild.create_role(&*discord_ctx.read().await, |r| r.hoist(false).mentionable(true).name(team_name).permissions(Permissions::empty()).position(position)).await.map_err(AcceptError::Discord)?.id;
-                                sleep(Duration::from_secs(5)).await; //TODO wait for role created event instead
+                                let team_role = {
+                                    let mut role_create_rx = discord_ctx.data.read().await.get::<crate::RoleReceiver>().expect("missing role create sender").subscribe();
+                                    let team_role = discord_guild.create_role(&*discord_ctx, |r| r.hoist(false).mentionable(true).name(team_name).permissions(Permissions::empty()).position(position)).await.map_err(AcceptError::Discord)?.id;
+                                    while role_create_rx.recv().await.map_err(AcceptError::Broadcast)?.id != team_role {} // wait until we receive the role created event for the new role
+                                    team_role
+                                };
                                 sqlx::query!("INSERT INTO discord_roles (id, guild, racetime_team) VALUES ($1, $2, $3)", i64::from(team_role), i64::from(discord_guild), racetime_slug).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
                                 roles_to_assign.insert(team_role);
                                 num_roles += 1;
                             }
                         }
-                        member.edit(&*discord_ctx.read().await, |m| m.roles(roles_to_assign)).await.map_err(AcceptError::Discord)?;
+                        member.edit(&*discord_ctx, |m| m.roles(roles_to_assign)).await.map_err(AcceptError::Discord)?;
                     }
                 }
             }
