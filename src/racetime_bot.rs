@@ -255,6 +255,7 @@ impl MwSeedQueue {
                 .id;
             *next_seed = Instant::now() + Duration::from_secs(5 * 60);
             drop(next_seed);
+            sleep(Duration::from_secs(20)).await; // extra rate limiting rule
             loop {
                 sleep(Duration::from_secs(1)).await;
                 let resp = self.get("https://ootrandomizer.com/api/v2/seed/status").await
