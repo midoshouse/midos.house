@@ -8,7 +8,9 @@ use {
     },
     async_trait::async_trait,
     enum_iterator::all,
+    futures::stream::TryStreamExt as _,
     itertools::Itertools as _,
+    lazy_regex::regex_captures,
     racetime::{
         Error,
         handler::{
@@ -18,15 +20,26 @@ use {
         model::*,
     },
     rand::prelude::*,
+    reqwest::StatusCode,
     semver::Version,
     serde::Deserialize,
     serde_json::{
         Value as Json,
         json,
     },
+    serde_with::{
+        json::JsonString,
+        serde_as,
+    },
     tokio::{
-        fs,
-        io::AsyncWriteExt as _,
+        fs::{
+            self,
+            File,
+        },
+        io::{
+            self,
+            AsyncWriteExt as _,
+        },
         process::Command,
         sync::{
             Mutex,
@@ -37,14 +50,22 @@ use {
         },
         time::{
             Instant,
+            sleep,
             sleep_until,
         },
     },
+    tokio_util::io::StreamReader,
     crate::{
         config::ConfigRaceTime,
         event::mw,
-        seed,
-        util::format_duration,
+        seed::{
+            self,
+            SpoilerLog,
+        },
+        util::{
+            format_duration,
+            io_error_from_reqwest,
+        },
     },
 };
 #[cfg(unix)] use xdg::BaseDirectories;
@@ -59,6 +80,7 @@ const KNOWN_GOOD_WEB_VERSIONS: [Version; 1] = [Version::new(6, 2, 181)];
 
 #[derive(Debug, thiserror::Error)]
 enum RollError {
+    #[error(transparent)] Header(#[from] reqwest::header::ToStrError),
     #[error(transparent)] Io(#[from] std::io::Error),
     #[error(transparent)] Json(#[from] serde_json::Error),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -73,6 +95,8 @@ enum RollError {
     Retries,
     #[error("randomizer did not report spoiler log location")]
     SpoilerLogPath,
+    #[error("seed status API endpoint returned unknown value {0}")]
+    UnespectedSeedStatus(u8),
 }
 
 impl From<mpsc::error::SendError<SeedRollUpdate>> for RollError {
@@ -93,7 +117,7 @@ enum SeedRollUpdate {
     /// The seed has been rolled locally, includes the patch filename.
     DoneLocal(String),
     /// The seed has been rolled on ootrandomizer.com, includes the seed ID.
-    DoneWeb(u32),
+    DoneWeb(u64),
     /// Seed rolling failed.
     Error(RollError),
 }
@@ -133,7 +157,7 @@ impl MwSeedQueue {
     }
 
     async fn can_roll_on_web(&self, settings: &serde_json::Map<String, Json>) -> Result<bool, RollError> {
-        if settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) != 1 { return Ok(false) } //TODO change to > 3 once the ootrandomizer.com API starts supporting multiworld seeds
+        if settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 3 { return Ok(false) }
         // check if randomizer version is available on web
         if !KNOWN_GOOD_WEB_VERSIONS.contains(&RANDO_VERSION) {
             if let Ok(latest_web_version) = self.get_version("dev").await {
@@ -169,9 +193,27 @@ impl MwSeedQueue {
         Err(RollError::Retries)
     }
 
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, _ /*settings*/: serde_json::Map<String, Json>) -> Result<u32, RollError> {
+    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, settings: serde_json::Map<String, Json>) -> Result<u64, RollError> {
+        #[derive(Deserialize)]
+        struct CreateSeedResponse {
+            id: u64,
+        }
+
+        #[derive(Deserialize)]
+        struct SeedStatusResponse {
+            status: u8,
+        }
+
+        #[serde_as]
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct SeedDetailsResponse {
+            #[serde_as(as = "JsonString")]
+            spoiler_log: SpoilerLog,
+        }
+
         for _ in 0..3 {
-            let _ /*next_seed*/ = {
+            let mut next_seed = {
                 let next_seed = self.next_seed.lock().await;
                 let sleep = sleep_until(*next_seed);
                 if !sleep.is_elapsed() {
@@ -181,8 +223,47 @@ impl MwSeedQueue {
                 next_seed
             };
             update_tx.send(SeedRollUpdate::Started).await?;
-            unimplemented!() //TODO roll the seed via the ootrandomizer.com API
-            //TODO update and drop next_seed after receiving the response for the initial seed roll API request
+            let seed_id = self.http_client.post("https://ootrandomizer.com/api/v2/seed/create")
+                .query(&[("key", &*self.ootr_api_key), ("version", &*format!("dev_{RANDO_VERSION}")), ("locked", "1")])
+                .json(&settings)
+                .send().await?
+                .error_for_status()?
+                .json::<CreateSeedResponse>().await?
+                .id;
+            *next_seed = Instant::now() + Duration::from_secs(5 * 60);
+            drop(next_seed);
+            loop {
+                sleep(Duration::from_secs(1)).await;
+                let resp = self.http_client.get("https://ootrandomizer.com/api/v2/seed/status")
+                    .query(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])
+                    .send().await?;
+                if resp.status() == StatusCode::NO_CONTENT { continue }
+                resp.error_for_status_ref()?;
+                match resp.json::<SeedStatusResponse>().await?.status {
+                    0 => continue, // still generating
+                    1 => { // generated success
+                        let _ /*file_hash*/ = self.http_client.get("https://ootrandomizer.com/api/v2/seed/details")
+                            .query(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])
+                            .send().await?
+                            .error_for_status()?
+                            .json::<SeedDetailsResponse>().await?
+                            .spoiler_log.file_hash;
+                        let patch_response = self.http_client.get("https://ootrandomizer.com/api/v2/seed/patch")
+                            .query(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])
+                            .send().await?
+                            .error_for_status()?;
+                        let (_, patch_file_name) = regex_captures!("^attachment; filename=(.+)$", patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION).ok_or(RollError::PatchPath)?.to_str()?).ok_or(RollError::PatchPath)?;
+                        let patch_file_name = patch_file_name.to_owned();
+                        //let (_, patch_file_stem) = regex_captures!(r"^(.+)\.zpfz?$", patch_file_name).ok_or(RollError::PatchPath)?;
+                        io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut File::create(Path::new(seed::DIR).join(patch_file_name)).await?).await?;
+                        //TODO also save spoiler log (to temp dir? Or set it to locked in the /seed handler?)
+                        return Ok(seed_id)
+                    }
+                    2 => unreachable!(), // generated with link (not possible from API)
+                    3 => break, // failed to generate
+                    n => return Err(RollError::UnespectedSeedStatus(n)),
+                }
+            }
         }
         Err(RollError::Retries)
     }

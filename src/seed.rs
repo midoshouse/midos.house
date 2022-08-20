@@ -45,7 +45,7 @@ use {
 #[cfg(windows)] pub(crate) const DIR: &str = "C:/Users/fenhl/games/zelda/oot/midos-house-seeds";
 
 #[derive(Deserialize, Serialize)]
-enum HashIcon {
+pub(crate) enum HashIcon {
     #[serde(rename = "Deku Stick")]
     DekuStick,
     #[serde(rename = "Deku Nut")]
@@ -184,7 +184,7 @@ fn deserialize_multiworld<'de, D: Deserializer<'de>, T: Deserialize<'de>>(deseri
 
 #[derive(Deserialize)]
 pub(crate) struct SpoilerLog {
-    file_hash: [HashIcon; 5],
+    pub(crate) file_hash: [HashIcon; 5],
     #[serde(rename = ":version")]
     pub(crate) version: String,
     pub(crate) settings: SpoilerLogSettings,

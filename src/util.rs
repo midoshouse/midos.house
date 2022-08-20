@@ -1,6 +1,7 @@
 use {
     std::{
         fmt,
+        io,
         iter,
         mem,
         str::FromStr,
@@ -363,4 +364,12 @@ where Tz::Offset: fmt::Display {
             }
         }
     }
+}
+
+pub(crate) fn io_error_from_reqwest(e: reqwest::Error) -> io::Error {
+    io::Error::new(if e.is_timeout() {
+        io::ErrorKind::TimedOut
+    } else {
+        io::ErrorKind::Other
+    }, e)
 }
