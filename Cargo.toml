@@ -83,7 +83,7 @@ features = ["chrono", "macros", "postgres", "runtime-tokio-rustls"]
 
 [dependencies.tokio]
 version = "1"
-features = ["fs", "process", "sync"]
+features = ["fs", "process", "sync", "time"]
 
 [dependencies.url]
 version = "2"
