@@ -419,7 +419,7 @@ impl S3Settings {
     }
 
     pub(crate) fn chests(&self) -> ChestAppearances {
-        static WEIGHTS: Lazy<HashMap<String, Vec<(ChestAppearances, usize)>>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/chests-mw-6.2.158.json")).expect("failed to parse chest weights"));
+        static WEIGHTS: Lazy<HashMap<String, Vec<(ChestAppearances, usize)>>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/chests-mw-6.2.181.json")).expect("failed to parse chest weights"));
 
         if let Some(settings_weights) = WEIGHTS.get(&self.to_string()) {
             settings_weights.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
