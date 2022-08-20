@@ -744,7 +744,7 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
                                 let team_name = sqlx::query_scalar!(r#"SELECT name AS "name!" FROM teams WHERE id = $1"#, i64::from(team)).fetch_one(&mut transaction).await.map_err(AcceptError::Sql)?;
                                 let position = num_roles.try_into().map_err(AcceptError::TooManyRoles)?;
                                 let team_role = discord_guild.create_role(&*discord_ctx.read().await, |r| r.hoist(false).mentionable(true).name(team_name).permissions(Permissions::empty()).position(position)).await.map_err(AcceptError::Discord)?.id;
-                                sleep(Duration::from_secs(1)).await; //TODO wait for role created event instead
+                                sleep(Duration::from_secs(5)).await; //TODO wait for role created event instead
                                 sqlx::query!("INSERT INTO discord_roles (id, guild, racetime_team) VALUES ($1, $2, $3)", i64::from(team_role), i64::from(discord_guild), racetime_slug).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
                                 roles_to_assign.insert(team_role);
                                 num_roles += 1;
