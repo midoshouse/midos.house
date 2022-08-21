@@ -83,6 +83,8 @@ const RANDO_VERSION: Version = Version::new(6, 2, 181);
 /// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
 const KNOWN_GOOD_WEB_VERSIONS: [Version; 1] = [Version::new(6, 2, 181)];
 
+const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
+
 #[derive(Debug, thiserror::Error)]
 enum RollError {
     #[error(transparent)] Header(#[from] reqwest::header::ToStrError),
@@ -140,7 +142,7 @@ impl MwSeedQueue {
     pub fn new(http_client: reqwest::Client, ootr_api_key: String) -> Self {
         Self {
             next_request: Mutex::new(Instant::now() + Duration::from_millis(500)),
-            next_seed: Mutex::new(Instant::now() + Duration::from_secs(5 * 60)), // we have to wait 5 minutes between starting each seed
+            next_seed: Mutex::new(Instant::now() + MULTIWORLD_RATE_LIMIT),
             seed_rollers: Semaphore::new(2), // we're allowed to roll a maximum of 2 multiworld seeds at the same time
             waiting: Mutex::default(),
             http_client, ootr_api_key,
@@ -231,8 +233,8 @@ impl MwSeedQueue {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct SeedDetailsResponse {
-            #[serde_as(as = "JsonString")]
-            spoiler_log: SpoilerLog,
+            #[serde_as(as = "Option<JsonString>")]
+            spoiler_log: Option<SpoilerLog>, //TODO report missing spoiler log bug
         }
 
         for _ in 0..3 {
@@ -253,9 +255,9 @@ impl MwSeedQueue {
                 .error_for_status()?
                 .json::<CreateSeedResponse>().await?
                 .id;
-            *next_seed = Instant::now() + Duration::from_secs(5 * 60);
+            *next_seed = Instant::now() + MULTIWORLD_RATE_LIMIT;
             drop(next_seed);
-            sleep(Duration::from_secs(20)).await; // extra rate limiting rule
+            sleep(MULTIWORLD_RATE_LIMIT).await; // extra rate limiting rule
             loop {
                 sleep(Duration::from_secs(1)).await;
                 let resp = self.get("https://ootrandomizer.com/api/v2/seed/status").await
@@ -271,7 +273,7 @@ impl MwSeedQueue {
                             .send().await?
                             .error_for_status()?
                             .json::<SeedDetailsResponse>().await?
-                            .spoiler_log.file_hash;
+                            .spoiler_log.map(|spoiler_log| spoiler_log.file_hash);
                         let patch_response = self.get("https://ootrandomizer.com/api/v2/seed/patch").await
                             .query(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])
                             .send().await?
