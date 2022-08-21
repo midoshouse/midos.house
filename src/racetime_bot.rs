@@ -687,7 +687,26 @@ impl RaceHandler<MwSeedQueue> for Handler {
 }
 
 pub(crate) async fn main(http_client: reqwest::Client, ootr_api_key: String, host: &str, config: ConfigRaceTime, shutdown: rocket::Shutdown) -> Result<(), Error> {
-    let bot = racetime::Bot::new_with_host(host, "ootr", &config.client_id, &config.client_secret, Arc::new(MwSeedQueue::new(http_client, ootr_api_key))).await?; //TODO automatically retry on server error
-    let () = bot.run_until::<Handler, _, _>(shutdown).await?;
-    Ok(())
+    let mut last_crash = Instant::now();
+    let mut wait_time = Duration::from_secs(1);
+    loop {
+        match racetime::Bot::new_with_host(host, "ootr", &config.client_id, &config.client_secret, Arc::new(MwSeedQueue::new(http_client.clone(), ootr_api_key.clone()))).await {
+            Ok(bot) => {
+                let () = bot.run_until::<Handler, _, _>(shutdown).await?;
+                break Ok(())
+            }
+            Err(Error::Reqwest(e)) if e.status().map_or(false, |status| status.is_server_error()) => {
+                if last_crash.elapsed() >= Duration::from_secs(60 * 60 * 24) {
+                    wait_time = Duration::from_secs(1); // reset wait time after no crash for a day
+                } else {
+                    wait_time *= 2; // exponential backoff
+                }
+                eprintln!("failed to connect to racetime.gg: {e} ({e:?})");
+                //TODO notify if wait_time >= Duration::from_secs(2)
+                sleep(wait_time).await;
+                last_crash = Instant::now();
+            }
+            Err(e) => break Err(e),
+        }
+    }
 }
