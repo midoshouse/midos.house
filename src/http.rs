@@ -118,7 +118,6 @@ pub(crate) async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, sty
                 meta(charset = "utf-8");
                 title : title;
                 meta(name = "viewport", content = "width=device-width, initial-scale=1, shrink-to-fit=no");
-                link(rel = "icon", sizes = "512x512", type = "image/png", href = uri!(favicon::favicon_png(style.chests.textures(), Suffix(512, "png"))).to_string());
                 link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(style.chests.textures(), Suffix(1024, "png"))).to_string());
                 link(rel = "stylesheet", href = "/static/common.css");
                 script(defer, src = "/static/common.js");
@@ -330,7 +329,6 @@ impl Fairing for SeedDownloadFairing {
                 if let Ok(body) = res.body_mut().to_string().await {
                     if let Ok(log) = serde_json::from_str::<SpoilerLog>(&body) {
                         let textures = ChestAppearances::from(log).textures();
-                        res.adjoin_header(Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="512x512""#, uri!(favicon::favicon_png(textures, Suffix(512, "png"))))));
                         res.adjoin_header(Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(textures, Suffix(1024, "png"))))));
                     } else {
                         //TODO notify about JSON parse failure
