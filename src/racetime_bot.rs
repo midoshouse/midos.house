@@ -1,7 +1,10 @@
 use {
     std::{
         io::prelude::*,
-        path::Path,
+        path::{
+            Path,
+            PathBuf,
+        },
         process::Stdio,
         sync::Arc,
         time::Duration,
@@ -65,7 +68,7 @@ use {
         event::mw,
         seed::{
             self,
-            SpoilerLog,
+            HashIcon,
         },
         util::{
             format_duration,
@@ -122,7 +125,7 @@ enum SeedRollUpdate {
     /// We've cleared the queue and are now being rolled.
     Started,
     /// The seed has been rolled locally, includes the patch filename.
-    DoneLocal(String),
+    DoneLocal(String, PathBuf),
     /// The seed has been rolled on ootrandomizer.com, includes the seed ID.
     DoneWeb(u64),
     /// Seed rolling failed.
@@ -170,7 +173,6 @@ impl MwSeedQueue {
             currently_active_version: Version,
         }
 
-        //TODO rate limiting
         Ok(self.get("https://ootrandomizer.com/api/version").await
             .query(&[("key", &*self.ootr_api_key), ("branch", branch)])
             .send().await?
@@ -196,7 +198,7 @@ impl MwSeedQueue {
         Ok(true)
     }
 
-    async fn roll_seed_locally(&self, mut settings: serde_json::Map<String, Json>) -> Result<String, RollError> {
+    async fn roll_seed_locally(&self, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
         settings.insert(format!("create_patch_file"), json!(true));
         settings.insert(format!("create_compressed_rom"), json!(false));
         for _ in 0..3 {
@@ -208,10 +210,12 @@ impl MwSeedQueue {
             let stderr = if output.status.success() { output.stderr.lines().try_collect::<_, Vec<_>, _>()? } else { continue };
             let patch_path = Path::new(stderr.iter().rev().filter_map(|line| line.strip_prefix("Created patch file archive at: ")).next().ok_or(RollError::PatchPath)?);
             let spoiler_log_path = Path::new(stderr.iter().rev().filter_map(|line| line.strip_prefix("Created spoiler log at: ")).next().ok_or(RollError::SpoilerLogPath)?);
-            let patch_filename = patch_path.file_name().expect("spoiler log path with no file name");
+            let patch_filename = patch_path.file_name().expect("patch file path with no file name");
             fs::rename(patch_path, Path::new(seed::DIR).join(patch_filename)).await?;
-            let _ = spoiler_log_path; //TODO handle log unlocking after race
-            return Ok(patch_filename.to_str().expect("non-UTF-8 patch filename").to_owned())
+            return Ok((
+                patch_filename.to_str().expect("non-UTF-8 patch filename").to_owned(),
+                spoiler_log_path.to_owned(),
+            ))
         }
         Err(RollError::Retries)
     }
@@ -229,12 +233,17 @@ impl MwSeedQueue {
             status: u8,
         }
 
+        #[derive(Deserialize)]
+        struct SettingsLog {
+            file_hash: [HashIcon; 5],
+        }
+
         #[serde_as]
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct SeedDetailsResponse {
-            #[serde_as(as = "Option<JsonString>")]
-            spoiler_log: Option<SpoilerLog>, //TODO report missing spoiler log bug
+            #[serde_as(as = "JsonString")]
+            settings_log: SettingsLog,
         }
 
         for _ in 0..3 {
@@ -273,7 +282,7 @@ impl MwSeedQueue {
                             .send().await?
                             .error_for_status()?
                             .json::<SeedDetailsResponse>().await?
-                            .spoiler_log.map(|spoiler_log| spoiler_log.file_hash);
+                            .settings_log.file_hash;
                         let patch_response = self.get("https://ootrandomizer.com/api/v2/seed/patch").await
                             .query(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])
                             .send().await?
@@ -282,7 +291,6 @@ impl MwSeedQueue {
                         let patch_file_name = patch_file_name.to_owned();
                         //let (_, patch_file_stem) = regex_captures!(r"^(.+)\.zpfz?$", patch_file_name).ok_or(RollError::PatchPath)?;
                         io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut File::create(Path::new(seed::DIR).join(patch_file_name)).await?).await?;
-                        //TODO also save spoiler log (to temp dir? Or set it to locked in the /seed handler?)
                         return Ok(seed_id)
                     }
                     2 => unreachable!(), // generated with link (not possible from API)
@@ -341,7 +349,7 @@ impl MwSeedQueue {
                 drop(permit); //TODO skip queue entirely?
                 update_tx.send(SeedRollUpdate::Started).await?;
                 match self.roll_seed_locally(settings).await {
-                    Ok(patch_filename) => update_tx.send(SeedRollUpdate::DoneLocal(patch_filename)).await?,
+                    Ok((patch_filename, spoiler_log_path)) => update_tx.send(SeedRollUpdate::DoneLocal(patch_filename, spoiler_log_path)).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
             }
@@ -364,7 +372,9 @@ enum RaceState {
     Init,
     Draft(mw::S3Draft),
     Rolling,
-    Rolled,
+    RolledLocally(PathBuf),
+    RolledWeb(u64),
+    SpoilerSent,
 }
 
 struct Handler {
@@ -434,16 +444,17 @@ impl Handler {
                     SeedRollUpdate::MovedForward(pos) => ctx.send_message(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
                     SeedRollUpdate::WaitRateLimit(until) => ctx.send_message(&format!("Your seed will be rolled in {}.", format_duration(until - Instant::now()))).await?,
                     SeedRollUpdate::Started => ctx.send_message(&format!("Rolling a seed with {settings}…")).await?,
-                    SeedRollUpdate::DoneLocal(patch_filename) => {
-                        *state.write().await = RaceState::Rolled;
+                    SeedRollUpdate::DoneLocal(patch_filename, spoiler_log_path) => {
+                        let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename").to_owned();
+                        *state.write().await = RaceState::RolledLocally(spoiler_log_path);
                         ctx.send_message(&format!("@entrants Here is your seed: https://midos.house/seed/{patch_filename}")).await?;
-                        //ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{}_Spoiler.json", patch_filename.split_once('.').expect("patch filename with no suffix").0)).await?; //TODO add spoiler log unlocking feature
+                        ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{spoiler_filename}")).await?;
                         //TODO update raceinfo
                     }
                     SeedRollUpdate::DoneWeb(seed_id) => {
-                        *state.write().await = RaceState::Rolled;
+                        *state.write().await = RaceState::RolledWeb(seed_id);
                         ctx.send_message(&format!("@entrants Here is your seed: https://ootrandomizer.com/seed/get?id={seed_id}")).await?;
-                        //ctx.send_message("The spoiler log will be available on the seed page after the race.").await?; //TODO add spoiler log unlocking feature
+                        ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
                         //TODO update raceinfo
                     }
                     SeedRollUpdate::Error(msg) => {
@@ -478,7 +489,7 @@ impl RaceHandler<MwSeedQueue> for Handler {
     async fn command(&mut self, ctx: &RaceContext, cmd_name: &str, args: Vec<&str>, _is_moderator: bool, _is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match cmd_name {
-            "ban" => if matches!(ctx.data().await.status.value, RaceStatusValue::Open | RaceStatusValue::Invitational) {
+            "ban" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.state.write().await;
                 match *state {
                     RaceState::Init => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
@@ -520,12 +531,12 @@ impl RaceHandler<MwSeedQueue> for Handler {
                             [_, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!ban <setting>”")).await?,
                         }
                     },
-                    RaceState::Rolling | RaceState::Rolled => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race.")).await?,
+                    RaceState::Rolling | RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
-            "draft" => if matches!(ctx.data().await.status.value, RaceStatusValue::Open | RaceStatusValue::Invitational) {
+            "draft" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.state.write().await;
                 match *state {
                     RaceState::Init => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
@@ -585,12 +596,12 @@ impl RaceHandler<MwSeedQueue> for Handler {
                             [_, _, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!draft <setting> <value>”")).await?,
                         }
                     },
-                    RaceState::Rolling | RaceState::Rolled => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race.")).await?,
+                    RaceState::Rolling | RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
-            "first" => if matches!(ctx.data().await.status.value, RaceStatusValue::Open | RaceStatusValue::Invitational) {
+            "first" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.state.write().await;
                 match *state {
                     RaceState::Init => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
@@ -601,13 +612,13 @@ impl RaceHandler<MwSeedQueue> for Handler {
                         drop(state);
                         self.advance_draft(ctx).await?;
                     },
-                    RaceState::Rolling | RaceState::Rolled => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race.")).await?,
+                    RaceState::Rolling | RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
             "presets" => send_presets(ctx).await?,
-            "second" => if matches!(ctx.data().await.status.value, RaceStatusValue::Open | RaceStatusValue::Invitational) {
+            "second" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.state.write().await;
                 match *state {
                     RaceState::Init => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
@@ -618,12 +629,12 @@ impl RaceHandler<MwSeedQueue> for Handler {
                         drop(state);
                         self.advance_draft(ctx).await?;
                     },
-                    RaceState::Rolling | RaceState::Rolled => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race.")).await?,
+                    RaceState::Rolling | RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
-            "seed" => if matches!(ctx.data().await.status.value, RaceStatusValue::Open | RaceStatusValue::Invitational) {
+            "seed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.state.write().await;
                 match *state {
                     RaceState::Init => match args[..] {
@@ -656,13 +667,13 @@ impl RaceHandler<MwSeedQueue> for Handler {
                     },
                     RaceState::Draft(_) => ctx.send_message(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
                     RaceState::Rolling => ctx.send_message(&format!("Sorry {reply_to}, but I'm already rolling a seed for this room. Please wait.")).await?,
-                    RaceState::Rolled => ctx.send_message(&format!("Sorry {reply_to}, but I already rolled a seed.")).await?, //TODO “Check the race info!”
+                    RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, but I already rolled a seed.")).await?, //TODO “Check the race info!”
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
             "settings" => self.send_settings(ctx).await?,
-            "skip" => if matches!(ctx.data().await.status.value, RaceStatusValue::Open | RaceStatusValue::Invitational) {
+            "skip" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.state.write().await;
                 match *state {
                     RaceState::Init => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
@@ -675,12 +686,36 @@ impl RaceHandler<MwSeedQueue> for Handler {
                     } else {
                         ctx.send_message(&format!("Sorry {reply_to}, this part of the draft can't be skipped.")).await?;
                     },
-                    RaceState::Rolling | RaceState::Rolled => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race.")).await?,
+                    RaceState::Rolling | RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
             _ => ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that command.")).await?, //TODO “did you mean”? list of available commands with !help?
+        }
+        Ok(())
+    }
+
+    async fn race_data(&mut self, ctx: &RaceContext, _old_race_data: RaceData) -> Result<(), Error> {
+        if let RaceStatusValue::Finished = ctx.data().await.status.value {
+            //TODO also make sure this isn't the first half of an async
+            let mut state = self.state.write().await;
+            match *state {
+                RaceState::RolledLocally(ref spoiler_log_path) => {
+                    let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name");
+                    fs::rename(&spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await?;
+                    *state = RaceState::SpoilerSent;
+                }
+                RaceState::RolledWeb(seed_id) => {
+                    self.seed_queue.post("https://ootrandomizer.com/api/v2/seed/unlock").await
+                        .query(&[("key", &self.seed_queue.ootr_api_key), ("id", &seed_id.to_string())])
+                        .send().await?
+                        .error_for_status()?;
+                    //TODO also save spoiler log to local archive
+                    *state = RaceState::SpoilerSent;
+                }
+                _ => {}
+            }
         }
         Ok(())
     }
