@@ -100,6 +100,45 @@ pub(crate) enum HashIcon {
     BigMagic,
 }
 
+impl HashIcon {
+    pub(crate) fn to_racetime_emoji(&self) -> &'static str {
+        match self {
+            Self::Beans => "HashBeans",
+            Self::BigMagic => "HashBigMagic",
+            Self::Bombchu => "HashBombchu",
+            Self::Boomerang => "HashBoomerang",
+            Self::BossKey => "HashBossKey",
+            Self::BottledFish => "HashBottledFish",
+            Self::BottledMilk => "HashBottledMilk",
+            Self::Bow => "HashBow",
+            Self::Compass => "HashCompass",
+            Self::Cucco => "HashCucco",
+            Self::DekuNut => "HashDekuNut",
+            Self::DekuStick => "HashDekuStick",
+            Self::FairyOcarina => "HashFairyOcarina",
+            Self::Frog => "HashFrog",
+            Self::GoldScale => "HashGoldScale",
+            Self::HeartContainer => "HashHeart",
+            Self::HoverBoots => "HashHoverBoots",
+            Self::KokiriTunic => "HashKokiriTunic",
+            Self::LensOfTruth => "HashLensOfTruth",
+            Self::Longshot => "HashLongshot",
+            Self::Map => "HashMap",
+            Self::MaskOfTruth => "HashMaskOfTruth",
+            Self::MasterSword => "HashMasterSword",
+            Self::MegatonHammer => "HashHammer",
+            Self::MirrorShield => "HashMirrorShield",
+            Self::Mushroom => "HashMushroom",
+            Self::Saw => "HashSaw",
+            Self::SilverGauntlets => "HashSilvers",
+            Self::SkullToken => "HashSkullToken",
+            Self::Slingshot => "HashSlingshot",
+            Self::SoldOut => "HashSoldOut",
+            Self::StoneOfAgony => "HashStoneOfAgony",
+        }
+    }
+}
+
 derive_display_from_serialize!(HashIcon);
 
 impl ToHtml for HashIcon {

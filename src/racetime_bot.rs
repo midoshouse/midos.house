@@ -1,5 +1,6 @@
 use {
     std::{
+        fmt,
         io::prelude::*,
         path::{
             Path,
@@ -19,6 +20,7 @@ use {
         handler::{
             RaceContext,
             RaceHandler,
+            RaceInfoPos,
         },
         model::*,
     },
@@ -69,6 +71,7 @@ use {
         seed::{
             self,
             HashIcon,
+            SpoilerLog,
         },
         util::{
             format_duration,
@@ -127,7 +130,7 @@ enum SeedRollUpdate {
     /// The seed has been rolled locally, includes the patch filename.
     DoneLocal(String, PathBuf),
     /// The seed has been rolled on ootrandomizer.com, includes the seed ID.
-    DoneWeb(u64),
+    DoneWeb(u64, [HashIcon; 5]),
     /// Seed rolling failed.
     Error(RollError),
 }
@@ -220,7 +223,7 @@ impl MwSeedQueue {
         Err(RollError::Retries)
     }
 
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, settings: serde_json::Map<String, Json>) -> Result<u64, RollError> {
+    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, settings: serde_json::Map<String, Json>) -> Result<(u64, [HashIcon; 5]), RollError> {
         #[serde_as]
         #[derive(Deserialize)]
         struct CreateSeedResponse {
@@ -277,7 +280,7 @@ impl MwSeedQueue {
                 match resp.json::<SeedStatusResponse>().await?.status {
                     0 => continue, // still generating
                     1 => { // generated success
-                        let _ /*file_hash*/ = self.get("https://ootrandomizer.com/api/v2/seed/details").await
+                        let file_hash = self.get("https://ootrandomizer.com/api/v2/seed/details").await
                             .query(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])
                             .send().await?
                             .error_for_status()?
@@ -291,7 +294,7 @@ impl MwSeedQueue {
                         let patch_file_name = patch_file_name.to_owned();
                         //let (_, patch_file_stem) = regex_captures!(r"^(.+)\.zpfz?$", patch_file_name).ok_or(RollError::PatchPath)?;
                         io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut File::create(Path::new(seed::DIR).join(patch_file_name)).await?).await?;
-                        return Ok(seed_id)
+                        return Ok((seed_id, file_hash))
                     }
                     2 => unreachable!(), // generated with link (not possible from API)
                     3 => break, // failed to generate
@@ -341,7 +344,7 @@ impl MwSeedQueue {
             };
             if can_roll_on_web {
                 match self.roll_seed_web(update_tx.clone(), settings).await {
-                    Ok(seed_id) => update_tx.send(SeedRollUpdate::DoneWeb(seed_id)).await?,
+                    Ok((seed_id, file_hash)) => update_tx.send(SeedRollUpdate::DoneWeb(seed_id, file_hash)).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
                 drop(permit);
@@ -364,6 +367,10 @@ async fn send_presets(ctx: &RaceContext) -> Result<(), Error> {
     ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
     ctx.send_message("!seed draft: Pick the settings here in the chat. I don't enforce that the two teams have to be represented by different people, so you can also use this to decide on settings ahead of time.").await?;
     Ok(())
+}
+
+fn format_hash(file_hash: [HashIcon; 5]) -> impl fmt::Display {
+    file_hash.into_iter().map(|icon| icon.to_racetime_emoji()).format(" ")
 }
 
 #[derive(Default)]
@@ -446,16 +453,19 @@ impl Handler {
                     SeedRollUpdate::Started => ctx.send_message(&format!("Rolling a seed with {settings}…")).await?,
                     SeedRollUpdate::DoneLocal(patch_filename, spoiler_log_path) => {
                         let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename").to_owned();
+                        let file_hash = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_log_path).await?)?.file_hash;
                         *state.write().await = RaceState::RolledLocally(spoiler_log_path);
-                        ctx.send_message(&format!("@entrants Here is your seed: https://midos.house/seed/{patch_filename}")).await?;
+                        let seed_url = format!("https://midos.house/seed/{patch_filename}");
+                        ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
                         ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{spoiler_filename}")).await?;
-                        //TODO update raceinfo
+                        ctx.set_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash)), RaceInfoPos::Overwrite).await?;
                     }
-                    SeedRollUpdate::DoneWeb(seed_id) => {
+                    SeedRollUpdate::DoneWeb(seed_id, file_hash) => {
                         *state.write().await = RaceState::RolledWeb(seed_id);
-                        ctx.send_message(&format!("@entrants Here is your seed: https://ootrandomizer.com/seed/get?id={seed_id}")).await?;
+                        let seed_url = format!("https://ootrandomizer.com/seed/get?id={seed_id}");
+                        ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
                         ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
-                        //TODO update raceinfo
+                        ctx.set_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash)), RaceInfoPos::Overwrite).await?;
                     }
                     SeedRollUpdate::Error(msg) => {
                         eprintln!("seed roll error: {msg:?}");
