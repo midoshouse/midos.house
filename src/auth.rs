@@ -3,11 +3,6 @@ use {
         collections::HashMap,
         time::Duration,
     },
-    anyhow::{
-        Error,
-        Result,
-        anyhow,
-    },
     rocket::{
         State,
         http::{
@@ -23,10 +18,7 @@ use {
             FromRequest,
             Request,
         },
-        response::{
-            Debug,
-            Redirect,
-        },
+        response::Redirect,
         uri,
     },
     rocket_oauth2::{
@@ -34,6 +26,7 @@ use {
         TokenResponse,
     },
     rocket_util::{
+        Error,
         Origin,
         html,
     },
@@ -59,16 +52,36 @@ use {
 
 pub(crate) struct ViewAs(pub(crate) HashMap<Id, Id>);
 
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+pub(crate) enum UserFromRequestError {
+    #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("neither racetime_token cookie nor discord_token cookie present")]
+    Cookie,
+    #[error("missing database connection")]
+    Database,
+    #[error("missing HTTP client")]
+    HttpClient,
+    #[error("this Discord account is not associated with a Mido's House account")]
+    NoMidosHouseAccountDiscord,
+    #[error("this racetime.gg account is not associated with a Mido's House account")]
+    NoMidosHouseAccountRaceTime,
+    #[error("missing view-as map")]
+    ViewAs,
+    #[error("user to view as does not exist")]
+    ViewAsNoSuchUser,
+}
+
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for User {
-    type Error = Error;
+    type Error = UserFromRequestError;
 
-    async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Error> {
+    async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, UserFromRequestError> {
         macro_rules! guard_try {
             ($res:expr) => {
                 match $res {
                     Ok(x) => x,
-                    Err(e) => return Outcome::Failure((Status::InternalServerError, anyhow!(e))),
+                    Err(e) => return Outcome::Failure((Status::InternalServerError, e.into())),
                 }
             };
         }
@@ -91,18 +104,18 @@ impl<'r> FromRequest<'r> for User {
                                             if let Some(user) = guard_try!(User::from_id(&**pool, user_id).await) {
                                                 Outcome::Success(user)
                                             } else {
-                                                Outcome::Failure((Status::InternalServerError, anyhow!("user to view as does not exist")))
+                                                Outcome::Failure((Status::InternalServerError, UserFromRequestError::ViewAsNoSuchUser))
                                             }
                                         } else {
                                             Outcome::Success(user)
                                         }
                                     } else {
-                                        Outcome::Failure((Status::Unauthorized, anyhow!("this racetime.gg account is not associated with a Mido's House account")))
+                                        Outcome::Failure((Status::Unauthorized, UserFromRequestError::NoMidosHouseAccountRaceTime))
                                     }
                                 }
-                                Err(e) => Outcome::Failure((Status::BadGateway, anyhow!(e))),
+                                Err(e) => Outcome::Failure((Status::BadGateway, e.into())),
                             },
-                            Outcome::Failure((status, ())) => Outcome::Failure((status, anyhow!("missing HTTP client"))),
+                            Outcome::Failure((status, ())) => Outcome::Failure((status, UserFromRequestError::HttpClient)),
                             Outcome::Forward(()) => Outcome::Forward(()),
                         }
                     } else if let Some(token) = cookies.get_private("discord_token") {
@@ -120,30 +133,30 @@ impl<'r> FromRequest<'r> for User {
                                             if let Some(user) = guard_try!(User::from_id(&**pool, user_id).await) {
                                                 Outcome::Success(user)
                                             } else {
-                                                Outcome::Failure((Status::InternalServerError, anyhow!("user to view as does not exist")))
+                                                Outcome::Failure((Status::InternalServerError, UserFromRequestError::ViewAsNoSuchUser))
                                             }
                                         } else {
                                             Outcome::Success(user)
                                         }
                                     } else {
-                                        Outcome::Failure((Status::Unauthorized, anyhow!("this Discord account is not associated with a Mido's House account")))
+                                        Outcome::Failure((Status::Unauthorized, UserFromRequestError::NoMidosHouseAccountDiscord))
                                     }
                                 },
-                                Err(e) => Outcome::Failure((Status::BadGateway, anyhow!(e))),
+                                Err(e) => Outcome::Failure((Status::BadGateway, e.into())),
                             },
-                            Outcome::Failure((status, ())) => Outcome::Failure((status, anyhow!("missing HTTP client"))),
+                            Outcome::Failure((status, ())) => Outcome::Failure((status, UserFromRequestError::HttpClient)),
                             Outcome::Forward(()) => Outcome::Forward(()),
                         }
                     } else {
-                        Outcome::Failure((Status::Unauthorized, anyhow!("neither racetime_token cookie nor discord_token cookie present")))
+                        Outcome::Failure((Status::Unauthorized, UserFromRequestError::Cookie))
                     },
-                    Outcome::Failure((status, ())) => Outcome::Failure((status, anyhow!("missing view-as map"))),
+                    Outcome::Failure((status, ())) => Outcome::Failure((status, UserFromRequestError::ViewAs)),
                     Outcome::Forward(()) => Outcome::Forward(()),
                 },
                 Outcome::Failure((_, never)) => match never {},
                 Outcome::Forward(()) => Outcome::Forward(()),
             },
-            Outcome::Failure((status, ())) => Outcome::Failure((status, anyhow!("missing database connection"))),
+            Outcome::Failure((status, ())) => Outcome::Failure((status, UserFromRequestError::Database)),
             Outcome::Forward(()) => Outcome::Forward(()),
         }
     }
@@ -205,22 +218,22 @@ pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 }
 
 #[rocket::get("/login/racetime?<redirect_to>")]
-pub(crate) fn racetime_login(oauth2: OAuth2<RaceTime>, cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Result<Redirect, Debug<rocket_oauth2::Error>> {
+pub(crate) fn racetime_login(oauth2: OAuth2<RaceTime>, cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Result<Redirect, Error<rocket_oauth2::Error>> {
     if let Some(redirect_to) = redirect_to {
         cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
     }
-    oauth2.get_redirect(cookies, &["read"]).map_err(Debug)
+    oauth2.get_redirect(cookies, &["read"]).map_err(Error)
 }
 
 #[rocket::get("/login/discord?<redirect_to>")]
-pub(crate) fn discord_login(oauth2: OAuth2<Discord>, cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Result<Redirect, Debug<rocket_oauth2::Error>> {
+pub(crate) fn discord_login(oauth2: OAuth2<Discord>, cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Result<Redirect, Error<rocket_oauth2::Error>> {
     if let Some(redirect_to) = redirect_to {
         cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
     }
-    oauth2.get_redirect(cookies, &["identify"]).map_err(Debug)
+    oauth2.get_redirect(cookies, &["identify"]).map_err(Error)
 }
 
-#[derive(Debug, thiserror::Error, rocket_util::Error)]
+#[derive(Debug, thiserror::Error, Error)]
 pub(crate) enum RaceTimeCallbackError {
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -280,7 +293,7 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, ur
     })
 }
 
-#[derive(Debug, thiserror::Error, rocket_util::Error)]
+#[derive(Debug, thiserror::Error, Error)]
 pub(crate) enum DiscordCallbackError {
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
@@ -341,25 +354,35 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, uri
     })
 }
 
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+pub(crate) enum RegisterError {
+    #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("there is already an account associated with this Discord account")]
+    ExistsDiscord,
+    #[error("there is already an account associated with this racetime.gg account")]
+    ExistsRaceTime,
+}
+
 #[rocket::get("/register/racetime")]
-pub(crate) async fn register_racetime(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, cookies: &CookieJar<'_>) -> Result<Redirect, Debug<Error>> {
+pub(crate) async fn register_racetime(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, cookies: &CookieJar<'_>) -> Result<Redirect, RegisterError> {
     Ok(if let Some(cookie) = cookies.get_private("racetime_token") {
         let racetime_user = client.get("https://racetime.gg/o/userinfo")
             .bearer_auth(cookie.value())
-            .send().await.map_err(Error::from)?
-            .error_for_status().map_err(Error::from)?
-            .json::<RaceTimeUser>().await.map_err(Error::from)?;
-        let mut transaction = pool.begin().await.map_err(Error::from)?;
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE racetime_id = $1) AS "exists!""#, racetime_user.id).fetch_one(&mut transaction).await.map_err(Error::from)? {
-            return Err(Debug(anyhow!("there is already an account associated with this racetime.gg account"))) //TODO user-facing error message
+            .send().await?
+            .error_for_status()?
+            .json::<RaceTimeUser>().await?;
+        let mut transaction = pool.begin().await?;
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE racetime_id = $1) AS "exists!""#, racetime_user.id).fetch_one(&mut transaction).await? {
+            return Err(RegisterError::ExistsRaceTime) //TODO user-facing error message
         } else if let Some(me) = me {
-            sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2 WHERE id = $3", racetime_user.id, racetime_user.name, i64::from(me.id)).execute(&mut transaction).await.map_err(Error::from)?;
-            transaction.commit().await.map_err(Error::from)?;
+            sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2 WHERE id = $3", racetime_user.id, racetime_user.name, i64::from(me.id)).execute(&mut transaction).await?;
+            transaction.commit().await?;
             Redirect::to(uri!(crate::user::profile(me.id)))
         } else {
-            let id = Id::new(&mut transaction, IdTable::Users).await.map_err(Error::from)?;
-            sqlx::query!("INSERT INTO users (id, display_source, racetime_id, racetime_display_name) VALUES ($1, 'racetime', $2, $3)", id as _, racetime_user.id, racetime_user.name).execute(&mut transaction).await.map_err(Error::from)?;
-            transaction.commit().await.map_err(Error::from)?;
+            let id = Id::new(&mut transaction, IdTable::Users).await?;
+            sqlx::query!("INSERT INTO users (id, display_source, racetime_id, racetime_display_name) VALUES ($1, 'racetime', $2, $3)", id as _, racetime_user.id, racetime_user.name).execute(&mut transaction).await?;
+            transaction.commit().await?;
             Redirect::to(uri!(crate::user::profile(id)))
         }
     } else {
@@ -368,24 +391,24 @@ pub(crate) async fn register_racetime(pool: &State<PgPool>, me: Option<User>, cl
 }
 
 #[rocket::get("/register/discord")]
-pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, cookies: &CookieJar<'_>) -> Result<Redirect, Debug<Error>> {
+pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, cookies: &CookieJar<'_>) -> Result<Redirect, RegisterError> {
     Ok(if let Some(cookie) = cookies.get_private("discord_token") {
         let discord_user = client.get("https://discord.com/api/v9/users/@me")
             .bearer_auth(cookie.value())
-            .send().await.map_err(Error::from)?
-            .error_for_status().map_err(Error::from)?
-            .json::<DiscordUser>().await.map_err(Error::from)?;
-        let mut transaction = pool.begin().await.map_err(Error::from)?;
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE discord_id = $1) AS "exists!""#, i64::from(discord_user.id)).fetch_one(&mut transaction).await.map_err(Error::from)? {
-            return Err(Debug(anyhow!("there is already an account associated with this Discord account"))) //TODO user-facing error message
+            .send().await?
+            .error_for_status()?
+            .json::<DiscordUser>().await?;
+        let mut transaction = pool.begin().await?;
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE discord_id = $1) AS "exists!""#, i64::from(discord_user.id)).fetch_one(&mut transaction).await? {
+            return Err(RegisterError::ExistsDiscord) //TODO user-facing error message
         } else if let Some(me) = me {
-            sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2 WHERE id = $3", i64::from(discord_user.id), discord_user.username, i64::from(me.id)).execute(&mut transaction).await.map_err(Error::from)?;
-            transaction.commit().await.map_err(Error::from)?;
+            sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2 WHERE id = $3", i64::from(discord_user.id), discord_user.username, i64::from(me.id)).execute(&mut transaction).await?;
+            transaction.commit().await?;
             Redirect::to(uri!(crate::user::profile(me.id)))
         } else {
-            let id = Id::new(&mut transaction, IdTable::Users).await.map_err(Error::from)?;
-            sqlx::query!("INSERT INTO users (id, display_source, discord_id, discord_display_name) VALUES ($1, 'discord', $2, $3)", id as _, i64::from(discord_user.id), discord_user.username).execute(&mut transaction).await.map_err(Error::from)?;
-            transaction.commit().await.map_err(Error::from)?;
+            let id = Id::new(&mut transaction, IdTable::Users).await?;
+            sqlx::query!("INSERT INTO users (id, display_source, discord_id, discord_display_name) VALUES ($1, 'discord', $2, $3)", id as _, i64::from(discord_user.id), discord_user.username).execute(&mut transaction).await?;
+            transaction.commit().await?;
             Redirect::to(uri!(crate::user::profile(id)))
         }
     } else {
@@ -393,11 +416,20 @@ pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, cli
     })
 }
 
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+pub(crate) enum MergeAccountsError {
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("accounts already merged")]
+    AlreadyMerged,
+    #[error("failed to merge accounts")]
+    Other,
+}
+
 #[rocket::get("/merge-accounts")]
-pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, client: &State<reqwest::Client>, cookies: &CookieJar<'_>) -> Result<Redirect, Debug<Error>> {
-    let mut transaction = pool.begin().await.map_err(Error::from)?;
+pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, client: &State<reqwest::Client>, cookies: &CookieJar<'_>) -> Result<Redirect, MergeAccountsError> {
+    let mut transaction = pool.begin().await?;
     match (me.racetime_id, me.discord_id) {
-        (Some(_), Some(_)) => return Err(anyhow!("accounts already merged").into()),
+        (Some(_), Some(_)) => return Err(MergeAccountsError::AlreadyMerged),
         (Some(_), None) => if let Some(token) = cookies.get_private("discord_token") {
             if let Ok(response) = client.get("https://discord.com/api/v9/users/@me")
                 .bearer_auth(token.value())
@@ -407,9 +439,9 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, client: &Stat
                 if let Ok(user_data) = response.json::<DiscordUser>().await {
                     if let Ok(Some(discord_user)) = User::from_discord(&**pool, user_data.id).await { //TODO use transaction
                         if discord_user.racetime_id.is_none() {
-                            sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2 WHERE id = $3", i64::from(discord_user.discord_id.expect("Discord user without Discord ID")), discord_user.discord_display_name, i64::from(me.id)).execute(&mut transaction).await.map_err(Error::from)?;
-                            sqlx::query!("DELETE FROM users WHERE id = $1", i64::from(discord_user.id)).execute(&mut transaction).await.map_err(Error::from)?;
-                            transaction.commit().await.map_err(Error::from)?;
+                            sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2 WHERE id = $3", i64::from(discord_user.discord_id.expect("Discord user without Discord ID")), discord_user.discord_display_name, i64::from(me.id)).execute(&mut transaction).await?;
+                            sqlx::query!("DELETE FROM users WHERE id = $1", i64::from(discord_user.id)).execute(&mut transaction).await?;
+                            transaction.commit().await?;
                             return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
                         }
                     }
@@ -425,9 +457,9 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, client: &Stat
                 if let Ok(user_data) = response.json::<RaceTimeUser>().await {
                     if let Ok(Some(racetime_user)) = User::from_racetime(&**pool, &user_data.id).await { //TODO use transaction
                         if racetime_user.discord_id.is_none() {
-                            sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2 WHERE id = $3", racetime_user.racetime_id, racetime_user.racetime_display_name, i64::from(me.id)).execute(&mut transaction).await.map_err(Error::from)?;
-                            sqlx::query!("DELETE FROM users WHERE id = $1", i64::from(racetime_user.id)).execute(&mut transaction).await.map_err(Error::from)?;
-                            transaction.commit().await.map_err(Error::from)?;
+                            sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2 WHERE id = $3", racetime_user.racetime_id, racetime_user.racetime_display_name, i64::from(me.id)).execute(&mut transaction).await?;
+                            sqlx::query!("DELETE FROM users WHERE id = $1", i64::from(racetime_user.id)).execute(&mut transaction).await?;
+                            transaction.commit().await?;
                             return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
                         }
                     }
@@ -436,8 +468,8 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, client: &Stat
         },
         (None, None) => unreachable!("signed in but nether account connected"),
     }
-    transaction.rollback().await.map_err(Error::from)?;
-    Err(anyhow!("failed to merge accounts").into())
+    transaction.rollback().await?;
+    Err(MergeAccountsError::Other)
 }
 
 #[rocket::get("/logout?<redirect_to>")]
