@@ -5,8 +5,17 @@ use {
     std::time::Duration,
     futures::future::FutureExt as _,
     rocket::Rocket,
-    serenity::model::prelude::*,
-    serenity_utils::builder::ErrorNotifier,
+    serenity::{
+        model::{
+            application::interaction::Interaction,
+            prelude::*,
+        },
+        prelude::*,
+    },
+    serenity_utils::{
+        builder::ErrorNotifier,
+        handler::HandlerMethods as _,
+    },
     sqlx::{
         PgPool,
         postgres::PgConnectOptions,
@@ -30,6 +39,12 @@ mod user;
 mod util;
 
 const FENHL: UserId = UserId(86841168427495424);
+
+enum PronounRolesCommandId {}
+
+impl TypeMapKey for PronounRolesCommandId {
+    type Value = CommandId;
+}
 
 fn parse_view_as(arg: &str) -> Result<(Id, Id), anyhow::Error> {
     let (from, to) = arg.split_once(':').ok_or(anyhow::anyhow!("missing colon in view-as option"))?;
@@ -92,6 +107,165 @@ async fn main(Args { env, view_as }: Args) -> Result<(), Error> {
     let shutdown = rocket.shutdown();
     let discord_builder = discord_builder
         .error_notifier(ErrorNotifier::User(FENHL))
+        .on_guild_create(false, |ctx, guild, _| Box::pin(async move {
+            let cmd = guild.create_application_command(ctx, |c| c
+                .name("pronoun-roles")
+                .kind(serenity::model::application::command::CommandType::ChatInput)
+                .default_member_permissions(Permissions::ADMINISTRATOR)
+                .dm_permission(false)
+                .description("Creates gender pronoun roles and posts a message here that allows members to self-assign them.")
+            ).await?;
+            ctx.data.write().await.insert::<PronounRolesCommandId>(cmd.id);
+            Ok(())
+        }))
+        .on_interaction_create(|ctx, interaction| Box::pin(async move {
+            match interaction {
+                Interaction::ApplicationCommand(interaction) => if let Some(&pronoun_roles_cmd) = ctx.data.read().await.get::<PronounRolesCommandId>() {
+                    if interaction.data.id == pronoun_roles_cmd {
+                        let guild_id = interaction.guild_id.expect("/pronoun-roles called outside of a guild");
+                        guild_id.create_role(ctx, |r| r
+                            .hoist(false)
+                            .mentionable(false)
+                            .name("he/him")
+                            .permissions(Permissions::empty())
+                        ).await?;
+                        guild_id.create_role(ctx, |r| r
+                            .hoist(false)
+                            .mentionable(false)
+                            .name("she/her")
+                            .permissions(Permissions::empty())
+                        ).await?;
+                        guild_id.create_role(ctx, |r| r
+                            .hoist(false)
+                            .mentionable(false)
+                            .name("they/them")
+                            .permissions(Permissions::empty())
+                        ).await?;
+                        guild_id.create_role(ctx, |r| r
+                            .hoist(false)
+                            .mentionable(false)
+                            .name("other pronouns")
+                            .permissions(Permissions::empty())
+                        ).await?;
+                        interaction.create_interaction_response(ctx, |r| r
+                            .interaction_response_data(|d| d
+                                .ephemeral(false)
+                                .content("Click a button below to get a gender pronoun role. Click again to remove it. Multiple selections allowed.")
+                                .components(|c| c
+                                    .create_action_row(|r| r
+                                        .create_button(|b| b
+                                            .label("he/him")
+                                            .custom_id("pronouns_he")
+                                        )
+                                        .create_button(|b| b
+                                            .label("she/her")
+                                            .custom_id("pronouns_she")
+                                        )
+                                        .create_button(|b| b
+                                            .label("they/them")
+                                            .custom_id("pronouns_they")
+                                        )
+                                        .create_button(|b| b
+                                            .label("other")
+                                            .custom_id("pronouns_other")
+                                        )
+                                    )
+                                )
+                            )
+                        ).await?;
+                    }
+                },
+                Interaction::MessageComponent(interaction) => match &*interaction.data.custom_id {
+                    "pronouns_he" => {
+                        let mut member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
+                        let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "he/him").expect("missing “he/him” role");
+                        if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
+                            member.remove_role(ctx, role).await?;
+                            interaction.create_interaction_response(ctx, |r| r
+                                .interaction_response_data(|d| d
+                                    .ephemeral(true)
+                                    .content("Role removed.")
+                                )
+                            ).await?;
+                        } else {
+                            member.add_role(ctx, role).await?;
+                            interaction.create_interaction_response(ctx, |r| r
+                                .interaction_response_data(|d| d
+                                    .ephemeral(true)
+                                    .content("Role added.")
+                                )
+                            ).await?;
+                        }
+                    }
+                    "pronouns_she" => {
+                        let mut member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
+                        let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "she/her").expect("missing “she/her” role");
+                        if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
+                            member.remove_role(ctx, role).await?;
+                            interaction.create_interaction_response(ctx, |r| r
+                                .interaction_response_data(|d| d
+                                    .ephemeral(true)
+                                    .content("Role removed.")
+                                )
+                            ).await?;
+                        } else {
+                            member.add_role(ctx, role).await?;
+                            interaction.create_interaction_response(ctx, |r| r
+                                .interaction_response_data(|d| d
+                                    .ephemeral(true)
+                                    .content("Role added.")
+                                )
+                            ).await?;
+                        }
+                    }
+                    "pronouns_they" => {
+                        let mut member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
+                        let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "they/them").expect("missing “they/them” role");
+                        if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
+                            member.remove_role(ctx, role).await?;
+                            interaction.create_interaction_response(ctx, |r| r
+                                .interaction_response_data(|d| d
+                                    .ephemeral(true)
+                                    .content("Role removed.")
+                                )
+                            ).await?;
+                        } else {
+                            member.add_role(ctx, role).await?;
+                            interaction.create_interaction_response(ctx, |r| r
+                                .interaction_response_data(|d| d
+                                    .ephemeral(true)
+                                    .content("Role added.")
+                                )
+                            ).await?;
+                        }
+                    }
+                    "pronouns_other" => {
+                        let mut member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
+                        let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "other pronouns").expect("missing “other pronouns” role");
+                        if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
+                            member.remove_role(ctx, role).await?;
+                            interaction.create_interaction_response(ctx, |r| r
+                                .interaction_response_data(|d| d
+                                    .ephemeral(true)
+                                    .content("Role removed.")
+                                )
+                            ).await?;
+                        } else {
+                            member.add_role(ctx, role).await?;
+                            interaction.create_interaction_response(ctx, |r| r
+                                .interaction_response_data(|d| d
+                                    .ephemeral(true)
+                                    .content("Role added.")
+                                )
+                            ).await?;
+                        }
+                    }
+                    custom_id => panic!("received message component interaction with unknown custom ID {custom_id:?}"),
+                },
+                _ => {}
+            }
+            Ok(())
+        }))
         .task(|ctx_fut, _| async move {
             shutdown.await;
             serenity_utils::shut_down(&*ctx_fut.read().await).await;
