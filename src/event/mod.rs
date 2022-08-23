@@ -284,7 +284,7 @@ impl<'a> Data<'a> {
         }
     }
 
-    fn is_started(&self) -> bool {
+    pub(crate) fn is_started(&self) -> bool {
         self.start.map_or(false, |start| start <= Utc::now())
     }
 

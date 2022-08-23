@@ -189,17 +189,27 @@ pub(crate) async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, sty
 
 #[rocket::get("/")]
 async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
-    //TODO list ongoing events separately
     let upcoming_events = sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW()) ORDER BY start ASC NULLS LAST"#)
         .fetch(&**pool).map_err(event::DataError::from)
         .and_then(|row| async move { Ok(event::Data::new((**pool).clone(), row.series, row.event).await?.expect("event deleted during page load")) }) //TODO use a transaction to enforce consistency?
         .try_collect::<Vec<_>>().await?;
     let chests = upcoming_events.choose(&mut thread_rng()).map_or_else(|| ChestAppearances::random(), |event| event.chests());
+    let (ongoing_events, upcoming_events) = upcoming_events.into_iter().partition::<Vec<_>, _>(event::Data::is_started);
     Ok(page(pool, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", html! {
         p {
             : "Mido's House is a platform where ";
             a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
             : " events like tournaments or community races can be organized.";
+        }
+        h1 : "Ongoing events";
+        ul {
+            @if ongoing_events.is_empty() {
+                i : "(none currently)";
+            } else {
+                @for event in ongoing_events {
+                    li : event;
+                }
+            }
         }
         h1 : "Upcoming events";
         ul {
