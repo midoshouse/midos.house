@@ -315,8 +315,7 @@ pub(crate) fn format_datetime<Tz: TimeZone>(datetime: DateTime<Tz>, format: Date
     let berlin = datetime.with_timezone(&Europe::Berlin);
     let new_york = datetime.with_timezone(&America::New_York);
     html! {
-        span(class = "datetime", data_timestamp = datetime.timestamp_millis(), data_long = format.long.to_string());
-        noscript {
+        span(class = "datetime", data_timestamp = datetime.timestamp_millis(), data_long = format.long.to_string()) {
             : utc.format("%A, %B %-d, %Y, %H:%M UTC").to_string();
             @if format.running_text {
                 : " (";
@@ -345,8 +344,7 @@ pub(crate) fn format_datetime<Tz: TimeZone>(datetime: DateTime<Tz>, format: Date
 pub(crate) fn format_date_range<Tz: TimeZone>(start: DateTime<Tz>, end: DateTime<Tz>) -> RawHtml<String>
 where Tz::Offset: fmt::Display {
     html! {
-        span(class = "daterange", data_start = start.timestamp_millis(), data_end = end.timestamp_millis());
-        noscript {
+        span(class = "daterange", data_start = start.timestamp_millis(), data_end = end.timestamp_millis()) {
             @if start.year() != end.year() {
                 : start.format("%B %-d, %Y").to_string();
                 : "–";
