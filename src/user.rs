@@ -67,7 +67,7 @@ pub(crate) struct User {
     display_source: DisplaySource, //TODO allow users with both accounts connected to set this in their preferences
     pub(crate) racetime_id: Option<String>,
     pub(crate) racetime_display_name: Option<String>,
-    racetime_pronouns: Option<RaceTimePronouns>,
+    pub(crate) racetime_pronouns: Option<RaceTimePronouns>,
     pub(crate) discord_id: Option<UserId>,
     pub(crate) discord_display_name: Option<String>,
 }
