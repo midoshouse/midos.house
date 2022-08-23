@@ -8,11 +8,17 @@ function ThrowOnNativeFailure {
 git push
 ThrowOnNativeFailure
 
+wsl cargo build --release
+ThrowOnNativeFailure
+
+ssh midos.house sudo systemctl stop midos-house
+ThrowOnNativeFailure
+
 ssh midos.house env -C /opt/git/github.com/midoshouse/midos.house/master git pull
 ThrowOnNativeFailure
 
-ssh midos.house env -C /opt/git/github.com/midoshouse/midos.house/master cargo build --release
+scp .\target\release\midos-house midos.house:bin/midos-house
 ThrowOnNativeFailure
 
-ssh midos.house sudo systemctl restart midos-house
+ssh midos.house sudo systemctl start midos-house
 ThrowOnNativeFailure

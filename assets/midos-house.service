@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Restart=always
-ExecStart=/opt/git/github.com/midoshouse/midos.house/master/target/release/midos-house
+ExecStart=/home/fenhl/bin/midos-house
 User=mido
 Group=nogroup
 WorkingDirectory=/opt/git/github.com/midoshouse/midos.house/master
