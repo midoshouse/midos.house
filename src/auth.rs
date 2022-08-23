@@ -41,7 +41,10 @@ use {
             PageStyle,
             page,
         },
-        user::User,
+        user::{
+            RaceTimePronouns,
+            User,
+        },
         util::{
             Id,
             IdTable,
@@ -99,7 +102,7 @@ impl<'r> FromRequest<'r> for User {
                                 Ok(response) => {
                                     let user_data = guard_try!(response.json::<RaceTimeUser>().await);
                                     if let Some(user) = guard_try!(User::from_racetime(&**pool, &user_data.id).await) {
-                                        guard_try!(sqlx::query!("UPDATE users SET racetime_display_name = $1 WHERE id = $2", user_data.name, i64::from(user.id)).execute(&**pool).await);
+                                        guard_try!(sqlx::query!("UPDATE users SET racetime_display_name = $1, racetime_pronouns = $2 WHERE id = $3", user_data.name, user_data.pronouns as _, i64::from(user.id)).execute(&**pool).await);
                                         if let Some(&user_id) = view_as.inner().0.get(&user.id) {
                                             if let Some(user) = guard_try!(User::from_id(&**pool, user_id).await) {
                                                 Outcome::Success(user)
@@ -169,6 +172,7 @@ pub(crate) enum Discord {}
 pub(crate) struct RaceTimeUser {
     pub(crate) id: String,
     name: String,
+    pronouns: Option<RaceTimePronouns>,
 }
 
 #[derive(Deserialize)]

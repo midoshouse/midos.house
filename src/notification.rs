@@ -196,7 +196,9 @@ impl Notification {
                             : creator;
                             : " (";
                             : pic::Role::try_from(creator_role).expect("non-Pictionary role in Pictionary team");
-                            : ") invited you to join their team"; //TODO adjust pronouns based on racetime.gg user data?
+                            : ") invited you to join ";
+                            : creator.possessive_pronoun();
+                            : " team";
                             @if let Some(team_name) = team_row.name {
                                 : " “";
                                 : team_name;

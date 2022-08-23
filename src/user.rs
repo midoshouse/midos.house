@@ -13,6 +13,7 @@ use {
         ToHtml,
         html,
     },
+    serde::Deserialize,
     serenity::model::prelude::*,
     sqlx::{
         PgExecutor,
@@ -44,11 +45,29 @@ enum DisplaySource {
     Discord,
 }
 
+#[derive(Debug, sqlx::Type, Deserialize)]
+#[sqlx(type_name = "racetime_pronouns", rename_all = "snake_case")]
+pub(crate) enum RaceTimePronouns {
+    #[serde(rename = "she/her")]
+    She,
+    #[serde(rename = "he/him")]
+    He,
+    #[serde(rename = "they/them")]
+    They,
+    #[serde(rename = "she/they")]
+    SheThey,
+    #[serde(rename = "he/they")]
+    HeThey,
+    #[serde(rename = "other/ask!")]
+    Other,
+}
+
 pub(crate) struct User {
     pub(crate) id: Id,
     display_source: DisplaySource, //TODO allow users with both accounts connected to set this in their preferences
     pub(crate) racetime_id: Option<String>,
     pub(crate) racetime_display_name: Option<String>,
+    racetime_pronouns: Option<RaceTimePronouns>,
     pub(crate) discord_id: Option<UserId>,
     pub(crate) discord_display_name: Option<String>,
 }
@@ -60,6 +79,7 @@ impl User {
                 display_source AS "display_source: DisplaySource",
                 racetime_id,
                 racetime_display_name,
+                racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
                 discord_id AS "discord_id: Id",
                 discord_display_name
             FROM users WHERE id = $1"#, i64::from(id)).fetch_optional(pool).await?
@@ -67,6 +87,7 @@ impl User {
                     display_source: row.display_source,
                     racetime_id: row.racetime_id,
                     racetime_display_name: row.racetime_display_name,
+                    racetime_pronouns: row.racetime_pronouns,
                     discord_id: row.discord_id.map(|Id(id)| id.into()),
                     discord_display_name: row.discord_display_name,
                     id,
@@ -80,6 +101,7 @@ impl User {
                 id AS "id: Id",
                 display_source AS "display_source: DisplaySource",
                 racetime_display_name,
+                racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
                 discord_id AS "discord_id: Id",
                 discord_display_name
             FROM users WHERE racetime_id = $1"#, racetime_id).fetch_optional(pool).await?
@@ -88,6 +110,7 @@ impl User {
                     display_source: row.display_source,
                     racetime_id: Some(racetime_id.to_owned()),
                     racetime_display_name: row.racetime_display_name,
+                    racetime_pronouns: row.racetime_pronouns,
                     discord_id: row.discord_id.map(|Id(id)| id.into()),
                     discord_display_name: row.discord_display_name,
                 })
@@ -101,6 +124,7 @@ impl User {
                 display_source AS "display_source: DisplaySource",
                 racetime_id,
                 racetime_display_name,
+                racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
                 discord_display_name
             FROM users WHERE discord_id = $1"#, i64::from(discord_id)).fetch_optional(pool).await?
                 .map(|row| Self {
@@ -108,6 +132,7 @@ impl User {
                     display_source: row.display_source,
                     racetime_id: row.racetime_id,
                     racetime_display_name: row.racetime_display_name,
+                    racetime_pronouns: row.racetime_pronouns,
                     discord_id: Some(discord_id),
                     discord_display_name: row.discord_display_name,
                 })
@@ -118,6 +143,14 @@ impl User {
         match self.display_source {
             DisplaySource::RaceTime => self.racetime_display_name.as_ref().expect("user with racetime.gg display preference but no racetime.gg display name"),
             DisplaySource::Discord => self.discord_display_name.as_ref().expect("user with Discord display preference but no Discord display name"),
+        }
+    }
+
+    pub(crate) fn possessive_pronoun(&self) -> &'static str {
+        match self.racetime_pronouns {
+            Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => "his",
+            Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "her",
+            Some(RaceTimePronouns::They | RaceTimePronouns::Other) | None => "their",
         }
     }
 }
