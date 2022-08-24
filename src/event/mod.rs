@@ -82,6 +82,7 @@ use {
             EmptyForm,
             Id,
             IdTable,
+            MessageBuilderExt as _,
             RedirectOrContent,
             StatusOrError,
             favicon,
@@ -988,11 +989,73 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                     if let (Some(time1), Some(time2), Some(time3)) = (time1, time2, time3) {
                         message.push(" who finished with a time of ");
                         message.push(format_duration((time1 + time2 + time3) / 3));
-                        message.push('!');
+                        message.push_line('!');
                     } else {
-                        message.push(" who did not finish.");
+                        message.push_line(" who did not finish.");
                     };
-                    //TODO list team members and their times and vods in world order
+                    if let Some(player1) = User::from_id(&**pool, player1).await? { //TODO use the transaction
+                        message.mention_user(&player1);
+                    } else {
+                        message.push("player 1");
+                    }
+                    message.push(": ");
+                    if let Some(time1) = time1 {
+                        message.push(format_duration(time1));
+                    } else {
+                        message.push("DNF");
+                    }
+                    if value.vod1.is_empty() {
+                        message.push_line("");
+                    } else if let Ok(vod1) = Url::parse(&value.vod1) {
+                        message.push(" <");
+                        message.push_safe(vod1);
+                        message.push_line('>');
+                    } else {
+                        message.push(' ');
+                        message.push_line_safe(&value.vod1);
+                    }
+                    if let Some(player2) = User::from_id(&**pool, player2).await? { //TODO use the transaction
+                        message.mention_user(&player2);
+                    } else {
+                        message.push("player 2");
+                    }
+                    message.push(": ");
+                    if let Some(time2) = time2 {
+                        message.push(format_duration(time2));
+                    } else {
+                        message.push("DNF");
+                    }
+                    if value.vod2.is_empty() {
+                        message.push_line("");
+                    } else if let Ok(vod2) = Url::parse(&value.vod2) {
+                        message.push(" <");
+                        message.push_safe(vod2);
+                        message.push_line('>');
+                    } else {
+                        message.push(' ');
+                        message.push_line_safe(&value.vod2);
+                    }
+                    if let Some(player3) = User::from_id(&**pool, player3).await? { //TODO use the transaction
+                        message.mention_user(&player3);
+                    } else {
+                        message.push("player 3");
+                    }
+                    message.push(": ");
+                    if let Some(time3) = time3 {
+                        message.push(format_duration(time3));
+                    } else {
+                        message.push("DNF");
+                    }
+                    if !value.vod3.is_empty() {
+                        if let Ok(vod3) = Url::parse(&value.vod3) {
+                            message.push(" <");
+                            message.push_safe(vod3);
+                            message.push('>');
+                        } else {
+                            message.push(' ');
+                            message.push_safe(&value.vod3);
+                        }
+                    }
                     ChannelId(discord_channel).say(&*discord_ctx.read().await, message).await?;
                 }
             }

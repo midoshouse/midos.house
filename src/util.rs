@@ -37,6 +37,7 @@ use {
         ToHtml,
         html,
     },
+    serenity::utils::MessageBuilder,
     sqlx::{
         Database,
         Decode,
@@ -45,8 +46,25 @@ use {
         Transaction,
     },
     url::Url,
-    crate::http::PageError,
+    crate::{
+        http::PageError,
+        user::User,
+    },
 };
+
+pub(crate) trait MessageBuilderExt {
+    fn mention_user(&mut self, user: &User) -> &mut Self;
+}
+
+impl MessageBuilderExt for MessageBuilder {
+    fn mention_user(&mut self, user: &User) -> &mut Self {
+        if let Some(discord_id) = user.discord_id {
+            self.mention(&discord_id)
+        } else {
+            self.push_safe(user.display_name())
+        }
+    }
+}
 
 /// A form that only holds a CSRF token
 #[derive(FromForm)]
