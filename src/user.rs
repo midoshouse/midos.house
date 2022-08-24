@@ -1,10 +1,7 @@
 use {
     rocket::{
         State,
-        http::{
-            CookieJar,
-            Status,
-        },
+        http::Status,
         response::content::RawHtml,
         uri,
     },
@@ -172,7 +169,7 @@ impl PartialEq for User {
 impl Eq for User {}
 
 #[rocket::get("/user/<id>")]
-pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, client: &State<reqwest::Client>, cookies: &CookieJar<'_>, id: Id) -> Result<RawHtml<String>, StatusOrError<PageError>> {
+pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, racetime_user: Option<RaceTimeUser>, discord_user: Option<DiscordUser>, id: Id) -> Result<RawHtml<String>, StatusOrError<PageError>> {
     let user = if let Some(user) = User::from_id(&**pool, id).await? {
         user
     } else {
@@ -186,33 +183,36 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
             }
         }
     } else if me.as_ref().map_or(false, |me| me.id == user.id) {
-        let mut racetime_user = None;
-        if let Some(token) = cookies.get_private("racetime_token") {
-            if let Ok(response) = client.get("https://racetime.gg/o/userinfo")
-                .bearer_auth(token.value())
-                .send().await
-                .and_then(|response| response.error_for_status())
-            {
-                if let Ok(user_data) = response.json::<RaceTimeUser>().await {
-                    if let Ok(user) = User::from_racetime(&**pool, &user_data.id).await {
-                        racetime_user = user;
+        if let Some(racetime_user) = racetime_user {
+            if let Some(racetime_user) = User::from_racetime(&**pool, &racetime_user.id).await? {
+                let fenhl = User::from_id(&**pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+                html! {
+                    p {
+                        : "You are also signed in via racetime.gg as ";
+                        a(href = format!("https://racetime.gg/user/{}", racetime_user.racetime_id.expect("racetime.gg user without racetime.gg ID"))) : racetime_user.racetime_display_name; //TODO racetime.gg display name with discriminator
+                        : " which belongs to a different Mido's House account. ";
+                        @if racetime_user.discord_id.is_some() {
+                            : "That Mido's House account is also connected to a Discord account. If you would like to merge your accounts, please contact ";
+                            : fenhl;
+                            : ".";
+                        } else {
+                            a(class = "button", href = uri!(crate::auth::merge_accounts).to_string()) : "Merge Accounts";
+                        }
                     }
                 }
-            }
-        }
-        if let Some(racetime_user) = racetime_user {
-            let fenhl = User::from_id(&**pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
-            html! {
-                p {
-                    : "You are also signed in via racetime.gg as ";
-                    a(href = format!("https://racetime.gg/user/{}", racetime_user.racetime_id.expect("racetime.gg user without racetime.gg ID"))) : racetime_user.racetime_display_name; //TODO racetime.gg display name with discriminator
-                    : " which belongs to a different Mido's House account. ";
-                    @if racetime_user.discord_id.is_some() {
-                        : "That Mido's House account is also connected to a Discord account. If you would like to merge your accounts, please contact ";
-                        : fenhl;
-                        : ".";
-                    } else {
-                        a(class = "button", href = uri!(crate::auth::merge_accounts).to_string()) : "Merge Accounts";
+            } else {
+                html! {
+                    p {
+                        : "You are also signed in via racetime.gg as ";
+                        a(href = format!("https://racetime.gg/user/{}", racetime_user.id)) {
+                            : racetime_user.name;
+                            @if let Some(discriminator) = racetime_user.discriminator {
+                                : "#";
+                                : discriminator;
+                            }
+                        }
+                        : " which does not belong to a Mido's House account. ";
+                        a(class = "button", href = uri!(crate::auth::register_racetime).to_string()) : "Add this racetime.gg account to your Mido's House account";
                     }
                 }
             }
@@ -234,33 +234,34 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
             }
         }
     } else if me.as_ref().map_or(false, |me| me.id == user.id) {
-        let mut discord_user = None;
-        if let Some(token) = cookies.get_private("discord_token") {
-            if let Ok(response) = client.get("https://discord.com/api/v9/users/@me")
-                .bearer_auth(token.value())
-                .send().await
-                .and_then(|response| response.error_for_status())
-            {
-                if let Ok(user_data) = response.json::<DiscordUser>().await {
-                    if let Ok(user) = User::from_discord(&**pool, user_data.id).await {
-                        discord_user = user;
+        if let Some(discord_user) = discord_user {
+            if let Some(discord_user) = User::from_discord(&**pool, discord_user.id).await? {
+                let fenhl = User::from_id(&**pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+                html! {
+                    p {
+                        : "You are also signed in via Discord as ";
+                        a(href = format!("https://discord.com/users/{}", discord_user.discord_id.expect("Discord user without Discord ID"))) : discord_user.discord_display_name; //TODO Discord display name with discriminator
+                        : " which belongs to a different Mido's House account. ";
+                        @if discord_user.racetime_id.is_some() {
+                            : "That Mido's House account is also connected to a raceitme.gg account. If you would like to merge your accounts, please contact ";
+                            : fenhl;
+                            : ".";
+                        } else {
+                            a(class = "button", href = uri!(crate::auth::merge_accounts).to_string()) : "Merge Accounts";
+                        }
                     }
                 }
-            }
-        }
-        if let Some(discord_user) = discord_user {
-            let fenhl = User::from_id(&**pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
-            html! {
-                p {
-                    : "You are also signed in via Discord as ";
-                    a(href = format!("https://discord.com/users/{}", discord_user.discord_id.expect("Discord user without Discord ID"))) : discord_user.discord_display_name; //TODO Discord display name with discriminator
-                    : " which belongs to a different Mido's House account. ";
-                    @if discord_user.racetime_id.is_some() {
-                        : "That Mido's House account is also connected to a raceitme.gg account. If you would like to merge your accounts, please contact ";
-                        : fenhl;
-                        : ".";
-                    } else {
-                        a(class = "button", href = uri!(crate::auth::merge_accounts).to_string()) : "Merge Accounts";
+            } else {
+                html! {
+                    p {
+                        : "You are also signed in via Discord as ";
+                        a(href = format!("https://discord.com/users/{}", discord_user.id)) {
+                            : discord_user.username;
+                            : "#";
+                            : discord_user.discriminator;
+                        }
+                        : " which does not belong to a Mido's House account. ";
+                        a(class = "button", href = uri!(crate::auth::register_discord).to_string()) : "Add this Discord account to your Mido's House account";
                     }
                 }
             }
