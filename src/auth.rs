@@ -478,7 +478,7 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, racetime_user
     match (me.racetime_id, me.discord_id) {
         (Some(_), Some(_)) => return Err(MergeAccountsError::AlreadyMerged),
         (Some(_), None) => if let Some(discord_user) = discord_user {
-            if let Ok(Some(discord_user)) = User::from_discord(&**pool, discord_user.id).await { //TODO use the transaction
+            if let Ok(Some(discord_user)) = User::from_discord(&mut transaction, discord_user.id).await {
                 if discord_user.racetime_id.is_none() {
                     sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2 WHERE id = $3", i64::from(discord_user.discord_id.expect("Discord user without Discord ID")), discord_user.discord_display_name, i64::from(me.id)).execute(&mut transaction).await?;
                     sqlx::query!("DELETE FROM users WHERE id = $1", i64::from(discord_user.id)).execute(&mut transaction).await?;
@@ -488,7 +488,7 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, racetime_user
             }
         },
         (None, Some(_)) => if let Some(racetime_user) = racetime_user {
-            if let Ok(Some(racetime_user)) = User::from_racetime(&**pool, &racetime_user.id).await { //TODO use the transaction
+            if let Ok(Some(racetime_user)) = User::from_racetime(&mut transaction, &racetime_user.id).await {
                 if racetime_user.discord_id.is_none() {
                     sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2, racetime_pronouns = $3 WHERE id = $4", racetime_user.racetime_id, racetime_user.racetime_display_name, racetime_user.racetime_pronouns as _, i64::from(me.id)).execute(&mut transaction).await?;
                     sqlx::query!("DELETE FROM users WHERE id = $1", i64::from(racetime_user.id)).execute(&mut transaction).await?;

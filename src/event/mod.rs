@@ -993,7 +993,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                     } else {
                         message.push_line(" who did not finish.");
                     };
-                    if let Some(player1) = User::from_id(&**pool, player1).await? { //TODO use the transaction
+                    if let Some(player1) = User::from_id(&mut transaction, player1).await? {
                         message.mention_user(&player1);
                     } else {
                         message.push("player 1");
@@ -1014,7 +1014,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                         message.push(' ');
                         message.push_line_safe(&value.vod1);
                     }
-                    if let Some(player2) = User::from_id(&**pool, player2).await? { //TODO use the transaction
+                    if let Some(player2) = User::from_id(&mut transaction, player2).await? {
                         message.mention_user(&player2);
                     } else {
                         message.push("player 2");
@@ -1035,7 +1035,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                         message.push(' ');
                         message.push_line_safe(&value.vod2);
                     }
-                    if let Some(player3) = User::from_id(&**pool, player3).await? { //TODO use the transaction
+                    if let Some(player3) = User::from_id(&mut transaction, player3).await? {
                         message.mention_user(&player3);
                     } else {
                         message.push("player 3");
