@@ -96,6 +96,7 @@ async fn handle_racetime_token_response(client: &reqwest::Client, cookies: &Cook
     if let Some(refresh_token) = token.refresh_token() {
         cookies.add_private(Cookie::build("racetime_refresh_token", refresh_token.to_owned())
             .same_site(SameSite::Lax)
+            .permanent()
             .finish());
     }
     Ok(client.get("https://racetime.gg/o/userinfo")
@@ -115,6 +116,7 @@ async fn handle_discord_token_response(client: &reqwest::Client, cookies: &Cooki
     if let Some(refresh_token) = token.refresh_token() {
         cookies.add_private(Cookie::build("discord_refresh_token", refresh_token.to_owned())
             .same_site(SameSite::Lax)
+            .permanent()
             .finish());
     }
     Ok(client.get("https://discord.com/api/v9/users/@me")
