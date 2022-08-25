@@ -3,7 +3,6 @@ use {
         Duration,
         prelude::*,
     },
-    futures::stream::TryStreamExt as _,
     ics::{
         ICalendar,
         properties::{
@@ -95,10 +94,10 @@ fn add_event_races(cal: &mut ICalendar<'_>, event: &event::Data<'_>) {
 
 #[rocket::get("/calendar.ics")]
 pub(crate) async fn index(pool: &State<PgPool>) -> Result<Response<ICalendar<'static>>, event::DataError> {
+    let mut transaction = pool.begin().await?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
-    let mut listed_events = sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed"#).fetch(&**pool);
-    while let Some(row) = listed_events.try_next().await? {
-        let event = event::Data::new((**pool).clone(), row.series, row.event).await?.expect("event deleted during calendar load"); //TODO use a transaction to enforce consistency?
+    for row in sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed"#).fetch_all(&mut transaction).await? {
+        let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during calendar load");
         add_event_races(&mut cal, &event);
     }
     Ok(Response(cal))
@@ -106,7 +105,8 @@ pub(crate) async fn index(pool: &State<PgPool>) -> Result<Response<ICalendar<'st
 
 #[rocket::get("/event/<series>/<event>/calendar.ics")]
 pub(crate) async fn for_event(pool: &State<PgPool>, series: Series, event: &str) -> Result<Response<ICalendar<'static>>, StatusOrError<event::DataError>> {
-    let event = event::Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await.map_err(event::DataError::Sql)?;
+    let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     add_event_races(&mut cal, &event);
     Ok(Response(cal))

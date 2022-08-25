@@ -1,9 +1,5 @@
 use {
-    futures::stream::{
-        self,
-        StreamExt as _,
-        TryStreamExt as _,
-    },
+    futures::stream::TryStreamExt as _,
     rocket::{
         State,
         form::Form,
@@ -18,7 +14,11 @@ use {
         Origin,
         html,
     },
-    sqlx::PgPool,
+    sqlx::{
+        PgPool,
+        Postgres,
+        Transaction,
+    },
     crate::{
         auth,
         event::{
@@ -71,26 +71,26 @@ pub(crate) enum Notification {
 }
 
 impl Notification {
-    pub(crate) async fn get(pool: &PgPool, me: &User) -> sqlx::Result<Vec<Self>> {
+    pub(crate) async fn get(transaction: &mut Transaction<'_, Postgres>, me: &User) -> sqlx::Result<Vec<Self>> {
         let mut notifications = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM notifications WHERE rcpt = $1"#, i64::from(me.id))
-            .fetch(pool)
+            .fetch(&mut *transaction)
             .map_ok(Self::Simple)
             .try_collect::<Vec<_>>().await?;
         notifications.extend(sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM team_members WHERE member = $1 AND status = 'unconfirmed'"#, i64::from(me.id))
-            .fetch(pool)
+            .fetch(&mut *transaction)
             .map_ok(Self::TeamInvite)
             .try_collect::<Vec<_>>().await?);
         Ok(notifications)
     }
 
-    async fn into_html(self, pool: &PgPool, me: &User, csrf: &Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
+    async fn into_html(self, transaction: &mut Transaction<'_, Postgres>, me: &User, csrf: &Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
         Ok(match self {
             Self::Simple(id) => {
-                let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await? {
+                let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(&mut *transaction).await? {
                     SimpleNotificationKind::Accept => {
-                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
-                        let sender = User::from_id(pool, row.sender).await?.ok_or(Error::UnknownUser)?;
-                        let event = event::Data::new(pool.clone(), row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
+                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(&mut *transaction).await?;
+                        let sender = User::from_id(&mut *transaction, row.sender).await?.ok_or(Error::UnknownUser)?;
+                        let event = event::Data::new(&mut *transaction, row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
                             : sender;
                             : " accepted your invitation to join a team for ";
@@ -99,9 +99,9 @@ impl Notification {
                         }
                     }
                     SimpleNotificationKind::Decline => {
-                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
-                        let sender = User::from_id(pool, row.sender).await?.ok_or(Error::UnknownUser)?;
-                        let event = event::Data::new(pool.clone(), row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
+                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(&mut *transaction).await?;
+                        let sender = User::from_id(&mut *transaction, row.sender).await?.ok_or(Error::UnknownUser)?;
+                        let event = event::Data::new(&mut *transaction, row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
                             : sender;
                             : " declined your invitation to form a team for ";
@@ -110,9 +110,9 @@ impl Notification {
                         }
                     }
                     SimpleNotificationKind::Resign => {
-                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(pool).await?;
-                        let sender = User::from_id(pool, row.sender).await?.ok_or(Error::UnknownUser)?;
-                        let event = event::Data::new(pool.clone(), row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
+                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(&mut *transaction).await?;
+                        let sender = User::from_id(&mut *transaction, row.sender).await?.ok_or(Error::UnknownUser)?;
+                        let event = event::Data::new(&mut *transaction, row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
                             : sender;
                             : " resigned your team from ";
@@ -132,25 +132,24 @@ impl Notification {
                 }
             }
             Self::TeamInvite(team_id) => {
-                let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, i64::from(team_id)).fetch_one(pool).await?;
-                let event = event::Data::new(pool.clone(), team_row.series, team_row.event).await?.ok_or(Error::UnknownEvent)?;
+                let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, i64::from(team_id)).fetch_one(&mut *transaction).await?;
+                let event = event::Data::new(&mut *transaction, team_row.series, team_row.event).await?.ok_or(Error::UnknownEvent)?;
                 let mut creator = None;
                 let mut my_role = None;
                 let mut teammates = Vec::default();
-                let mut members = sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus", role AS "role: Role" FROM team_members WHERE team = $1"#, i64::from(team_id)).fetch(pool);
-                while let Some(member) = members.try_next().await? {
+                for member in sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus", role AS "role: Role" FROM team_members WHERE team = $1"#, i64::from(team_id)).fetch_all(&mut *transaction).await? {
                     if member.id == me.id {
                         my_role = Some(member.role);
                     } else {
                         let is_confirmed = match member.status {
                             SignupStatus::Created => {
-                                creator = Some((User::from_id(pool, member.id).await?.ok_or(Error::UnknownUser)?, member.role));
+                                creator = Some((User::from_id(&mut *transaction, member.id).await?.ok_or(Error::UnknownUser)?, member.role));
                                 continue
                             }
                             SignupStatus::Confirmed => true,
                             SignupStatus::Unconfirmed => false,
                         };
-                        let user = User::from_id(pool, member.id).await?.ok_or(Error::UnknownUser)?;
+                        let user = User::from_id(&mut *transaction, member.id).await?.ok_or(Error::UnknownUser)?;
                         teammates.push(html! {
                             : user;
                             : " (";
@@ -238,11 +237,13 @@ impl Notification {
 
 #[rocket::get("/notifications")]
 pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
+    let mut transaction = pool.begin().await?;
     Ok(if let Some(me) = me {
-        let notifications = stream::iter(Notification::get(pool, &me).await?)
-            .then(|notification| notification.into_html(pool, &me, &csrf))
-            .try_collect::<Vec<_>>().await?;
-        page(pool, &Some(me), &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
+        let mut notifications = Vec::default();
+        for notification in Notification::get(&mut transaction, &me).await? {
+            notifications.push(notification.into_html(&mut transaction, &me, &csrf).await?);
+        }
+        page(&mut transaction, &Some(me), &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
             h1 : "Notifications";
             @if notifications.is_empty() {
                 p : "You have no notifications.";
@@ -255,7 +256,7 @@ pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, uri: O
             }
         }).await?
     } else {
-        page(pool, &me, &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
+        page(&mut transaction, &me, &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
             p {
                 a(href = uri!(auth::login(Some(uri!(notifications)))).to_string()) : "Sign in or create a Mido's House account";
                 : " to view your notifications.";

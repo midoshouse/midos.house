@@ -36,7 +36,11 @@ use {
         ToHtml,
         html,
     },
-    sqlx::PgPool,
+    sqlx::{
+        PgPool,
+        Postgres,
+        Transaction,
+    },
     crate::{
         auth,
         event::{
@@ -444,9 +448,9 @@ impl<'v> EnterFormDefaults<'v> {
 }
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
-pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, defaults: EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
-    let header = data.header(me.as_ref(), Tab::Enter).await?;
-    Ok(page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
+pub(super) async fn enter_form(transaction: &mut Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, defaults: EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
+    let header = data.header(transaction, me.as_ref(), Tab::Enter).await?;
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
         let mut errors = defaults.errors();
         let form_content = html! {
             : csrf;
@@ -509,14 +513,14 @@ pub(crate) struct EnterForm {
 
 #[rocket::post("/event/pic/<event>/enter", data = "<form>")]
 pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let data = Data::new((**pool).clone(), SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if data.is_started() {
         form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
     }
     Ok(if let Some(ref value) = form.value {
-        let mut transaction = pool.begin().await?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
             id = team
             AND series = 'pic'
@@ -563,8 +567,7 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
         }
         //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
         if form.context.errors().next().is_some() {
-            transaction.rollback().await?;
-            RedirectOrContent::Content(enter_form(Some(me), uri, csrf, data, EnterFormDefaults::Context(form.context)).await?)
+            RedirectOrContent::Content(enter_form(&mut transaction, Some(me), uri, csrf, data, EnterFormDefaults::Context(form.context)).await?)
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
             sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, 'pic', $2, $3)", id as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
@@ -574,18 +577,17 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
             RedirectOrContent::Redirect(Redirect::to(uri!(super::teams(SERIES, event))))
         }
     } else {
-        RedirectOrContent::Content(enter_form(Some(me), uri, csrf, data, EnterFormDefaults::Context(form.context)).await?)
+        RedirectOrContent::Content(enter_form(&mut transaction, Some(me), uri, csrf, data, EnterFormDefaults::Context(form.context)).await?)
     })
 }
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
-pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
-    let header = data.header(me.as_ref(), Tab::FindTeam).await?;
+pub(super) async fn find_team_form(transaction: &mut Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+    let header = data.header(&mut *transaction, me.as_ref(), Tab::FindTeam).await?;
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
-    let mut looking_for_team_query = sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series.to_str(), &data.event).fetch(&data.pool);
-    while let Some(row) = looking_for_team_query.try_next().await? {
-        let user = User::from_id(&data.pool, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
+    for row in sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series.to_str(), &data.event).fetch_all(&mut *transaction).await? {
+        let user = User::from_id(&mut *transaction, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
         if me.as_ref().map_or(false, |me| user.id == me.id) { my_role = Some(row.role) }
         let can_invite = me.as_ref().map_or(true, |me| user.id != me.id) && true /*TODO not already in a team with that user */;
         looking_for_team.push((user, row.role, can_invite));
@@ -651,7 +653,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
             },
         })))
         .collect_vec();
-    Ok(page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+    Ok(page(&mut *transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
         : header;
         : form;
         table {
@@ -700,14 +702,14 @@ pub(crate) struct FindTeamForm {
 
 #[rocket::post("/event/pic/<event>/find-team", data = "<form>")]
 pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
-    let data = Data::new((**pool).clone(), SERIES, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await.map_err(FindTeamError::Sql)?;
+    let data = Data::new(&mut transaction, SERIES, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if data.is_started() {
         form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
     }
     Ok(if let Some(ref value) = form.value {
-        let mut transaction = pool.begin().await.map_err(FindTeamError::Sql)?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM looking_for_team WHERE
             series = 'pic'
             AND event = $1
@@ -725,13 +727,13 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(find_team_form(Some(me), uri, csrf, data, form.context).await?)
+            RedirectOrContent::Content(find_team_form(&mut transaction, Some(me), uri, csrf, data, form.context).await?)
         } else {
             sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role) VALUES ('pic', $1, $2, $3)", event, me.id as _, value.role as _).execute(&mut transaction).await.map_err(FindTeamError::Sql)?;
             transaction.commit().await.map_err(FindTeamError::Sql)?;
             RedirectOrContent::Redirect(Redirect::to(uri!(super::find_team(SERIES, event))))
         }
     } else {
-        RedirectOrContent::Content(find_team_form(Some(me), uri, csrf, data, form.context).await?)
+        RedirectOrContent::Content(find_team_form(&mut transaction, Some(me), uri, csrf, data, form.context).await?)
     })
 }

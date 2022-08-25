@@ -4,6 +4,7 @@ use {
         collections::HashMap,
         fmt,
         iter,
+        pin::Pin,
     },
     collect_mac::collect,
     enum_iterator::{
@@ -58,7 +59,11 @@ use {
     serde_plain::derive_fromstr_from_deserialize,
     serenity::client::Context as DiscordCtx,
     serenity_utils::RwFuture,
-    sqlx::PgPool,
+    sqlx::{
+        PgPool,
+        Postgres,
+        Transaction,
+    },
     crate::{
         auth,
         event::{
@@ -836,9 +841,9 @@ async fn validate_team(me: &User, client: &reqwest::Client, context: &mut Contex
     })
 }
 
-pub(super) async fn enter_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>, client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
-    let header = data.header(me.as_ref(), Tab::Enter).await?;
-    Ok(page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
+pub(super) async fn enter_form(transaction: &mut Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>, client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
+    let header = data.header(transaction, me.as_ref(), Tab::Enter).await?;
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
         if let Some(ref racetime_id) = me.racetime_id {
             let racetime_user = client.get(format!("https://racetime.gg/user/{racetime_id}/data"))
                 .send().await?
@@ -918,7 +923,8 @@ pub(crate) struct EnterForm {
 
 #[rocket::post("/event/mw/<event>/enter", data = "<form>")]
 pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let data = Data::new((**pool).clone(), SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if data.is_started() {
@@ -927,12 +933,12 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
     Ok(if let Some(ref value) = form.value {
         let racetime_team = validate_team(&me, client, &mut form.context, &value.racetime_team).await?;
         if form.context.errors().next().is_some() {
-            enter_form(Some(me), uri, csrf, data, form.context, client).await?
+            enter_form(&mut transaction, Some(me), uri, csrf, data, form.context, client).await?
         } else {
-            enter_form_step2(Some(me), uri, csrf, data, EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?
+            enter_form_step2(&mut transaction, Some(me), uri, csrf, data, EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?
         }
     } else {
-        enter_form(Some(me), uri, csrf, data, form.context, client).await?
+        enter_form(&mut transaction, Some(me), uri, csrf, data, form.context, client).await?
     })
 }
 
@@ -1010,10 +1016,10 @@ impl<'v> EnterFormStep2Defaults<'v> {
     }
 }
 
-fn enter_form_step2<'a>(me: Option<User>, uri: Origin<'a>, csrf: Option<CsrfToken>, data: Data<'a>, defaults: EnterFormStep2Defaults<'a>) -> impl Future<Output = Result<RawHtml<String>, Error>> + 'a {
+fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(transaction: &'a mut Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'b>, csrf: Option<CsrfToken>, data: Data<'c>, defaults: EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
     let team_members = defaults.racetime_members();
-    async move {
-        let header = data.header(me.as_ref(), Tab::Enter).await?;
+    Box::pin(async move {
+        let header = data.header(transaction, me.as_ref(), Tab::Enter).await?;
         let page_content = {
             let team_members = team_members.await?;
             let mut errors = defaults.errors();
@@ -1067,8 +1073,8 @@ fn enter_form_step2<'a>(me: Option<User>, uri: Origin<'a>, csrf: Option<CsrfToke
                 }
             }
         };
-        Ok(page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), page_content).await?)
-    }
+        Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), page_content).await?)
+    })
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1082,15 +1088,15 @@ pub(crate) struct EnterFormStep2 {
 }
 
 #[rocket::post("/event/mw/<event>/enter/step2", data = "<form>")]
-pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'a>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, event: &'a str, form: Form<Contextual<'a, EnterFormStep2>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let data = Data::new((**pool).clone(), SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+pub(crate) async fn enter_post_step2(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, EnterFormStep2>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if data.is_started() {
         form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
     }
     Ok(if let Some(ref value) = form.value {
-        let mut transaction = pool.begin().await?;
         // verify team again since it's sent by the client
         let (team_slug, team_name, users, roles, startgg_ids) = if let Some(racetime_team) = validate_team(&me, client, &mut form.context, &value.racetime_team).await? {
             let mut all_accounts_exist = true;
@@ -1173,8 +1179,7 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, discord_ctx: &Sta
             Default::default()
         };
         if form.context.errors().next().is_some() {
-            transaction.rollback().await?;
-            RedirectOrContent::Content(enter_form_step2(Some(me), uri, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
+            RedirectOrContent::Content(enter_form_step2(&mut transaction, Some(me), uri, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
             sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent) VALUES ($1, 'mw', $2, $3, $4, $5)", id as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent).execute(&mut transaction).await?;
@@ -1188,17 +1193,16 @@ pub(crate) async fn enter_post_step2<'a>(pool: &State<PgPool>, discord_ctx: &Sta
             RedirectOrContent::Redirect(Redirect::to(uri!(super::teams(SERIES, event))))
         }
     } else {
-        RedirectOrContent::Content(enter_form_step2(Some(me), uri, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
+        RedirectOrContent::Content(enter_form_step2(&mut transaction, Some(me), uri, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
     })
 }
 
-pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
-    let header = data.header(me.as_ref(), Tab::FindTeam).await?;
+pub(super) async fn find_team_form(transaction: &mut Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+    let header = data.header(&mut *transaction, me.as_ref(), Tab::FindTeam).await?;
     let mut me_listed = false;
     let mut looking_for_team = Vec::default();
-    let mut looking_for_team_query = sqlx::query!(r#"SELECT user_id AS "user!: Id", availability, notes FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series.to_str(), &data.event).fetch(&data.pool);
-    while let Some(row) = looking_for_team_query.try_next().await? {
-        let user = User::from_id(&data.pool, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
+    for row in sqlx::query!(r#"SELECT user_id AS "user!: Id", availability, notes FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series.to_str(), &data.event).fetch_all(&mut *transaction).await? {
+        let user = User::from_id(&mut *transaction, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
         if me.as_ref().map_or(false, |me| user.id == me.id) { me_listed = true }
         looking_for_team.push((user, row.availability, row.notes));
     }
@@ -1243,7 +1247,7 @@ pub(super) async fn find_team_form(me: Option<User>, uri: Origin<'_>, csrf: Opti
             }
         })
     };
-    Ok(page(&data.pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+    Ok(page(&mut *transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
         : header;
         : form;
         table {
@@ -1285,14 +1289,14 @@ pub(crate) struct FindTeamForm {
 
 #[rocket::post("/event/mw/<event>/find-team", data = "<form>")]
 pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
-    let data = Data::new((**pool).clone(), SERIES, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await.map_err(FindTeamError::Sql)?;
+    let data = Data::new(&mut transaction, SERIES, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if data.is_started() {
         form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
     }
     Ok(if let Some(ref value) = form.value {
-        let mut transaction = pool.begin().await.map_err(FindTeamError::Sql)?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM looking_for_team WHERE
             series = 'mw'
             AND event = $1
@@ -1310,20 +1314,20 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
             form.context.push_error(form::Error::validation("You are already signed up for this race."));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(find_team_form(Some(me), uri, csrf, data, form.context).await?)
+            RedirectOrContent::Content(find_team_form(&mut transaction, Some(me), uri, csrf, data, form.context).await?)
         } else {
             sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role, availability, notes) VALUES ('mw', $1, $2, 'no_preference', $3, $4)", event, me.id as _, value.availability, value.notes).execute(&mut transaction).await.map_err(FindTeamError::Sql)?;
             transaction.commit().await.map_err(FindTeamError::Sql)?;
             RedirectOrContent::Redirect(Redirect::to(uri!(super::find_team(SERIES, event))))
         }
     } else {
-        RedirectOrContent::Content(find_team_form(Some(me), uri, csrf, data, form.context).await?)
+        RedirectOrContent::Content(find_team_form(&mut transaction, Some(me), uri, csrf, data, form.context).await?)
     })
 }
 
-pub(super) async fn status(pool: &PgPool, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> sqlx::Result<RawHtml<String>> {
-    Ok(if let Some(async_row) = sqlx::query!(r#"SELECT web_id as "web_id: Id", web_gen_time, file_stem FROM asyncs WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_optional(pool).await? {
-        if let Some(team_row) = sqlx::query!("SELECT requested, submitted FROM async_teams WHERE team = $1", i64::from(team_id)).fetch_optional(pool).await? {
+pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> sqlx::Result<RawHtml<String>> {
+    Ok(if let Some(async_row) = sqlx::query!(r#"SELECT web_id as "web_id: Id", web_gen_time, file_stem FROM asyncs WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_optional(&mut *transaction).await? {
+        if let Some(team_row) = sqlx::query!("SELECT requested, submitted FROM async_teams WHERE team = $1", i64::from(team_id)).fetch_optional(&mut *transaction).await? {
             if team_row.submitted.is_some() {
                 //TODO if any vods are still missing, show form to add them
                 html! {

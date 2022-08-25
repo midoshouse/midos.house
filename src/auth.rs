@@ -258,7 +258,8 @@ impl<'r> FromRequest<'r> for User {
 
 #[rocket::get("/login?<redirect_to>")]
 pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, redirect_to: Option<Origin<'_>>) -> PageResult {
-    page(pool, &me, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Login — Mido's House", if let Some(ref me) = me {
+    let mut transaction = pool.begin().await?;
+    page(&mut transaction, &me, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Login — Mido's House", if let Some(ref me) = me {
         html! {
             p {
                 : "You are already signed in as ";
@@ -322,12 +323,13 @@ pub(crate) enum RaceTimeCallbackError {
 
 #[rocket::get("/auth/racetime")]
 pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<RedirectOrContent, RaceTimeCallbackError> {
+    let mut transaction = pool.begin().await?;
     let racetime_user = handle_racetime_token_response(client, cookies, &token).await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
-    Ok(if User::from_racetime(&**pool, &racetime_user.id).await?.is_some() {
+    Ok(if User::from_racetime(&mut transaction, &racetime_user.id).await?.is_some() {
         RedirectOrContent::Redirect(Redirect::to(redirect_uri))
     } else if let Some(me) = me {
-        RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
+        RedirectOrContent::Content(page(&mut transaction, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
             p {
                 : "This racetime.gg account is not associated with a Mido's House account, but you are signed in as ";
                 : me;
@@ -343,7 +345,7 @@ pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, ur
             }
         }).await?)
     } else {
-        RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create Account — Mido's House", html! {
+        RedirectOrContent::Content(page(&mut transaction, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create Account — Mido's House", html! {
             p : "This racetime.gg account is not associated with a Mido's House account.";
             ul {
                 li {
@@ -372,12 +374,13 @@ pub(crate) enum DiscordCallbackError {
 
 #[rocket::get("/auth/discord")]
 pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, client: &State<reqwest::Client>, token: TokenResponse<Discord>, cookies: &CookieJar<'_>) -> Result<RedirectOrContent, DiscordCallbackError> {
+    let mut transaction = pool.begin().await?;
     let discord_user = handle_discord_token_response(client, cookies, &token).await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
-    Ok(if User::from_discord(&**pool, discord_user.id).await?.is_some() {
+    Ok(if User::from_discord(&mut transaction, discord_user.id).await?.is_some() {
         RedirectOrContent::Redirect(Redirect::to(redirect_uri))
     } else if let Some(me) = me {
-        RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
+        RedirectOrContent::Content(page(&mut transaction, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
             p {
                 : "This Discord account is not associated with a Mido's House account, but you are signed in as ";
                 : me;
@@ -393,7 +396,7 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, uri
             }
         }).await?)
     } else {
-        RedirectOrContent::Content(page(pool, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create Account — Mido's House", html! {
+        RedirectOrContent::Content(page(&mut transaction, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create Account — Mido's House", html! {
             p : "This Discord account is not associated with a Mido's House account.";
             ul {
                 li {

@@ -170,7 +170,8 @@ impl Eq for User {}
 
 #[rocket::get("/user/<id>")]
 pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, racetime_user: Option<RaceTimeUser>, discord_user: Option<DiscordUser>, id: Id) -> Result<RawHtml<String>, StatusOrError<PageError>> {
-    let user = if let Some(user) = User::from_id(&**pool, id).await? {
+    let mut transaction = pool.begin().await?;
+    let user = if let Some(user) = User::from_id(&mut transaction, id).await? {
         user
     } else {
         return Err(StatusOrError::Status(Status::NotFound))
@@ -184,8 +185,8 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
         }
     } else if me.as_ref().map_or(false, |me| me.id == user.id) {
         if let Some(racetime_user) = racetime_user {
-            if let Some(racetime_user) = User::from_racetime(&**pool, &racetime_user.id).await? {
-                let fenhl = User::from_id(&**pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+            if let Some(racetime_user) = User::from_racetime(&mut transaction, &racetime_user.id).await? {
+                let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
                 html! {
                     p {
                         : "You are also signed in via racetime.gg as ";
@@ -235,8 +236,8 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
         }
     } else if me.as_ref().map_or(false, |me| me.id == user.id) {
         if let Some(discord_user) = discord_user {
-            if let Some(discord_user) = User::from_discord(&**pool, discord_user.id).await? {
-                let fenhl = User::from_id(&**pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+            if let Some(discord_user) = User::from_discord(&mut transaction, discord_user.id).await? {
+                let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
                 html! {
                     p {
                         : "You are also signed in via Discord as ";
@@ -275,7 +276,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
     } else {
         html! {}
     };
-    page(pool, &me, &uri, PageStyle { kind: if me.as_ref().map_or(false, |me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
+    page(&mut transaction, &me, &uri, PageStyle { kind: if me.as_ref().map_or(false, |me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
         h1 : user.display_name();
         p {
             : "Mido's House user ID: ";

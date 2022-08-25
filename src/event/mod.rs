@@ -8,11 +8,7 @@ use {
     },
     anyhow::anyhow,
     chrono::prelude::*,
-    futures::stream::{
-        self,
-        StreamExt as _,
-        TryStreamExt as _,
-    },
+    futures::stream::TryStreamExt as _,
     rand::prelude::*,
     rocket::{
         FromForm,
@@ -58,6 +54,7 @@ use {
     sqlx::{
         Decode,
         Encode,
+        Transaction,
         postgres::{
             Postgres,
             PgArgumentBuffer,
@@ -243,7 +240,6 @@ impl TeamConfig {
 }
 
 pub(crate) struct Data<'a> {
-    pool: PgPool,
     pub(crate) series: Series,
     pub(crate) event: Cow<'a, str>,
     pub(crate) display_name: String,
@@ -262,9 +258,9 @@ pub(crate) enum DataError {
 }
 
 impl<'a> Data<'a> {
-    pub(crate) async fn new(pool: PgPool, series: Series, event: impl Into<Cow<'a, str>>) -> Result<Option<Data<'a>>, DataError> {
+    pub(crate) async fn new(transaction: &mut Transaction<'_, Postgres>, series: Series, event: impl Into<Cow<'a, str>>) -> Result<Option<Data<'a>>, DataError> {
         let event = event.into();
-        sqlx::query!(r#"SELECT display_name, start, end_time, url, teams_url, video_url, discord_guild AS "discord_guild: Id" FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(&pool).await?
+        sqlx::query!(r#"SELECT display_name, start, end_time, url, teams_url, video_url, discord_guild AS "discord_guild: Id" FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
                 display_name: row.display_name,
                 start: row.start,
@@ -273,7 +269,7 @@ impl<'a> Data<'a> {
                 teams_url: row.teams_url.map(|url| url.parse()).transpose()?,
                 video_url: row.video_url.map(|url| url.parse()).transpose()?,
                 discord_guild: row.discord_guild.map(|Id(id)| id.into()),
-                pool, series, event,
+                series, event,
             }))
             .transpose()
     }
@@ -302,7 +298,7 @@ impl<'a> Data<'a> {
         }
     }
 
-    async fn header(&self, me: Option<&User>, tab: Tab) -> sqlx::Result<RawHtml<String>> {
+    async fn header(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>, tab: Tab) -> sqlx::Result<RawHtml<String>> {
         let signed_up = if let Some(me) = me {
             sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
                 id = team
@@ -310,7 +306,7 @@ impl<'a> Data<'a> {
                 AND event = $2
                 AND member = $3
                 AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-            ) AS "exists!""#, self.series.to_str(), &self.event, i64::from(me.id)).fetch_one(&self.pool).await?
+            ) AS "exists!""#, self.series.to_str(), &self.event, i64::from(me.id)).fetch_one(transaction).await?
         } else {
             false
         };
@@ -444,13 +440,14 @@ pub(crate) enum InfoError {
 
 #[rocket::get("/event/<series>/<event>")]
 pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
-    let data = Data::new((**pool).clone(), series, event).await.map_err(InfoError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(me.as_ref(), Tab::Info).await.map_err(InfoError::Sql)?;
+    let mut transaction = pool.begin().await.map_err(InfoError::Sql)?;
+    let data = Data::new(&mut transaction, series, event).await.map_err(InfoError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Info).await.map_err(InfoError::Sql)?;
     let content = match data.series {
         Series::Multiworld => mw::info(pool, event).await?,
         Series::Pictionary => pic::info(pool, event).await?,
     };
-    page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
+    page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
         : header;
         : content;
     }).await.map_err(|e| StatusOrError::Err(InfoError::Page(e)))
@@ -467,10 +464,11 @@ pub(crate) enum TeamsError {
 
 #[rocket::get("/event/<series>/<event>/teams")]
 pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<TeamsError>> {
-    let data = Data::new((**pool).clone(), series, event).await.map_err(TeamsError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(me.as_ref(), Tab::Teams).await.map_err(TeamsError::Sql)?;
+    let mut transaction = pool.begin().await.map_err(TeamsError::Sql)?;
+    let data = Data::new(&mut transaction, series, event).await.map_err(TeamsError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Teams).await.map_err(TeamsError::Sql)?;
     let mut signups = Vec::default();
-    let mut teams_query = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug FROM teams WHERE
+    let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug FROM teams WHERE
         series = $1
         AND event = $2
         AND NOT resigned
@@ -478,20 +476,19 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
             OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
         )
-    "#, series.to_str(), event, me.as_ref().map(|me| i64::from(me.id))).fetch(&**pool);
+    "#, series.to_str(), event, me.as_ref().map(|me| i64::from(me.id))).fetch_all(&mut transaction).await.map_err(TeamsError::Sql)?;
     let roles = data.team_config().roles();
-    while let Some(team) = teams_query.try_next().await.map_err(TeamsError::Sql)? {
-        let members = stream::iter(&roles)
-            .then(|&(role, _)| async move {
-                let row = sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1 AND role = $2"#, i64::from(team.id), role as _).fetch_one(&**pool).await?;
-                let is_confirmed = row.status.is_confirmed();
-                let user = User::from_id(&**pool, row.id).await?.ok_or(TeamsError::NonexistentUser)?;
-                Ok::<_, TeamsError>((role, user, is_confirmed))
-            })
-            .try_collect::<Vec<_>>().await?;
+    for team in teams {
+        let mut members = Vec::with_capacity(roles.len());
+        for &(role, _) in &roles {
+            let row = sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1 AND role = $2"#, i64::from(team.id), role as _).fetch_one(&mut transaction).await.map_err(TeamsError::Sql)?;
+            let is_confirmed = row.status.is_confirmed();
+            let user = User::from_id(&mut transaction, row.id).await.map_err(TeamsError::Sql)?.ok_or(TeamsError::NonexistentUser)?;
+            members.push((role, user, is_confirmed));
+        }
         signups.push((team.id, team.name, team.racetime_slug, members));
     }
-    page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
+    page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
         : header;
         table {
             thead {
@@ -567,78 +564,69 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 }
 
 async fn status_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, context: Context<'_>) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let data = Data::new(pool.clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(me.as_ref(), Tab::MyStatus).await?;
-    Ok(page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("My Status — {}", data.display_name), {
-        if let Some(ref me) = me {
-            if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name, racetime_slug, role AS "role: Role", resigned FROM teams, team_members WHERE
-                id = team
-                AND series = $1
-                AND event = $2
-                AND member = $3
-                AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-            "#, series.to_str(), event, i64::from(me.id)).fetch_optional(pool).await? {
-                html! {
-                    : header;
-                    p {
-                        : "You are signed up as part of ";
-                        @if let Some(racetime_slug) = row.racetime_slug {
-                            a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
-                                @if let Some(name) = row.name {
-                                    i : name;
-                                } else {
-                                    : "an unnamed team";
-                                }
-                            }
-                        } else {
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::MyStatus).await?;
+    let content = if let Some(ref me) = me {
+        if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name, racetime_slug, role AS "role: Role", resigned FROM teams, team_members WHERE
+            id = team
+            AND series = $1
+            AND event = $2
+            AND member = $3
+            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+        "#, series.to_str(), event, i64::from(me.id)).fetch_optional(&mut transaction).await? {
+            html! {
+                : header;
+                p {
+                    : "You are signed up as part of ";
+                    @if let Some(racetime_slug) = row.racetime_slug {
+                        a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
                             @if let Some(name) = row.name {
                                 i : name;
                             } else {
                                 : "an unnamed team";
                             }
                         }
-                        //TODO list teammates
-                        : ".";
-                    }
-                    @if row.resigned {
-                        p : "You have resigned from this event.";
                     } else {
-                        @match data.series {
-                            Series::Multiworld => : mw::status(pool, csrf, &data, row.id, context).await?;
-                            Series::Pictionary => @if data.is_ended() {
-                                p : "This race has been completed."; //TODO ranking and finish time
-                            } else if let Some(ref race_room) = data.url {
-                                @match row.role.try_into().expect("non-Pictionary role in Pictionary team") {
-                                    pic::Role::Sheikah => p {
-                                        : "Please join ";
-                                        a(href = race_room.to_string()) : "the race room";
-                                        : " as soon as possible. You will receive further instructions there.";
-                                    }
-                                    pic::Role::Gerudo => p {
-                                        : "Please keep an eye on ";
-                                        a(href = race_room.to_string()) : "the race room";
-                                        : " (but do not join). The spoiler log will be posted there.";
-                                    }
-                                }
-                            } else {
-                                : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
-                            }
-                        }
-                        h2 : "Options";
-                        p : "More options coming soon"; //TODO options to change team name, swap roles, or opt in/out for restreaming
-                        @if !data.is_ended() {
-                            p {
-                                a(href = uri!(resign(series, event, row.id)).to_string()) : "Resign";
-                            }
+                        @if let Some(name) = row.name {
+                            i : name;
+                        } else {
+                            : "an unnamed team";
                         }
                     }
+                    //TODO list teammates
+                    : ".";
                 }
-            } else {
-                html! {
-                    : header;
-                    article {
-                        p : "You are not signed up for this event.";
-                        p : "You can accept, decline, or retract unconfirmed team invitations on the teams page.";
+                @if row.resigned {
+                    p : "You have resigned from this event.";
+                } else {
+                    @match data.series {
+                        Series::Multiworld => : mw::status(&mut transaction, csrf, &data, row.id, context).await?;
+                        Series::Pictionary => @if data.is_ended() {
+                            p : "This race has been completed."; //TODO ranking and finish time
+                        } else if let Some(ref race_room) = data.url {
+                            @match row.role.try_into().expect("non-Pictionary role in Pictionary team") {
+                                pic::Role::Sheikah => p {
+                                    : "Please join ";
+                                    a(href = race_room.to_string()) : "the race room";
+                                    : " as soon as possible. You will receive further instructions there.";
+                                }
+                                pic::Role::Gerudo => p {
+                                    : "Please keep an eye on ";
+                                    a(href = race_room.to_string()) : "the race room";
+                                    : " (but do not join). The spoiler log will be posted there.";
+                                }
+                            }
+                        } else {
+                            : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
+                        }
+                    }
+                    h2 : "Options";
+                    p : "More options coming soon"; //TODO options to change team name, swap roles, or opt in/out for restreaming
+                    @if !data.is_ended() {
+                        p {
+                            a(href = uri!(resign(series, event, row.id)).to_string()) : "Resign";
+                        }
                     }
                 }
             }
@@ -646,14 +634,23 @@ async fn status_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Opt
             html! {
                 : header;
                 article {
-                    p {
-                        a(href = uri!(auth::login(Some(uri!(status(series, event))))).to_string()) : "Sign in or create a Mido's House account";
-                        : " to view your status for this event.";
-                    }
+                    p : "You are not signed up for this event.";
+                    p : "You can accept, decline, or retract unconfirmed team invitations on the teams page.";
                 }
             }
         }
-    }).await?)
+    } else {
+        html! {
+            : header;
+            article {
+                p {
+                    a(href = uri!(auth::login(Some(uri!(status(series, event))))).to_string()) : "Sign in or create a Mido's House account";
+                    : " to view your status for this event.";
+                }
+            }
+        }
+    };
+    Ok(page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("My Status — {}", data.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
@@ -663,10 +660,11 @@ pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
 
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
 pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<crate::event::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(match data.team_config() {
-        TeamConfig::Multiworld => mw::enter_form(me, uri, csrf, data, Context::default(), client).await?,
-        TeamConfig::Pictionary => pic::enter_form(me, uri, csrf, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?,
+        TeamConfig::Multiworld => mw::enter_form(&mut transaction, me, uri, csrf, data, Context::default(), client).await?,
+        TeamConfig::Pictionary => pic::enter_form(&mut transaction, me, uri, csrf, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?,
     })
 }
 
@@ -681,10 +679,11 @@ pub(crate) enum FindTeamError {
 
 #[rocket::get("/event/<series>/<event>/find-team")]
 pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
-    let data = Data::new((**pool).clone(), series, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await.map_err(FindTeamError::Sql)?;
+    let data = Data::new(&mut transaction, series, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(match data.team_config() {
-        TeamConfig::Multiworld => mw::find_team_form(me, uri, csrf, data, Context::default()).await?,
-        TeamConfig::Pictionary => pic::find_team_form(me, uri, csrf, data, Context::default()).await?,
+        TeamConfig::Multiworld => mw::find_team_form(&mut transaction, me, uri, csrf, data, Context::default()).await?,
+        TeamConfig::Pictionary => pic::find_team_form(&mut transaction, me, uri, csrf, data, Context::default()).await?,
     })
 }
 
@@ -704,10 +703,10 @@ pub(crate) enum AcceptError {
 
 #[rocket::post("/event/<series>/<event>/confirm/<team>", data = "<form>")]
 pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, team: Id, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<EmptyForm>) -> Result<Redirect, StatusOrError<AcceptError>> {
-    let data = Data::new((**pool).clone(), series, event).await.map_err(AcceptError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await.map_err(AcceptError::Sql)?;
+    let data = Data::new(&mut transaction, series, event).await.map_err(AcceptError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     form.verify(&csrf).map_err(AcceptError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_started() { return Err(AcceptError::EventStarted.into()) }
-    let mut transaction = pool.begin().await.map_err(AcceptError::Sql)?;
     if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, i64::from(team), i64::from(me.id)).fetch_optional(&mut transaction).await.map_err(AcceptError::Sql)? {
         if role == Role::Sheikah && me.racetime_id.is_none() {
             return Err(AcceptError::RaceTimeAccountRequired.into())
@@ -770,11 +769,12 @@ pub(crate) enum ResignError {
 
 #[rocket::get("/event/<series>/<event>/resign/<team>")]
 pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() {
         return Err(StatusOrError::Status(Status::Forbidden))
     }
-    Ok(page(pool, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
+    Ok(page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
         //TODO different wording if the event has started
         p {
             : "Are you sure you want to retract your team's registration from ";
@@ -792,11 +792,11 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
 
 #[rocket::post("/event/<series>/<event>/resign/<team>", data = "<form>")]
 pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id, form: Form<EmptyForm>) -> Result<Redirect, StatusOrError<ResignError>> {
-    let data = Data::new((**pool).clone(), series, event).await.map_err(ResignError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await.map_err(ResignError::Sql)?;
+    let data = Data::new(&mut transaction, series, event).await.map_err(ResignError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     form.verify(&csrf).map_err(ResignError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_ended() { return Err(ResignError::EventEnded.into()) }
     let is_started = data.is_started();
-    let mut transaction = pool.begin().await.map_err(ResignError::Sql)?;
     let members = if is_started {
         sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, i64::from(team)).execute(&mut transaction).await.map_err(ResignError::Sql)?;
         sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, i64::from(team)).fetch(&mut transaction)
@@ -843,13 +843,13 @@ pub(crate) struct RequestAsyncForm {
 
 #[rocket::post("/event/<series>/<event>/request-async", data = "<form>")]
 pub(crate) async fn request_async(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, RequestAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if data.is_started() {
         form.context.push_error(form::Error::validation("You can no longer request the qualifier async since the event has already started."));
     }
-    let mut transaction = pool.begin().await?;
     Ok(if let Some(ref value) = form.value {
         let team_id = sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM teams, team_members WHERE
             id = team
@@ -898,13 +898,13 @@ pub(crate) struct SubmitAsyncForm {
 
 #[rocket::post("/event/<series>/<event>/submit-async", data = "<form>")]
 pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, SubmitAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let data = Data::new((**pool).clone(), series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if data.is_started() {
         form.context.push_error(form::Error::validation("You can no longer submit the qualifier async since the event has already started."));
     }
-    let mut transaction = pool.begin().await?;
     Ok(if let Some(ref value) = form.value {
         let team_row = sqlx::query!(r#"SELECT team AS "team: Id", name, racetime_slug FROM teams, team_members WHERE
             id = team

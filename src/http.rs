@@ -3,7 +3,6 @@ use {
         collections::HashMap,
         io,
     },
-    futures::stream::TryStreamExt as _,
     rand::prelude::*,
     rocket::{
         Request,
@@ -40,7 +39,11 @@ use {
     },
     serenity::client::Context as DiscordCtx,
     serenity_utils::RwFuture,
-    sqlx::PgPool,
+    sqlx::{
+        PgPool,
+        Postgres,
+        Transaction,
+    },
     tokio::process::Command,
     crate::{
         *,
@@ -95,12 +98,12 @@ pub(crate) enum PageError {
 
 pub(crate) type PageResult = Result<RawHtml<String>, PageError>;
 
-pub(crate) async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, style: PageStyle, title: &str, content: impl ToHtml) -> PageResult {
+pub(crate) async fn page(transaction: &mut Transaction<'_, Postgres>, me: &Option<User>, uri: &Origin<'_>, style: PageStyle, title: &str, content: impl ToHtml) -> PageResult {
     let notifications = if let Some(me) = me {
         if let PageKind::Notifications = style.kind {
             Vec::default()
         } else {
-            Notification::get(pool, me).await?
+            Notification::get(transaction, me).await?
         }
     } else {
         Vec::default()
@@ -110,7 +113,7 @@ pub(crate) async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, sty
     } else {
         (None, Some(content))
     };
-    let fenhl = User::from_id(pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+    let fenhl = User::from_id(transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
     Ok(html! {
         : Doctype;
         html {
@@ -189,13 +192,14 @@ pub(crate) async fn page(pool: &PgPool, me: &Option<User>, uri: &Origin<'_>, sty
 
 #[rocket::get("/")]
 async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
-    let upcoming_events = sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW()) ORDER BY start ASC NULLS LAST"#)
-        .fetch(&**pool).map_err(event::DataError::from)
-        .and_then(|row| async move { Ok(event::Data::new((**pool).clone(), row.series, row.event).await?.expect("event deleted during page load")) }) //TODO use a transaction to enforce consistency?
-        .try_collect::<Vec<_>>().await?;
+    let mut transaction = pool.begin().await?;
+    let mut upcoming_events = Vec::default();
+    for row in sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW()) ORDER BY start ASC NULLS LAST"#).fetch_all(&mut transaction).await.map_err(event::Error::from)? {
+        upcoming_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction"));
+    }
     let chests = upcoming_events.choose(&mut thread_rng()).map_or_else(|| ChestAppearances::random(), |event| event.chests());
     let (ongoing_events, upcoming_events) = upcoming_events.into_iter().partition::<Vec<_>, _>(event::Data::is_started);
-    Ok(page(pool, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", html! {
+    Ok(page(&mut transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", html! {
         p {
             : "Mido's House is a platform where ";
             a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
@@ -258,12 +262,13 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
 
 #[rocket::get("/archive")]
 async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
-    let past_events = sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed AND end_time IS NOT NULL AND end_time <= NOW() ORDER BY end_time DESC"#)
-        .fetch(&**pool).map_err(event::DataError::from)
-        .and_then(|row| async move { Ok(event::Data::new((**pool).clone(), row.series, row.event).await?.expect("event deleted during page load")) }) //TODO use a transaction to enforce consistency?
-        .try_collect::<Vec<_>>().await?;
+    let mut transaction = pool.begin().await?;
+    let mut past_events = Vec::default();
+    for row in sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed AND end_time IS NOT NULL AND end_time <= NOW() ORDER BY end_time DESC"#).fetch_all(&mut transaction).await.map_err(event::Error::from)? {
+        past_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction"));
+    }
     let chests = past_events.choose(&mut thread_rng()).map_or_else(|| ChestAppearances::random(), |event| event.chests());
-    Ok(page(pool, &me, &uri, PageStyle { chests, ..PageStyle::default() }, "Event Archive — Mido's House", html! {
+    Ok(page(&mut transaction, &me, &uri, PageStyle { chests, ..PageStyle::default() }, "Event Archive — Mido's House", html! {
         h1 : "Past events";
         ul {
             @if past_events.is_empty() {
@@ -283,8 +288,9 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Res
 
 #[rocket::get("/new")]
 async fn new_event(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
-    let fenhl = User::from_id(&**pool, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
-    page(pool, &me, &uri, PageStyle::default(), "New Event — Mido's House", html! {
+    let mut transaction = pool.begin().await?;
+    let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+    page(&mut transaction, &me, &uri, PageStyle::default(), "New Event — Mido's House", html! {
         p {
             : "If you are planning a tournament, community race, or other event for the Ocarina of Time randomizer community, or if you would like Mido's House to archive data about a past event you organized, please contact ";
             : fenhl;
@@ -298,7 +304,8 @@ async fn not_found(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool, &me, &uri, PageStyle { kind: PageKind::Banner, chests: ChestAppearances::INVISIBLE, ..PageStyle::default() }, "Not Found — Mido's House", html! {
+    let mut transaction = pool.begin().await?;
+    page(&mut transaction, &me, &uri, PageStyle { kind: PageKind::Banner, chests: ChestAppearances::INVISIBLE, ..PageStyle::default() }, "Not Found — Mido's House", html! {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }
@@ -312,7 +319,8 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool, &me, &uri, PageStyle::default(), "Internal Server Error — Mido's House", html! {
+    let mut transaction = pool.begin().await?;
+    page(&mut transaction, &me, &uri, PageStyle::default(), "Internal Server Error — Mido's House", html! {
         h1 : "Error 500: Internal Server Error";
         p : "Sorry, something went wrong. Please notify Fenhl on Discord.";
     }).await
