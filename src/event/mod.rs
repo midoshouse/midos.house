@@ -1006,10 +1006,6 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                     }
                     if value.vod1.is_empty() {
                         message.push_line("");
-                    } else if let Ok(vod1) = Url::parse(&value.vod1) {
-                        message.push(" <");
-                        message.push_safe(vod1);
-                        message.push_line('>');
                     } else {
                         message.push(' ');
                         message.push_line_safe(&value.vod1);
@@ -1027,10 +1023,6 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                     }
                     if value.vod2.is_empty() {
                         message.push_line("");
-                    } else if let Ok(vod2) = Url::parse(&value.vod2) {
-                        message.push(" <");
-                        message.push_safe(vod2);
-                        message.push_line('>');
                     } else {
                         message.push(' ');
                         message.push_line_safe(&value.vod2);
@@ -1047,16 +1039,13 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                         message.push("DNF");
                     }
                     if !value.vod3.is_empty() {
-                        if let Ok(vod3) = Url::parse(&value.vod3) {
-                            message.push(" <");
-                            message.push_safe(vod3);
-                            message.push('>');
-                        } else {
-                            message.push(' ');
-                            message.push_safe(&value.vod3);
-                        }
+                        message.push(' ');
+                        message.push_safe(&value.vod3);
                     }
-                    ChannelId(discord_channel).say(&*discord_ctx.read().await, message).await?;
+                    ChannelId(discord_channel).send_message(&*discord_ctx.read().await, |m| m
+                        .content(message)
+                        .flags(MessageFlags::SUPPRESS_EMBEDS)
+                    ).await?;
                 }
             }
             transaction.commit().await?;
