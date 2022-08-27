@@ -517,5 +517,7 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, racetime_user
 pub(crate) fn logout(cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Redirect {
     cookies.remove_private(Cookie::named("racetime_token"));
     cookies.remove_private(Cookie::named("discord_token"));
+    cookies.remove_private(Cookie::named("racetime_refresh_token"));
+    cookies.remove_private(Cookie::named("discord_refresh_token"));
     Redirect::to(redirect_to.map_or_else(|| uri!(crate::http::index), |uri| uri.0.into_owned()))
 }
