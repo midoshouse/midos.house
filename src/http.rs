@@ -362,6 +362,7 @@ impl Fairing for SeedDownloadFairing {
 
 pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: &Config, env: Environment, view_as: HashMap<Id, Id>) -> Result<Rocket<rocket::Ignite>, Error> {
     let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
+    let racetime_config = if env.is_dev() { &config.racetime_oauth_dev } else { &config.racetime_oauth_production };
     Ok(rocket::custom(rocket::Config {
         port: if env.is_dev() { 24814 } else { 24812 },
         secret_key: SecretKey::from(&base64::decode(&config.secret_key)?),
@@ -412,11 +413,11 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
     .attach(rocket_csrf::Fairing::default())
     .attach(OAuth2::<auth::RaceTime>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
         rocket_oauth2::StaticProvider {
-            auth_uri: "https://racetime.gg/o/authorize".into(),
-            token_uri: "https://racetime.gg/o/token".into(),
+            auth_uri: format!("https://{}/o/authorize", env.racetime_host()).into(),
+            token_uri: format!("https://{}/o/token", env.racetime_host()).into(),
         },
-        config.racetime_oauth.client_id.clone(),
-        config.racetime_oauth.client_secret.clone(),
+        racetime_config.client_id.clone(),
+        racetime_config.client_secret.clone(),
         Some(match env {
             Environment::Local => uri!("http://localhost:24814", auth::racetime_callback),
             Environment::Dev => uri!("https://dev.midos.house", auth::racetime_callback),
@@ -437,6 +438,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         }.to_string()),
     )))
     .attach(SeedDownloadFairing)
+    .manage(env)
     .manage(ViewAs(view_as))
     .manage(pool)
     .manage(discord_ctx)

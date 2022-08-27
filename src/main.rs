@@ -79,6 +79,10 @@ impl Environment {
             Self::Local => true,
         }
     }
+
+    fn racetime_host(&self) -> &'static str {
+        if self.is_dev() { "racetime.midos.house" } else { "racetime.gg" }
+    }
 }
 
 #[derive(clap::Parser)]
@@ -113,7 +117,7 @@ async fn main(Args { env, view_as }: Args) -> Result<(), Error> {
         .build()?;
     let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
     let discord_builder = serenity_utils::builder(discord_config.client_id, discord_config.bot_token.clone()).await?;
-    let pool = PgPool::connect_with(PgConnectOptions::default().username("mido").database("midos_house").application_name("midos-house")).await?;
+    let pool = PgPool::connect_with(PgConnectOptions::default().username("mido").database(if env.is_dev() { "fados_house" } else { "midos_house" }).application_name("midos-house")).await?;
     let rocket = http::rocket(pool, discord_builder.ctx_fut.clone(), http_client.clone(), &config, env, view_as.into_iter().collect()).await?;
     let shutdown = rocket.shutdown();
     let discord_builder = discord_builder
@@ -397,7 +401,7 @@ async fn main(Args { env, view_as }: Args) -> Result<(), Error> {
     let racetime_task = tokio::spawn(racetime_bot::main(
         http_client,
         config.ootr_api_key.clone(),
-        if env.is_dev() { "racetime.midos.house" } else { "racetime.gg" },
+        env.racetime_host(),
         if env.is_dev() { config.racetime_bot_dev.clone() } else { config.racetime_bot_production.clone() },
         rocket.shutdown(),
     )).map(|res| match res {
