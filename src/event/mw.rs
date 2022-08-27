@@ -80,7 +80,10 @@ use {
             PageStyle,
             page,
         },
-        seed,
+        seed::{
+            self,
+            HashIcon,
+        },
         user::User,
         util::{
             DateTimeFormat,
@@ -1317,7 +1320,7 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
 }
 
 pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> sqlx::Result<RawHtml<String>> {
-    Ok(if let Some(async_row) = sqlx::query!(r#"SELECT web_id as "web_id: Id", web_gen_time, file_stem FROM asyncs WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_optional(&mut *transaction).await? {
+    Ok(if let Some(async_row) = sqlx::query!(r#"SELECT web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_optional(&mut *transaction).await? {
         if let Some(team_row) = sqlx::query!("SELECT requested, submitted FROM async_teams WHERE team = $1", i64::from(team_id)).fetch_optional(&mut *transaction).await? {
             if team_row.submitted.is_some() {
                 //TODO if any vods are still missing, show form to add them
@@ -1325,11 +1328,10 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                     p : "Waiting for the start of the tournament and round 1 pairings. Keep an eye out for an announcement on Discord."; //TODO include start date?
                 }
             } else {
-                let web = match (async_row.web_id, async_row.web_gen_time) {
-                    (Some(Id(id)), Some(gen_time)) => Some(seed::OotrWebData { id, gen_time }),
-                    (Some(_), None) => unreachable!("qualifier async has web ID but no gen time"), // unreachable due to SQL constraint
-                    (None, Some(_)) => unreachable!("qualifier async has web gen time but no ID"), // unreachable due to SQL constraint
-                    (None, None) => None,
+                let web = match (async_row.web_id, async_row.web_gen_time, async_row.hash1, async_row.hash2, async_row.hash3, async_row.hash4, async_row.hash5) {
+                    (Some(Id(id)), Some(gen_time), Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some(seed::OotrWebData { id, gen_time, file_hash: [hash1, hash2, hash3, hash4, hash5] }),
+                    (None, None, None, None, None, None, None) => None,
+                    _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
                 };
                 let seed = seed::Data { web, file_stem: Cow::Owned(async_row.file_stem) };
                 let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;

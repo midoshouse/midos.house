@@ -12,7 +12,6 @@ use {
     futures::stream::{
         Stream,
         StreamExt as _,
-        TryStreamExt as _,
     },
     itertools::Itertools as _,
     lazy_regex::regex_captures,
@@ -31,7 +30,10 @@ use {
         },
     },
     serde_plain::derive_display_from_serialize,
-    tokio::fs,
+    tokio::{
+        fs,
+        pin,
+    },
     crate::favicon::{
         Bridge,
         CorrectChestAppearances,
@@ -44,59 +46,80 @@ use {
 #[cfg(unix)] pub(crate) const DIR: &str = "/var/www/midos.house/seed";
 #[cfg(windows)] pub(crate) const DIR: &str = "C:/Users/fenhl/games/zelda/oot/midos-house-seeds";
 
-#[derive(Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, sqlx::Type, Deserialize, Serialize)]
+#[sqlx(type_name = "hash_icon")]
 pub(crate) enum HashIcon {
     #[serde(rename = "Deku Stick")]
+    #[sqlx(rename = "Deku Stick")]
     DekuStick,
     #[serde(rename = "Deku Nut")]
+    #[sqlx(rename = "Deku Nut")]
     DekuNut,
     Bow,
     Slingshot,
     #[serde(rename = "Fairy Ocarina")]
+    #[sqlx(rename = "Fairy Ocarina")]
     FairyOcarina,
     Bombchu,
     Longshot,
     Boomerang,
     #[serde(rename = "Lens of Truth")]
+    #[sqlx(rename = "Lens of Truth")]
     LensOfTruth,
     Beans,
     #[serde(rename = "Megaton Hammer")]
+    #[sqlx(rename = "Megaton Hammer")]
     MegatonHammer,
     #[serde(rename = "Bottled Fish")]
+    #[sqlx(rename = "Bottled Fish")]
     BottledFish,
     #[serde(rename = "Bottled Milk")]
+    #[sqlx(rename = "Bottled Milk")]
     BottledMilk,
     #[serde(rename = "Mask of Truth")]
+    #[sqlx(rename = "Mask of Truth")]
     MaskOfTruth,
     #[serde(rename = "SOLD OUT")]
+    #[sqlx(rename = "SOLD OUT")]
     SoldOut,
     Cucco,
     Mushroom,
     Saw,
     Frog,
     #[serde(rename = "Master Sword")]
+    #[sqlx(rename = "Master Sword")]
     MasterSword,
     #[serde(rename = "Mirror Shield")]
+    #[sqlx(rename = "Mirror Shield")]
     MirrorShield,
     #[serde(rename = "Kokiri Tunic")]
+    #[sqlx(rename = "Kokiri Tunic")]
     KokiriTunic,
     #[serde(rename = "Hover Boots")]
+    #[sqlx(rename = "Hover Boots")]
     HoverBoots,
     #[serde(rename = "Silver Gauntlets")]
+    #[sqlx(rename = "Silver Gauntlets")]
     SilverGauntlets,
     #[serde(rename = "Gold Scale")]
+    #[sqlx(rename = "Gold Scale")]
     GoldScale,
     #[serde(rename = "Stone of Agony")]
+    #[sqlx(rename = "Stone of Agony")]
     StoneOfAgony,
     #[serde(rename = "Skull Token")]
+    #[sqlx(rename = "Skull Token")]
     SkullToken,
     #[serde(rename = "Heart Container")]
+    #[sqlx(rename = "Heart Container")]
     HeartContainer,
     #[serde(rename = "Boss Key")]
+    #[sqlx(rename = "Boss Key")]
     BossKey,
     Compass,
     Map,
     #[serde(rename = "Big Magic")]
+    #[sqlx(rename = "Big Magic")]
     BigMagic,
 }
 
@@ -169,9 +192,11 @@ pub(crate) struct Data {
     pub(crate) file_stem: Cow<'static, str>,
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct OotrWebData {
     pub(crate) id: u64,
     pub(crate) gen_time: DateTime<Utc>,
+    pub(crate) file_hash: [HashIcon; 5],
 }
 
 fn deserialize_multiworld<'de, D: Deserializer<'de>, T: Deserialize<'de>>(deserializer: D) -> Result<Vec<T>, D::Error> {
@@ -250,15 +275,8 @@ pub(crate) struct SpoilerLogSettings {
 }
 
 pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -> io::Result<RawHtml<String>> {
+    pin!(seeds);
     let now = Utc::now();
-    let seeds = seeds.then(|seed| async move {
-        // ootrandomizer.com seeds are deleted after 90 days
-        let web_id = seed.web.as_ref().and_then(|web| (web.gen_time > now - chrono::Duration::days(90)).then(|| web.id));
-        let spoiler_file_name = format!("{}_Spoiler.json", seed.file_stem);
-        let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
-        let spoiler_contents = serde_json::from_str(&fs::read_to_string(&spoiler_path).await?)?;
-        io::Result::Ok((seed, web_id, spoiler_file_name, spoiler_contents))
-    }).try_collect::<Vec<(_, _, _, SpoilerLog)>>().await?;
     Ok(html! {
         table {
             thead {
@@ -271,18 +289,27 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -
                 }
             }
             tbody {
-                @for (seed, web_id, spoiler_file_name, spoiler_contents) in seeds {
+                @while let Some(seed) = seeds.next().await {
                     tr {
-                        td {
-                            @for hash_icon in spoiler_contents.file_hash {
-                                : hash_icon;
+                        // ootrandomizer.com seeds are deleted after 90 days
+                        @if let Some(web) = seed.web.and_then(|web| (web.gen_time > now - chrono::Duration::days(90)).then_some(web)) {
+                            td {
+                                @for hash_icon in web.file_hash {
+                                    : hash_icon;
+                                }
                             }
-                        }
-                        @if let Some(web_id) = web_id {
                             td(colspan? = spoiler_logs.then(|| "2")) {
-                                a(href = format!("https://ootrandomizer.com/seed/get?id={web_id}")) : "View";
+                                a(href = format!("https://ootrandomizer.com/seed/get?id={}", web.id)) : "View";
                             }
                         } else {
+                            @let spoiler_file_name = format!("{}_Spoiler.json", seed.file_stem);
+                            @let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
+                            @let spoiler_contents = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_path).await?)?;
+                            td {
+                                @for hash_icon in spoiler_contents.file_hash {
+                                    : hash_icon;
+                                }
+                            }
                             td {
                                 a(href = format!("/seed/{}.{}", seed.file_stem, if spoiler_contents.settings.world_count.get() > 1 { "zpfz" } else { "zpf" })) : "Download";
                             }

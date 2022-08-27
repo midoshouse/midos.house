@@ -399,7 +399,7 @@ dependencies = [
  "rand",
  "sha2",
  "subtle",
- "time 0.3.13",
+ "time 0.3.14",
  "version_check",
 ]
 
@@ -1977,7 +1977,7 @@ dependencies = [
  "serde",
  "state",
  "tempfile",
- "time 0.3.13",
+ "time 0.3.14",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -1988,8 +1988,8 @@ dependencies = [
 
 [[package]]
 name = "rocket-util"
-version = "0.2.3"
-source = "git+https://github.com/fenhl/rocket-util?branch=main#ba4c2d9acb5fa840346b451fd2e55bf5e25218b1"
+version = "0.2.4"
+source = "git+https://github.com/fenhl/rocket-util?branch=main#e2bc3c6f41fdefc32fa2470bfce59d3fe55407c9"
 dependencies = [
  "ics",
  "image",
@@ -2001,8 +2001,8 @@ dependencies = [
 
 [[package]]
 name = "rocket-util-derive"
-version = "0.2.3"
-source = "git+https://github.com/fenhl/rocket-util?branch=main#ba4c2d9acb5fa840346b451fd2e55bf5e25218b1"
+version = "0.2.4"
+source = "git+https://github.com/fenhl/rocket-util?branch=main#e2bc3c6f41fdefc32fa2470bfce59d3fe55407c9"
 dependencies = [
  "convert_case",
  "proc-macro2",
@@ -2059,7 +2059,7 @@ dependencies = [
  "smallvec",
  "stable-pattern",
  "state",
- "time 0.3.13",
+ "time 0.3.14",
  "tokio",
  "uncased",
 ]
@@ -2289,7 +2289,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_with_macros",
- "time 0.3.13",
+ "time 0.3.14",
 ]
 
 [[package]]
@@ -2331,7 +2331,7 @@ dependencies = [
  "serde-value",
  "serde_json",
  "static_assertions",
- "time 0.3.13",
+ "time 0.3.14",
  "tokio",
  "tracing",
  "typemap_rev",
@@ -2436,9 +2436,9 @@ checksum = "2fd0db749597d91ff862fd1d55ea87f7855a744a8425a64695b6fca237d1dad1"
 
 [[package]]
 name = "socket2"
-version = "0.4.4"
+version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66d72b759436ae32898a2af0a14218dbf55efde3feeb170eb623637db85ee1e0"
+checksum = "10c98bba371b9b22a71a9414e420f92ddeb2369239af08200816169d5e2dd7aa"
 dependencies = [
  "libc",
  "winapi",
@@ -2687,9 +2687,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.13"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db76ff9fa4b1458b3c7f077f3ff9887394058460d21e634355b273aaf11eea45"
+checksum = "3c3f9a28b618c3a6b9251b6908e9c99e04b9e5c02e6581ccbb67d59c34ef7f9b"
 dependencies = [
  "itoa",
  "libc",
