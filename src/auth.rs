@@ -49,7 +49,6 @@ use {
         util::{
             Id,
             IdTable,
-            RedirectOrContent,
         },
     },
 };
@@ -323,50 +322,21 @@ pub(crate) fn discord_login(oauth: OAuth2<Discord>, cookies: &CookieJar<'_>, red
 #[derive(Debug, thiserror::Error, Error)]
 pub(crate) enum RaceTimeCallbackError {
     #[error(transparent)] Page(#[from] PageError),
+    #[error(transparent)] Register(#[from] RegisterError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] UserFromRequest(#[from] UserFromRequestError),
 }
 
 #[rocket::get("/auth/racetime")]
-pub(crate) async fn racetime_callback(env: &State<Environment>, pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<RedirectOrContent, RaceTimeCallbackError> {
+pub(crate) async fn racetime_callback(env: &State<Environment>, pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<Redirect, RaceTimeCallbackError> {
     let mut transaction = pool.begin().await?;
     let racetime_user = handle_racetime_token_response(env, client, cookies, &token).await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(if User::from_racetime(&mut transaction, &racetime_user.id).await?.is_some() {
-        RedirectOrContent::Redirect(Redirect::to(redirect_uri))
-    } else if let Some(me) = me {
-        RedirectOrContent::Content(page(&mut transaction, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
-            p {
-                : "This racetime.gg account is not associated with a Mido's House account, but you are signed in as ";
-                : me;
-                : ".";
-            }
-            ul {
-                li {
-                    a(href = uri!(register_racetime).to_string()) : "Connect this racetime.gg account to your Mido's House account";
-                }
-                li {
-                    a(href = uri!(logout(Some(redirect_uri))).to_string()) : "Cancel";
-                }
-            }
-        }).await?)
+        Redirect::to(redirect_uri)
     } else {
-        RedirectOrContent::Content(page(&mut transaction, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create Account — Mido's House", html! {
-            p : "This racetime.gg account is not associated with a Mido's House account.";
-            ul {
-                li {
-                    a(href = uri!(register_racetime).to_string()) : "Create a new Mido's House account from this racetime.gg account";
-                }
-                li {
-                    a(href = uri!(discord_login(_)).to_string()) : "Sign in with Discord";
-                    : " to associate this racetime.gg account with an existing Mido's House account";
-                }
-                li {
-                    a(href = uri!(logout(Some(redirect_uri))).to_string()) : "Cancel";
-                }
-            }
-        }).await?)
+        register_racetime_inner(pool, me, Some(racetime_user), Some(redirect_uri)).await?
     })
 }
 
@@ -374,50 +344,21 @@ pub(crate) async fn racetime_callback(env: &State<Environment>, pool: &State<PgP
 pub(crate) enum DiscordCallbackError {
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
+    #[error(transparent)] Register(#[from] RegisterError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] UserFromRequest(#[from] UserFromRequestError),
 }
 
 #[rocket::get("/auth/discord")]
-pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, client: &State<reqwest::Client>, token: TokenResponse<Discord>, cookies: &CookieJar<'_>) -> Result<RedirectOrContent, DiscordCallbackError> {
+pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, token: TokenResponse<Discord>, cookies: &CookieJar<'_>) -> Result<Redirect, DiscordCallbackError> {
     let mut transaction = pool.begin().await?;
     let discord_user = handle_discord_token_response(client, cookies, &token).await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(if User::from_discord(&mut transaction, discord_user.id).await?.is_some() {
-        RedirectOrContent::Redirect(Redirect::to(redirect_uri))
-    } else if let Some(me) = me {
-        RedirectOrContent::Content(page(&mut transaction, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Connect Account — Mido's House", html! {
-            p {
-                : "This Discord account is not associated with a Mido's House account, but you are signed in as ";
-                : me;
-                : ".";
-            }
-            ul {
-                li {
-                    a(href = uri!(register_discord).to_string()) : "Connect this Discord account to your Mido's House account";
-                }
-                li {
-                    a(href = uri!(logout(Some(redirect_uri))).to_string()) : "Cancel";
-                }
-            }
-        }).await?)
+        Redirect::to(redirect_uri)
     } else {
-        RedirectOrContent::Content(page(&mut transaction, &None, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Create Account — Mido's House", html! {
-            p : "This Discord account is not associated with a Mido's House account.";
-            ul {
-                li {
-                    a(href = uri!(register_discord).to_string()) : "Create a new Mido's House account from this Discord account";
-                }
-                li {
-                    a(href = uri!(racetime_login(_)).to_string()) : "Sign in with racetime.gg";
-                    : " to associate this Discord account with an existing Mido's House account";
-                }
-                li {
-                    a(href = uri!(logout(Some(redirect_uri))).to_string()) : "Cancel";
-                }
-            }
-        }).await?)
+        register_discord_inner(pool, me, Some(discord_user), Some(redirect_uri)).await?
     })
 }
 
@@ -431,8 +372,7 @@ pub(crate) enum RegisterError {
     ExistsRaceTime,
 }
 
-#[rocket::get("/register/racetime")]
-pub(crate) async fn register_racetime(pool: &State<PgPool>, me: Option<User>, racetime_user: Option<RaceTimeUser>) -> Result<Redirect, RegisterError> {
+async fn register_racetime_inner(pool: &State<PgPool>, me: Option<User>, racetime_user: Option<RaceTimeUser>, redirect_uri: Option<rocket::http::uri::Origin<'static>>) -> Result<Redirect, RegisterError> {
     Ok(if let Some(racetime_user) = racetime_user {
         let mut transaction = pool.begin().await?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE racetime_id = $1) AS "exists!""#, racetime_user.id).fetch_one(&mut transaction).await? {
@@ -440,20 +380,19 @@ pub(crate) async fn register_racetime(pool: &State<PgPool>, me: Option<User>, ra
         } else if let Some(me) = me {
             sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2, racetime_pronouns = $3 WHERE id = $4", racetime_user.id, racetime_user.name, racetime_user.pronouns as _, i64::from(me.id)).execute(&mut transaction).await?;
             transaction.commit().await?;
-            Redirect::to(uri!(crate::user::profile(me.id)))
+            Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(me.id))))
         } else {
             let id = Id::new(&mut transaction, IdTable::Users).await?;
             sqlx::query!("INSERT INTO users (id, display_source, racetime_id, racetime_display_name, racetime_pronouns) VALUES ($1, 'racetime', $2, $3, $4)", id as _, racetime_user.id, racetime_user.name, racetime_user.pronouns as _).execute(&mut transaction).await?;
             transaction.commit().await?;
-            Redirect::to(uri!(crate::user::profile(id)))
+            Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(id))))
         }
     } else {
         Redirect::to(uri!(racetime_login(_)))
     })
 }
 
-#[rocket::get("/register/discord")]
-pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, discord_user: Option<DiscordUser>) -> Result<Redirect, RegisterError> {
+async fn register_discord_inner(pool: &State<PgPool>, me: Option<User>, discord_user: Option<DiscordUser>, redirect_uri: Option<rocket::http::uri::Origin<'static>>) -> Result<Redirect, RegisterError> {
     Ok(if let Some(discord_user) = discord_user {
         let mut transaction = pool.begin().await?;
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE discord_id = $1) AS "exists!""#, i64::from(discord_user.id)).fetch_one(&mut transaction).await? {
@@ -461,16 +400,26 @@ pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, dis
         } else if let Some(me) = me {
             sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2 WHERE id = $3", i64::from(discord_user.id), discord_user.username, i64::from(me.id)).execute(&mut transaction).await?;
             transaction.commit().await?;
-            Redirect::to(uri!(crate::user::profile(me.id)))
+            Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(me.id))))
         } else {
             let id = Id::new(&mut transaction, IdTable::Users).await?;
             sqlx::query!("INSERT INTO users (id, display_source, discord_id, discord_display_name) VALUES ($1, 'discord', $2, $3)", id as _, i64::from(discord_user.id), discord_user.username).execute(&mut transaction).await?;
             transaction.commit().await?;
-            Redirect::to(uri!(crate::user::profile(id)))
+            Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(id))))
         }
     } else {
         Redirect::to(uri!(discord_login(_)))
     })
+}
+
+#[rocket::get("/register/racetime")]
+pub(crate) async fn register_racetime(pool: &State<PgPool>, me: Option<User>, racetime_user: Option<RaceTimeUser>) -> Result<Redirect, RegisterError> {
+    register_racetime_inner(pool, me, racetime_user, None).await
+}
+
+#[rocket::get("/register/discord")]
+pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, discord_user: Option<DiscordUser>) -> Result<Redirect, RegisterError> {
+    register_discord_inner(pool, me, discord_user, None).await
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
