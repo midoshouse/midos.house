@@ -53,6 +53,7 @@ use {
         process::Command,
         sync::{
             Mutex,
+            OwnedRwLockWriteGuard,
             RwLock,
             Semaphore,
             TryAcquireError,
@@ -412,7 +413,7 @@ impl Handler {
     }
 
     async fn advance_draft(&mut self, ctx: &RaceContext) -> Result<(), Error> {
-        let state = self.state.read().await;
+        let state = self.state.clone().write_owned().await;
         if let RaceState::Draft(ref draft) = *state {
             match draft.next_step() {
                 mw::DraftStep::GoFirst => ctx.send_message("Team A, you have the higher seed. Choose whether you want to go !first or !second").await?,
@@ -424,10 +425,7 @@ impl Handler {
                     3 => format!("{team}, pick the final setting. You can also use “!skip” if you want to leave the settings as they are."),
                     _ => unreachable!(),
                 }).await?,
-                mw::DraftStep::Done(settings) => {
-                    drop(state); //TODO retain lock
-                    self.roll_seed(ctx, settings).await;
-                }
+                mw::DraftStep::Done(settings) => self.roll_seed(ctx, state, settings).await,
             }
         } else {
             unreachable!()
@@ -435,8 +433,9 @@ impl Handler {
         Ok(())
     }
 
-    async fn roll_seed(&mut self, ctx: &RaceContext, settings: mw::S3Settings) {
-        *self.state.write().await = RaceState::Rolling;
+    async fn roll_seed(&mut self, ctx: &RaceContext, mut state: OwnedRwLockWriteGuard<RaceState>, settings: mw::S3Settings) {
+        *state = RaceState::Rolling;
+        drop(state);
         let ctx = ctx.clone();
         let state = Arc::clone(&self.state);
         let mut updates = Arc::clone(&self.seed_queue).roll_seed(settings);
@@ -645,21 +644,17 @@ impl RaceHandler<MwSeedQueue> for Handler {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
             "seed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = self.state.write().await;
+                let mut state = self.state.clone().write_owned().await;
                 match *state {
                     RaceState::Init => match args[..] {
                         [] => {
                             ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
                             send_presets(ctx).await?;
                         }
-                        ["base"] => {
-                            drop(state);
-                            self.roll_seed(ctx, mw::S3Settings::default()).await;
-                        }
+                        ["base"] => self.roll_seed(ctx, state, mw::S3Settings::default()).await,
                         ["random"] => {
-                            drop(state);
                             let settings = mw::S3Settings::random(&mut thread_rng());
-                            self.roll_seed(ctx, settings).await;
+                            self.roll_seed(ctx, state, settings).await;
                         }
                         ["draft"] => {
                             *state = RaceState::Draft(mw::S3Draft::default());
