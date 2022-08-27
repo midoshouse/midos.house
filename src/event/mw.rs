@@ -356,18 +356,9 @@ impl S3Settings {
                 Dungeons::Skulls => json!("vanilla"),
                 Dungeons::Keyrings => json!("keysanity"),
             },
-            format!("key_rings") => match dungeons {
-                Dungeons::Keyrings => json!([
-                    "Forest Temple",
-                    "Fire Temple",
-                    "Water Temple",
-                    "Shadow Temple",
-                    "Spirit Temple",
-                    "Bottom of the Well",
-                    "Gerudo Training Ground",
-                    "Ganons Castle",
-                ]),
-                Dungeons::Tournament | Dungeons::Skulls => json!([]),
+            format!("key_rings_choice") => match dungeons {
+                Dungeons::Keyrings => json!("all"),
+                Dungeons::Tournament | Dungeons::Skulls => json!("off"),
             },
             format!("shuffle_bosskeys") => match dungeons {
                 Dungeons::Tournament => json!("dungeon"),
