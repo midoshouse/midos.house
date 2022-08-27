@@ -18,7 +18,7 @@ pub(crate) struct Config {
     pub(crate) ootr_api_key: String,
     pub(crate) racetime_bot_production: ConfigRaceTime,
     pub(crate) racetime_bot_dev: ConfigRaceTime,
-    #[serde(rename = "racetimeOAuthProduction", alias = "racetimeOAuth")]
+    #[serde(rename = "racetimeOAuthProduction")]
     pub(crate) racetime_oauth_production: ConfigRaceTime,
     #[serde(rename = "racetimeOAuthDev")]
     pub(crate) racetime_oauth_dev: ConfigRaceTime,
