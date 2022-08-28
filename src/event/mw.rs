@@ -1323,6 +1323,7 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
     Ok(if let Some(async_row) = sqlx::query!(r#"SELECT web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_optional(&mut *transaction).await? {
         if let Some(team_row) = sqlx::query!("SELECT requested, submitted FROM async_teams WHERE team = $1", i64::from(team_id)).fetch_optional(&mut *transaction).await? {
             if team_row.submitted.is_some() {
+                //TODO get this team's known matchup(s) from start.gg
                 //TODO if any vods are still missing, show form to add them
                 html! {
                     p : "Waiting for the start of the tournament and round 1 pairings. Keep an eye out for an announcement on Discord."; //TODO include start date?
@@ -1416,7 +1417,16 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                     p : "Rules:";
                     ol {
                         li : "This seed must be attempted in order to play in the tournament. In the event of a forfeit, you will be granted a bottom-half seed for the first Swiss round.";
-                        li : "The time must be submitted by the starting time of the tournament, which is yet to be announced."; //TODO explicitly state deadline if there is one
+                        li {
+                            @if let Some(start) = data.start {
+                                : "The time must be submitted by ";
+                                : format_datetime(start, DateTimeFormat { long: true, running_text: true });
+                                : ".";
+                                 //TODO deadline extension for evening out teams
+                            } else {
+                                : "The time must be submitted by the starting time of the tournament, which is yet to be announced.";
+                            }
+                        }
                         li : "You must start the seed within 30 minutes of obtaining it and submit your time within 30 minutes of the last finish. Any additional time taken will be added to your final time. If anything prevents you from obtaining the seed/submitting your time, please DM an admin (or ping the Discord role) to get it sorted out.";
                         li : "While required for the tournament, the results from the qualifier seed will only be used in the first round of Swiss pairings. The teams in the top half of finishers will be paired with a team from the bottom half of finishers for the first round. After the first round, pairings will be purely based on Swiss matchmaking.";
                         li : "While you are not strictly required to stream, you must have video proof of your run. Feel free to simply record your run and upload it to YouTube and provide a link. If you do stream or make your upload public, please make sure it is clearly marked so people can avoid spoilers. If you're a big streamer, be extra sure to note what is happening, as several of your viewers are likely going to want to participate as well.";

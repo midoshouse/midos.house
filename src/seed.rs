@@ -293,7 +293,7 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -
                     tr {
                         // ootrandomizer.com seeds are deleted after 90 days
                         @if let Some(web) = seed.web.and_then(|web| (web.gen_time > now - chrono::Duration::days(90)).then_some(web)) {
-                            td {
+                            td(class = "hash") {
                                 @for hash_icon in web.file_hash {
                                     : hash_icon;
                                 }

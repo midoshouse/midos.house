@@ -32,6 +32,7 @@ a:hover {
 .logo {
     display: grid;
     grid-template-columns: 32px 32px;
+    direction: ltr;
 }
 
 .chest {
@@ -47,7 +48,7 @@ nav h1 {
 }
 
 #login {
-    text-align: right;
+    text-align: end;
 }
 
 body > div,
@@ -74,8 +75,7 @@ span.button-row {
 }
 
 .button-row form {
-    padding-left: 0;
-    padding-right: 0;
+    padding-inline: 0;
 }
 
 input[type="submit"],
@@ -88,15 +88,15 @@ input[type="submit"],
 fieldset input[type="submit"],
 .button-row form:nth-child(1) input[type="submit"],
 .button:nth-child(1) {
-    border-top-left-radius: 8px;
-    border-bottom-left-radius: 8px;
+    border-start-start-radius: 8px;
+    border-end-start-radius: 8px;
 }
 
 fieldset input[type="submit"],
 .button-row form:nth-last-child(1) input[type="submit"],
 .button:nth-last-child(1) {
-    border-top-right-radius: 8px;
-    border-bottom-right-radius: 8px;
+    border-start-end-radius: 8px;
+    border-end-end-radius: 8px;
 }
 
 input[type="submit"]:hover,
@@ -113,7 +113,7 @@ input[type="submit"] {
 .favicon {
     width: 16px;
     height: 16px;
-    margin-right: 8px;
+    margin-inline-end: 8px;
     vertical-align: sub;
 }
 
@@ -184,6 +184,10 @@ table td {
     color: #00c000;
 }
 
+.hash {
+    direction: ltr;
+}
+
 .hash-icon {
     width: 50px;
     height: 50px;
@@ -200,11 +204,11 @@ fieldset {
 }
 
 label:not(:nth-last-child(1)) {
-    margin-right: 8px;
+    margin-inline-end: 8px;
 }
 
 label.help {
-    margin-left: 8px;
+    margin-inline-start: 8px;
 }
 
 .error {

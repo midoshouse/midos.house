@@ -281,7 +281,7 @@ impl<'a> Data<'a> {
         }
     }
 
-    pub(crate) fn is_started(&self) -> bool {
+    pub(crate) fn is_started(&self) -> bool { //TODO deadline extension for evening out teams in mw
         self.start.map_or(false, |start| start <= Utc::now())
     }
 
