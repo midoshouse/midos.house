@@ -398,9 +398,6 @@ impl S3Settings {
                 "logic_dc_scarecrow_gs"
             ]),
             format!("logic_earliest_adult_trade") => json!("claim_check"),
-            format!("starting_equipment") => json!([
-                "deku_shield"
-            ]),
             format!("starting_items") => json!([
                 "ocarina",
                 "farores_wind",
@@ -536,7 +533,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                         li : "Forest: Open";
                         li : "Scrub Shuffle: On (Affordable)";
                         li : "Shopsanity: 4 Items per Shop";
-                        li : "Starting Inventory: Ocarina, FW, Lens of Truth, Consumables, Rupees";
+                        li : "Starting Inventory: Ocarina, FW, Lens of Truth, Consumables, Rupees (no Deku Shield)";
                         li : "Free Scarecrow's Song";
                         li : "Starting Age: Adult";
                         li : "Randomize Overworld Spawns: Off";
