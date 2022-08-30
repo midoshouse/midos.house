@@ -306,7 +306,7 @@ impl<'a> Data<'a> {
                 AND event = $2
                 AND member = $3
                 AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-            ) AS "exists!""#, self.series.to_str(), &self.event, i64::from(me.id)).fetch_one(transaction).await?
+            ) AS "exists!""#, self.series as _, &self.event, i64::from(me.id)).fetch_one(transaction).await?
         } else {
             false
         };
@@ -468,7 +468,8 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     let data = Data::new(&mut transaction, series, event).await.map_err(TeamsError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, me.as_ref(), Tab::Teams).await.map_err(TeamsError::Sql)?;
     let mut signups = Vec::default();
-    let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug FROM teams WHERE
+    let has_qualifier = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2) AS "exists!""#, series as _, event).fetch_one(&mut transaction).await.map_err(TeamsError::Sql)?;
+    let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, submitted IS NOT NULL AS "qualified!" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
         series = $1
         AND event = $2
         AND NOT resigned
@@ -476,7 +477,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
             OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
         )
-    "#, series.to_str(), event, me.as_ref().map(|me| i64::from(me.id))).fetch_all(&mut transaction).await.map_err(TeamsError::Sql)?;
+    "#, series as _, event, me.as_ref().map(|me| i64::from(me.id))).fetch_all(&mut transaction).await.map_err(TeamsError::Sql)?;
     let roles = data.team_config().roles();
     for team in teams {
         let mut members = Vec::with_capacity(roles.len());
@@ -486,7 +487,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             let user = User::from_id(&mut transaction, row.id).await.map_err(TeamsError::Sql)?.ok_or(TeamsError::NonexistentUser)?;
             members.push((role, user, is_confirmed));
         }
-        signups.push((team.id, team.name, team.racetime_slug, members));
+        signups.push((team.id, team.name, team.racetime_slug, members, team.qualified));
     }
     page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
         : header;
@@ -497,17 +498,20 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                     @for &(role, display_name) in &roles {
                         th(class = role.css_class()) : display_name;
                     }
+                    @if has_qualifier {
+                        th : "Qualified";
+                    }
                 }
             }
             tbody {
                 @if signups.is_empty() {
                     tr {
-                        td(colspan = roles.len() + 1) {
+                        td(colspan = roles.len() + if has_qualifier { 2 } else { 1 }) {
                             i : "(no signups yet)";
                         }
                     }
                 } else {
-                    @for (team_id, team_name, racetime_slug, members) in signups {
+                    @for (team_id, team_name, racetime_slug, members, qualified) in signups {
                         tr {
                             @if let Some(racetime_slug) = racetime_slug {
                                 td {
@@ -555,6 +559,13 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                     }
                                 }
                             }
+                            @if has_qualifier {
+                                td {
+                                    @if qualified {
+                                        : "✓";
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -574,7 +585,7 @@ async fn status_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Opt
             AND event = $2
             AND member = $3
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        "#, series.to_str(), event, i64::from(me.id)).fetch_optional(&mut transaction).await? {
+        "#, series as _, event, i64::from(me.id)).fetch_optional(&mut transaction).await? {
             html! {
                 : header;
                 p {
@@ -858,7 +869,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, me: User, uri: Origin<'_
             AND member = $3
             AND NOT resigned
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        "#, series.to_str(), event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
+        "#, series as _, event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
         if team_id.is_none() {
             form.context.push_error(form::Error::validation("You are not signed up for this event."));
         }
@@ -913,7 +924,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
             AND member = $3
             AND NOT resigned
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        "#, series.to_str(), event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
+        "#, series as _, event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
         if let Some(ref row) = team_row {
             match sqlx::query_scalar!(r#"SELECT submitted IS NULL AS "is_null!" FROM async_teams WHERE team = $1"#, i64::from(row.team)).fetch_optional(&mut transaction).await? {
                 Some(true) => {}
