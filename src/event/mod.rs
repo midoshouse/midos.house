@@ -489,6 +489,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
         }
         signups.push((team.id, team.name, team.racetime_slug, members, team.qualified));
     }
+    signups.sort_by_key(|(_, _, _, _, qualified)| !qualified);
     page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
         : header;
         table {
