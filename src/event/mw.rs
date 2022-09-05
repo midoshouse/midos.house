@@ -57,7 +57,10 @@ use {
         json,
     },
     serde_plain::derive_fromstr_from_deserialize,
-    serenity::client::Context as DiscordCtx,
+    serenity::{
+        client::Context as DiscordCtx,
+        model::prelude::*,
+    },
     serenity_utils::RwFuture,
     sqlx::{
         PgPool,
@@ -1316,8 +1319,8 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
     })
 }
 
-pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> sqlx::Result<RawHtml<String>> {
-    Ok(if let Some(async_row) = sqlx::query!(r#"SELECT web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_optional(&mut *transaction).await? {
+pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> sqlx::Result<RawHtml<String>> {
+    Ok(if let Some(async_row) = sqlx::query!(r#"SELECT discord_channel AS "discord_channel: Id", web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_optional(&mut *transaction).await? {
         if let Some(team_row) = sqlx::query!("SELECT requested, submitted FROM async_teams WHERE team = $1", i64::from(team_id)).fetch_optional(&mut *transaction).await? {
             if team_row.submitted.is_some() {
                 //TODO get this team's known matchup(s) from start.gg
@@ -1344,7 +1347,22 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                     : form_field("vod1", &mut errors, html! {
                         label(for = "vod1", class = "power") : "Player 1 VoD:";
                         input(type = "text", name = "vod1", value? = context.field_value("vod1"));
-                        label(class = "help") : "(If you plan on uploading the VoD to YouTube later, leave this field blank and DM an admin once it is ready.)"; //TODO option to submit vods later
+                        label(class = "help") {
+                            : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
+                            @if let Some(Id(discord_channel)) = async_row.discord_channel {
+                                : "post it in ";
+                                @if let Some(discord_channel) = ChannelId(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                    : "#";
+                                    : discord_channel.name;
+                                } else {
+                                    : "the results channel for this async";
+                                }
+                            } else {
+                                : "DM an admin";
+                            }
+                            : " once it is ready.)";
+                            //TODO form to submit vods later
+                        }
                     });
                     : form_field("time2", &mut errors, html! {
                         label(for = "time2", class = "wisdom") : "Player 2 Finishing Time:";
@@ -1354,7 +1372,22 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                     : form_field("vod2", &mut errors, html! {
                         label(for = "vod2", class = "wisdom") : "Player 2 VoD:";
                         input(type = "text", name = "vod2", value? = context.field_value("vod2"));
-                        label(class = "help") : "(If you plan on uploading the VoD to YouTube later, leave this field blank and DM an admin once it is ready.)"; //TODO option to submit vods later
+                        label(class = "help") {
+                            : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
+                            @if let Some(Id(discord_channel)) = async_row.discord_channel {
+                                : "post it in ";
+                                @if let Some(discord_channel) = ChannelId(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                    : "#";
+                                    : discord_channel.name;
+                                } else {
+                                    : "the results channel for this async";
+                                }
+                            } else {
+                                : "DM an admin";
+                            }
+                            : " once it is ready.)";
+                            //TODO form to submit vods later
+                        }
                     });
                     : form_field("time3", &mut errors, html! {
                         label(for = "time3", class = "courage") : "Player 3 Finishing Time:";
@@ -1364,7 +1397,22 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                     : form_field("vod3", &mut errors, html! {
                         label(for = "vod3", class = "courage") : "Player 3 VoD:";
                         input(type = "text", name = "vod3", value? = context.field_value("vod3"));
-                        label(class = "help") : "(If you plan on uploading the VoD to YouTube later, leave this field blank and DM an admin once it is ready.)"; //TODO option to submit vods later
+                        label(class = "help") {
+                            : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
+                            @if let Some(Id(discord_channel)) = async_row.discord_channel {
+                                : "post it in ";
+                                @if let Some(discord_channel) = ChannelId(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                    : "#";
+                                    : discord_channel.name;
+                                } else {
+                                    : "the results channel for this async";
+                                }
+                            } else {
+                                : "DM an admin";
+                            }
+                            : " once it is ready.)";
+                            //TODO form to submit vods later
+                        }
                     });
                     : form_field("fpa", &mut errors, html! {
                         label(for = "fpa") {
