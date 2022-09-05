@@ -1461,7 +1461,7 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                     p : "Play the qualifier async to qualify for the tournament.";
                     p : "Rules:";
                     ol {
-                        li : "This seed must be attempted in order to play in the tournament. In the event of a forfeit, you will be granted a bottom-half seed for the first Swiss round.";
+                        li : "In order to play in the tournament, your team must make a reasonable attempt at completing this seed. In the event of a forfeit, you can still participate, but will be considered the bottom seed for settings draft purposes.";
                         li {
                             @if let Some(start) = data.start {
                                 : "The time must be submitted by ";
@@ -1473,10 +1473,10 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                             }
                         }
                         li : "You must start the seed within 30 minutes of obtaining it and submit your time within 30 minutes of the last finish. Any additional time taken will be added to your final time. If anything prevents you from obtaining the seed/submitting your time, please DM an admin (or ping the Discord role) to get it sorted out.";
-                        li : "While required for the tournament, the results from the qualifier seed will only be used in the first round of Swiss pairings. The teams in the top half of finishers will be paired with a team from the bottom half of finishers for the first round. After the first round, pairings will be purely based on Swiss matchmaking.";
+                        li : "While required for the tournament, the results from the qualifier seed will only determine which team chooses who goes first in the settings draft. Swiss pairings will be seeded randomly.";
                         li : "While you are not strictly required to stream, you must have video proof of your run. Feel free to simply record your run and upload it to YouTube and provide a link. If you do stream or make your upload public, please make sure it is clearly marked so people can avoid spoilers. If you're a big streamer, be extra sure to note what is happening, as several of your viewers are likely going to want to participate as well.";
                         li : "Do not spoil yourself on this seed by watching another playthrough. If you do stream, you are responsible for what your chat says, so either do not read chat, set it to emote only, or take the risk at your own discretion. If you do get spoiled, please report it to the admins, we will try to work out something equitable.";
-                        li : "You must use the world numbers with which you signed up for this seed. Once you request the seed, the world numbers you selected are the world numbers you play with for the rest of the tournament. If you wish to change your player order, do not request the qualifier and contact an admin."; //TODO allow changing player order in options below
+                        li : "You must use the world numbers with which you entered the tournament for this seed. Once you request the seed, the world numbers you selected are the world numbers you play with for the rest of the tournament. If you wish to change your player order, do not request the qualifier and contact an admin."; //TODO allow changing player order in options below
                         li {
                             : "This should be run like an actual race. In the event of a technical issue, teams are allowed to invoke the ";
                             a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
