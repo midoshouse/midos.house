@@ -489,7 +489,11 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
         }
         signups.push((team.id, team.name, team.racetime_slug, members, team.qualified));
     }
-    signups.sort_by_key(|(_, _, _, _, qualified)| !qualified);
+    signups.sort_unstable_by(|(id1, name1, _, _, qualified1), (id2, name2, _, _, qualified2)|
+        qualified2.cmp(qualified1) // reversed to list qualified teams first //TODO sort by qualifier finish time if qualifier submissions are closed
+        .then_with(|| name1.cmp(name2))
+        .then_with(|| id1.cmp(id2))
+    );
     page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
         : header;
         table {

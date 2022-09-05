@@ -82,7 +82,7 @@ impl EmptyForm {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, UriDisplayPath, UriDisplayQuery)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, UriDisplayPath, UriDisplayQuery)]
 pub(crate) struct Id(pub(crate) u64);
 
 pub(crate) enum IdTable {
