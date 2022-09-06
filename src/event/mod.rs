@@ -541,7 +541,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                     @for &(role, display_name) in &roles {
                         th(class = role.css_class()) : display_name;
                     }
-                    @if has_qualifier {
+                    @if has_qualifier && !me_qualified { //TODO also show qualifier times if submissions are closed
                         th : "Qualified";
                     }
                 }
@@ -572,7 +572,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                     br;
                                     small {
                                         @if let Some(time) = members.iter().try_fold(Duration::default(), |acc, &(_, _, _, time, _)| Some(acc + time?)) {
-                                            : format_duration(time, false);
+                                            : format_duration(time / 3, false);
                                         } else {
                                             : "DNF";
                                         }
