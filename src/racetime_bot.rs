@@ -448,7 +448,7 @@ impl Handler {
                     SeedRollUpdate::MovedForward(0) => ctx.send_message("The queue has moved and your seed is now at the front so it will be rolled next.").await?,
                     SeedRollUpdate::MovedForward(1) => ctx.send_message("The queue has moved and there is only 1 more seed in front of yours.").await?,
                     SeedRollUpdate::MovedForward(pos) => ctx.send_message(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
-                    SeedRollUpdate::WaitRateLimit(until) => ctx.send_message(&format!("Your seed will be rolled in {}.", format_duration(until - Instant::now()))).await?,
+                    SeedRollUpdate::WaitRateLimit(until) => ctx.send_message(&format!("Your seed will be rolled in {}.", format_duration(until - Instant::now(), true))).await?,
                     SeedRollUpdate::Started => ctx.send_message(&format!("Rolling a seed with {settings}…")).await?,
                     SeedRollUpdate::DoneLocal(patch_filename, spoiler_log_path) => {
                         let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename").to_owned();

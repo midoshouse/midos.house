@@ -44,6 +44,7 @@ use {
         Encode,
         Postgres,
         Transaction,
+        postgres::types::PgInterval,
     },
     url::Url,
     crate::{
@@ -273,6 +274,25 @@ impl From<sqlx::Error> for StatusOrError<PageError> {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum PgIntervalDecodeError {
+    #[error(transparent)] TryFromInt(#[from] std::num::TryFromIntError),
+    #[error("found PgInterval with nonzero months in database")]
+    Months,
+    #[error("PgInterval too long")]
+    Range,
+}
+
+pub(crate) fn decode_pginterval(PgInterval { months, days, microseconds }: PgInterval) -> Result<Duration, PgIntervalDecodeError> {
+    if months == 0 {
+        Duration::from_secs(u64::try_from(days)? * 60 * 60 * 24)
+            .checked_add(Duration::from_micros(microseconds.try_into()?))
+            .ok_or(PgIntervalDecodeError::Range)
+    } else {
+        Err(PgIntervalDecodeError::Months)
+    }
+}
+
 pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
     match url.host_str() {
         Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("spreadsheets") => html! {
@@ -312,15 +332,19 @@ pub(crate) fn parse_duration(s: &str) -> Option<Duration> {
     }
 }
 
-pub(crate) fn format_duration(duration: Duration) -> String {
+pub(crate) fn format_duration(duration: Duration, running_text: bool) -> String {
     let secs = duration.as_secs();
     let hours = secs / 3600;
     let mins = (secs % 3600) / 60;
     let secs = secs % 60;
-    let parts = (hours > 0).then(|| format!("{hours} hour{}", if hours == 1 { "" } else { "s" })).into_iter()
-        .chain((mins > 0).then(|| format!("{mins} minute{}", if mins == 1 { "" } else { "s" })))
-        .chain((secs > 0).then(|| format!("{secs} second{}", if secs == 1 { "" } else { "s" })));
-    natjoin_str(parts).unwrap_or_else(|| format!("0 seconds"))
+    if running_text {
+        let parts = (hours > 0).then(|| format!("{hours} hour{}", if hours == 1 { "" } else { "s" })).into_iter()
+            .chain((mins > 0).then(|| format!("{mins} minute{}", if mins == 1 { "" } else { "s" })))
+            .chain((secs > 0).then(|| format!("{secs} second{}", if secs == 1 { "" } else { "s" })));
+        natjoin_str(parts).unwrap_or_else(|| format!("0 seconds"))
+    } else {
+        format!("{hours}:{mins:02}:{secs:02}")
+    }
 }
 
 pub(crate) struct DateTimeFormat {

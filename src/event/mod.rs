@@ -5,6 +5,7 @@ use {
         fmt,
         io,
         str::FromStr,
+        time::Duration,
     },
     anyhow::anyhow,
     chrono::prelude::*,
@@ -82,6 +83,7 @@ use {
             MessageBuilderExt as _,
             RedirectOrContent,
             StatusOrError,
+            decode_pginterval,
             favicon,
             format_datetime,
             format_duration,
@@ -457,6 +459,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
 pub(crate) enum TeamsError {
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Page(#[from] PageError),
+    #[error(transparent)] PgInterval(#[from] crate::util::PgIntervalDecodeError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("team with nonexistent user")]
     NonexistentUser,
@@ -469,6 +472,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     let header = data.header(&mut transaction, me.as_ref(), Tab::Teams).await.map_err(TeamsError::Sql)?;
     let mut signups = Vec::default();
     let has_qualifier = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2) AS "exists!""#, series as _, event).fetch_one(&mut transaction).await.map_err(TeamsError::Sql)?;
+    let me_qualified = sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM async_teams, team_members WHERE async_teams.team = team_members.team AND member = $1"#, me.as_ref().map(|me| i64::from(me.id))).fetch_one(&mut *transaction).await.map_err(TeamsError::Sql)?;
     let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, submitted IS NOT NULL AS "qualified!" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
         series = $1
         AND event = $2
@@ -482,18 +486,52 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     for team in teams {
         let mut members = Vec::with_capacity(roles.len());
         for &(role, _) in &roles {
-            let row = sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1 AND role = $2"#, i64::from(team.id), role as _).fetch_one(&mut transaction).await.map_err(TeamsError::Sql)?;
+            let row = sqlx::query!(r#"
+                SELECT member AS "id: Id", status AS "status: SignupStatus", time, vod
+                FROM team_members LEFT OUTER JOIN async_players ON (member = player)
+                WHERE team = $1 AND role = $2
+            "#, i64::from(team.id), role as _).fetch_one(&mut transaction).await.map_err(TeamsError::Sql)?;
             let is_confirmed = row.status.is_confirmed();
             let user = User::from_id(&mut transaction, row.id).await.map_err(TeamsError::Sql)?.ok_or(TeamsError::NonexistentUser)?;
-            members.push((role, user, is_confirmed));
+            members.push((role, user, is_confirmed, row.time.map(decode_pginterval).transpose().map_err(TeamsError::PgInterval)?, row.vod));
         }
         signups.push((team.id, team.name, team.racetime_slug, members, team.qualified));
     }
-    signups.sort_unstable_by(|(id1, name1, _, _, qualified1), (id2, name2, _, _, qualified2)|
-        qualified2.cmp(qualified1) // reversed to list qualified teams first //TODO sort by qualifier finish time if qualifier submissions are closed
-        .then_with(|| name1.cmp(name2))
-        .then_with(|| id1.cmp(id2))
-    );
+    if me_qualified { //TODO also show qualifier times if submissions are closed
+        signups.sort_unstable_by(|(id1, name1, _, members1, qualified1), (id2, name2, _, members2, qualified2)| {
+            #[derive(PartialEq, Eq, PartialOrd, Ord)]
+            enum Qualification {
+                Finished(Duration),
+                DidNotFinish,
+                NotYetQualified,
+            }
+
+            impl Qualification {
+                fn new(qualified: bool, members: &[(Role, User, bool, Option<Duration>, Option<String>)]) -> Self {
+                    if qualified {
+                        if let Some(time) = members.iter().try_fold(Duration::default(), |acc, &(_, _, _, time, _)| Some(acc + time?)) {
+                            Self::Finished(time)
+                        } else {
+                            Self::DidNotFinish
+                        }
+                    } else {
+                        Self::NotYetQualified
+                    }
+                }
+            }
+
+            Qualification::new(*qualified1, members1).cmp(&Qualification::new(*qualified2, members2))
+            .then_with(|| name1.cmp(name2))
+            .then_with(|| id1.cmp(id2))
+        });
+    } else {
+        signups.sort_unstable_by(|(id1, name1, _, _, qualified1), (id2, name2, _, _, qualified2)|
+            qualified2.cmp(qualified1) // reversed to list qualified teams first
+            .then_with(|| name1.cmp(name2))
+            .then_with(|| id1.cmp(id2))
+        );
+    }
+    let mut footnotes = Vec::default();
     page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
         : header;
         table {
@@ -511,15 +549,15 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             tbody {
                 @if signups.is_empty() {
                     tr {
-                        td(colspan = roles.len() + if has_qualifier { 2 } else { 1 }) {
+                        td(colspan = roles.len() + if has_qualifier && !me_qualified { 2 } else { 1 }) { //TODO also show qualifier times if submissions are closed
                             i : "(no signups yet)";
                         }
                     }
                 } else {
                     @for (team_id, team_name, racetime_slug, members, qualified) in signups {
                         tr {
-                            @if let Some(racetime_slug) = racetime_slug {
-                                td {
+                            td {
+                                @if let Some(racetime_slug) = racetime_slug {
                                     a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
                                         @if let Some(team_name) = team_name {
                                             : team_name;
@@ -527,15 +565,25 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                             i : "(unnamed)";
                                         }
                                     }
+                                } else {
+                                    : team_name.unwrap_or_default();
                                 }
-                            } else {
-                                td : team_name.unwrap_or_default();
+                                @if me_qualified && qualified { //TODO also show qualifier times if submissions are closed
+                                    br;
+                                    small {
+                                        @if let Some(time) = members.iter().try_fold(Duration::default(), |acc, &(_, _, _, time, _)| Some(acc + time?)) {
+                                            : format_duration(time, false);
+                                        } else {
+                                            : "DNF";
+                                        }
+                                    }
+                                }
                             }
-                            @for (role, user, is_confirmed) in &members {
+                            @for (role, user, is_confirmed, qualifier_time, qualifier_vod) in &members {
                                 td(class = role.css_class()) {
                                     : user;
                                     @if *is_confirmed {
-                                        @if me.as_ref().map_or(false, |me| me == user) && members.iter().any(|(_, _, is_confirmed)| !is_confirmed) {
+                                        @if me.as_ref().map_or(false, |me| me == user) && members.iter().any(|(_, _, is_confirmed, _, _)| !is_confirmed) {
                                             : " ";
                                             span(class = "button-row") {
                                                 form(action = uri!(resign_post(series, event, team_id)).to_string(), method = "post") {
@@ -562,9 +610,32 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                             : "(unconfirmed)";
                                         }
                                     }
+                                    @if me_qualified && qualified {
+                                        br;
+                                        small {
+                                            @if let Some(time) = qualifier_time {
+                                                @if let Some(vod) = qualifier_vod {
+                                                    @if let Ok(vod_url) = Url::parse(vod) {
+                                                        a(href = vod_url.to_string()) : format_duration(*time, false);
+                                                    } else {
+                                                        : format_duration(*time, false);
+                                                        sup {
+                                                            : "[";
+                                                            : { footnotes.push(vod.clone()); footnotes.len() };
+                                                            : "]";
+                                                        };
+                                                    }
+                                                } else {
+                                                    : format_duration(*time, false);
+                                                }
+                                            } else {
+                                                : "DNF";
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                            @if has_qualifier {
+                            @if has_qualifier && !me_qualified {
                                 td {
                                     @if qualified {
                                         : "✓";
@@ -575,6 +646,12 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                     }
                 }
             }
+        }
+        @for (i, footnote) in footnotes.into_iter().enumerate() {
+            : "[";
+            : i + 1;
+            : "] ";
+            : footnote;
         }
     }).await.map_err(|e| StatusOrError::Err(TeamsError::Page(e)))
 }
@@ -1004,7 +1081,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                     }
                     if let (Some(time1), Some(time2), Some(time3)) = (time1, time2, time3) {
                         message.push(" who finished with a time of ");
-                        message.push(format_duration((time1 + time2 + time3) / 3));
+                        message.push(format_duration((time1 + time2 + time3) / 3, true));
                         message.push_line('!');
                     } else {
                         message.push_line(" who did not finish.");
@@ -1016,7 +1093,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                     }
                     message.push(": ");
                     if let Some(time1) = time1 {
-                        message.push(format_duration(time1));
+                        message.push(format_duration(time1, false));
                     } else {
                         message.push("DNF");
                     }
@@ -1033,7 +1110,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                     }
                     message.push(": ");
                     if let Some(time2) = time2 {
-                        message.push(format_duration(time2));
+                        message.push(format_duration(time2, false));
                     } else {
                         message.push("DNF");
                     }
@@ -1050,7 +1127,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                     }
                     message.push(": ");
                     if let Some(time3) = time3 {
-                        message.push(format_duration(time3));
+                        message.push(format_duration(time3, false));
                     } else {
                         message.push("DNF");
                     }
