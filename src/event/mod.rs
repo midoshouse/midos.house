@@ -472,7 +472,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     let header = data.header(&mut transaction, me.as_ref(), Tab::Teams).await.map_err(TeamsError::Sql)?;
     let mut signups = Vec::default();
     let has_qualifier = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2) AS "exists!""#, series as _, event).fetch_one(&mut transaction).await.map_err(TeamsError::Sql)?;
-    let me_qualified = sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM async_teams, team_members WHERE async_teams.team = team_members.team AND member = $1"#, me.as_ref().map(|me| i64::from(me.id))).fetch_one(&mut *transaction).await.map_err(TeamsError::Sql)?;
+    let me_qualified = sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM async_teams, team_members WHERE async_teams.team = team_members.team AND member = $1"#, me.as_ref().map(|me| i64::from(me.id))).fetch_optional(&mut *transaction).await.map_err(TeamsError::Sql)?.unwrap_or(false);
     let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, submitted IS NOT NULL AS "qualified!" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
         series = $1
         AND event = $2
