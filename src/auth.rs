@@ -1,8 +1,5 @@
 use {
-    std::{
-        collections::HashMap,
-        time::Duration,
-    },
+    std::time::Duration,
     rocket::{
         State,
         http::{
@@ -62,8 +59,6 @@ macro_rules! guard_try {
     };
 }
 
-pub(crate) struct ViewAs(pub(crate) HashMap<Id, Id>);
-
 pub(crate) enum RaceTime {}
 pub(crate) enum Discord {}
 
@@ -82,8 +77,6 @@ pub(crate) enum UserFromRequestError {
     HttpClient,
     #[error("failed to get racetime.gg host from environment")]
     RaceTimeHost,
-    #[error("missing view-as map")]
-    ViewAs,
     #[error("user to view as does not exist")]
     ViewAsNoSuchUser,
 }
@@ -221,41 +214,37 @@ impl<'r> FromRequest<'r> for User {
 
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, UserFromRequestError> {
         match req.guard::<&State<PgPool>>().await {
-            Outcome::Success(pool) => match req.guard::<&State<ViewAs>>().await {
-                Outcome::Success(view_as) => {
-                    let mut found_user = Err((Status::Unauthorized, UserFromRequestError::Cookie));
-                    match req.guard::<RaceTimeUser>().await {
-                        Outcome::Success(racetime_user) => if let Some(user) = guard_try!(User::from_racetime(&**pool, &racetime_user.id).await) {
-                            guard_try!(sqlx::query!("UPDATE users SET racetime_display_name = $1, racetime_pronouns = $2 WHERE id = $3", racetime_user.name, racetime_user.pronouns as _, i64::from(user.id)).execute(&**pool).await);
-                            found_user = found_user.or(Ok(user));
-                        },
-                        Outcome::Forward(()) => {}
-                        Outcome::Failure(e) => found_user = found_user.or(Err(e)),
-                    }
-                    match req.guard::<DiscordUser>().await {
-                        Outcome::Success(discord_user) => if let Some(user) = guard_try!(User::from_discord(&**pool, discord_user.id).await) {
-                            guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1 WHERE id = $2", discord_user.username, i64::from(user.id)).execute(&**pool).await);
-                            found_user = found_user.or(Ok(user));
-                        },
-                        Outcome::Forward(()) => {},
-                        Outcome::Failure(e) => found_user = found_user.or(Err(e)),
-                    };
-                    match found_user {
-                        Ok(user) => if let Some(&user_id) = view_as.inner().0.get(&user.id) {
-                            if let Some(user) = guard_try!(User::from_id(&**pool, user_id).await) {
-                                Outcome::Success(user)
-                            } else {
-                                Outcome::Failure((Status::InternalServerError, UserFromRequestError::ViewAsNoSuchUser))
-                            }
-                        } else {
+            Outcome::Success(pool) => {
+                let mut found_user = Err((Status::Unauthorized, UserFromRequestError::Cookie));
+                match req.guard::<RaceTimeUser>().await {
+                    Outcome::Success(racetime_user) => if let Some(user) = guard_try!(User::from_racetime(&**pool, &racetime_user.id).await) {
+                        guard_try!(sqlx::query!("UPDATE users SET racetime_display_name = $1, racetime_pronouns = $2 WHERE id = $3", racetime_user.name, racetime_user.pronouns as _, i64::from(user.id)).execute(&**pool).await);
+                        found_user = found_user.or(Ok(user));
+                    },
+                    Outcome::Forward(()) => {}
+                    Outcome::Failure(e) => found_user = found_user.or(Err(e)),
+                }
+                match req.guard::<DiscordUser>().await {
+                    Outcome::Success(discord_user) => if let Some(user) = guard_try!(User::from_discord(&**pool, discord_user.id).await) {
+                        guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1 WHERE id = $2", discord_user.username, i64::from(user.id)).execute(&**pool).await);
+                        found_user = found_user.or(Ok(user));
+                    },
+                    Outcome::Forward(()) => {},
+                    Outcome::Failure(e) => found_user = found_user.or(Err(e)),
+                };
+                match found_user {
+                    Ok(user) => if let Some(user_id) = guard_try!(sqlx::query_scalar!(r#"SELECT view_as AS "view_as: Id" FROM view_as WHERE viewer = $1"#, i64::from(user.id)).fetch_optional(&**pool).await) {
+                        if let Some(user) = guard_try!(User::from_id(&**pool, user_id).await) {
                             Outcome::Success(user)
-                        },
-                        Err(e) => Outcome::Failure(e),
-                    }
-                },
-                Outcome::Failure((status, ())) => Outcome::Failure((status, UserFromRequestError::ViewAs)),
-                Outcome::Forward(()) => Outcome::Forward(()),
-            },
+                        } else {
+                            Outcome::Failure((Status::InternalServerError, UserFromRequestError::ViewAsNoSuchUser))
+                        }
+                    } else {
+                        Outcome::Success(user)
+                    },
+                    Err(e) => Outcome::Failure(e),
+                }
+            }
             Outcome::Failure((status, ())) => Outcome::Failure((status, UserFromRequestError::Database)),
             Outcome::Forward(()) => Outcome::Forward(()),
         }

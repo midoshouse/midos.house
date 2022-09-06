@@ -9,10 +9,7 @@ use {
         PgPool,
         postgres::PgConnectOptions,
     },
-    crate::{
-        config::Config,
-        util::Id,
-    },
+    crate::config::Config,
 };
 
 mod auth;
@@ -27,11 +24,6 @@ mod racetime_bot;
 mod seed;
 mod user;
 mod util;
-
-fn parse_view_as(arg: &str) -> Result<(Id, Id), anyhow::Error> {
-    let (from, to) = arg.split_once(':').ok_or(anyhow::anyhow!("missing colon in view-as option"))?;
-    Ok((from.parse()?, to.parse()?))
-}
 
 #[derive(Default, Clone, Copy, clap::ValueEnum)]
 enum Environment {
@@ -60,8 +52,6 @@ impl Environment {
 struct Args {
     #[clap(long, value_enum, default_value_t)]
     env: Environment,
-    #[clap(long, parse(try_from_str = parse_view_as))]
-    view_as: Vec<(Id, Id)>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -77,7 +67,7 @@ enum Error {
 }
 
 #[wheel::main(rocket, debug)]
-async fn main(Args { env, view_as }: Args) -> Result<(), Error> {
+async fn main(Args { env }: Args) -> Result<(), Error> {
     let config = Config::load().await?;
     let http_client = reqwest::Client::builder()
         .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION")))
@@ -89,7 +79,7 @@ async fn main(Args { env, view_as }: Args) -> Result<(), Error> {
     let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
     let discord_builder = serenity_utils::builder(discord_config.client_id, discord_config.bot_token.clone()).await?;
     let pool = PgPool::connect_with(PgConnectOptions::default().username("mido").database(if env.is_dev() { "fados_house" } else { "midos_house" }).application_name("midos-house")).await?;
-    let rocket = http::rocket(pool, discord_builder.ctx_fut.clone(), http_client.clone(), &config, env, view_as.into_iter().collect()).await?;
+    let rocket = http::rocket(pool, discord_builder.ctx_fut.clone(), http_client.clone(), &config, env).await?;
     let discord_builder = discord_bot::configure_builder(discord_builder, rocket.shutdown());
     let racetime_task = tokio::spawn(racetime_bot::main(
         http_client,
