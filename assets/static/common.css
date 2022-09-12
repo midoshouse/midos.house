@@ -177,11 +177,11 @@ table td {
 }
 
 .wisdom {
-    color: #0000c0;
+    color: #2020c0;
 }
 
 .courage {
-    color: #00c000;
+    color: #008000;
 }
 
 .hash {
@@ -316,11 +316,11 @@ footer {
     }
 
     .wisdom {
-        color: #4040ff;
+        color: #6060ff;
     }
 
     .courage {
-        color: #40ff40;
+        color: #20e020;
     }
 
     .error {
