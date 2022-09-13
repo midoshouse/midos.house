@@ -649,23 +649,20 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                     @if me_qualified && qualified {
                                         br;
                                         small {
-                                            @if let Some(time) = qualifier_time {
-                                                @if let Some(vod) = qualifier_vod {
-                                                    @if let Ok(vod_url) = Url::parse(vod) {
-                                                        a(href = vod_url.to_string()) : format_duration(*time, false);
-                                                    } else {
-                                                        : format_duration(*time, false);
-                                                        sup {
-                                                            : "[";
-                                                            : { footnotes.push(vod.clone()); footnotes.len() };
-                                                            : "]";
-                                                        };
-                                                    }
+                                            @let time = if let Some(time) = qualifier_time { format_duration(*time, false) } else { format!("DNF") };
+                                            @if let Some(vod) = qualifier_vod {
+                                                @if let Some(Ok(vod_url)) = (!vod.contains(' ')).then(|| Url::parse(vod)) {
+                                                    a(href = vod_url.to_string()) : time;
                                                 } else {
-                                                    : format_duration(*time, false);
+                                                    : time;
+                                                    sup {
+                                                        : "[";
+                                                        : { footnotes.push(vod.clone()); footnotes.len() };
+                                                        : "]";
+                                                    };
                                                 }
                                             } else {
-                                                : "DNF";
+                                                : time;
                                             }
                                         }
                                     }
