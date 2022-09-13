@@ -687,8 +687,9 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             p(id = format!("footnote{}", i + 1)) {
                 : "[";
                 : i + 1;
-                : "] ";
+                : "]";
                 @for word in footnote.split(' ') {
+                    : " ";
                     @if let Ok(word_url) = Url::parse(word) {
                         a(href = word_url.to_string()) : word;
                     } else {
