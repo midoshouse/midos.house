@@ -20,7 +20,11 @@ use {
     },
     rocket_util::Response,
     serde::Deserialize,
-    sqlx::PgPool,
+    sqlx::{
+        PgPool,
+        Postgres,
+        Transaction,
+    },
     url::Url,
     crate::{
         event::{
@@ -35,7 +39,7 @@ fn ics_datetime<Tz: TimeZone>(datetime: DateTime<Tz>) -> String {
     datetime.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string()
 }
 
-fn add_event_races(cal: &mut ICalendar<'_>, event: &event::Data<'_>) {
+async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> sqlx::Result<()> {
     match event.series {
         Series::Multiworld => match &*event.event {
             "2" => {
@@ -81,7 +85,7 @@ fn add_event_races(cal: &mut ICalendar<'_>, event: &event::Data<'_>) {
         Series::Pictionary => {
             let mut cal_event = ics::Event::new(format!("{}-{}@midos.house", event.series, event.event), ics_datetime(Utc::now()));
             cal_event.push(Summary::new(event.display_name.clone()));
-            if let Some(start) = event.start {
+            if let Some(start) = event.start(transaction).await? {
                 cal_event.push(DtStart::new(ics_datetime(start)));
                 let end = event.end.unwrap_or_else(|| start + Duration::hours(4)); //TODO better duration estimates depending on format & participants
                 cal_event.push(DtEnd::new(ics_datetime(end)));
@@ -90,6 +94,7 @@ fn add_event_races(cal: &mut ICalendar<'_>, event: &event::Data<'_>) {
             cal.add_event(cal_event);
         }
     }
+    Ok(())
 }
 
 #[rocket::get("/calendar.ics")]
@@ -98,7 +103,7 @@ pub(crate) async fn index(pool: &State<PgPool>) -> Result<Response<ICalendar<'st
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for row in sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed"#).fetch_all(&mut transaction).await? {
         let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut cal, &event);
+        add_event_races(&mut transaction, &mut cal, &event).await?;
     }
     Ok(Response(cal))
 }
@@ -108,6 +113,6 @@ pub(crate) async fn for_event(pool: &State<PgPool>, series: Series, event: &str)
     let mut transaction = pool.begin().await.map_err(event::DataError::Sql)?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
-    add_event_races(&mut cal, &event);
+    add_event_races(&mut transaction, &mut cal, &event).await.map_err(event::DataError::Sql)?;
     Ok(Response(cal))
 }

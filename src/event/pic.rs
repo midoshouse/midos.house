@@ -516,7 +516,7 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
     let data = Data::new(&mut transaction, SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
-    if data.is_started() {
+    if data.is_started(&mut transaction).await? {
         form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
     }
     Ok(if let Some(ref value) = form.value {
@@ -705,7 +705,7 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
     let data = Data::new(&mut transaction, SERIES, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
-    if data.is_started() {
+    if data.is_started(&mut transaction).await.map_err(FindTeamError::Sql)? {
         form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
     }
     Ok(if let Some(ref value) = form.value {

@@ -1,5 +1,6 @@
 use {
     std::io,
+    itertools::Itertools as _,
     rand::prelude::*,
     rocket::{
         Request,
@@ -194,8 +195,11 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
         upcoming_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction"));
     }
     let chests = upcoming_events.choose(&mut thread_rng()).map_or_else(|| ChestAppearances::random(), |event| event.chests());
-    let (ongoing_events, upcoming_events) = upcoming_events.into_iter().partition::<Vec<_>, _>(event::Data::is_started);
-    Ok(page(&mut transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", html! {
+    let mut ongoing_events = Vec::default();
+    for event in upcoming_events.drain(..).collect_vec() {
+        if event.is_started(&mut transaction).await? { &mut ongoing_events } else { &mut upcoming_events }.push(event);
+    }
+    let page_content = html! {
         p {
             : "Mido's House is a platform where ";
             a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
@@ -219,7 +223,7 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
                 @for event in upcoming_events {
                     li {
                         : event;
-                        @if let Some(start) = event.start {
+                        @if let Some(start) = event.start(&mut transaction).await? {
                             : " — ";
                             : format_datetime(start, DateTimeFormat { long: false, running_text: false });
                         }
@@ -253,7 +257,8 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
             li : "In Mozilla Thunderbird, select New Calendar → On the Network. Paste the link into the “Location” field and click “Find Calendars”, then “Properties”. Enable “Read Only” and click “OK”, then “Subscribe”.";
         }
         //p : "You can also find calendar links for individual events on their pages."; //TODO figure out where to put these calendar links (below the date for single races, “Schedule” tab for tournaments?)
-    }).await?)
+    };
+    Ok(page(&mut transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", page_content).await?)
 }
 
 #[rocket::get("/archive")]
@@ -264,7 +269,7 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Res
         past_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction"));
     }
     let chests = past_events.choose(&mut thread_rng()).map_or_else(|| ChestAppearances::random(), |event| event.chests());
-    Ok(page(&mut transaction, &me, &uri, PageStyle { chests, ..PageStyle::default() }, "Event Archive — Mido's House", html! {
+    let page_content = html! {
         h1 : "Past events";
         ul {
             @if past_events.is_empty() {
@@ -274,12 +279,13 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Res
                     li {
                         : event;
                         : " — ";
-                        : format_date_range(event.start.expect("ended event with no start date"), event.end.expect("checked above"));
+                        : format_date_range(event.start(&mut transaction).await?.expect("ended event with no start date"), event.end.expect("checked above"));
                     };
                 }
             }
         }
-    }).await?)
+    };
+    Ok(page(&mut transaction, &me, &uri, PageStyle { chests, ..PageStyle::default() }, "Event Archive — Mido's House", page_content).await?)
 }
 
 #[rocket::get("/new")]

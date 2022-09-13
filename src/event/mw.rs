@@ -921,7 +921,7 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
     let data = Data::new(&mut transaction, SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
-    if data.is_started() {
+    if data.is_started(&mut transaction).await? {
         form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
     }
     Ok(if let Some(ref value) = form.value {
@@ -1087,7 +1087,7 @@ pub(crate) async fn enter_post_step2(pool: &State<PgPool>, discord_ctx: &State<R
     let data = Data::new(&mut transaction, SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
-    if data.is_started() {
+    if data.is_started(&mut transaction).await? {
         form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
     }
     Ok(if let Some(ref value) = form.value {
@@ -1287,7 +1287,7 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
     let data = Data::new(&mut transaction, SERIES, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
-    if data.is_started() {
+    if data.is_started(&mut transaction).await.map_err(FindTeamError::Sql)? {
         form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
     }
     Ok(if let Some(ref value) = form.value {
@@ -1463,11 +1463,10 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                     ol {
                         li : "In order to play in the tournament, your team must make a reasonable attempt at completing this seed. In the event of a forfeit, you can still participate, but will be considered the bottom seed for settings draft purposes.";
                         li {
-                            @if let Some(start) = data.start {
+                            @if let Some(base_start) = data.base_start {
                                 : "The time must be submitted by ";
-                                : format_datetime(start, DateTimeFormat { long: true, running_text: true });
-                                : ".";
-                                 //TODO deadline extension for evening out teams
+                                : format_datetime(base_start, DateTimeFormat { long: true, running_text: true });
+                                : ". In the event that an odd number of teams is qualified at the time of the deadline, one additional team may qualify within 24 hours.";
                             } else {
                                 : "The time must be submitted by the starting time of the tournament, which is yet to be announced.";
                             }

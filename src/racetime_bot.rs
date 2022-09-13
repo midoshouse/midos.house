@@ -672,7 +672,7 @@ impl RaceHandler<MwSeedQueue> for Handler {
                     },
                     RaceState::Draft(_) => ctx.send_message(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
                     RaceState::Rolling => ctx.send_message(&format!("Sorry {reply_to}, but I'm already rolling a seed for this room. Please wait.")).await?,
-                    RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, but I already rolled a seed.")).await?, //TODO “Check the race info!”
+                    RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, but I already rolled a seed. Check the race info!")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;

@@ -245,7 +245,8 @@ pub(crate) struct Data<'a> {
     pub(crate) series: Series,
     pub(crate) event: Cow<'a, str>,
     pub(crate) display_name: String,
-    pub(crate) start: Option<DateTime<Utc>>,
+    /// The event's originally scheduled starting time, not accounting for the 24-hour deadline extension in the event of an odd number of teams for events with qualifier asyncs.
+    pub(crate) base_start: Option<DateTime<Utc>>,
     pub(crate) end: Option<DateTime<Utc>>,
     url: Option<Url>,
     teams_url: Option<Url>,
@@ -265,7 +266,7 @@ impl<'a> Data<'a> {
         sqlx::query!(r#"SELECT display_name, start, end_time, url, teams_url, video_url, discord_guild AS "discord_guild: Id" FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
                 display_name: row.display_name,
-                start: row.start,
+                base_start: row.start,
                 end: row.end_time,
                 url: row.url.map(|url| url.parse()).transpose()?,
                 teams_url: row.teams_url.map(|url| url.parse()).transpose()?,
@@ -283,8 +284,43 @@ impl<'a> Data<'a> {
         }
     }
 
-    pub(crate) fn is_started(&self) -> bool { //TODO deadline extension for evening out teams in mw
-        self.start.map_or(false, |start| start <= Utc::now())
+    pub(crate) async fn start(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Option<DateTime<Utc>>> {
+        Ok(if let Some(mut start) = self.base_start {
+            if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2) AS "exists!""#, self.series as _, &self.event).fetch_one(&mut *transaction).await? {
+                let mut num_qualified_teams = 0;
+                let mut last_submission_time = None::<DateTime<Utc>>;
+                let mut teams = sqlx::query_scalar!(r#"SELECT submitted AS "submitted!" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+                    series = $1
+                    AND event = $2
+                    AND NOT resigned
+                    AND submitted IS NOT NULL
+                "#, self.series as _, &self.event).fetch(transaction);
+                while let Some(submitted) = teams.try_next().await? {
+                    num_qualified_teams += 1;
+                    last_submission_time = Some(if let Some(last_submission_time) = last_submission_time {
+                        last_submission_time.max(submitted)
+                    } else {
+                        submitted
+                    });
+                }
+                if num_qualified_teams % 2 == 0 {
+                    if let Some(last_submission_time) = last_submission_time {
+                        start = start.max(last_submission_time);
+                    }
+                } else {
+                    if start <= Utc::now() {
+                        start += chrono::Duration::days(1);
+                    }
+                }
+            }
+            Some(start)
+        } else {
+            None
+        })
+    }
+
+    pub(crate) async fn is_started(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<bool> {
+        Ok(self.start(transaction).await?.map_or(false, |start| start <= Utc::now()))
     }
 
     fn is_ended(&self) -> bool {
@@ -308,7 +344,7 @@ impl<'a> Data<'a> {
                 AND event = $2
                 AND member = $3
                 AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-            ) AS "exists!""#, self.series as _, &self.event, i64::from(me.id)).fetch_one(transaction).await?
+            ) AS "exists!""#, self.series as _, &self.event, i64::from(me.id)).fetch_one(&mut *transaction).await?
         } else {
             false
         };
@@ -316,7 +352,7 @@ impl<'a> Data<'a> {
             h1 {
                 a(class = "nav", href? = (!matches!(tab, Tab::Info)).then(|| uri!(info(self.series, &*self.event)).to_string())) : &self.display_name;
             }
-            @if let Some(start) = self.start {
+            @if let Some(start) = self.start(&mut *transaction).await? {
                 h2 : format_datetime(start, DateTimeFormat { long: true, running_text: false });
             }
             div(class = "button-row") {
@@ -341,7 +377,7 @@ impl<'a> Data<'a> {
                     } else {
                         a(class = "button", href = uri!(status(self.series, &*self.event)).to_string()) : "My Status";
                     }
-                } else if !self.is_started() {
+                } else if !self.is_started(transaction).await? {
                     @if let Tab::Enter = tab {
                         span(class = "button selected") : "Enter";
                     } else {
@@ -799,7 +835,7 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
     let mut transaction = pool.begin().await.map_err(AcceptError::Sql)?;
     let data = Data::new(&mut transaction, series, event).await.map_err(AcceptError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     form.verify(&csrf).map_err(AcceptError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
-    if data.is_started() { return Err(AcceptError::EventStarted.into()) }
+    if data.is_started(&mut transaction).await.map_err(AcceptError::Sql)? { return Err(AcceptError::EventStarted.into()) }
     if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, i64::from(team), i64::from(me.id)).fetch_optional(&mut transaction).await.map_err(AcceptError::Sql)? {
         if role == Role::Sheikah && me.racetime_id.is_none() {
             return Err(AcceptError::RaceTimeAccountRequired.into())
@@ -889,7 +925,7 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<Csr
     let data = Data::new(&mut transaction, series, event).await.map_err(ResignError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     form.verify(&csrf).map_err(ResignError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_ended() { return Err(ResignError::EventEnded.into()) }
-    let is_started = data.is_started();
+    let is_started = data.is_started(&mut transaction).await.map_err(ResignError::Sql)?;
     let members = if is_started {
         sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, i64::from(team)).execute(&mut transaction).await.map_err(ResignError::Sql)?;
         sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, i64::from(team)).fetch(&mut transaction)
@@ -940,7 +976,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, discord_ctx: &State<RwFu
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
-    if data.is_started() {
+    if data.is_started(&mut transaction).await? {
         form.context.push_error(form::Error::validation("You can no longer request the qualifier async since the event has already started."));
     }
     Ok(if let Some(ref value) = form.value {
@@ -995,7 +1031,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
-    if data.is_started() {
+    if data.is_started(&mut transaction).await? {
         form.context.push_error(form::Error::validation("You can no longer submit the qualifier async since the event has already started."));
     }
     Ok(if let Some(ref value) = form.value {
