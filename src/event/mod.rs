@@ -681,10 +681,18 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             }
         }
         @for (i, footnote) in footnotes.into_iter().enumerate() {
-            : "[";
-            : i + 1;
-            : "] ";
-            : footnote;
+            p {
+                : "[";
+                : i + 1;
+                : "] ";
+                @for word in footnote.split(' ') {
+                    @if let Ok(word_url) = Url::parse(word) {
+                        a(href = word_url.to_string()) : word;
+                    } else {
+                        : word;
+                    }
+                }
+            }
         }
     }).await.map_err(|e| StatusOrError::Err(TeamsError::Page(e)))
 }
