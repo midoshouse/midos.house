@@ -656,9 +656,12 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                                 } else {
                                                     : time;
                                                     sup {
-                                                        : "[";
-                                                        : { footnotes.push(vod.clone()); footnotes.len() };
-                                                        : "]";
+                                                        @let footnote_id = { footnotes.push(vod.clone()); footnotes.len() };
+                                                        a(href = format!("#footnote{footnote_id}")) {
+                                                            : "[";
+                                                            : footnote_id;
+                                                            : "]";
+                                                        }
                                                     };
                                                 }
                                             } else {
@@ -681,7 +684,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             }
         }
         @for (i, footnote) in footnotes.into_iter().enumerate() {
-            p {
+            p(id = format!("footnote{}", i + 1)) {
                 : "[";
                 : i + 1;
                 : "] ";
