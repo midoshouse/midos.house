@@ -1323,10 +1323,17 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
     Ok(if let Some(async_row) = sqlx::query!(r#"SELECT discord_channel AS "discord_channel: Id", web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_optional(&mut *transaction).await? {
         if let Some(team_row) = sqlx::query!("SELECT requested, submitted FROM async_teams WHERE team = $1", i64::from(team_id)).fetch_optional(&mut *transaction).await? {
             if team_row.submitted.is_some() {
-                //TODO get this team's known matchup(s) from start.gg
-                //TODO if any vods are still missing, show form to add them
-                html! {
-                    p : "Waiting for the start of the tournament and round 1 pairings. Keep an eye out for an announcement on Discord."; //TODO include start date?
+                if data.is_started(transaction).await? {
+                    //TODO get this team's known matchup(s) from start.gg
+                    html! {
+                        p : "Please schedule your matches using Discord threads in the scheduling channel.";
+                    }
+                    //TODO form to submit matches
+                } else {
+                    //TODO if any vods are still missing, show form to add them
+                    html! {
+                        p : "Waiting for the start of the tournament and round 1 pairings. Keep an eye out for an announcement on Discord."; //TODO include start date?
+                    }
                 }
             } else {
                 let web = match (async_row.web_id, async_row.web_gen_time, async_row.hash1, async_row.hash2, async_row.hash3, async_row.hash4, async_row.hash5) {

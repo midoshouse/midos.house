@@ -508,7 +508,9 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     let header = data.header(&mut transaction, me.as_ref(), Tab::Teams).await.map_err(TeamsError::Sql)?;
     let mut signups = Vec::default();
     let has_qualifier = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2) AS "exists!""#, series as _, event).fetch_one(&mut transaction).await.map_err(TeamsError::Sql)?;
-    let me_qualified = sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM async_teams, team_members WHERE async_teams.team = team_members.team AND member = $1"#, me.as_ref().map(|me| i64::from(me.id))).fetch_optional(&mut *transaction).await.map_err(TeamsError::Sql)?.unwrap_or(false);
+    let show_qualifier_times =
+        sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM async_teams, team_members WHERE async_teams.team = team_members.team AND member = $1"#, me.as_ref().map(|me| i64::from(me.id))).fetch_optional(&mut *transaction).await.map_err(TeamsError::Sql)?.unwrap_or(false)
+        || data.is_started(&mut transaction).await.map_err(TeamsError::Sql)?;
     let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, submitted IS NOT NULL AS "qualified!" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
         series = $1
         AND event = $2
@@ -533,7 +535,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
         }
         signups.push((team.id, team.name, team.racetime_slug, members, team.qualified));
     }
-    if me_qualified { //TODO also show qualifier times if submissions are closed
+    if show_qualifier_times {
         signups.sort_unstable_by(|(id1, name1, _, members1, qualified1), (id2, name2, _, members2, qualified2)| {
             #[derive(PartialEq, Eq, PartialOrd, Ord)]
             enum Qualification {
@@ -577,7 +579,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                     @for &(role, display_name) in &roles {
                         th(class = role.css_class()) : display_name;
                     }
-                    @if has_qualifier && !me_qualified { //TODO also show qualifier times if submissions are closed
+                    @if has_qualifier && !show_qualifier_times {
                         th : "Qualified";
                     }
                 }
@@ -585,7 +587,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             tbody {
                 @if signups.is_empty() {
                     tr {
-                        td(colspan = roles.len() + if has_qualifier && !me_qualified { 2 } else { 1 }) { //TODO also show qualifier times if submissions are closed
+                        td(colspan = roles.len() + if has_qualifier && !show_qualifier_times { 2 } else { 1 }) {
                             i : "(no signups yet)";
                         }
                     }
@@ -604,7 +606,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                 } else {
                                     : team_name.unwrap_or_default();
                                 }
-                                @if me_qualified && qualified { //TODO also show qualifier times if submissions are closed
+                                @if show_qualifier_times && qualified {
                                     br;
                                     small {
                                         @if let Some(time) = members.iter().try_fold(Duration::default(), |acc, &(_, _, _, time, _)| Some(acc + time?)) {
@@ -646,7 +648,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                             : "(unconfirmed)";
                                         }
                                     }
-                                    @if me_qualified && qualified {
+                                    @if show_qualifier_times && qualified {
                                         br;
                                         small {
                                             @let time = if let Some(time) = qualifier_time { format_duration(*time, false) } else { format!("DNF") };
@@ -671,7 +673,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                     }
                                 }
                             }
-                            @if has_qualifier && !me_qualified {
+                            @if has_qualifier && !show_qualifier_times {
                                 td {
                                     @if qualified {
                                         : "✓";
