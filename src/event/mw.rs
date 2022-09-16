@@ -514,7 +514,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                     h2 : "Match Format";
                     p : "Each match will consist of a 3v3 Multiworld where both sides compete to see which team will have all three of its members beat the game with the lowest average time of finish:";
                     ul {
-                        li : "In a Triforce Hunt seed, timing ends on the first completely black frame after your team has obtained the last required piece. Due to how Triforce Hunt works in multiworld, all players on a team will have the same finish time.";
+                        li : "In a Triforce Hunt seed, timing for an individual player ends on the first completely black frame after that player has obtained the last required piece. (Due to how Triforce Hunt works in multiworld, all players on a team will normally have the same finish time, but if a player savescums a Triforce piece they found, they can have a lower Triforce count than their teammates.)";
                         li : "In all other seeds, timing for an individual player ends on the first frame of the cutscene that plays upon killing Ganon. Players are allowed to kill Ganon to stop their timer and then reset their game, allowing them to continue collecting items for their team if necessary.";
                     }
                     h2 : "Fair Play Agreement";
