@@ -362,7 +362,7 @@ impl Fairing for SeedDownloadFairing {
     }
 }
 
-pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: &Config, env: Environment) -> Result<Rocket<rocket::Ignite>, Error> {
+pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: Config, env: Environment) -> Result<Rocket<rocket::Ignite>, Error> {
     let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
     let racetime_config = if env.is_dev() { &config.racetime_oauth_dev } else { &config.racetime_oauth_production };
     Ok(rocket::custom(rocket::Config {
@@ -440,6 +440,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         }.to_string()),
     )))
     .attach(SeedDownloadFairing)
+    .manage(config)
     .manage(env)
     .manage(pool)
     .manage(discord_ctx)

@@ -3,6 +3,7 @@ use {
         Duration,
         prelude::*,
     },
+    futures::stream::TryStreamExt as _,
     ics::{
         ICalendar,
         properties::{
@@ -27,19 +28,29 @@ use {
     },
     url::Url,
     crate::{
+        Environment,
+        config::Config,
         event::{
             self,
             Series,
         },
+        startgg,
         util::StatusOrError,
     },
 };
+
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+pub(crate) enum Error {
+    #[error(transparent)] Event(#[from] event::DataError),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] StartGG(#[from] startgg::Error),
+}
 
 fn ics_datetime<Tz: TimeZone>(datetime: DateTime<Tz>) -> String {
     datetime.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string()
 }
 
-async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> sqlx::Result<()> {
+async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
     match event.series {
         Series::Multiworld => match &*event.event {
             "2" => {
@@ -80,7 +91,39 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, cal: &mut 
                     cal.add_event(race.clone());
                 }
             }
-            _ => {} //TODO add races from event
+            _ => {
+                let mut races = sqlx::query!(r#"SELECT startgg_set, start AS "start!" FROM races WHERE series = 'mw' AND event = $1 AND start IS NOT NULL"#, &event.event).fetch(transaction);
+                while let Some(row) = races.try_next().await? {
+                    let mut cal_event = ics::Event::new(format!("{}-{}-{}@midos.house", event.series, event.event, row.startgg_set), ics_datetime(Utc::now()));
+                    if let startgg::set_query::ResponseData {
+                        set: Some(startgg::set_query::SetQuerySet {
+                            full_round_text: Some(full_round_text),
+                            phase_group: Some(startgg::set_query::SetQuerySetPhaseGroup {
+                                phase: Some(startgg::set_query::SetQuerySetPhaseGroupPhase {
+                                    name: Some(phase_name),
+                                }),
+                            }),
+                            slots: Some(slots),
+                        }),
+                    } = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: row.startgg_set }).await? {
+                        let teams = if let [
+                            Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { name: Some(ref team1) }) }),
+                            Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { name: Some(ref team2) }) }),
+                        ] = *slots {
+                            format!(": {team1} vs {team2}")
+                        } else {
+                            format!(" race")
+                        };
+                        cal_event.push(Summary::new(format!("MW S{} {phase_name} {full_round_text}{teams}", event.event))); //TODO async status
+                    } else {
+                        cal_event.push(Summary::new(format!("MW S{} race", event.event))); //TODO async status
+                    }
+                    cal_event.push(DtStart::new(ics_datetime(row.start)));
+                    cal_event.push(DtEnd::new(ics_datetime(row.start + Duration::hours(4)))); //TODO end time from race room, fallback to better duration estimates depending on participants
+                    cal_event.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string())); //TODO restream URL, fallback to race room, then start.gg set, then schedule page
+                    cal.add_event(cal_event);
+                }
+            }
         },
         Series::Pictionary => {
             let mut cal_event = ics::Event::new(format!("{}-{}@midos.house", event.series, event.event), ics_datetime(Utc::now()));
@@ -98,21 +141,23 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, cal: &mut 
 }
 
 #[rocket::get("/calendar.ics")]
-pub(crate) async fn index(pool: &State<PgPool>) -> Result<Response<ICalendar<'static>>, event::DataError> {
+pub(crate) async fn index(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>) -> Result<Response<ICalendar<'static>>, Error> {
+    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
     let mut transaction = pool.begin().await?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for row in sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed"#).fetch_all(&mut transaction).await? {
         let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, &mut cal, &event).await?;
+        add_event_races(&mut transaction, http_client, startgg_token, &mut cal, &event).await?;
     }
     Ok(Response(cal))
 }
 
 #[rocket::get("/event/<series>/<event>/calendar.ics")]
-pub(crate) async fn for_event(pool: &State<PgPool>, series: Series, event: &str) -> Result<Response<ICalendar<'static>>, StatusOrError<event::DataError>> {
-    let mut transaction = pool.begin().await.map_err(event::DataError::Sql)?;
-    let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+pub(crate) async fn for_event(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series, event: &str) -> Result<Response<ICalendar<'static>>, StatusOrError<Error>> {
+    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+    let mut transaction = pool.begin().await.map_err(Error::Sql)?;
+    let event = event::Data::new(&mut transaction, series, event).await.map_err(Error::Event)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
-    add_event_races(&mut transaction, &mut cal, &event).await.map_err(event::DataError::Sql)?;
+    add_event_races(&mut transaction, http_client, startgg_token, &mut cal, &event).await?;
     Ok(Response(cal))
 }

@@ -1,0 +1,15 @@
+query SetQuery($set_id: ID!) {
+    set(id: $set_id) {
+        fullRoundText
+        phaseGroup {
+            phase {
+                name
+            }
+        }
+        slots {
+            entrant {
+                name
+            }
+        }
+    }
+}

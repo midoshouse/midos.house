@@ -10,7 +10,7 @@ use {
 };
 #[cfg(windows)] use tokio::process::Command;
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Config {
     pub(crate) discord_production: ConfigDiscord,
@@ -22,10 +22,8 @@ pub(crate) struct Config {
     pub(crate) racetime_oauth_production: ConfigRaceTime,
     #[serde(rename = "racetimeOAuthDev")]
     pub(crate) racetime_oauth_dev: ConfigRaceTime,
-    #[allow(unused)] //TODO
-    startgg_production: String,
-    #[allow(unused)] //TODO
-    startgg_dev: String,
+    pub(crate) startgg_production: String,
+    pub(crate) startgg_dev: String,
     pub(crate) secret_key: String,
 }
 
@@ -53,7 +51,7 @@ pub(crate) struct ConfigRaceTime {
     pub(crate) client_secret: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ConfigDiscord {
     #[serde(rename = "clientID")]
