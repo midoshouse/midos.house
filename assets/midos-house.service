@@ -9,6 +9,7 @@ ExecStart=/home/fenhl/bin/midos-house
 User=mido
 Group=nogroup
 WorkingDirectory=/opt/git/github.com/midoshouse/midos.house/master
+Environment="RUST_BACKTRACE=1"
 
 [Install]
 WantedBy=multi-user.target
