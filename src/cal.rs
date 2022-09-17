@@ -92,36 +92,74 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                 }
             }
             _ => {
-                let mut races = sqlx::query!(r#"SELECT startgg_set, start AS "start!" FROM races WHERE series = 'mw' AND event = $1 AND start IS NOT NULL"#, &event.event).fetch(transaction);
+                let mut races = sqlx::query!(r#"SELECT startgg_set, start AS "start!", async_start2 FROM races WHERE series = 'mw' AND event = $1 AND start IS NOT NULL"#, &event.event).fetch(transaction);
                 while let Some(row) = races.try_next().await? {
-                    let mut cal_event = ics::Event::new(format!("{}-{}-{}@midos.house", event.series, event.event, row.startgg_set), ics_datetime(Utc::now()));
-                    if let startgg::set_query::ResponseData {
-                        set: Some(startgg::set_query::SetQuerySet {
-                            full_round_text: Some(full_round_text),
-                            phase_group: Some(startgg::set_query::SetQuerySetPhaseGroup {
-                                phase: Some(startgg::set_query::SetQuerySetPhaseGroupPhase {
-                                    name: Some(phase_name),
+                    if let Some(async_start2) = row.async_start2 {
+                        let mut cal_event1 = ics::Event::new(format!("{}-{}-{}-1@midos.house", event.series, event.event, row.startgg_set), ics_datetime(Utc::now()));
+                        let mut cal_event2 = ics::Event::new(format!("{}-{}-{}-2@midos.house", event.series, event.event, row.startgg_set), ics_datetime(Utc::now()));
+                        if let startgg::set_query::ResponseData {
+                            set: Some(startgg::set_query::SetQuerySet {
+                                full_round_text: Some(full_round_text),
+                                phase_group: Some(startgg::set_query::SetQuerySetPhaseGroup {
+                                    phase: Some(startgg::set_query::SetQuerySetPhaseGroupPhase {
+                                        name: Some(phase_name),
+                                    }),
                                 }),
+                                slots: Some(slots),
                             }),
-                            slots: Some(slots),
-                        }),
-                    } = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: row.startgg_set }).await? {
-                        let teams = if let [
-                            Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { name: Some(ref team1) }) }),
-                            Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { name: Some(ref team2) }) }),
-                        ] = *slots {
-                            format!(": {team1} vs {team2}")
+                        } = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: row.startgg_set }).await? {
+                            let (teams1, teams2) = if let [
+                                Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { name: Some(ref team1) }) }),
+                                Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { name: Some(ref team2) }) }),
+                            ] = *slots {
+                                (format!("(async): {team1} vs {team2}"), format!("(async): {team2} vs {team1}"))
+                            } else {
+                                (format!("async race"), format!("async race"))
+                            };
+                            cal_event1.push(Summary::new(format!("MW S{} {phase_name} {full_round_text} {teams1}", event.event)));
+                            cal_event2.push(Summary::new(format!("MW S{} {phase_name} {full_round_text} {teams2}", event.event)));
                         } else {
-                            format!(" race")
-                        };
-                        cal_event.push(Summary::new(format!("MW S{} {phase_name} {full_round_text}{teams}", event.event))); //TODO async status
+                            cal_event1.push(Summary::new(format!("MW S{} async race", event.event)));
+                            cal_event2.push(Summary::new(format!("MW S{} async race", event.event)));
+                        }
+                        cal_event1.push(DtStart::new(ics_datetime(row.start)));
+                        cal_event2.push(DtStart::new(ics_datetime(async_start2)));
+                        cal_event1.push(DtEnd::new(ics_datetime(row.start + Duration::hours(4)))); //TODO end time from race room, fallback to better duration estimates depending on participants
+                        cal_event2.push(DtEnd::new(ics_datetime(async_start2 + Duration::hours(4)))); //TODO end time from race room, fallback to better duration estimates depending on participants
+                        cal_event1.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string())); //TODO race room, fallback to start.gg set, then schedule page
+                        cal_event2.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string())); //TODO race room, fallback to start.gg set, then schedule page
+                        cal.add_event(cal_event1);
+                        cal.add_event(cal_event2);
                     } else {
-                        cal_event.push(Summary::new(format!("MW S{} race", event.event))); //TODO async status
+                        let mut cal_event = ics::Event::new(format!("{}-{}-{}@midos.house", event.series, event.event, row.startgg_set), ics_datetime(Utc::now()));
+                        if let startgg::set_query::ResponseData {
+                            set: Some(startgg::set_query::SetQuerySet {
+                                full_round_text: Some(full_round_text),
+                                phase_group: Some(startgg::set_query::SetQuerySetPhaseGroup {
+                                    phase: Some(startgg::set_query::SetQuerySetPhaseGroupPhase {
+                                        name: Some(phase_name),
+                                    }),
+                                }),
+                                slots: Some(slots),
+                            }),
+                        } = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: row.startgg_set }).await? {
+                            let teams = if let [
+                                Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { name: Some(ref team1) }) }),
+                                Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { name: Some(ref team2) }) }),
+                            ] = *slots {
+                                format!(": {team1} vs {team2}")
+                            } else {
+                                format!(" race")
+                            };
+                            cal_event.push(Summary::new(format!("MW S{} {phase_name} {full_round_text}{teams}", event.event)));
+                        } else {
+                            cal_event.push(Summary::new(format!("MW S{} race", event.event)));
+                        }
+                        cal_event.push(DtStart::new(ics_datetime(row.start)));
+                        cal_event.push(DtEnd::new(ics_datetime(row.start + Duration::hours(4)))); //TODO end time from race room, fallback to better duration estimates depending on participants
+                        cal_event.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string())); //TODO restream URL, fallback to race room, then start.gg set, then schedule page
+                        cal.add_event(cal_event);
                     }
-                    cal_event.push(DtStart::new(ics_datetime(row.start)));
-                    cal_event.push(DtEnd::new(ics_datetime(row.start + Duration::hours(4)))); //TODO end time from race room, fallback to better duration estimates depending on participants
-                    cal_event.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string())); //TODO restream URL, fallback to race room, then start.gg set, then schedule page
-                    cal.add_event(cal_event);
                 }
             }
         },
