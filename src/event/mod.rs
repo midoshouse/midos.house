@@ -4,12 +4,14 @@ use {
         collections::HashSet,
         fmt,
         io,
+        iter,
         str::FromStr,
         time::Duration,
     },
     anyhow::anyhow,
     chrono::prelude::*,
     futures::stream::TryStreamExt as _,
+    itertools::Itertools as _,
     rand::prelude::*,
     rocket::{
         FromForm,
@@ -66,7 +68,14 @@ use {
     },
     url::Url,
     crate::{
+        Environment,
         auth,
+        cal::{
+            self,
+            Race,
+            RaceKind,
+        },
+        config::Config,
         favicon::ChestAppearances,
         http::{
             PageError,
@@ -277,6 +286,13 @@ impl<'a> Data<'a> {
             .transpose()
     }
 
+    pub(crate) fn is_single_race(&self) -> bool {
+        match self.series {
+            Series::Multiworld => false,
+            Series::Pictionary => true,
+        }
+    }
+
     pub(crate) fn team_config(&self) -> TeamConfig {
         match self.series {
             Series::Multiworld => TeamConfig::Multiworld,
@@ -371,6 +387,13 @@ impl<'a> Data<'a> {
                 } else {
                     a(class = "button", href = uri!(teams(self.series, &*self.event)).to_string()) : "Teams";
                 }
+                @if !self.is_single_race() {
+                    @if let Tab::Races = tab {
+                        span(class = "button selected") : "Races";
+                    } else {
+                        a(class = "button", href = uri!(races(self.series, &*self.event)).to_string()) : "Races";
+                    }
+                }
                 @if signed_up {
                     @if let Tab::MyStatus = tab {
                         span(class = "button selected") : "My Status";
@@ -422,6 +445,7 @@ impl ToHtml for Data<'_> {
 enum Tab {
     Info,
     Teams,
+    Races,
     MyStatus,
     Enter,
     FindTeam,
@@ -429,11 +453,18 @@ enum Tab {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum Error {
+    #[error(transparent)] Calendar(#[from] cal::Error),
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Discord(#[from] serenity::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+}
+
+impl From<cal::Error> for StatusOrError<Error> {
+    fn from(e: cal::Error) -> Self {
+        Self::Err(Error::Calendar(e))
+    }
 }
 
 impl From<DataError> for StatusOrError<Error> {
@@ -701,6 +732,58 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             }
         }
     }).await.map_err(|e| StatusOrError::Err(TeamsError::Page(e)))
+}
+
+#[rocket::get("/event/<series>/<event>/races")]
+pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Races).await?;
+    let mut rows = sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2 FROM races WHERE series = $1 AND event = $2 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, series as _, event).fetch(&mut transaction);
+    let mut races = Vec::default();
+    while let Some(row) = rows.try_next().await? {
+        if let Some(start) = row.start {
+            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, RaceKind::Normal).await?);
+        }
+        if let Some(start) = row.async_start1 {
+            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, RaceKind::Async1).await?);
+        }
+        if let Some(start) = row.async_start2 {
+            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, RaceKind::Async2).await?);
+        }
+    }
+    drop(rows);
+    races.sort_unstable();
+    Ok(page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Races — {}", data.display_name), html! {
+        : header;
+        //TODO copiable calendar link (with link to index for explanation?)
+        //TODO list past races separately (and most recently finished first)
+        table {
+            thead {
+                tr {
+                    th : "Start";
+                    th : "Round";
+                    th(colspan = "2") : "Entrants";
+                }
+            }
+            tbody {
+                @for Race { start, startgg_set: _, team1, team2, phase, round, kind } in races {
+                    tr {
+                        td : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+                        td {
+                            : phase;
+                            : " ";
+                            : round;
+                        }
+                        td(class = iter::once("vs1").chain(matches!(kind, RaceKind::Async2).then(|| "dimmed")).join(" ")) : team1;
+                        td(class = iter::once("vs2").chain(matches!(kind, RaceKind::Async1).then(|| "dimmed")).join(" ")) : team2;
+                        //TODO links to start.gg set page and race room
+                    }
+                }
+            }
+        }
+    }).await?)
 }
 
 async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, context: Context<'_>) -> Result<RawHtml<String>, StatusOrError<Error>> {

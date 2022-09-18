@@ -184,6 +184,14 @@ table td {
     color: #008000;
 }
 
+.vs1 {
+    text-align: end;
+}
+
+.vs2 {
+    text-align: start;
+}
+
 .hash {
     direction: ltr;
 }
@@ -241,7 +249,8 @@ textarea {
     image-rendering: pixelated;
 }
 
-footer {
+footer,
+.dimmed {
     color: gray;
 }
 
