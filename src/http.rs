@@ -59,6 +59,7 @@ use {
             Id,
             format_date_range,
             format_datetime,
+            static_url,
         },
     },
 };
@@ -119,8 +120,8 @@ pub(crate) async fn page(transaction: &mut Transaction<'_, Postgres>, me: &Optio
                 title : title;
                 meta(name = "viewport", content = "width=device-width, initial-scale=1, shrink-to-fit=no");
                 link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(style.chests.textures(), Suffix(1024, "png"))).to_string());
-                link(rel = "stylesheet", href = "/static/common.css");
-                script(defer, src = "/static/common.js");
+                link(rel = "stylesheet", href = static_url("common.css"));
+                script(defer, src = static_url("common.js"));
             }
             body(class = matches!(style.kind, PageKind::Banner).then(|| "fullscreen")) {
                 div {
@@ -128,7 +129,7 @@ pub(crate) async fn page(transaction: &mut Transaction<'_, Postgres>, me: &Optio
                         a(class = "nav", href? = (!matches!(style.kind, PageKind::Index)).then(|| uri!(index).to_string())) {
                             div(class = "logo") {
                                 @for chest in style.chests.0 {
-                                    img(class = "chest", src = format!("/static/chest/{}512.png", char::from(chest.texture)));
+                                    img(class = "chest", src = static_url(&format!("chest/{}512.png", char::from(chest.texture))));
                                 }
                             }
                             h1 : "Mido's House";

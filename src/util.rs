@@ -293,6 +293,12 @@ pub(crate) fn decode_pginterval(PgInterval { months, days, microseconds }: PgInt
     }
 }
 
+/// Cache busting for static resources by including the current git commit hash in the URL
+//TODO use commit hash of when the file was last modified?
+pub(crate) fn static_url(path: &str) -> String {
+    format!("/static/{path}?v={:02x}", crate::GIT_COMMIT_HASH.iter().format(""))
+}
+
 pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
     match url.host_str() {
         Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("spreadsheets") => html! {
@@ -302,7 +308,7 @@ pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
             img(class = "favicon", alt = "external link (youtube.com)", srcset = "https://www.youtube.com/s/desktop/435d54f2/img/favicon.ico 16w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_32x32.png 32w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_48x48.png 48w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_96x96.png 96w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_144x144.png 144w");
         },
         Some("racetime.gg") => html! {
-            img(class = "favicon", alt = "external link (racetime.gg)", src = "/static/racetimeGG-favicon.svg");
+            img(class = "favicon", alt = "external link (racetime.gg)", src = static_url("racetimeGG-favicon.svg"));
         },
         Some("start.gg" | "www.start.gg") => html! {
             img(class = "favicon", alt = "external link (start.gg)", src = "https://www.start.gg/__static/images/favicon/favicon.ico");

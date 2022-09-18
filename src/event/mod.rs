@@ -459,6 +459,7 @@ pub(crate) enum Error {
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Url(#[from] url::ParseError),
 }
 
 impl From<cal::Error> for StatusOrError<Error> {
@@ -494,6 +495,12 @@ impl From<reqwest::Error> for StatusOrError<Error> {
 impl From<sqlx::Error> for StatusOrError<Error> {
     fn from(e: sqlx::Error) -> Self {
         Self::Err(Error::Sql(e))
+    }
+}
+
+impl From<url::ParseError> for StatusOrError<Error> {
+    fn from(e: url::ParseError) -> Self {
+        Self::Err(Error::Url(e))
     }
 }
 
@@ -740,17 +747,17 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, me.as_ref(), Tab::Races).await?;
-    let mut rows = sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2 FROM races WHERE series = $1 AND event = $2 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, series as _, event).fetch(&mut transaction);
+    let mut rows = sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2, room FROM races WHERE series = $1 AND event = $2 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, series as _, event).fetch(&mut transaction);
     let mut races = Vec::default();
     while let Some(row) = rows.try_next().await? {
         if let Some(start) = row.start {
-            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, RaceKind::Normal).await?);
+            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Normal).await?);
         }
         if let Some(start) = row.async_start1 {
-            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, RaceKind::Async1).await?);
+            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
         }
         if let Some(start) = row.async_start2 {
-            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, RaceKind::Async2).await?);
+            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
         }
     }
     drop(rows);
@@ -765,20 +772,26 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                     th : "Start";
                     th : "Round";
                     th(colspan = "2") : "Entrants";
+                    th : "Links";
                 }
             }
             tbody {
-                @for Race { start, startgg_set: _, team1, team2, phase, round, kind } in races {
+                @for race in races {
                     tr {
-                        td : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+                        td : format_datetime(race.start, DateTimeFormat { long: false, running_text: false });
                         td {
-                            : phase;
+                            : race.phase;
                             : " ";
-                            : round;
+                            : race.round;
                         }
-                        td(class = iter::once("vs1").chain(matches!(kind, RaceKind::Async2).then(|| "dimmed")).join(" ")) : team1;
-                        td(class = iter::once("vs2").chain(matches!(kind, RaceKind::Async1).then(|| "dimmed")).join(" ")) : team2;
-                        //TODO links to start.gg set page and race room
+                        td(class = iter::once("vs1").chain(matches!(race.kind, RaceKind::Async2).then(|| "dimmed")).join(" ")) : race.team1;
+                        td(class = iter::once("vs2").chain(matches!(race.kind, RaceKind::Async1).then(|| "dimmed")).join(" ")) : race.team2;
+                        td {
+                            a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?);
+                            @if let Some(room) = race.room {
+                                a(class = "favicon", href = room.to_string()) : favicon(&room);
+                            }
+                        }
                     }
                 }
             }

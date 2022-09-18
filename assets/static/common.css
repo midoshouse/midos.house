@@ -113,8 +113,11 @@ input[type="submit"] {
 .favicon {
     width: 16px;
     height: 16px;
-    margin-inline-end: 8px;
     vertical-align: sub;
+}
+
+.button .favicon {
+    margin-inline-end: 8px;
 }
 
 article,

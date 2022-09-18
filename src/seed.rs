@@ -34,12 +34,15 @@ use {
         fs,
         pin,
     },
-    crate::favicon::{
-        Bridge,
-        CorrectChestAppearances,
-        LacsCondition,
-        ShuffleGanonBosskey,
-        SpoilerLogLocations,
+    crate::{
+        favicon::{
+            Bridge,
+            CorrectChestAppearances,
+            LacsCondition,
+            ShuffleGanonBosskey,
+            SpoilerLogLocations,
+        },
+        util::static_url,
     },
 };
 
@@ -178,10 +181,10 @@ impl ToHtml for HashIcon {
             Self::MasterSword |
             Self::SoldOut |
             Self::StoneOfAgony => html! {
-                img(class = "hash-icon", alt = self.to_string(), src = format!("/static/hash-icon/{url_part}.png"), srcset = format!("/static/hash-icon-500/{url_part}.png 10x"));
+                img(class = "hash-icon", alt = self.to_string(), src = static_url(&format!("hash-icon/{url_part}.png")), srcset = static_url(&format!("hash-icon-500/{url_part}.png 10x")));
             },
             _ => html! {
-                img(class = "hash-icon", alt = self.to_string(), src = format!("/static/hash-icon/{url_part}.png"));
+                img(class = "hash-icon", alt = self.to_string(), src = static_url(&format!("hash-icon/{url_part}.png")));
             },
         }
     }

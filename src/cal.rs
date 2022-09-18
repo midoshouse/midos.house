@@ -49,7 +49,9 @@ pub(crate) enum RaceKind {
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Race {
     pub(crate) start: DateTime<Utc>,
+    pub(crate) startgg_event: String,
     pub(crate) startgg_set: String,
+    pub(crate) room: Option<Url>,
     pub(crate) team1: String,
     pub(crate) team2: String,
     pub(crate) phase: String,
@@ -58,12 +60,15 @@ pub(crate) struct Race {
 }
 
 impl Race {
-    pub(crate) async fn new(http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, start: DateTime<Utc>, kind: RaceKind) -> Result<Self, Error> {
+    pub(crate) async fn new(http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, start: DateTime<Utc>, room: Option<Url>, kind: RaceKind) -> Result<Self, Error> {
         if let startgg::set_query::ResponseData {
             set: Some(startgg::set_query::SetQuerySet {
                 full_round_text: Some(round),
                 phase_group: Some(startgg::set_query::SetQuerySetPhaseGroup {
                     phase: Some(startgg::set_query::SetQuerySetPhaseGroupPhase {
+                        event: Some(startgg::set_query::SetQuerySetPhaseGroupPhaseEvent {
+                            slug: Some(startgg_event),
+                        }),
                         name: Some(phase),
                     }),
                 }),
@@ -77,7 +82,7 @@ impl Race {
                 Ok(Self {
                     team1: team1.clone(),
                     team2: team2.clone(),
-                    start, startgg_set, phase, round, kind,
+                    start, startgg_event, startgg_set, room, phase, round, kind,
                 })
             } else {
                 Err(Error::Teams)
@@ -86,6 +91,10 @@ impl Race {
             Err(Error::Teams)
         }
     }
+
+    pub(crate) fn startgg_set_url(&self) -> Result<Url, url::ParseError> {
+        format!("https://start.gg/{}/set/{}", self.startgg_event, self.startgg_set).parse()
+    }
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -93,6 +102,7 @@ pub(crate) enum Error {
     #[error(transparent)] Event(#[from] event::DataError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
+    #[error(transparent)] Url(#[from] url::ParseError),
     #[error("wrong number of teams or missing data")]
     Teams,
 }
@@ -143,38 +153,43 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                 }
             }
             _ => {
-                let mut rows = sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2 FROM races WHERE series = 'mw' AND event = $1 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, &event.event).fetch(transaction);
+                let mut rows = sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2, room FROM races WHERE series = 'mw' AND event = $1 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, &event.event).fetch(transaction);
                 let mut races = Vec::default();
                 while let Some(row) = rows.try_next().await? {
                     if let Some(start) = row.start {
-                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, RaceKind::Normal).await?);
+                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Normal).await?);
                     }
                     if let Some(start) = row.async_start1 {
-                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, RaceKind::Async1).await?);
+                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
                     }
                     if let Some(start) = row.async_start2 {
-                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, RaceKind::Async2).await?);
+                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
                     }
                 }
                 races.sort_unstable();
-                for Race { start, startgg_set, team1, team2, phase, round, kind } in races {
-                    let mut cal_event = ics::Event::new(format!("{}-{}-{startgg_set}{}@midos.house",
+                for race in races {
+                    let mut cal_event = ics::Event::new(format!("{}-{}-{}{}@midos.house",
                         event.series,
                         event.event,
-                        match kind {
+                        race.startgg_set,
+                        match race.kind {
                             RaceKind::Normal => "",
                             RaceKind::Async1 => "-1",
                             RaceKind::Async2 => "-2",
                         },
                     ), ics_datetime(Utc::now()));
-                    cal_event.push(Summary::new(match kind {
-                        RaceKind::Normal => format!("MW S{} {phase} {round}: {team1} vs {team2}", event.event),
-                        RaceKind::Async1 => format!("MW S{} {phase} {round} (async): {team1} vs {team2}", event.event),
-                        RaceKind::Async2 => format!("MW S{} {phase} {round} (async): {team2} vs {team1}", event.event),
+                    cal_event.push(Summary::new(match race.kind {
+                        RaceKind::Normal => format!("MW S{} {} {}: {} vs {}", event.event, race.phase, race.round, race.team1, race.team2),
+                        RaceKind::Async1 => format!("MW S{} {} {} (async): {} vs {}", event.event, race.phase, race.round, race.team1, race.team2),
+                        RaceKind::Async2 => format!("MW S{} {} {} (async): {} vs {}", event.event, race.phase, race.round, race.team2, race.team1),
                     }));
-                    cal_event.push(DtStart::new(ics_datetime(start)));
-                    cal_event.push(DtEnd::new(ics_datetime(start + Duration::hours(4)))); //TODO end time from race room, fallback to better duration estimates depending on participants
-                    cal_event.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string())); //TODO restream URL, fallback to race room, then start.gg set, then schedule page
+                    cal_event.push(DtStart::new(ics_datetime(race.start)));
+                    cal_event.push(DtEnd::new(ics_datetime(race.start + Duration::hours(4)))); //TODO end time from race room, fallback to better duration estimates depending on participants
+                    cal_event.push(URL::new(if let Some(room) = race.room {
+                        room.to_string()
+                    } else {
+                        race.startgg_set_url()?.to_string()
+                    })); //TODO prefer restream URL if one exists
                     cal.add_event(cal_event);
                 }
             }

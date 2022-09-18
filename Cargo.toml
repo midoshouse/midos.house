@@ -7,6 +7,10 @@ edition = "2021"
 lto = "fat"
 strip = true
 
+[build-dependencies]
+git2 = "0.15"
+itertools = "0.10"
+
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
