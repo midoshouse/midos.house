@@ -122,6 +122,12 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             };
                             sqlx::query!("INSERT INTO races (startgg_set, series, event, scheduling_thread) VALUES ($1, $2, $3, $4) ON CONFLICT (startgg_set) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread", startgg_set, event_row.series, event_row.event, i64::from(interaction.channel_id)).execute(&mut transaction).await?;
                             transaction.commit().await?;
+                            interaction.create_interaction_response(ctx, |r| r
+                                .interaction_response_data(|d| d
+                                    .ephemeral(true)
+                                    .content("Set assigned.")
+                                )
+                            ).await?;
                         } else {
                             interaction.create_interaction_response(ctx, |r| r
                                 .interaction_response_data(|d| d
