@@ -252,14 +252,14 @@ impl S3Draft {
 
 #[derive(Default, Clone, Copy)]
 pub(crate) struct S3Settings {
-    wincon: Wincon,
-    dungeons: Dungeons,
-    er: Er,
-    trials: Trials,
-    shops: Shops,
-    scrubs: Scrubs,
-    fountain: Fountain,
-    spawn: Spawn,
+    pub(crate) wincon: Wincon,
+    pub(crate) dungeons: Dungeons,
+    pub(crate) er: Er,
+    pub(crate) trials: Trials,
+    pub(crate) shops: Shops,
+    pub(crate) scrubs: Scrubs,
+    pub(crate) fountain: Fountain,
+    pub(crate) spawn: Spawn,
 }
 
 impl S3Settings {
