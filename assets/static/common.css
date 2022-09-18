@@ -116,6 +116,10 @@ input[type="submit"] {
     vertical-align: sub;
 }
 
+.favicon + .favicon {
+    margin-inline-start: 8px;
+}
+
 .button .favicon {
     margin-inline-end: 8px;
 }
