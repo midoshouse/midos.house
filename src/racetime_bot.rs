@@ -678,12 +678,14 @@ impl RaceHandler<MwSeedQueue> for Handler {
                                         mw::S3Setting::Spawn => if let Some(value) = all::<mw::Spawn>().find(|option| option.arg() == value) { settings.spawn = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Spawn>().map(|option| option.arg()).join(" or "))).await? },
                                     }
                                 } else {
+                                    drop(state);
                                     ctx.send_message(&format!("Sorry {reply_to}, I don't recognize one of those settings. Use one of the following:")).await?;
                                     self.send_settings(ctx).await?;
                                     return Ok(())
                                 }
                             }
                             if tuples.into_buffer().next().is_some() {
+                                drop(state);
                                 ctx.send_message(&format!("Sorry {reply_to}, you need to pair each setting with a value.")).await?;
                                 self.send_settings(ctx).await?;
                             } else {
