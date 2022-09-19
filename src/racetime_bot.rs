@@ -253,11 +253,10 @@ impl MwSeedQueue {
         for _ in 0..3 {
             let mut next_seed = {
                 let next_seed = self.next_seed.lock().await;
-                let sleep = sleep_until(*next_seed);
-                if !sleep.is_elapsed() {
+                if let Some(duration) = next_seed.checked_duration_since(Instant::now()) {
                     update_tx.send(SeedRollUpdate::WaitRateLimit(*next_seed)).await?;
+                    sleep(duration).await;
                 }
-                sleep.await;
                 next_seed
             };
             update_tx.send(SeedRollUpdate::Started).await?;
