@@ -392,22 +392,25 @@ struct Handler {
 
 impl Handler {
     async fn send_settings(&self, ctx: &RaceContext) -> Result<(), Error> {
-        let state = self.state.read().await;
-        if let RaceState::Draft(ref draft) = *state {
-            for setting in draft.available_settings() {
-                match setting {
-                    mw::S3Setting::Wincon => ctx.send_message("wincon: meds (default: 6 Medallion Bridge + Keysy BK), scrubs (3 Stone Bridge + LACS BK), or th (Triforce Hunt 25/30)").await?,
-                    mw::S3Setting::Dungeons => ctx.send_message("dungeons: tournament (default: keys shuffled in own dungeon), skulls (vanilla keys, dungeon tokens), or keyrings (small keyrings anywhere, vanilla boss keys)").await?,
-                    mw::S3Setting::Er => ctx.send_message("er: off (default) or dungeon").await?,
-                    mw::S3Setting::Trials => ctx.send_message("trials: 0 (default) or 2").await?,
-                    mw::S3Setting::Shops => ctx.send_message("shops: 4 (default) or off").await?,
-                    mw::S3Setting::Scrubs => ctx.send_message("scrubs: affordable (default) or off").await?,
-                    mw::S3Setting::Fountain => ctx.send_message("fountain: closed (default) or open").await?,
-                    mw::S3Setting::Spawn => ctx.send_message("spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)").await?,
-                }
+        let available_settings = {
+            let state = self.state.read().await;
+            if let RaceState::Draft(ref draft) = *state {
+                draft.available_settings()
+            } else {
+                mw::S3Draft::default().available_settings()
             }
-        } else {
-            unreachable!()
+        };
+        for setting in available_settings {
+            match setting {
+                mw::S3Setting::Wincon => ctx.send_message("wincon: meds (default: 6 Medallion Bridge + Keysy BK), scrubs (3 Stone Bridge + LACS BK), or th (Triforce Hunt 25/30)").await?,
+                mw::S3Setting::Dungeons => ctx.send_message("dungeons: tournament (default: keys shuffled in own dungeon), skulls (vanilla keys, dungeon tokens), or keyrings (small keyrings anywhere, vanilla boss keys)").await?,
+                mw::S3Setting::Er => ctx.send_message("er: off (default) or dungeon").await?,
+                mw::S3Setting::Trials => ctx.send_message("trials: 0 (default) or 2").await?,
+                mw::S3Setting::Shops => ctx.send_message("shops: 4 (default) or off").await?,
+                mw::S3Setting::Scrubs => ctx.send_message("scrubs: affordable (default) or off").await?,
+                mw::S3Setting::Fountain => ctx.send_message("fountain: closed (default) or open").await?,
+                mw::S3Setting::Spawn => ctx.send_message("spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)").await?,
+            }
         }
         Ok(())
     }
