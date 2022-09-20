@@ -747,49 +747,89 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, me.as_ref(), Tab::Races).await?;
-    let mut rows = sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2, room FROM races WHERE series = $1 AND event = $2 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, series as _, event).fetch(&mut transaction);
+    let mut rows = sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2, room, async_room1, async_room2 FROM races WHERE series = $1 AND event = $2 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, series as _, event).fetch(&mut transaction);
     let mut races = Vec::default();
     while let Some(row) = rows.try_next().await? {
         if let Some(start) = row.start {
             races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Normal).await?);
         }
         if let Some(start) = row.async_start1 {
-            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
+            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.async_room1.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
         }
         if let Some(start) = row.async_start2 {
-            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
+            races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.async_room2.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
         }
     }
     drop(rows);
     races.sort_unstable();
+    let (mut past_races, ongoing_and_upcoming_races) = races.into_iter().partition::<Vec<_>, _>(|race| race.end.is_some());
+    past_races.sort_by_key(|race| race.end);
+    let any_races_ongoing_or_upcoming = !ongoing_and_upcoming_races.is_empty();
     Ok(page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Races — {}", data.display_name), html! {
         : header;
         //TODO copiable calendar link (with link to index for explanation?)
-        //TODO list past races separately (and most recently finished first)
-        table {
-            thead {
-                tr {
-                    th : "Start";
-                    th : "Round";
-                    th(colspan = "2") : "Entrants";
-                    th : "Links";
+        @if any_races_ongoing_or_upcoming {
+            table {
+                thead {
+                    tr {
+                        th : "Start";
+                        th : "Round";
+                        th(colspan = "2") : "Entrants";
+                        th : "Links";
+                    }
+                }
+                tbody {
+                    @for race in ongoing_and_upcoming_races {
+                        tr {
+                            td : format_datetime(race.start, DateTimeFormat { long: false, running_text: false });
+                            td {
+                                : race.phase;
+                                : " ";
+                                : race.round;
+                            }
+                            td(class = iter::once("vs1").chain(matches!(race.kind, RaceKind::Async2).then(|| "dimmed")).join(" ")) : race.team1;
+                            td(class = iter::once("vs2").chain(matches!(race.kind, RaceKind::Async1).then(|| "dimmed")).join(" ")) : race.team2;
+                            td {
+                                a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?);
+                                @if let Some(room) = race.room {
+                                    a(class = "favicon", href = room.to_string()) : favicon(&room);
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            tbody {
-                @for race in races {
+        }
+        @if !past_races.is_empty() {
+            @if any_races_ongoing_or_upcoming {
+                h2 : "Past races";
+            }
+            table {
+                thead {
                     tr {
-                        td : format_datetime(race.start, DateTimeFormat { long: false, running_text: false });
-                        td {
-                            : race.phase;
-                            : " ";
-                            : race.round;
-                        }
-                        td(class = iter::once("vs1").chain(matches!(race.kind, RaceKind::Async2).then(|| "dimmed")).join(" ")) : race.team1;
-                        td(class = iter::once("vs2").chain(matches!(race.kind, RaceKind::Async1).then(|| "dimmed")).join(" ")) : race.team2;
-                        td {
-                            a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?);
-                            @if let Some(room) = race.room {
-                                a(class = "favicon", href = room.to_string()) : favicon(&room);
+                        th : "Start";
+                        th : "Round";
+                        th(colspan = "2") : "Entrants";
+                        th : "Links";
+                        //TODO seed info (hash, patch, log)
+                    }
+                }
+                tbody {
+                    @for race in past_races.into_iter().rev() {
+                        tr {
+                            td : format_datetime(race.start, DateTimeFormat { long: false, running_text: false });
+                            td {
+                                : race.phase;
+                                : " ";
+                                : race.round;
+                            }
+                            td(class = iter::once("vs1").chain(matches!(race.kind, RaceKind::Async2).then(|| "dimmed")).join(" ")) : race.team1;
+                            td(class = iter::once("vs2").chain(matches!(race.kind, RaceKind::Async1).then(|| "dimmed")).join(" ")) : race.team2;
+                            td {
+                                a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?);
+                                @if let Some(room) = race.room {
+                                    a(class = "favicon", href = room.to_string()) : favicon(&room);
+                                }
                             }
                         }
                     }

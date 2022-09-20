@@ -14,6 +14,7 @@ use {
         },
     },
     once_cell::sync::Lazy,
+    racetime::model::RaceData,
     rocket::{
         State,
         http::Status,
@@ -49,6 +50,7 @@ pub(crate) enum RaceKind {
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Race {
     pub(crate) start: DateTime<Utc>,
+    pub(crate) end: Option<DateTime<Utc>>,
     pub(crate) startgg_event: String,
     pub(crate) startgg_set: String,
     pub(crate) room: Option<Url>,
@@ -61,6 +63,15 @@ pub(crate) struct Race {
 
 impl Race {
     pub(crate) async fn new(http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, start: DateTime<Utc>, room: Option<Url>, kind: RaceKind) -> Result<Self, Error> {
+        let end = if let Some(ref room) = room {
+            http_client.get(format!("{room}/data"))
+                .send().await?
+                .error_for_status()?
+                .json::<RaceData>().await?
+                .ended_at
+        } else {
+            None
+        };
         if let startgg::set_query::ResponseData {
             set: Some(startgg::set_query::SetQuerySet {
                 full_round_text: Some(round),
@@ -82,7 +93,7 @@ impl Race {
                 Ok(Self {
                     team1: team1.clone(),
                     team2: team2.clone(),
-                    start, startgg_event, startgg_set, room, phase, round, kind,
+                    start, end, startgg_event, startgg_set, room, phase, round, kind,
                 })
             } else {
                 Err(Error::Teams)
@@ -100,6 +111,7 @@ impl Race {
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum Error {
     #[error(transparent)] Event(#[from] event::DataError),
+    #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
@@ -153,17 +165,17 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                 }
             }
             _ => {
-                let mut rows = sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2, room FROM races WHERE series = 'mw' AND event = $1 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, &event.event).fetch(transaction);
+                let mut rows = sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2, room, async_room1, async_room2 FROM races WHERE series = 'mw' AND event = $1 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, &event.event).fetch(transaction);
                 let mut races = Vec::default();
                 while let Some(row) = rows.try_next().await? {
                     if let Some(start) = row.start {
                         races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Normal).await?);
                     }
                     if let Some(start) = row.async_start1 {
-                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
+                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.async_room1.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
                     }
                     if let Some(start) = row.async_start2 {
-                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
+                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.async_room2.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
                     }
                 }
                 races.sort_unstable();
@@ -184,7 +196,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                         RaceKind::Async2 => format!("MW S{} {} {} (async): {} vs {}", event.event, race.phase, race.round, race.team2, race.team1),
                     }));
                     cal_event.push(DtStart::new(ics_datetime(race.start)));
-                    cal_event.push(DtEnd::new(ics_datetime(race.start + Duration::hours(4)))); //TODO end time from race room, fallback to better duration estimates depending on participants
+                    cal_event.push(DtEnd::new(ics_datetime(race.end.unwrap_or_else(|| race.start + Duration::hours(4))))); //TODO better fallback duration estimates depending on participants
                     cal_event.push(URL::new(if let Some(room) = race.room {
                         room.to_string()
                     } else {
