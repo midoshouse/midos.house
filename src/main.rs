@@ -83,12 +83,14 @@ async fn main(Args { env }: Args) -> Result<(), Error> {
     let discord_builder = serenity_utils::builder(discord_config.client_id, discord_config.bot_token.clone()).await?;
     let db_pool = PgPool::connect_with(PgConnectOptions::default().username("mido").database(if env.is_dev() { "fados_house" } else { "midos_house" }).application_name("midos-house")).await?;
     let rocket = http::rocket(db_pool.clone(), discord_builder.ctx_fut.clone(), http_client.clone(), config.clone(), env).await?;
-    let discord_builder = discord_bot::configure_builder(discord_builder, db_pool, rocket.shutdown());
+    let discord_builder = discord_bot::configure_builder(discord_builder, db_pool.clone(), rocket.shutdown());
     let racetime_task = tokio::spawn(racetime_bot::main(
+        db_pool,
         http_client,
+        discord_builder.ctx_fut.clone(),
         config.ootr_api_key.clone(),
-        env.racetime_host(),
-        if env.is_dev() { config.racetime_bot_dev.clone() } else { config.racetime_bot_production.clone() },
+        env,
+        config.clone(),
         rocket.shutdown(),
     )).map(|res| match res {
         Ok(Ok(())) => Ok(()),

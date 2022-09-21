@@ -41,6 +41,12 @@ use {
         json::JsonString,
         serde_as,
     },
+    serenity::{
+        client::Context as DiscordCtx,
+        utils::MessageBuilder,
+    },
+    serenity_utils::RwFuture,
+    sqlx::PgPool,
     tokio::{
         fs::{
             self,
@@ -51,6 +57,7 @@ use {
             AsyncWriteExt as _,
         },
         process::Command,
+        select,
         sync::{
             Mutex,
             OwnedRwLockWriteGuard,
@@ -66,15 +73,23 @@ use {
         },
     },
     tokio_util::io::StreamReader,
+    url::Url,
     crate::{
-        config::ConfigRaceTime,
-        event::mw,
+        Environment,
+        cal::Race,
+        config::Config,
+        event::{
+            self,
+            Series,
+            mw,
+        },
         seed::{
             self,
             HashIcon,
             SpoilerLog,
         },
         util::{
+            MessageBuilderExt as _,
             format_duration,
             io_error_from_reqwest,
         },
@@ -86,11 +101,89 @@ use {
 #[cfg(unix)] const PYTHON: &str = "python3";
 #[cfg(windows)] const PYTHON: &str = "py";
 
+const CATEGORY: &str = "ootr";
+
 const RANDO_VERSION: Version = Version::new(6, 2, 181);
 /// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
 const KNOWN_GOOD_WEB_VERSIONS: [Version; 1] = [Version::new(6, 2, 181)];
 
 const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
+
+struct GlobalState {
+    /// Locked while event rooms are being created. Wait with handling new rooms while it's held.
+    new_room_lock: Mutex<()>,
+    host: &'static str,
+    db_pool: PgPool,
+    http_client: reqwest::Client,
+    startgg_token: String,
+    mw_seed_queue: MwSeedQueue,
+}
+
+impl GlobalState {
+    fn new(db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str) -> Self {
+        Self {
+            new_room_lock: Mutex::default(),
+            mw_seed_queue: MwSeedQueue::new(http_client.clone(), ootr_api_key),
+            host, db_pool, http_client, startgg_token,
+        }
+    }
+
+    fn roll_seed(self: Arc<Self>, settings: mw::S3Settings) -> mpsc::Receiver<SeedRollUpdate> {
+        let settings = settings.resolve();
+        let (update_tx, update_rx) = mpsc::channel(128);
+        tokio::spawn(async move {
+            let permit = match self.mw_seed_queue.seed_rollers.try_acquire() {
+                Ok(permit) => permit,
+                Err(TryAcquireError::Closed) => unreachable!(),
+                Err(TryAcquireError::NoPermits) => {
+                    let (mut pos, mut pos_rx) = {
+                        let mut waiting = self.mw_seed_queue.waiting.lock().await;
+                        let pos = waiting.len();
+                        let (pos_tx, pos_rx) = mpsc::unbounded_channel();
+                        waiting.push(pos_tx);
+                        (pos, pos_rx)
+                    };
+                    update_tx.send(SeedRollUpdate::Queued(pos)).await?;
+                    while pos > 0 {
+                        let () = pos_rx.recv().await.expect("queue position notifier closed");
+                        pos -= 1;
+                        update_tx.send(SeedRollUpdate::MovedForward(pos)).await?;
+                    }
+                    let mut waiting = self.mw_seed_queue.waiting.lock().await;
+                    let permit = self.mw_seed_queue.seed_rollers.acquire().await.expect("seed queue semaphore closed");
+                    waiting.remove(0);
+                    for tx in &*waiting {
+                        let _ = tx.send(());
+                    }
+                    permit
+                }
+            };
+            let can_roll_on_web = match self.mw_seed_queue.can_roll_on_web(&settings).await {
+                Ok(can_roll_on_web) => can_roll_on_web,
+                Err(e) => {
+                    update_tx.send(SeedRollUpdate::Error(e)).await?;
+                    return Ok(())
+                }
+            };
+            if can_roll_on_web {
+                match self.mw_seed_queue.roll_seed_web(update_tx.clone(), settings).await {
+                    Ok((seed_id, file_hash)) => update_tx.send(SeedRollUpdate::DoneWeb(seed_id, file_hash)).await?,
+                    Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
+                }
+                drop(permit);
+            } else {
+                drop(permit); //TODO skip queue entirely?
+                update_tx.send(SeedRollUpdate::Started).await?;
+                match self.mw_seed_queue.roll_seed_locally(settings).await {
+                    Ok((patch_filename, spoiler_log_path)) => update_tx.send(SeedRollUpdate::DoneLocal(patch_filename, spoiler_log_path)).await?,
+                    Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
+                }
+            }
+            Ok::<_, mpsc::error::SendError<_>>(())
+        });
+        update_rx
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 enum RollError {
@@ -134,6 +227,42 @@ enum SeedRollUpdate {
     DoneWeb(u64, [HashIcon; 5]),
     /// Seed rolling failed.
     Error(RollError),
+}
+
+impl SeedRollUpdate {
+    async fn handle(self, ctx: &RaceContext, state: &Arc<RwLock<RaceState>>, settings: mw::S3Settings) -> Result<(), Error> {
+        match self {
+            Self::Queued(0) => ctx.send_message("I'm already rolling other seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
+            Self::Queued(1) => ctx.send_message("I'm already rolling other seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
+            Self::Queued(pos) => ctx.send_message(&format!("I'm already rolling other seeds so your seed has been queued. There are {pos} seeds in front of it in the queue.")).await?,
+            Self::MovedForward(0) => ctx.send_message("The queue has moved and your seed is now at the front so it will be rolled next.").await?,
+            Self::MovedForward(1) => ctx.send_message("The queue has moved and there is only 1 more seed in front of yours.").await?,
+            Self::MovedForward(pos) => ctx.send_message(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
+            Self::WaitRateLimit(until) => ctx.send_message(&format!("Your seed will be rolled in {}.", format_duration(until - Instant::now(), true))).await?,
+            Self::Started => ctx.send_message(&format!("Rolling a seed with {settings}…")).await?,
+            Self::DoneLocal(patch_filename, spoiler_log_path) => {
+                let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename").to_owned();
+                let file_hash = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_log_path).await?)?.file_hash;
+                *state.write().await = RaceState::RolledLocally(spoiler_log_path);
+                let seed_url = format!("https://midos.house/seed/{patch_filename}");
+                ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
+                ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{spoiler_filename}")).await?;
+                ctx.set_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash)), RaceInfoPos::Overwrite).await?;
+            }
+            Self::DoneWeb(seed_id, file_hash) => {
+                *state.write().await = RaceState::RolledWeb(seed_id);
+                let seed_url = format!("https://ootrandomizer.com/seed/get?id={seed_id}");
+                ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
+                ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
+                ctx.set_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash)), RaceInfoPos::Overwrite).await?;
+            }
+            Self::Error(msg) => {
+                eprintln!("seed roll error: {msg:?}");
+                ctx.send_message("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl.").await?;
+            }
+        }
+        Ok(())
+    }
 }
 
 struct MwSeedQueue {
@@ -304,62 +433,6 @@ impl MwSeedQueue {
         }
         Err(RollError::Retries)
     }
-
-    fn roll_seed(self: Arc<Self>, settings: mw::S3Settings) -> mpsc::Receiver<SeedRollUpdate> {
-        let settings = settings.resolve();
-        let (update_tx, update_rx) = mpsc::channel(128);
-        tokio::spawn(async move {
-            let permit = match self.seed_rollers.try_acquire() {
-                Ok(permit) => permit,
-                Err(TryAcquireError::Closed) => unreachable!(),
-                Err(TryAcquireError::NoPermits) => {
-                    let (mut pos, mut pos_rx) = {
-                        let mut waiting = self.waiting.lock().await;
-                        let pos = waiting.len();
-                        let (pos_tx, pos_rx) = mpsc::unbounded_channel();
-                        waiting.push(pos_tx);
-                        (pos, pos_rx)
-                    };
-                    update_tx.send(SeedRollUpdate::Queued(pos)).await?;
-                    while pos > 0 {
-                        let () = pos_rx.recv().await.expect("queue position notifier closed");
-                        pos -= 1;
-                        update_tx.send(SeedRollUpdate::MovedForward(pos)).await?;
-                    }
-                    let mut waiting = self.waiting.lock().await;
-                    let permit = self.seed_rollers.acquire().await.expect("seed queue semaphore closed");
-                    waiting.remove(0);
-                    for tx in &*waiting {
-                        let _ = tx.send(());
-                    }
-                    permit
-                }
-            };
-            let can_roll_on_web = match self.can_roll_on_web(&settings).await {
-                Ok(can_roll_on_web) => can_roll_on_web,
-                Err(e) => {
-                    update_tx.send(SeedRollUpdate::Error(e)).await?;
-                    return Ok(())
-                }
-            };
-            if can_roll_on_web {
-                match self.roll_seed_web(update_tx.clone(), settings).await {
-                    Ok((seed_id, file_hash)) => update_tx.send(SeedRollUpdate::DoneWeb(seed_id, file_hash)).await?,
-                    Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
-                }
-                drop(permit);
-            } else {
-                drop(permit); //TODO skip queue entirely?
-                update_tx.send(SeedRollUpdate::Started).await?;
-                match self.roll_seed_locally(settings).await {
-                    Ok((patch_filename, spoiler_log_path)) => update_tx.send(SeedRollUpdate::DoneLocal(patch_filename, spoiler_log_path)).await?,
-                    Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
-                }
-            }
-            Ok::<_, mpsc::error::SendError<_>>(())
-        });
-        update_rx
-    }
 }
 
 async fn send_presets(ctx: &RaceContext) -> Result<(), Error> {
@@ -386,14 +459,14 @@ enum RaceState {
 }
 
 struct Handler {
-    state: Arc<RwLock<RaceState>>,
-    seed_queue: Arc<MwSeedQueue>,
+    global_state: Arc<GlobalState>,
+    race_state: Arc<RwLock<RaceState>>,
 }
 
 impl Handler {
     async fn send_settings(&self, ctx: &RaceContext) -> Result<(), Error> {
         let available_settings = {
-            let state = self.state.read().await;
+            let state = self.race_state.read().await;
             if let RaceState::Draft(ref draft) = *state {
                 draft.available_settings()
             } else {
@@ -416,7 +489,7 @@ impl Handler {
     }
 
     async fn advance_draft(&mut self, ctx: &RaceContext) -> Result<(), Error> {
-        let state = self.state.clone().write_owned().await;
+        let state = self.race_state.clone().write_owned().await;
         if let RaceState::Draft(ref draft) = *state {
             match draft.next_step() {
                 mw::DraftStep::GoFirst => ctx.send_message("Team A, you have the higher seed. Choose whether you want to go !first or !second").await?,
@@ -440,40 +513,11 @@ impl Handler {
         *state = RaceState::Rolling;
         drop(state);
         let ctx = ctx.clone();
-        let state = Arc::clone(&self.state);
-        let mut updates = Arc::clone(&self.seed_queue).roll_seed(settings);
+        let state = Arc::clone(&self.race_state);
+        let mut updates = Arc::clone(&self.global_state).roll_seed(settings);
         tokio::spawn(async move {
             while let Some(update) = updates.recv().await {
-                match update {
-                    SeedRollUpdate::Queued(0) => ctx.send_message("I'm already rolling other seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
-                    SeedRollUpdate::Queued(1) => ctx.send_message("I'm already rolling other seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
-                    SeedRollUpdate::Queued(pos) => ctx.send_message(&format!("I'm already rolling other seeds so your seed has been queued. There are {pos} seeds in front of it in the queue.")).await?,
-                    SeedRollUpdate::MovedForward(0) => ctx.send_message("The queue has moved and your seed is now at the front so it will be rolled next.").await?,
-                    SeedRollUpdate::MovedForward(1) => ctx.send_message("The queue has moved and there is only 1 more seed in front of yours.").await?,
-                    SeedRollUpdate::MovedForward(pos) => ctx.send_message(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
-                    SeedRollUpdate::WaitRateLimit(until) => ctx.send_message(&format!("Your seed will be rolled in {}.", format_duration(until - Instant::now(), true))).await?,
-                    SeedRollUpdate::Started => ctx.send_message(&format!("Rolling a seed with {settings}…")).await?,
-                    SeedRollUpdate::DoneLocal(patch_filename, spoiler_log_path) => {
-                        let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename").to_owned();
-                        let file_hash = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_log_path).await?)?.file_hash;
-                        *state.write().await = RaceState::RolledLocally(spoiler_log_path);
-                        let seed_url = format!("https://midos.house/seed/{patch_filename}");
-                        ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
-                        ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{spoiler_filename}")).await?;
-                        ctx.set_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash)), RaceInfoPos::Overwrite).await?;
-                    }
-                    SeedRollUpdate::DoneWeb(seed_id, file_hash) => {
-                        *state.write().await = RaceState::RolledWeb(seed_id);
-                        let seed_url = format!("https://ootrandomizer.com/seed/get?id={seed_id}");
-                        ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
-                        ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
-                        ctx.set_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash)), RaceInfoPos::Overwrite).await?;
-                    }
-                    SeedRollUpdate::Error(msg) => {
-                        eprintln!("seed roll error: {msg:?}");
-                        ctx.send_message("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl.").await?;
-                    }
-                }
+                update.handle(&ctx, &state, settings).await?;
             }
             Ok::<_, Error>(())
         });
@@ -481,7 +525,7 @@ impl Handler {
 }
 
 #[async_trait]
-impl RaceHandler<MwSeedQueue> for Handler {
+impl RaceHandler<GlobalState> for Handler {
     fn should_handle(race_data: &RaceData) -> Result<bool, Error> {
         Ok(
             race_data.goal.name == "3rd Multiworld Tournament" //TODO don't hardcode (use a list shared with RandoBot?)
@@ -490,19 +534,32 @@ impl RaceHandler<MwSeedQueue> for Handler {
         )
     }
 
-    async fn new(ctx: &RaceContext, seed_queue: Arc<MwSeedQueue>) -> Result<Self, Error> {
-        //TODO different behavior for race rooms opened by the bot itself
-        ctx.send_message("Welcome! This is a practice room for the 3rd Multiworld Tournament.").await?;
-        ctx.send_message("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials 2 wincon scrubs). For more info about these options, use “!presets”").await?;
-        ctx.send_message("Learn more about the tournament at https://midos.house/event/mw/3").await?;
-        Ok(Self { state: Arc::default(), seed_queue })
+    async fn new(ctx: &RaceContext, global_state: Arc<GlobalState>) -> Result<Self, Error> {
+        let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
+        let mut transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
+        if let Some(race) = Race::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, format!("https://{}{}", global_state.host, ctx.data().await.url).parse()?).await.map_err(|e| Error::Custom(Box::new(e)))? {
+            for team in race.active_teams() {
+                let mut members = sqlx::query_scalar!(r#"SELECT racetime_id AS "racetime_id!" FROM users, team_members WHERE id = member AND team = $1 AND racetime_id IS NOT NULL"#, i64::from(team.id)).fetch(&mut transaction);
+                while let Some(member) = members.try_next().await.map_err(|e| Error::Custom(Box::new(e)))? {
+                    ctx.invite_user(&member).await?;
+                }
+            }
+        } else {
+            ctx.send_message("Welcome! This is a practice room for the 3rd Multiworld Tournament.").await?; //TODO don't hardcode event name
+        }
+        transaction.commit().await.map_err(|e| Error::Custom(Box::new(e)))?;
+        drop(new_room_lock);
+        //TODO automatically start rolling seed if this is an official race
+        ctx.send_message("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials 2 wincon scrubs). For more info about these options, use “!presets”").await?; //TODO different presets depending on event
+        ctx.send_message("Learn more about the tournament at https://midos.house/event/mw/3").await?; //TODO don't hardcode event URL
+        Ok(Self { race_state: Arc::default(), global_state })
     }
 
     async fn command(&mut self, ctx: &RaceContext, cmd_name: &str, args: Vec<&str>, _is_moderator: bool, _is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match cmd_name {
             "ban" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = self.state.write().await;
+                let mut state = self.race_state.write().await;
                 match *state {
                     RaceState::Init => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_none() {
@@ -549,7 +606,7 @@ impl RaceHandler<MwSeedQueue> for Handler {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
             "draft" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = self.state.write().await;
+                let mut state = self.race_state.write().await;
                 match *state {
                     RaceState::Init => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_none() {
@@ -614,7 +671,7 @@ impl RaceHandler<MwSeedQueue> for Handler {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
             "first" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = self.state.write().await;
+                let mut state = self.race_state.write().await;
                 match *state {
                     RaceState::Init => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_some() {
@@ -631,7 +688,7 @@ impl RaceHandler<MwSeedQueue> for Handler {
             },
             "presets" => send_presets(ctx).await?,
             "second" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = self.state.write().await;
+                let mut state = self.race_state.write().await;
                 match *state {
                     RaceState::Init => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_some() {
@@ -647,7 +704,7 @@ impl RaceHandler<MwSeedQueue> for Handler {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
             "seed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = self.state.clone().write_owned().await;
+                let mut state = self.race_state.clone().write_owned().await;
                 match *state {
                     RaceState::Init => match args[..] {
                         [] => {
@@ -705,7 +762,7 @@ impl RaceHandler<MwSeedQueue> for Handler {
             },
             "settings" => self.send_settings(ctx).await?,
             "skip" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = self.state.write().await;
+                let mut state = self.race_state.write().await;
                 match *state {
                     RaceState::Init => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_none() {
@@ -730,7 +787,7 @@ impl RaceHandler<MwSeedQueue> for Handler {
     async fn race_data(&mut self, ctx: &RaceContext, _old_race_data: RaceData) -> Result<(), Error> {
         if let RaceStatusValue::Finished = ctx.data().await.status.value {
             //TODO also make sure this isn't the first half of an async
-            let mut state = self.state.write().await;
+            let mut state = self.race_state.write().await;
             match *state {
                 RaceState::RolledLocally(ref spoiler_log_path) => {
                     let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name");
@@ -738,8 +795,8 @@ impl RaceHandler<MwSeedQueue> for Handler {
                     *state = RaceState::SpoilerSent;
                 }
                 RaceState::RolledWeb(seed_id) => {
-                    self.seed_queue.post("https://ootrandomizer.com/api/v2/seed/unlock").await
-                        .query(&[("key", &self.seed_queue.ootr_api_key), ("id", &seed_id.to_string())])
+                    self.global_state.mw_seed_queue.post("https://ootrandomizer.com/api/v2/seed/unlock").await
+                        .query(&[("key", &self.global_state.mw_seed_queue.ootr_api_key), ("id", &seed_id.to_string())])
                         .send().await?
                         .error_for_status()?;
                     //TODO also save spoiler log to local archive
@@ -752,11 +809,73 @@ impl RaceHandler<MwSeedQueue> for Handler {
     }
 }
 
-pub(crate) async fn main(http_client: reqwest::Client, ootr_api_key: String, host: &str, config: ConfigRaceTime, shutdown: rocket::Shutdown) -> Result<(), Error> {
+async fn create_rooms(global_state: Arc<GlobalState>, discord_ctx: RwFuture<DiscordCtx>, env: Environment, config: Config, mut shutdown: rocket::Shutdown) -> Result<(), Error> {
+    let racetime_config = if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production };
+    loop {
+        select! {
+            () = &mut shutdown => break,
+            _ = sleep(Duration::from_secs(60)) => {
+                let mut transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
+                for row in sqlx::query!(r#"SELECT series AS "series: Series", event, startgg_set FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut transaction).await.map_err(|e| Error::Custom(Box::new(e)))? {
+                    let (access_token, _) = racetime::authorize_with_host(global_state.host, &racetime_config.client_id, &racetime_config.client_secret, &global_state.http_client).await?;
+                    let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
+                    let race_slug = racetime::StartRace {
+                        goal: format!("3rd Multiworld Tournament"), //TODO don't hardcode
+                        goal_is_custom: true,
+                        team_race: true,
+                        invitational: true,
+                        unlisted: false,
+                        info_user: String::default(), //TODO match info (round, teams)
+                        info_bot: String::default(),
+                        require_even_teams: true,
+                        start_delay: 15,
+                        time_limit: 24,
+                        time_limit_auto_complete: false,
+                        streaming_required: None,
+                        auto_start: true,
+                        allow_comments: true,
+                        hide_comments: true,
+                        allow_prerace_chat: true,
+                        allow_midrace_chat: true,
+                        allow_non_entrant_chat: true,
+                        chat_message_delay: 0,
+                    }.start_with_host(global_state.host, &access_token, &global_state.http_client, CATEGORY).await?;
+                    let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", global_state.host))?;
+                    sqlx::query!("UPDATE races SET room = $1 WHERE startgg_set = $2", room_url.to_string(), row.startgg_set).execute(&mut transaction).await.map_err(|e| Error::Custom(Box::new(e)))?;
+                    transaction.commit().await.map_err(|e| Error::Custom(Box::new(e)))?;
+                    drop(new_room_lock);
+                    transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
+                    if let Some(race) = Race::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, room_url.clone()).await.map_err(|e| Error::Custom(Box::new(e)))? {
+                        if let Some(event) = event::Data::new(&mut transaction, row.series, row.event).await.map_err(|e| Error::Custom(Box::new(e)))? {
+                            if let (Some(guild), Some(channel)) = (event.discord_guild, event.discord_race_room_channel) {
+                                channel.say(&*discord_ctx.read().await, MessageBuilder::default()
+                                    .push_safe(race.phase)
+                                    .push(' ')
+                                    .push_safe(race.round)
+                                    .push(": ")
+                                    .mention_team(&mut transaction, guild, &race.team1).await.map_err(|e| Error::Custom(Box::new(e)))?
+                                    .push(" vs ")
+                                    .mention_team(&mut transaction, guild, &race.team2).await.map_err(|e| Error::Custom(Box::new(e)))?
+                                    .push(' ')
+                                    .push(room_url)
+                                ).await.map_err(|e| Error::Custom(Box::new(e)))?;
+                            }
+                        }
+                    }
+                }
+                transaction.commit().await.map_err(|e| Error::Custom(Box::new(e)))?;
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn handle_rooms(global_state: Arc<GlobalState>, env: Environment, config: Config, shutdown: rocket::Shutdown) -> Result<(), Error> {
+    let racetime_config = if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production };
     let mut last_crash = Instant::now();
     let mut wait_time = Duration::from_secs(1);
     loop {
-        match racetime::Bot::new_with_host(host, "ootr", &config.client_id, &config.client_secret, Arc::new(MwSeedQueue::new(http_client.clone(), ootr_api_key.clone()))).await {
+        match racetime::Bot::new_with_host(env.racetime_host(), CATEGORY, &racetime_config.client_id, &racetime_config.client_secret, global_state.clone()).await {
             Ok(bot) => {
                 let () = bot.run_until::<Handler, _, _>(shutdown).await?;
                 break Ok(())
@@ -775,4 +894,14 @@ pub(crate) async fn main(http_client: reqwest::Client, ootr_api_key: String, hos
             Err(e) => break Err(e),
         }
     }
+}
+
+pub(crate) async fn main(db_pool: PgPool, http_client: reqwest::Client, discord_ctx: RwFuture<DiscordCtx>, ootr_api_key: String, env: Environment, config: Config, shutdown: rocket::Shutdown) -> Result<(), Error> {
+    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+    let global_state = Arc::new(GlobalState::new(db_pool.clone(), http_client.clone(), ootr_api_key.clone(), startgg_token.to_owned(), env.racetime_host()));
+    let ((), ()) = tokio::try_join!(
+        create_rooms(global_state.clone(), discord_ctx, env, config.clone(), shutdown.clone()),
+        handle_rooms(global_state, env, config, shutdown),
+    )?;
+    Ok(())
 }

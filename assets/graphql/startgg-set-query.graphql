@@ -11,7 +11,10 @@ query SetQuery($set_id: ID!) {
         }
         slots {
             entrant {
-                name
+                team {
+                    __typename
+                    id
+                }
             }
         }
     }

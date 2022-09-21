@@ -1,9 +1,12 @@
 use {
+    std::{
+        fmt,
+        iter,
+    },
     chrono::{
         Duration,
         prelude::*,
     },
-    futures::stream::TryStreamExt as _,
     ics::{
         ICalendar,
         properties::{
@@ -18,9 +21,13 @@ use {
     rocket::{
         State,
         http::Status,
+        response::content::RawHtml,
         uri,
     },
-    rocket_util::Response,
+    rocket_util::{
+        Response,
+        html,
+    },
     serde::Deserialize,
     sqlx::{
         PgPool,
@@ -36,9 +43,60 @@ use {
             Series,
         },
         startgg,
-        util::StatusOrError,
+        util::{
+            Id,
+            StatusOrError,
+        },
     },
 };
+
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct Team {
+    pub(crate) id: Id,
+    pub(crate) name: Option<String>,
+    pub(crate) racetime_slug: Option<String>,
+}
+
+impl Team {
+    async fn from_startgg(transaction: &mut Transaction<'_, Postgres>, startgg_id: &str) -> sqlx::Result<Option<Self>> {
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug FROM teams WHERE startgg_id = $1"#, startgg_id).fetch_optional(transaction).await
+    }
+
+    pub(crate) fn to_html(&self, running_text: bool) -> RawHtml<String> {
+        let inner = html! {
+            @if let Some(ref name) = self.name {
+                @if running_text {
+                    i : name;
+                } else {
+                    : name;
+                }
+            } else {
+                @if running_text {
+                    : "an unnamed team";
+                } else {
+                    i : "(unnamed)";
+                }
+            }
+        };
+        html! {
+            @if let Some(ref racetime_slug) = self.racetime_slug {
+                a(href = format!("https://racetime.gg/team/{racetime_slug}")) : inner;
+            } else {
+                : inner;
+            }
+        }
+    }
+}
+
+impl fmt::Display for Team {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(ref name) = self.name {
+            name.fmt(f)
+        } else {
+            write!(f, "(unnamed)")
+        }
+    }
+}
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum RaceKind {
@@ -54,15 +112,15 @@ pub(crate) struct Race {
     pub(crate) startgg_event: String,
     pub(crate) startgg_set: String,
     pub(crate) room: Option<Url>,
-    pub(crate) team1: String,
-    pub(crate) team2: String,
+    pub(crate) team1: Team,
+    pub(crate) team2: Team,
     pub(crate) phase: String,
     pub(crate) round: String,
     pub(crate) kind: RaceKind,
 }
 
 impl Race {
-    pub(crate) async fn new(http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, start: DateTime<Utc>, room: Option<Url>, kind: RaceKind) -> Result<Self, Error> {
+    async fn new(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, start: DateTime<Utc>, room: Option<Url>, kind: RaceKind) -> Result<Self, Error> {
         let end = if let Some(ref room) = room {
             http_client.get(format!("{room}/data"))
                 .send().await?
@@ -87,12 +145,12 @@ impl Race {
             }),
         } = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg_set.clone() }).await? {
             if let [
-                Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { name: Some(ref team1) }) }),
-                Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { name: Some(ref team2) }) }),
+                Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(ref team1), on: _ }) }) }),
+                Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(ref team2), on: _ }) }) }),
             ] = *slots {
                 Ok(Self {
-                    team1: team1.clone(),
-                    team2: team2.clone(),
+                    team1: Team::from_startgg(transaction, team1).await?.ok_or(Error::UnknownTeam)?,
+                    team2: Team::from_startgg(transaction, team2).await?.ok_or(Error::UnknownTeam)?,
                     start, end, startgg_event, startgg_set, room, phase, round, kind,
                 })
             } else {
@@ -103,8 +161,46 @@ impl Race {
         }
     }
 
+    pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, series: Series, event: &str) -> Result<Vec<Self>, Error> {
+        let mut races = Vec::default();
+        for row in sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2, room, async_room1, async_room2 FROM races WHERE series = $1 AND event = $2 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, series as _, event).fetch_all(&mut *transaction).await? {
+            if let Some(start) = row.start {
+                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Normal).await?);
+            }
+            if let Some(start) = row.async_start1 {
+                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), start, row.async_room1.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
+            }
+            if let Some(start) = row.async_start2 {
+                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), start, row.async_room2.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
+            }
+        }
+        races.sort_unstable();
+        Ok(races)
+    }
+
+    pub(crate) async fn from_room(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, room: Url) -> Result<Option<Self>, Error> {
+        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, start AS "start!" FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.start, Some(room), RaceKind::Normal).await?))
+        }
+        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, async_start1 AS "async_start1!" FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.async_start1, Some(room), RaceKind::Normal).await?))
+        }
+        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, async_start2 AS "async_start2!" FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.async_start2, Some(room), RaceKind::Normal).await?))
+        }
+        Ok(None)
+    }
+
     pub(crate) fn startgg_set_url(&self) -> Result<Url, url::ParseError> {
         format!("https://start.gg/{}/set/{}", self.startgg_event, self.startgg_set).parse()
+    }
+
+    pub(crate) fn active_teams(&self) -> impl Iterator<Item = &Team> + Send {
+        match self.kind {
+            RaceKind::Normal => Box::new([&self.team1, &self.team2].into_iter()) as Box<dyn Iterator<Item = &Team> + Send>,
+            RaceKind::Async1 => Box::new(iter::once(&self.team1)),
+            RaceKind::Async2 => Box::new(iter::once(&self.team2)),
+        }
     }
 }
 
@@ -117,6 +213,8 @@ pub(crate) enum Error {
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error("wrong number of teams or missing data")]
     Teams,
+    #[error("this start.gg team ID is not associated with a Mido's House team")]
+    UnknownTeam,
 }
 
 fn ics_datetime<Tz: TimeZone>(datetime: DateTime<Tz>) -> String {
@@ -165,21 +263,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                 }
             }
             _ => {
-                let mut rows = sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2, room, async_room1, async_room2 FROM races WHERE series = 'mw' AND event = $1 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, &event.event).fetch(transaction);
-                let mut races = Vec::default();
-                while let Some(row) = rows.try_next().await? {
-                    if let Some(start) = row.start {
-                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Normal).await?);
-                    }
-                    if let Some(start) = row.async_start1 {
-                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.async_room1.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
-                    }
-                    if let Some(start) = row.async_start2 {
-                        races.push(Race::new(http_client, startgg_token, row.startgg_set.clone(), start, row.async_room2.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
-                    }
-                }
-                races.sort_unstable();
-                for race in races {
+                for race in Race::for_event(transaction, http_client, startgg_token, event.series, &event.event).await? {
                     let mut cal_event = ics::Event::new(format!("{}-{}-{}{}@midos.house",
                         event.series,
                         event.event,

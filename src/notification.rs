@@ -184,7 +184,7 @@ impl Notification {
                             : " as ";
                             : mw::Role::try_from(my_role).expect("non-multiworld role in multiworld team");
                             : " for team ";
-                            a(href = format!("https://racetime.gg/team/{}", team_row.racetime_slug.expect("multiworld team without racetime slug"))) : team_row.name;
+                            a(href = format!("https://racetime.gg/team/{}", team_row.racetime_slug.expect("multiworld team without racetime slug"))) : team_row.name; //TODO use cal::Team type
                             @if let Some(teammates) = natjoin_html(teammates) {
                                 : " together with ";
                                 : teammates;
