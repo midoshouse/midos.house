@@ -20,6 +20,15 @@ use {
         handler::HandlerMethods as _,
     },
     sqlx::PgPool,
+    crate::{
+        Environment,
+        cal::{
+            self,
+            Team,
+        },
+        config::Config,
+        startgg,
+    },
 };
 
 const FENHL: UserId = UserId(86841168427495424);
@@ -28,6 +37,18 @@ enum DbPool {}
 
 impl TypeMapKey for DbPool {
     type Value = PgPool;
+}
+
+enum HttpClient {}
+
+impl TypeMapKey for HttpClient {
+    type Value = reqwest::Client;
+}
+
+enum StartggToken {}
+
+impl TypeMapKey for StartggToken {
+    type Value = String;
 }
 
 #[derive(Clone, Copy)]
@@ -48,10 +69,12 @@ fn parse_timestamp(timestamp: &str) -> Option<DateTime<Utc>> {
         .map(|timestamp| Utc.timestamp(timestamp, 0))
 }
 
-pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_pool: PgPool, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
+pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_pool: PgPool, http_client: reqwest::Client, config: Config, env: Environment, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
     discord_builder
         .error_notifier(ErrorNotifier::User(FENHL))
         .data::<DbPool>(db_pool)
+        .data::<HttpClient>(http_client)
+        .data::<StartggToken>(if env.is_dev() { config.startgg_dev } else { config.startgg_production })
         .on_guild_create(false, |ctx, guild, _| Box::pin(async move {
             let assign = guild.create_application_command(ctx, |c| c
                 .name("assign")
@@ -189,27 +212,67 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             )
                         ).await?;
                     } else if interaction.data.id == command_ids.schedule {
-                        let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
+                        let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
                         if let Some(startgg_set) = sqlx::query_scalar!("SELECT startgg_set FROM races WHERE scheduling_thread = $1", i64::from(interaction.channel_id)).fetch_optional(&mut transaction).await? {
-                            //TODO only let players in this set and event organizers use this command
-                            let start = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
-                                CommandDataOptionValue::String(start) => start,
-                                _ => panic!("unexpected slash command option type"),
-                            };
-                            if let Some(start) = parse_timestamp(start) {
-                                sqlx::query!("UPDATE races SET start = $1 WHERE startgg_set = $2", start, startgg_set).execute(&mut transaction).await?;
-                                transaction.commit().await?;
-                                interaction.create_interaction_response(ctx, |r| r
-                                    .interaction_response_data(|d| d
-                                        .ephemeral(false)
-                                        .content(format!("This race is now scheduled for <t:{}:F>.", start.timestamp()))
-                                    )
-                                ).await?;
+                            let mut authorized = false; //TODO also allow event organizers to use this command
+                            if let startgg::set_query::ResponseData {
+                                set: Some(startgg::set_query::SetQuerySet {
+                                    slots: Some(slots),
+                                    .. //TODO separate query with only the data used?
+                                }),
+                            } = startgg::query::<startgg::SetQuery>(
+                                ctx.data.read().await.get::<HttpClient>().expect("HTTP client missing from Discord context"),
+                                ctx.data.read().await.get::<StartggToken>().expect("start.gg auth token missing from Discord context"),
+                                startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) },
+                            ).await? {
+                                for slot in slots {
+                                    if let Some(startgg::set_query::SetQuerySetSlots {
+                                        entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant {
+                                            team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam {
+                                                id: Some(startgg::ID(ref team)),
+                                                on: _,
+                                            }),
+                                        }),
+                                    }) = slot {
+                                        let team = Team::from_startgg(&mut transaction, team).await?.ok_or(cal::Error::UnknownTeam)?;
+                                        if team.members(&mut transaction).await?.into_iter().any(|member| member.discord_id == Some(interaction.user.id)) {
+                                            authorized = true;
+                                            break
+                                        }
+                                    } else {
+                                        return Err(cal::Error::Teams.into())
+                                    }
+                                }
+                            } else {
+                                return Err(cal::Error::Teams.into())
+                            }
+                            if authorized {
+                                let start = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
+                                    CommandDataOptionValue::String(start) => start,
+                                    _ => panic!("unexpected slash command option type"),
+                                };
+                                if let Some(start) = parse_timestamp(start) {
+                                    sqlx::query!("UPDATE races SET start = $1 WHERE startgg_set = $2", start, startgg_set).execute(&mut transaction).await?;
+                                    transaction.commit().await?;
+                                    interaction.create_interaction_response(ctx, |r| r
+                                        .interaction_response_data(|d| d
+                                            .ephemeral(false)
+                                            .content(format!("This race is now scheduled for <t:{}:F>.", start.timestamp()))
+                                        )
+                                    ).await?;
+                                } else {
+                                    interaction.create_interaction_response(ctx, |r| r
+                                        .interaction_response_data(|d| d
+                                            .ephemeral(true)
+                                            .content("Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one.")
+                                        )
+                                    ).await?;
+                                }
                             } else {
                                 interaction.create_interaction_response(ctx, |r| r
                                     .interaction_response_data(|d| d
                                         .ephemeral(true)
-                                        .content("Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one.")
+                                        .content("Sorry, only participants in this race can schedule it.")
                                     )
                                 ).await?;
                             }

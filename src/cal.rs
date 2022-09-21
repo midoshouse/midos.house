@@ -43,6 +43,7 @@ use {
             Series,
         },
         startgg,
+        user::User,
         util::{
             Id,
             StatusOrError,
@@ -58,7 +59,7 @@ pub(crate) struct Team {
 }
 
 impl Team {
-    async fn from_startgg(transaction: &mut Transaction<'_, Postgres>, startgg_id: &str) -> sqlx::Result<Option<Self>> {
+    pub(crate) async fn from_startgg(transaction: &mut Transaction<'_, Postgres>, startgg_id: &str) -> sqlx::Result<Option<Self>> {
         sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug FROM teams WHERE startgg_id = $1"#, startgg_id).fetch_optional(transaction).await
     }
 
@@ -85,6 +86,19 @@ impl Team {
                 : inner;
             }
         }
+    }
+
+    async fn member_ids(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<Id>> {
+        sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1"#, i64::from(self.id)).fetch_all(&mut *transaction).await
+    }
+
+    pub(crate) async fn members(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<User>> {
+        let user_ids = self.member_ids(&mut *transaction).await?;
+        let mut members = Vec::with_capacity(user_ids.len());
+        for user_id in user_ids {
+            members.push(User::from_id(&mut *transaction, user_id).await?.expect("database constraint violated: nonexistent team member"));
+        }
+        Ok(members)
     }
 }
 
