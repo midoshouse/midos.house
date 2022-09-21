@@ -19,7 +19,7 @@ chrono-tz = "0.6"
 collect-mac = "0.1"
 enum-iterator = "1"
 futures = "0.3"
-graphql_client = "0.11"
+#graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171
 ics = "0.5"
 itertools = "0.10"
 lazy-regex = "2"
@@ -44,6 +44,10 @@ features = ["derive"]
 version = "0.99"
 default-features = false
 features = ["from"]
+
+[dependencies.graphql_client]
+git = "https://github.com/fenhl/graphql-client"
+branch = "skip-default-scalars"
 
 [dependencies.image]
 version = "0.24"
