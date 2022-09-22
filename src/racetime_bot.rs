@@ -460,6 +460,8 @@ enum RaceState {
 
 struct Handler {
     global_state: Arc<GlobalState>,
+    is_official: bool,
+    fpa_enabled: bool,
     race_state: Arc<RwLock<RaceState>>,
 }
 
@@ -537,22 +539,29 @@ impl RaceHandler<GlobalState> for Handler {
     async fn new(ctx: &RaceContext, global_state: Arc<GlobalState>) -> Result<Self, Error> {
         let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
         let mut transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
-        if let Some(race) = Race::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, format!("https://{}{}", global_state.host, ctx.data().await.url).parse()?).await.map_err(|e| Error::Custom(Box::new(e)))? {
+        let is_official = if let Some(race) = Race::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, format!("https://{}{}", global_state.host, ctx.data().await.url).parse()?).await.map_err(|e| Error::Custom(Box::new(e)))? {
             for team in race.active_teams() {
                 let mut members = sqlx::query_scalar!(r#"SELECT racetime_id AS "racetime_id!" FROM users, team_members WHERE id = member AND team = $1 AND racetime_id IS NOT NULL"#, i64::from(team.id)).fetch(&mut transaction);
                 while let Some(member) = members.try_next().await.map_err(|e| Error::Custom(Box::new(e)))? {
                     ctx.invite_user(&member).await?;
                 }
             }
+            ctx.send_message(&format!("Welcome to this {} {} race! Learn more about the tournament at https://midos.house/event/mw/3", race.phase, race.round)).await?; //TODO don't hardcode event name/URL
+            ctx.send_message("Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat.").await?;
+            true
         } else {
-            ctx.send_message("Welcome! This is a practice room for the 3rd Multiworld Tournament.").await?; //TODO don't hardcode event name
-        }
+            ctx.send_message("Welcome! This is a practice room for the 3rd Multiworld Tournament. Learn more about the tournament at https://midos.house/event/mw/3").await?; //TODO don't hardcode event name/URL
+            false
+        };
         transaction.commit().await.map_err(|e| Error::Custom(Box::new(e)))?;
         drop(new_room_lock);
         //TODO automatically start rolling seed if this is an official race
         ctx.send_message("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials 2 wincon scrubs). For more info about these options, use “!presets”").await?; //TODO different presets depending on event
-        ctx.send_message("Learn more about the tournament at https://midos.house/event/mw/3").await?; //TODO don't hardcode event URL
-        Ok(Self { race_state: Arc::default(), global_state })
+        Ok(Self {
+            race_state: Arc::default(),
+            fpa_enabled: is_official,
+            global_state, is_official,
+        })
     }
 
     async fn command(&mut self, ctx: &RaceContext, cmd_name: &str, args: Vec<&str>, _is_moderator: bool, _is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
@@ -685,6 +694,37 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
+            },
+            "fpa" => match args[..] {
+                [] => if self.fpa_enabled {
+                    if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
+                        ctx.send_message("FPA cannot be invoked before the race starts.").await?;
+                    } else {
+                        //TODO tag race as “don't auto-post results”
+                        //TODO different message for restreamed races
+                        ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. The team that did not call FPA can continue playing; the race will be retimed once completed.")).await?;
+                    }
+                } else {
+                    ctx.send_message("Fair play agreement is not active. Race monitors may enable FPA for this race with !fpa on").await?;
+                },
+                ["on"] => if self.is_official {
+                    ctx.send_message("Fair play agreement is always active in official races.").await?;
+                } else if self.fpa_enabled {
+                    ctx.send_message("Fair play agreement is already activated.").await?;
+                } else {
+                    self.fpa_enabled = true;
+                    ctx.send_message("Fair play agreement is now active. @entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat.").await?;
+                },
+                ["off"] => if self.is_official {
+                    ctx.send_message(&format!("Sorry {reply_to}, but FPA can't be deactivated for official races.")).await?;
+                } else if self.fpa_enabled {
+                    self.fpa_enabled = false;
+                    ctx.send_message("Fair play agreement is now deactivated.").await?;
+                } else {
+                    ctx.send_message("Fair play agreement is not active.").await?;
+                },
+                [_] => ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that subcommand. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
+                [_, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
             },
             "presets" => send_presets(ctx).await?,
             "second" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
@@ -832,7 +872,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, discord_ctx: RwFuture<Disc
                         time_limit: 24,
                         time_limit_auto_complete: false,
                         streaming_required: None,
-                        auto_start: true,
+                        auto_start: true, //TODO no autostart if restreamed
                         allow_comments: true,
                         hide_comments: true,
                         allow_prerace_chat: true,
