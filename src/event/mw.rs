@@ -51,7 +51,10 @@ use {
         ToHtml,
         html,
     },
-    serde::Deserialize,
+    serde::{
+        Deserialize,
+        Serialize,
+    },
     serde_json::{
         Value as Json,
         json,
@@ -105,14 +108,14 @@ use {
 
 const SERIES: Series = Series::Multiworld;
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Wincon { #[default] Meds, Scrubs, Th }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Dungeons { #[default] Tournament, Skulls, Keyrings }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Er { #[default] Off, Dungeon }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Trials { #[default] Zero, Two }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Shops { #[default] Four, Off }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Scrubs { #[default] Affordable, Off }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Fountain { #[default] Closed, Open }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence)] pub(crate) enum Spawn { #[default] Tot, Random }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Wincon { #[default] Meds, Scrubs, Th }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Dungeons { #[default] Tournament, Skulls, Keyrings }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Er { #[default] Off, Dungeon }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Trials { #[default] Zero, Two }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Shops { #[default] Four, Off }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Scrubs { #[default] Affordable, Off }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Fountain { #[default] Closed, Open }
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Spawn { #[default] Tot, Random }
 
 impl Wincon { pub(crate) fn arg(&self) -> &'static str { match self { Self::Meds => "meds", Self::Scrubs => "scrubs", Self::Th => "th" } } }
 impl Dungeons { pub(crate) fn arg(&self) -> &'static str { match self { Self::Tournament => "tournament", Self::Skulls => "skulls", Self::Keyrings => "keyrings" } } }
@@ -174,7 +177,7 @@ pub(crate) enum S3Setting {
 
 derive_fromstr_from_deserialize!(S3Setting);
 
-#[derive(Default)]
+#[derive(Default, Deserialize, Serialize)]
 pub(crate) struct S3Draft {
     pub(crate) went_first: Option<bool>,
     pub(crate) skipped_bans: u8,

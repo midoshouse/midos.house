@@ -214,6 +214,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     } else if interaction.data.id == command_ids.schedule {
                         let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
                         if let Some(startgg_set) = sqlx::query_scalar!("SELECT startgg_set FROM races WHERE scheduling_thread = $1", i64::from(interaction.channel_id)).fetch_optional(&mut transaction).await? {
+                            //TODO don't allow rescheduling races that already have rooms
                             let mut authorized = false; //TODO also allow event organizers to use this command
                             if let startgg::set_query::ResponseData {
                                 set: Some(startgg::set_query::SetQuerySet {
