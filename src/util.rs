@@ -38,6 +38,10 @@ use {
         ToHtml,
         html,
     },
+    serde::{
+        Deserialize,
+        Serialize,
+    },
     serenity::{
         model::prelude::*,
         utils::MessageBuilder,
@@ -109,7 +113,8 @@ impl EmptyForm {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, UriDisplayPath, UriDisplayQuery)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize, UriDisplayPath, UriDisplayQuery)]
+#[serde(transparent)]
 pub(crate) struct Id(pub(crate) u64);
 
 pub(crate) enum IdTable {

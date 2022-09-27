@@ -92,7 +92,7 @@ branch = "main"
 [dependencies.sqlx]
 version = "0.6"
 default-features = false
-features = ["chrono", "macros", "postgres", "runtime-tokio-rustls"]
+features = ["chrono", "json", "macros", "postgres", "runtime-tokio-rustls"]
 
 [dependencies.tokio]
 version = "1"

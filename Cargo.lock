@@ -2710,6 +2710,7 @@ dependencies = [
  "once_cell",
  "proc-macro2",
  "quote",
+ "serde_json",
  "sqlx-core",
  "sqlx-rt",
  "syn",

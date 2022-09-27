@@ -332,7 +332,7 @@ impl S3Settings {
                 Trials::Zero => json!(0),
                 Trials::Two => json!(2),
             },
-            format!("skip_child_zelda") => json!(true),
+            format!("shuffle_child_trade") => json!("skip_child_zelda"),
             format!("no_escape_sequence") => json!(true),
             format!("no_guard_stealth") => json!(true),
             format!("no_epona_race") => json!(true),
@@ -403,7 +403,7 @@ impl S3Settings {
                 "logic_lens_spirit",
                 "logic_dc_scarecrow_gs"
             ]),
-            format!("logic_earliest_adult_trade") => json!("claim_check"),
+            format!("adult_trade_start") => json!(["Claim Check"]),
             format!("starting_items") => json!([
                 "ocarina",
                 "farores_wind",
@@ -421,7 +421,7 @@ impl S3Settings {
     }
 
     pub(crate) fn chests(&self) -> ChestAppearances {
-        static WEIGHTS: Lazy<HashMap<String, Vec<(ChestAppearances, usize)>>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/chests-mw-6.2.181.json")).expect("failed to parse chest weights"));
+        static WEIGHTS: Lazy<HashMap<String, Vec<(ChestAppearances, usize)>>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/chests-mw-6.2.181.json")).expect("failed to parse chest weights")); //TODO update to 6.2.205
 
         if let Some(settings_weights) = WEIGHTS.get(&self.to_string()) {
             settings_weights.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
@@ -530,9 +530,11 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                     }
                     h2 : "Seed Settings";
                     p {
-                        : "All tournament matches will be played on ";
+                        : "Starting with Swiss round 2, all tournament matches will be played on ";
+                        a(href = "https://ootrandomizer.com/generatorDev?version=dev_6.2.205") : "version 6.2.205";
+                        : " of the randomizer. (The qualifier async and Swiss round 1 were played on ";
                         a(href = "https://ootrandomizer.com/generatorDev?version=dev_6.2.181") : "version 6.2.181";
-                        : " of the randomizer.";
+                        : ".)";
                     }
                     p : "The default settings for each race have the following differences to the S5 tournament preset:";
                     ul {

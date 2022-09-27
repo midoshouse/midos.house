@@ -1,6 +1,10 @@
 use {
     chrono::prelude::*,
     lazy_regex::regex_captures,
+    serde::{
+        Deserialize,
+        Serialize,
+    },
     serenity::{
         model::{
             application::{
@@ -18,8 +22,14 @@ use {
     serenity_utils::{
         builder::ErrorNotifier,
         handler::HandlerMethods as _,
+        slash::*,
     },
-    sqlx::PgPool,
+    sqlx::{
+        PgPool,
+        Postgres,
+        Transaction,
+        types::Json,
+    },
     crate::{
         Environment,
         cal::{
@@ -27,7 +37,9 @@ use {
             Team,
         },
         config::Config,
+        event::mw,
         startgg,
+        util::Id,
     },
 };
 
@@ -54,6 +66,7 @@ impl TypeMapKey for StartggToken {
 #[derive(Clone, Copy)]
 struct CommandIds {
     assign: CommandId,
+    ban: CommandId,
     pronoun_roles: CommandId,
     schedule: CommandId,
     watch_roles: CommandId,
@@ -61,6 +74,108 @@ struct CommandIds {
 
 impl TypeMapKey for CommandIds {
     type Value = CommandIds;
+}
+
+#[derive(Deserialize, Serialize)]
+struct Draft {
+    high_seed: Id,
+    state: mw::S3Draft,
+}
+
+async fn advance_draft(ctx: &Context, interaction: &ApplicationCommandInteraction, draft: &Draft) -> serenity::Result<()> {
+    match draft.state.next_step() {
+        mw::DraftStep::GoFirst => interaction.create_interaction_response(ctx, |r| r
+            .interaction_response_data(|d| d
+                .ephemeral(false)
+                .content("Team A, you have the higher seed. Choose whether you want to go /first or /second") //TODO mention team & commands
+            )
+        ).await?,
+        mw::DraftStep::Ban { team, .. } => interaction.create_interaction_response(ctx, |r| r
+            .interaction_response_data(|d| d
+                .ephemeral(false)
+                .content(format!("{team}, lock a setting to its default using /ban, or use /skip if you don't want to ban anything.")) //TODO mention team & commands
+            )
+        ).await?,
+        mw::DraftStep::Pick { prev_picks, team } => interaction.create_interaction_response(ctx, |r| r
+            .interaction_response_data(|d| d
+                .ephemeral(false)
+                .content(&match prev_picks {
+                    0 => format!("{team}, pick a setting using /draft."), //TODO mention team & commands
+                    1 => format!("{team}, pick two settings using /draft."), //TODO mention team & commands
+                    2 => format!("And your second pick?"),
+                    3 => format!("{team}, pick the final setting using /draft. You can also use /skip if you want to leave the settings as they are."), //TODO mention team & commands
+                    _ => unreachable!(),
+                })
+            )
+        ).await?,
+        mw::DraftStep::Done(_) => interaction.create_interaction_response(ctx, |r| r
+            .interaction_response_data(|d| d
+                .ephemeral(false)
+                .content("Settings draft completed.")
+            )
+        ).await?,
+    }
+    Ok(())
+}
+
+async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: &ApplicationCommandInteraction) -> Result<Option<(Transaction<'a, Postgres>, String)>, Box<dyn std::error::Error + Send + Sync>> {
+    let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
+    Ok(if let Some(startgg_set) = sqlx::query_scalar!("SELECT startgg_set FROM races WHERE scheduling_thread = $1", i64::from(interaction.channel_id)).fetch_optional(&mut transaction).await? {
+        //TODO don't allow running commands on races that already have rooms
+        let mut authorized = false; //TODO also allow event organizers to use this command
+        if let startgg::set_query::ResponseData {
+            set: Some(startgg::set_query::SetQuerySet {
+                slots: Some(slots),
+                .. //TODO separate query with only the data used?
+            }),
+        } = startgg::query::<startgg::SetQuery>(
+            ctx.data.read().await.get::<HttpClient>().expect("HTTP client missing from Discord context"),
+            ctx.data.read().await.get::<StartggToken>().expect("start.gg auth token missing from Discord context"),
+            startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) },
+        ).await? {
+            for slot in slots {
+                if let Some(startgg::set_query::SetQuerySetSlots {
+                    entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant {
+                        team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam {
+                            id: Some(startgg::ID(ref team)),
+                            on: _,
+                        }),
+                    }),
+                }) = slot {
+                    let team = Team::from_startgg(&mut transaction, team).await?.ok_or(cal::Error::UnknownTeam)?;
+                    if team.members(&mut transaction).await?.into_iter().any(|member| member.discord_id == Some(interaction.user.id)) {
+                        authorized = true;
+                        break
+                    }
+                } else {
+                    return Err(cal::Error::Teams.into())
+                }
+            }
+        } else {
+            return Err(cal::Error::Teams.into())
+        }
+        if authorized {
+            Some((transaction, startgg_set))
+        } else {
+            interaction.create_interaction_response(ctx, |r| r
+                .interaction_response_data(|d| d
+                    .ephemeral(true)
+                    .content("Sorry, only participants in this race can use this command.")
+                )
+            ).await?;
+            transaction.rollback().await?;
+            None
+        }
+    } else {
+        interaction.create_interaction_response(ctx, |r| r
+            .interaction_response_data(|d| d
+                .ephemeral(true)
+                .content("Sorry, this thread is not associated with a match. Please contact a tournament organizer to fix this.")
+            )
+        ).await?;
+        transaction.rollback().await?;
+        None
+    })
 }
 
 fn parse_timestamp(timestamp: &str) -> Option<DateTime<Utc>> {
@@ -87,6 +202,26 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     .name("startgg-set")
                     .description("The start.gg set (match) ID")
                     .required(true)
+                )
+            ).await?.id;
+            let ban = guild.create_application_command(ctx, |c| c
+                .name("ban")
+                .kind(serenity::model::application::command::CommandType::ChatInput)
+                .dm_permission(false)
+                .description("Locks a setting for this match to its default value.")
+                .create_option(|o| o
+                    .kind(CommandOptionType::String)
+                    .name("setting")
+                    .description("The setting to lock in")
+                    .required(true)
+                    .add_string_choice("win conditions", "wincon")
+                    .add_string_choice("dungeons", "dungeons")
+                    .add_string_choice("entrance rando", "er")
+                    .add_string_choice("trials", "trials")
+                    .add_string_choice("shops", "shops")
+                    .add_string_choice("scrubs", "scrubs")
+                    .add_string_choice("fountain", "fountain")
+                    .add_string_choice("spawns", "spawn")
                 )
             ).await?.id;
             let pronoun_roles = guild.create_application_command(ctx, |c| c
@@ -129,7 +264,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     .channel_types(&[ChannelType::Text, ChannelType::News])
                 )
             ).await?.id;
-            ctx.data.write().await.insert::<CommandIds>(CommandIds { assign, pronoun_roles, schedule, watch_roles });
+            ctx.data.write().await.insert::<CommandIds>(CommandIds { assign, ban, pronoun_roles, schedule, watch_roles });
             Ok(())
         }))
         .on_interaction_create(|ctx, interaction| Box::pin(async move {
@@ -159,7 +294,62 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 )
                             ).await?;
                         }
-                    } if interaction.data.id == command_ids.pronoun_roles {
+                    } else if interaction.data.id == command_ids.ban {
+                        if let Some((mut transaction, startgg_set)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                if draft.state.went_first.is_none() {
+                                    interaction.create_interaction_response(ctx, |r| r
+                                        .interaction_response_data(|d| d
+                                            .ephemeral(true)
+                                            .content("Sorry, first pick hasn't been chosen yet, use /first or /second") //TODO mention commands
+                                        )
+                                    ).await?;
+                                } else if draft.state.pick_count() >= 2 {
+                                    interaction.create_interaction_response(ctx, |r| r
+                                        .interaction_response_data(|d| d
+                                            .ephemeral(true)
+                                            .content("Sorry, bans have already been chosen.")
+                                        )
+                                    ).await?;
+                                } else {
+                                    let setting = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
+                                        CommandDataOptionValue::String(setting) => setting.parse().expect("unknown setting in /ban"),
+                                        _ => panic!("unexpected slash command option type"),
+                                    };
+                                    if draft.state.available_settings().contains(&setting) {
+                                        match setting {
+                                            mw::S3Setting::Wincon => draft.state.wincon = Some(mw::Wincon::default()),
+                                            mw::S3Setting::Dungeons => draft.state.dungeons = Some(mw::Dungeons::default()),
+                                            mw::S3Setting::Er => draft.state.er = Some(mw::Er::default()),
+                                            mw::S3Setting::Trials => draft.state.trials = Some(mw::Trials::default()),
+                                            mw::S3Setting::Shops => draft.state.shops = Some(mw::Shops::default()),
+                                            mw::S3Setting::Scrubs => draft.state.scrubs = Some(mw::Scrubs::default()),
+                                            mw::S3Setting::Fountain => draft.state.fountain = Some(mw::Fountain::default()),
+                                            mw::S3Setting::Spawn => draft.state.spawn = Some(mw::Spawn::default()),
+                                        }
+                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
+                                        transaction.commit().await?;
+                                        advance_draft(ctx, interaction, &draft).await?; //TODO include the setting that was banned in the reply
+                                    } else {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, that setting is already locked in. Use /skip if you don't want to ban anything.") //TODO mention command
+                                            )
+                                        ).await?;
+                                    }
+                                }
+                            } else {
+                                interaction.create_interaction_response(ctx, |r| r
+                                    .interaction_response_data(|d| d
+                                        .ephemeral(true)
+                                        .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
+                                    )
+                                ).await?;
+                                transaction.rollback().await?;
+                            }
+                        }
+                    } else if interaction.data.id == command_ids.pronoun_roles {
                         let guild_id = interaction.guild_id.expect("/pronoun-roles called outside of a guild");
                         guild_id.create_role(ctx, |r| r
                             .hoist(false)
@@ -212,78 +402,28 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             )
                         ).await?;
                     } else if interaction.data.id == command_ids.schedule {
-                        let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
-                        if let Some(startgg_set) = sqlx::query_scalar!("SELECT startgg_set FROM races WHERE scheduling_thread = $1", i64::from(interaction.channel_id)).fetch_optional(&mut transaction).await? {
-                            //TODO don't allow rescheduling races that already have rooms
-                            let mut authorized = false; //TODO also allow event organizers to use this command
-                            if let startgg::set_query::ResponseData {
-                                set: Some(startgg::set_query::SetQuerySet {
-                                    slots: Some(slots),
-                                    .. //TODO separate query with only the data used?
-                                }),
-                            } = startgg::query::<startgg::SetQuery>(
-                                ctx.data.read().await.get::<HttpClient>().expect("HTTP client missing from Discord context"),
-                                ctx.data.read().await.get::<StartggToken>().expect("start.gg auth token missing from Discord context"),
-                                startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) },
-                            ).await? {
-                                for slot in slots {
-                                    if let Some(startgg::set_query::SetQuerySetSlots {
-                                        entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant {
-                                            team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam {
-                                                id: Some(startgg::ID(ref team)),
-                                                on: _,
-                                            }),
-                                        }),
-                                    }) = slot {
-                                        let team = Team::from_startgg(&mut transaction, team).await?.ok_or(cal::Error::UnknownTeam)?;
-                                        if team.members(&mut transaction).await?.into_iter().any(|member| member.discord_id == Some(interaction.user.id)) {
-                                            authorized = true;
-                                            break
-                                        }
-                                    } else {
-                                        return Err(cal::Error::Teams.into())
-                                    }
-                                }
-                            } else {
-                                return Err(cal::Error::Teams.into())
-                            }
-                            if authorized {
-                                let start = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
-                                    CommandDataOptionValue::String(start) => start,
-                                    _ => panic!("unexpected slash command option type"),
-                                };
-                                if let Some(start) = parse_timestamp(start) {
-                                    sqlx::query!("UPDATE races SET start = $1 WHERE startgg_set = $2", start, startgg_set).execute(&mut transaction).await?;
-                                    transaction.commit().await?;
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(false)
-                                            .content(format!("This race is now scheduled for <t:{}:F>.", start.timestamp()))
-                                        )
-                                    ).await?;
-                                } else {
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(true)
-                                            .content("Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one.")
-                                        )
-                                    ).await?;
-                                }
+                        if let Some((mut transaction, startgg_set)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            let start = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
+                                CommandDataOptionValue::String(start) => start,
+                                _ => panic!("unexpected slash command option type"),
+                            };
+                            if let Some(start) = parse_timestamp(start) {
+                                sqlx::query!("UPDATE races SET start = $1 WHERE startgg_set = $2", start, startgg_set).execute(&mut transaction).await?;
+                                transaction.commit().await?;
+                                interaction.create_interaction_response(ctx, |r| r
+                                    .interaction_response_data(|d| d
+                                        .ephemeral(false)
+                                        .content(format!("This race is now scheduled for <t:{}:F>.", start.timestamp()))
+                                    )
+                                ).await?;
                             } else {
                                 interaction.create_interaction_response(ctx, |r| r
                                     .interaction_response_data(|d| d
                                         .ephemeral(true)
-                                        .content("Sorry, only participants in this race can schedule it.")
+                                        .content("Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one.")
                                     )
                                 ).await?;
                             }
-                        } else {
-                            interaction.create_interaction_response(ctx, |r| r
-                                .interaction_response_data(|d| d
-                                    .ephemeral(true)
-                                    .content("Sorry, this thread is not associated with a match. Please contact a tournament organizer to fix this.")
-                                )
-                            ).await?;
                         }
                     } else if interaction.data.id == command_ids.watch_roles {
                         let guild_id = interaction.guild_id.expect("/watch-roles called outside of a guild");
