@@ -134,8 +134,10 @@ pub(crate) struct Race {
 }
 
 impl Race {
-    async fn new(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, start: DateTime<Utc>, room: Option<Url>, kind: RaceKind) -> Result<Self, Error> {
-        let end = if let Some(ref room) = room {
+    async fn new(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, start: DateTime<Utc>, end: Option<DateTime<Utc>>, room: Option<Url>, kind: RaceKind) -> Result<Self, Error> {
+        let end = if let Some(end) = end {
+            Some(end)
+        } else if let Some(ref room) = room {
             http_client.get(format!("{room}/data"))
                 .send().await?
                 .error_for_status()?
@@ -177,15 +179,15 @@ impl Race {
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, series: Series, event: &str) -> Result<Vec<Self>, Error> {
         let mut races = Vec::default();
-        for row in sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2, room, async_room1, async_room2 FROM races WHERE series = $1 AND event = $2 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, series as _, event).fetch_all(&mut *transaction).await? {
+        for row in sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2, end_time, async_end1, async_end2, room, async_room1, async_room2 FROM races WHERE series = $1 AND event = $2 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, series as _, event).fetch_all(&mut *transaction).await? {
             if let Some(start) = row.start {
-                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), start, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Normal).await?);
+                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), start, row.end_time, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Normal).await?);
             }
             if let Some(start) = row.async_start1 {
-                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), start, row.async_room1.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
+                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), start, row.async_end1, row.async_room1.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
             }
             if let Some(start) = row.async_start2 {
-                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), start, row.async_room2.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
+                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), start, row.async_end2, row.async_room2.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
             }
         }
         races.sort_unstable();
@@ -193,14 +195,14 @@ impl Race {
     }
 
     pub(crate) async fn from_room(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, room: Url) -> Result<Option<Self>, Error> {
-        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, start AS "start!" FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
-            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.start, Some(room), RaceKind::Normal).await?))
+        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, start AS "start!", end_time FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.start, row.end_time, Some(room), RaceKind::Normal).await?))
         }
-        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, async_start1 AS "async_start1!" FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
-            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.async_start1, Some(room), RaceKind::Normal).await?))
+        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, async_start1 AS "async_start1!", async_end1 FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.async_start1, row.async_end1, Some(room), RaceKind::Async1).await?))
         }
-        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, async_start2 AS "async_start2!" FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
-            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.async_start2, Some(room), RaceKind::Normal).await?))
+        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, async_start2 AS "async_start2!", async_end2 FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.async_start2, row.async_end2, Some(room), RaceKind::Async2).await?))
         }
         Ok(None)
     }
