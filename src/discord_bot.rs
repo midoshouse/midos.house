@@ -278,12 +278,19 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 CommandDataOptionValue::String(startgg_set) => startgg_set,
                                 _ => panic!("unexpected slash command option type"),
                             };
-                            sqlx::query!("INSERT INTO races (startgg_set, series, event, scheduling_thread) VALUES ($1, $2, $3, $4) ON CONFLICT (startgg_set) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread", startgg_set, event_row.series, event_row.event, i64::from(interaction.channel_id)).execute(&mut transaction).await?;
+                            sqlx::query!("INSERT INTO races (startgg_set, series, event, scheduling_thread) VALUES ($1, $2, $3, $4) ON CONFLICT (startgg_set) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread", &startgg_set, event_row.series, event_row.event, i64::from(interaction.channel_id)).execute(&mut transaction).await?;
                             transaction.commit().await?;
                             interaction.create_interaction_response(ctx, |r| r
                                 .interaction_response_data(|d| d
-                                    .ephemeral(true)
-                                    .content("Set assigned.")
+                                    .ephemeral(false)
+                                    .content(MessageBuilder::default()
+                                        .push("This thread is now assigned to set ")
+                                        .push_safe(startgg_set) //TODO linkify set page, use phase/round/identifier
+                                        .push(". Use </schedule:")
+                                        .push(command_ids.schedule) //TODO impl Mentionable for CommandId
+                                        .push("> to schedule as a regular race, or ping a tournament organizer to schedule as an async.")
+                                        //TODO start settings draft, mentioning which team should use /first or /second
+                                    )
                                 )
                             ).await?;
                         } else {
