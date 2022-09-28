@@ -105,7 +105,10 @@ const CATEGORY: &str = "ootr";
 
 const RANDO_VERSION: Version = Version::new(6, 2, 205);
 /// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
-const KNOWN_GOOD_WEB_VERSIONS: [Version; 1] = [Version::new(6, 2, 181)]; //TODO add 6.2.205 once it's available on web
+const KNOWN_GOOD_WEB_VERSIONS: [Version; 2] = [
+    Version::new(6, 2, 181),
+    Version::new(6, 2, 205),
+];
 
 const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
 
