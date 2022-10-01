@@ -1,5 +1,8 @@
 use {
-    chrono::prelude::*,
+    chrono::{
+        Duration,
+        prelude::*,
+    },
     enum_iterator::all,
     lazy_regex::regex_captures,
     serde::{
@@ -793,14 +796,24 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 _ => panic!("unexpected slash command option type"),
                             };
                             if let Some(start) = parse_timestamp(start) {
-                                sqlx::query!("UPDATE races SET start = $1 WHERE startgg_set = $2", start, startgg_set).execute(&mut transaction).await?;
-                                transaction.commit().await?;
-                                interaction.create_interaction_response(ctx, |r| r
-                                    .interaction_response_data(|d| d
-                                        .ephemeral(false)
-                                        .content(format!("This race is now scheduled for <t:{}:F>.", start.timestamp()))
-                                    )
-                                ).await?;
+                                if start < Utc::now() + Duration::minutes(30) {
+                                    interaction.create_interaction_response(ctx, |r| r
+                                        .interaction_response_data(|d| d
+                                            .ephemeral(true)
+                                            .content("Sorry, races must be scheduled at least 30 minutes in advance.")
+                                        )
+                                    ).await?;
+                                    transaction.rollback().await?;
+                                } else {
+                                    sqlx::query!("UPDATE races SET start = $1 WHERE startgg_set = $2", start, startgg_set).execute(&mut transaction).await?;
+                                    transaction.commit().await?;
+                                    interaction.create_interaction_response(ctx, |r| r
+                                        .interaction_response_data(|d| d
+                                            .ephemeral(false)
+                                            .content(format!("This race is now scheduled for <t:{}:F>.", start.timestamp()))
+                                        )
+                                    ).await?;
+                                }
                             } else {
                                 interaction.create_interaction_response(ctx, |r| r
                                     .interaction_response_data(|d| d
@@ -808,6 +821,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         .content("Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one.")
                                     )
                                 ).await?;
+                                transaction.rollback().await?;
                             }
                         }
                     } else if interaction.data.id == command_ids.second {
