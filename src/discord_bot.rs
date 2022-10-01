@@ -856,6 +856,72 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 transaction.rollback().await?;
                             }
                         }
+                    } else if interaction.data.id == command_ids.skip {
+                        if let Some((mut transaction, startgg_set, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                if draft.state.went_first.is_none() {
+                                    interaction.create_interaction_response(ctx, |r| r
+                                        .interaction_response_data(|d| d
+                                            .ephemeral(true)
+                                            .content(MessageBuilder::default()
+                                                .push("Sorry, first pick hasn't been chosen yet, use ")
+                                                .mention_command(command_ids.first, "first")
+                                                .push(" or ")
+                                                .mention_command(command_ids.second, "second")
+                                            )
+                                        )
+                                    ).await?;
+                                    transaction.rollback().await?;
+                                } else if !matches!(draft.state.pick_count(), 0 | 1 | 5) {
+                                    interaction.create_interaction_response(ctx, |r| r
+                                        .interaction_response_data(|d| d
+                                            .ephemeral(true)
+                                            .content("Sorry, this part of the draft can't be skipped.")
+                                        )
+                                    ).await?;
+                                    transaction.rollback().await?;
+                                } else if draft.is_active_team(team.id) {
+                                    let skip_kind = match draft.state.pick_count() {
+                                        0 | 1 => "ban",
+                                        5 => "final pick",
+                                        _ => unreachable!(),
+                                    };
+                                    draft.state.skipped_bans += 1;
+                                    sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
+                                    let guild_id = interaction.guild_id.expect("/skip called outside of a guild");
+                                    let response_content = MessageBuilder::default()
+                                        .mention_team(&mut transaction, guild_id, &team).await?
+                                        .push(" has skipped their ") //TODO “have” with plural-form team names?
+                                        .push(skip_kind)
+                                        .push_line('.')
+                                        .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
+                                        .build();
+                                    interaction.create_interaction_response(ctx, |r| r
+                                        .interaction_response_data(|d| d
+                                            .ephemeral(false)
+                                            .content(response_content)
+                                        )
+                                    ).await?;
+                                    transaction.commit().await?;
+                                } else {
+                                    interaction.create_interaction_response(ctx, |r| r
+                                        .interaction_response_data(|d| d
+                                            .ephemeral(true)
+                                            .content("Sorry, it's not your team's turn in the settings draft.")
+                                        )
+                                    ).await?;
+                                    transaction.rollback().await?;
+                                }
+                            } else {
+                                interaction.create_interaction_response(ctx, |r| r
+                                    .interaction_response_data(|d| d
+                                        .ephemeral(true)
+                                        .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
+                                    )
+                                ).await?;
+                                transaction.rollback().await?;
+                            }
+                        }
                     } else if interaction.data.id == command_ids.watch_roles {
                         let guild_id = interaction.guild_id.expect("/watch-roles called outside of a guild");
                         let watch_party_channel = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
