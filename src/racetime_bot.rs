@@ -33,10 +33,7 @@ use {
     },
     semver::Version,
     serde::Deserialize,
-    serde_json::{
-        Value as Json,
-        json,
-    },
+    serde_json::json,
     serde_with::{
         DisplayFromStr,
         json::JsonString,
@@ -47,7 +44,10 @@ use {
         utils::MessageBuilder,
     },
     serenity_utils::RwFuture,
-    sqlx::PgPool,
+    sqlx::{
+        PgPool,
+        types::Json,
+    },
     tokio::{
         fs::{
             self,
@@ -77,7 +77,10 @@ use {
     url::Url,
     crate::{
         Environment,
-        cal::Race,
+        cal::{
+            Race,
+            RaceKind,
+        },
         config::Config,
         discord_bot::Draft,
         event::{
@@ -319,7 +322,7 @@ impl MwSeedQueue {
             .currently_active_version)
     }
 
-    async fn can_roll_on_web(&self, settings: &serde_json::Map<String, Json>) -> Result<bool, RollError> {
+    async fn can_roll_on_web(&self, settings: &serde_json::Map<String, serde_json::Value>) -> Result<bool, RollError> {
         if settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 3 { return Ok(false) }
         // check if randomizer version is available on web
         if !KNOWN_GOOD_WEB_VERSIONS.contains(&RANDO_VERSION) {
@@ -336,7 +339,7 @@ impl MwSeedQueue {
         Ok(true)
     }
 
-    async fn roll_seed_locally(&self, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
+    async fn roll_seed_locally(&self, mut settings: serde_json::Map<String, serde_json::Value>) -> Result<(String, PathBuf), RollError> {
         settings.insert(format!("create_patch_file"), json!(true));
         settings.insert(format!("create_compressed_rom"), json!(false));
         for _ in 0..3 {
@@ -358,7 +361,7 @@ impl MwSeedQueue {
         Err(RollError::Retries)
     }
 
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, settings: serde_json::Map<String, Json>) -> Result<(u64, [HashIcon; 5]), RollError> {
+    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, settings: serde_json::Map<String, serde_json::Value>) -> Result<(u64, [HashIcon; 5]), RollError> {
         #[serde_as]
         #[derive(Deserialize)]
         struct CreateSeedResponse {
@@ -466,6 +469,8 @@ enum RaceState {
 struct Handler {
     global_state: Arc<GlobalState>,
     official_race_start: Option<DateTime<Utc>>,
+    high_seed_name: String,
+    low_seed_name: String,
     fpa_enabled: bool,
     race_state: Arc<RwLock<RaceState>>,
 }
@@ -501,13 +506,13 @@ impl Handler {
         let state = self.race_state.clone().write_owned().await;
         if let RaceState::Draft(ref draft) = *state {
             match draft.next_step() {
-                mw::DraftStep::GoFirst => ctx.send_message("Team A, you have the higher seed. Choose whether you want to go !first or !second").await?,
-                mw::DraftStep::Ban { prev_bans, team } => ctx.send_message(&format!("{team}, lock a setting to its default using “!ban <setting>”, or use “!skip” if you don't want to ban anything.{}", if prev_bans == 0 { " Use “!settings” for a list of available settings." } else { "" })).await?,
+                mw::DraftStep::GoFirst => ctx.send_message(&format!("{}, you have the higher seed. Choose whether you want to go !first or !second", self.high_seed_name)).await?,
+                mw::DraftStep::Ban { prev_bans, team } => ctx.send_message(&format!("{}, lock a setting to its default using “!ban <setting>”, or use “!skip” if you don't want to ban anything.{}", team.choose(&self.high_seed_name, &self.low_seed_name), if prev_bans == 0 { " Use “!settings” for a list of available settings." } else { "" })).await?,
                 mw::DraftStep::Pick { prev_picks, team } => ctx.send_message(&match prev_picks {
-                    0 => format!("{team}, pick a setting using “!draft <setting> <value>”"),
-                    1 => format!("{team}, pick two settings."),
+                    0 => format!("{}, pick a setting using “!draft <setting> <value>”", team.choose(&self.high_seed_name, &self.low_seed_name)),
+                    1 => format!("{}, pick two settings.", team.choose(&self.high_seed_name, &self.low_seed_name)),
                     2 => format!("And your second pick?"),
-                    3 => format!("{team}, pick the final setting. You can also use “!skip” if you want to leave the settings as they are."),
+                    3 => format!("{}, pick the final setting. You can also use “!skip” if you want to leave the settings as they are.", team.choose(&self.high_seed_name, &self.low_seed_name)),
                     _ => unreachable!(),
                 }).await?,
                 mw::DraftStep::Done(settings) => self.roll_seed(ctx, state, settings).await,
@@ -565,7 +570,7 @@ impl RaceHandler<GlobalState> for Handler {
         let data = ctx.data().await;
         let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
         let mut transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
-        let (official_race_start, race_state) = if let Some(race) = Race::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, format!("https://{}{}", global_state.host, ctx.data().await.url).parse()?).await.map_err(|e| Error::Custom(Box::new(e)))? {
+        let (official_race_start, race_state, high_seed_name, low_seed_name) = if let Some(race) = Race::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, format!("https://{}{}", global_state.host, ctx.data().await.url).parse()?).await.map_err(|e| Error::Custom(Box::new(e)))? {
             for team in race.active_teams() {
                 let mut members = sqlx::query_scalar!(r#"SELECT racetime_id AS "racetime_id!" FROM users, team_members WHERE id = member AND team = $1 AND racetime_id IS NOT NULL"#, i64::from(team.id)).fetch(&mut transaction);
                 while let Some(member) = members.try_next().await.map_err(|e| Error::Custom(Box::new(e)))? {
@@ -578,23 +583,40 @@ impl RaceHandler<GlobalState> for Handler {
             }
             ctx.send_message(&format!("Welcome to this {} {} race! Learn more about the tournament at https://midos.house/event/mw/3", race.phase, race.round)).await?; //TODO don't hardcode event name/URL
             ctx.send_message("Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat.").await?; //TODO different message for monitorless FPA?
-            if let Some(Draft { ref state, .. }) = race.draft {
+            let (high_seed_name, low_seed_name) = if let Some(Draft { ref state, high_seed }) = race.draft {
                 if let mw::DraftStep::Done(settings) = state.next_step() {
                     ctx.send_message(&format!("Your seed with {settings} will be posted in 15 minutes.")).await?;
                 }
-            }
-            (Some(race.start), RaceState::Draft(race.draft.map(|draft| draft.state).unwrap_or_default())) //TODO restrict draft picks, use proper team names
+                if race.team1.id == high_seed {
+                    (race.team1.name.clone().unwrap_or_else(|| format!("Team A")), race.team2.name.clone().unwrap_or_else(|| format!("Team B")))
+                } else {
+                    (race.team2.name.clone().unwrap_or_else(|| format!("Team A")), race.team1.name.clone().unwrap_or_else(|| format!("Team B")))
+                }
+            } else {
+                (format!("Team A"), format!("Team B"))
+            };
+            (
+                Some(race.start),
+                RaceState::Draft(race.draft.map(|draft| draft.state).unwrap_or_default()), //TODO restrict draft picks
+                high_seed_name,
+                low_seed_name,
+            )
         } else {
             ctx.send_message("Welcome! This is a practice room for the 3rd Multiworld Tournament. Learn more about the tournament at https://midos.house/event/mw/3").await?; //TODO don't hardcode event name/URL
             ctx.send_message("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials 2 wincon scrubs). For more info about these options, use “!presets”").await?; //TODO different presets depending on event
-            (None, RaceState::default())
+            (
+                None,
+                RaceState::default(),
+                format!("Team A"),
+                format!("Team B"),
+            )
         };
         transaction.commit().await.map_err(|e| Error::Custom(Box::new(e)))?;
         drop(new_room_lock);
         let this = Self {
             race_state: Arc::new(RwLock::new(race_state)),
             fpa_enabled: official_race_start.is_some(),
-            global_state, official_race_start,
+            global_state, official_race_start, high_seed_name, low_seed_name,
         };
         if official_race_start.is_some() {
             this.advance_draft(ctx).await?;
@@ -894,7 +916,8 @@ async fn create_rooms(global_state: Arc<GlobalState>, discord_ctx: RwFuture<Disc
             () = &mut shutdown => break,
             _ = sleep(Duration::from_secs(60)) => {
                 let mut transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
-                for row in sqlx::query!(r#"SELECT series AS "series: Series", event, startgg_set FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut transaction).await.map_err(|e| Error::Custom(Box::new(e)))? {
+                for row in sqlx::query!(r#"SELECT series AS "series: Series", event, startgg_set, draft_state AS "draft_state: Json<Draft>", start AS "start!", end_time FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut transaction).await.map_err(|e| Error::Custom(Box::new(e)))? {
+                    let race = Race::new(&mut transaction, &global_state.http_client, &global_state.startgg_token, row.startgg_set, row.draft_state.clone().map(|Json(draft)| draft), row.start, row.end_time, None, RaceKind::Normal).await.map_err(|e| Error::Custom(Box::new(e)))?;
                     let (access_token, _) = racetime::authorize_with_host(global_state.host, &racetime_config.client_id, &racetime_config.client_secret, &global_state.http_client).await?;
                     let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
                     let race_slug = racetime::StartRace {
@@ -903,7 +926,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, discord_ctx: RwFuture<Disc
                         team_race: true,
                         invitational: true,
                         unlisted: false,
-                        info_user: String::default(), //TODO match info (round, teams)
+                        info_user: format!("{} {}: {} vs {}", race.phase, race.round, race.team1, race.team2),
                         info_bot: String::default(),
                         require_even_teams: true,
                         start_delay: 15,
@@ -919,7 +942,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, discord_ctx: RwFuture<Disc
                         chat_message_delay: 0,
                     }.start_with_host(global_state.host, &access_token, &global_state.http_client, CATEGORY).await?;
                     let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", global_state.host))?;
-                    sqlx::query!("UPDATE races SET room = $1 WHERE startgg_set = $2", room_url.to_string(), row.startgg_set).execute(&mut transaction).await.map_err(|e| Error::Custom(Box::new(e)))?;
+                    sqlx::query!("UPDATE races SET room = $1 WHERE startgg_set = $2", room_url.to_string(), race.startgg_set).execute(&mut transaction).await.map_err(|e| Error::Custom(Box::new(e)))?;
                     transaction.commit().await.map_err(|e| Error::Custom(Box::new(e)))?;
                     drop(new_room_lock);
                     transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;

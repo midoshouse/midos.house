@@ -84,7 +84,7 @@ impl TypeMapKey for CommandIds {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct Draft { //TODO move to cal.rs?
-    high_seed: Id,
+    pub(crate) high_seed: Id,
     pub(crate) state: mw::S3Draft,
 }
 

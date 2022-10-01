@@ -68,7 +68,7 @@ pub(crate) struct Race {
 }
 
 impl Race {
-    async fn new(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, draft: Option<Draft>, start: DateTime<Utc>, end: Option<DateTime<Utc>>, room: Option<Url>, kind: RaceKind) -> Result<Self, Error> {
+    pub(crate) async fn new(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, draft: Option<Draft>, start: DateTime<Utc>, end: Option<DateTime<Utc>>, room: Option<Url>, kind: RaceKind) -> Result<Self, Error> {
         let end = if let Some(end) = end {
             Some(end)
         } else if let Some(ref room) = room {
