@@ -82,10 +82,10 @@ impl TypeMapKey for CommandIds {
     type Value = CommandIds;
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct Draft {
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct Draft { //TODO move to cal.rs?
     high_seed: Id,
-    state: mw::S3Draft,
+    pub(crate) state: mw::S3Draft,
 }
 
 impl Draft {

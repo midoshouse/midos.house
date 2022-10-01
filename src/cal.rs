@@ -1,5 +1,8 @@
 use {
-    std::iter,
+    std::{
+        cmp::Ordering,
+        iter,
+    },
     chrono::{
         Duration,
         prelude::*,
@@ -26,11 +29,13 @@ use {
         PgPool,
         Postgres,
         Transaction,
+        types::Json,
     },
     url::Url,
     crate::{
         Environment,
         config::Config,
+        discord_bot::Draft,
         event::{
             self,
             Series,
@@ -48,7 +53,6 @@ pub(crate) enum RaceKind {
     Async2,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Race {
     pub(crate) start: DateTime<Utc>,
     pub(crate) end: Option<DateTime<Utc>>,
@@ -60,10 +64,11 @@ pub(crate) struct Race {
     pub(crate) phase: String,
     pub(crate) round: String,
     pub(crate) kind: RaceKind,
+    pub(crate) draft: Option<Draft>,
 }
 
 impl Race {
-    async fn new(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, start: DateTime<Utc>, end: Option<DateTime<Utc>>, room: Option<Url>, kind: RaceKind) -> Result<Self, Error> {
+    async fn new(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, draft: Option<Draft>, start: DateTime<Utc>, end: Option<DateTime<Utc>>, room: Option<Url>, kind: RaceKind) -> Result<Self, Error> {
         let end = if let Some(end) = end {
             Some(end)
         } else if let Some(ref room) = room {
@@ -96,7 +101,7 @@ impl Race {
                 Ok(Self {
                     team1: Team::from_startgg(transaction, team1).await?.ok_or(Error::UnknownTeam)?,
                     team2: Team::from_startgg(transaction, team2).await?.ok_or(Error::UnknownTeam)?,
-                    start, end, startgg_event, startgg_set, room, phase, round, kind,
+                    draft, start, end, startgg_event, startgg_set, room, phase, round, kind,
                 })
             } else {
                 Err(Error::Teams)
@@ -108,15 +113,15 @@ impl Race {
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, series: Series, event: &str) -> Result<Vec<Self>, Error> {
         let mut races = Vec::default();
-        for row in sqlx::query!(r#"SELECT startgg_set, start, async_start1, async_start2, end_time, async_end1, async_end2, room, async_room1, async_room2 FROM races WHERE series = $1 AND event = $2 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, series as _, event).fetch_all(&mut *transaction).await? {
+        for row in sqlx::query!(r#"SELECT startgg_set, draft_state AS "draft_state: Json<Draft>", start, async_start1, async_start2, end_time, async_end1, async_end2, room, async_room1, async_room2 FROM races WHERE series = $1 AND event = $2 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, series as _, event).fetch_all(&mut *transaction).await? {
             if let Some(start) = row.start {
-                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), start, row.end_time, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Normal).await?);
+                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.draft_state.clone().map(|Json(draft)| draft), start, row.end_time, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Normal).await?);
             }
             if let Some(start) = row.async_start1 {
-                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), start, row.async_end1, row.async_room1.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
+                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.draft_state.clone().map(|Json(draft)| draft), start, row.async_end1, row.async_room1.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
             }
             if let Some(start) = row.async_start2 {
-                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), start, row.async_end2, row.async_room2.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
+                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.draft_state.clone().map(|Json(draft)| draft), start, row.async_end2, row.async_room2.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
             }
         }
         races.sort_unstable();
@@ -124,14 +129,14 @@ impl Race {
     }
 
     pub(crate) async fn from_room(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, room: Url) -> Result<Option<Self>, Error> {
-        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, start AS "start!", end_time FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
-            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.start, row.end_time, Some(room), RaceKind::Normal).await?))
+        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, draft_state AS "draft_state: Json<Draft>", start AS "start!", end_time FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set, row.draft_state.map(|Json(draft)| draft), row.start, row.end_time, Some(room), RaceKind::Normal).await?))
         }
-        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, async_start1 AS "async_start1!", async_end1 FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
-            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.async_start1, row.async_end1, Some(room), RaceKind::Async1).await?))
+        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, draft_state AS "draft_state: Json<Draft>", async_start1 AS "async_start1!", async_end1 FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set, row.draft_state.map(|Json(draft)| draft), row.async_start1, row.async_end1, Some(room), RaceKind::Async1).await?))
         }
-        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, async_start2 AS "async_start2!", async_end2 FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
-            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.async_start2, row.async_end2, Some(room), RaceKind::Async2).await?))
+        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, draft_state AS "draft_state: Json<Draft>", async_start2 AS "async_start2!", async_end2 FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set, row.draft_state.map(|Json(draft)| draft), row.async_start2, row.async_end2, Some(room), RaceKind::Async2).await?))
         }
         Ok(None)
     }
@@ -146,6 +151,30 @@ impl Race {
             RaceKind::Async1 => Box::new(iter::once(&self.team1)),
             RaceKind::Async2 => Box::new(iter::once(&self.team2)),
         }
+    }
+}
+
+impl PartialEq for Race {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Race {}
+
+impl PartialOrd for Race {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Race {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.start.cmp(&other.start)
+            .then_with(|| self.end.cmp(&other.end))
+            .then_with(|| self.startgg_event.cmp(&other.startgg_event))
+            .then_with(|| self.startgg_set.cmp(&other.startgg_set))
+            .then_with(|| self.kind.cmp(&other.kind))
     }
 }
 

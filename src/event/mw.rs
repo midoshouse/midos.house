@@ -190,7 +190,7 @@ pub(crate) enum S3Setting {
 derive_fromstr_from_deserialize!(S3Setting);
 derive_display_from_serialize!(S3Setting);
 
-#[derive(Debug, Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Clone, Copy, Deserialize, Serialize)]
 pub(crate) struct S3Draft {
     pub(crate) went_first: Option<bool>,
     pub(crate) skipped_bans: u8,
