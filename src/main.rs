@@ -23,6 +23,7 @@ mod notification;
 mod racetime_bot;
 mod seed;
 mod startgg;
+mod team;
 mod user;
 mod util;
 

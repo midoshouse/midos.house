@@ -56,20 +56,25 @@ use {
     },
     url::Url,
     crate::{
-        cal::Team,
         http::PageError,
+        team::Team,
         user::User,
     },
 };
 
 #[async_trait]
 pub(crate) trait MessageBuilderExt {
+    fn mention_command(&mut self, command_id: CommandId, name: &str) -> &mut Self;
     async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, team: &Team) -> sqlx::Result<&mut Self>;
     fn mention_user(&mut self, user: &User) -> &mut Self;
 }
 
 #[async_trait]
 impl MessageBuilderExt for MessageBuilder {
+    fn mention_command(&mut self, command_id: CommandId, name: &str) -> &mut Self {
+        self.push('<').push(name).push(':').push(command_id).push('>')
+    }
+
     async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, team: &Team) -> sqlx::Result<&mut Self> {
         let team_role = if let Some(ref racetime_slug) = team.racetime_slug {
             sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(guild), racetime_slug).fetch_optional(transaction).await?

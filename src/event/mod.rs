@@ -635,7 +635,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                     @for (team_id, team_name, racetime_slug, members, qualified) in signups {
                         tr {
                             td {
-                                //TODO use cal::Team type
+                                //TODO use Team type
                                 @if let Some(racetime_slug) = racetime_slug {
                                     a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
                                         @if let Some(team_name) = team_name {
@@ -845,7 +845,7 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
                 : header;
                 p {
                     : "You are signed up as part of ";
-                    //TODO use cal::Team type
+                    //TODO use Team type
                     @if let Some(racetime_slug) = row.racetime_slug {
                         a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
                             @if let Some(name) = row.name {

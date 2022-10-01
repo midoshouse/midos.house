@@ -59,7 +59,10 @@ use {
         Value as Json,
         json,
     },
-    serde_plain::derive_fromstr_from_deserialize,
+    serde_plain::{
+        derive_display_from_serialize,
+        derive_fromstr_from_deserialize,
+    },
     serenity::{
         client::Context as DiscordCtx,
         model::prelude::*,
@@ -108,14 +111,14 @@ use {
 
 const SERIES: Series = Series::Multiworld;
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Wincon { #[default] Meds, Scrubs, Th }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Dungeons { #[default] Tournament, Skulls, Keyrings }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Er { #[default] Off, Dungeon }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Trials { #[default] Zero, Two }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Shops { #[default] Four, Off }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Scrubs { #[default] Affordable, Off }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Fountain { #[default] Closed, Open }
-#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Spawn { #[default] Tot, Random }
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Wincon { #[default] Meds, Scrubs, Th }
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Dungeons { #[default] Tournament, Skulls, Keyrings }
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Er { #[default] Off, Dungeon }
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Trials { #[default] Zero, Two }
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Shops { #[default] Four, Off }
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Scrubs { #[default] Affordable, Off }
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Fountain { #[default] Closed, Open }
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Spawn { #[default] Tot, Random }
 
 impl Wincon { pub(crate) fn arg(&self) -> &'static str { match self { Self::Meds => "meds", Self::Scrubs => "scrubs", Self::Th => "th" } } }
 impl Dungeons { pub(crate) fn arg(&self) -> &'static str { match self { Self::Tournament => "tournament", Self::Skulls => "skulls", Self::Keyrings => "keyrings" } } }
@@ -140,6 +143,15 @@ pub(crate) enum Team {
     LowSeed,
 }
 
+impl Team {
+    pub(crate) fn choose<T>(&self, high_seed: T, low_seed: T) -> T {
+        match self {
+            Self::HighSeed => high_seed,
+            Self::LowSeed => low_seed,
+        }
+    }
+}
+
 impl fmt::Display for Team {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -162,7 +174,7 @@ pub(crate) enum DraftStep {
     Done(S3Settings),
 }
 
-#[derive(PartialEq, Eq, Deserialize)]
+#[derive(PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum S3Setting {
     Wincon,
@@ -176,8 +188,9 @@ pub(crate) enum S3Setting {
 }
 
 derive_fromstr_from_deserialize!(S3Setting);
+derive_display_from_serialize!(S3Setting);
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub(crate) struct S3Draft {
     pub(crate) went_first: Option<bool>,
     pub(crate) skipped_bans: u8,
@@ -236,6 +249,14 @@ impl S3Draft {
             }
         } else {
             DraftStep::GoFirst
+        }
+    }
+
+    pub(crate) fn active_team(&self) -> Option<Team> {
+        match self.next_step() {
+            DraftStep::GoFirst => Some(Team::HighSeed),
+            DraftStep::Ban { team, .. } | DraftStep::Pick { team, .. } => Some(team),
+            DraftStep::Done(_) => None,
         }
     }
 
@@ -507,11 +528,11 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                         : ".";
                     }
                     h2 : "Tournament Format";
-                    p : "All teams are required to play a single asynchronous seed with the default race settings to participate. The results of this seed will be used to seed the first round of Swiss play.";
+                    p : "All teams are required to play a single asynchronous seed with the default race settings to participate. The results of this seed will be used to seed the settings draft.";
                     p {
-                        : "The tournament itself will begin with a series of ";
+                        : "The tournament itself will begin with a randomly seeded series of ";
                         a(href = "https://en.wikipedia.org/wiki/Swiss-system_tournament") : "Swiss";
-                        : " rounds. These will be played as best of 1. The exact number of rounds depends on the number of tournament entrants, with each round lasting two weeks. In the event that teams do not schedule in time, tournament organizers will use their discretion to determine the correct outcome based on the failures to schedule. In unusual circumstances that affect the entire tournament base (such as a GDQ), a round can be extended at the discretion of tournament organizers.";
+                        : " rounds. These will be played as best of 1. There will be 6 rounds, with each round lasting two weeks. In the event that teams do not schedule in time, tournament organizers will use their discretion to determine the correct outcome based on the failures to schedule. In unusual circumstances that affect the entire tournament base (such as a GDQ), a round can be extended at the discretion of tournament organizers.";
                     }
                     p : "After all Swiss rounds are done, plus an additional tiebreaker async if needed, the top 8 teams will advance to a single elimination bracket to crown the champions. The bracket stage of the tournament will be played as best of 3.";
                     h2 : "Match Format";
@@ -552,7 +573,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                         li : "Maps and Compasses Give Information: On";
                     }
                     p : "You can use the “Multiworld Tournament Season 3” preset to load these settings.";
-                    p : "However, in every race several of the settings may be modified by the teams. The higher seed gets to pick who starts the procedure, then it will follow this pattern:";
+                    p : "However, in every race several of the settings may be modified by the teams. The team that placed higher in the qualifier async gets to pick who starts the procedure, then it will follow this pattern:";
                     ul {
                         li(class = "sheikah") : "Ban";
                         li(class = "gerudo") : "Ban";
