@@ -72,7 +72,7 @@ pub(crate) trait MessageBuilderExt {
 #[async_trait]
 impl MessageBuilderExt for MessageBuilder {
     fn mention_command(&mut self, command_id: CommandId, name: &str) -> &mut Self {
-        self.push('<').push(name).push(':').push(command_id).push('>')
+        self.push("</").push(name).push(':').push(command_id).push('>')
     }
 
     async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, team: &Team) -> sqlx::Result<&mut Self> {
