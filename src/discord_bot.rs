@@ -387,7 +387,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 .kind(serenity::model::application::command::CommandType::ChatInput)
                 .default_member_permissions(Permissions::ADMINISTRATOR)
                 .dm_permission(false)
-                .description("Posts this race's current status as a message visible by everyone, pinging the team whose turn it is in the settings.")
+                .description("Posts this race's status to the thread, pinging the team whose turn it is in the settings draft.")
             ).await?.id;
             let pronoun_roles = guild.create_application_command(ctx, |c| c
                 .name("pronoun-roles")
