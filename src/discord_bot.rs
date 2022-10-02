@@ -152,7 +152,7 @@ impl Draft {
                     .build(),
                 _ => unreachable!(),
             },
-            mw::DraftStep::Done(_) => format!("Settings draft completed."),
+            mw::DraftStep::Done(settings) => format!("Settings draft completed. You will be playing with {settings}."),
         })
     }
 }
