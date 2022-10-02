@@ -92,6 +92,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
             }
         },
         "6" => html! {
+            /*
             p : "The settings are mostly a repeat of the 3rd Pictionary spoiler log race (the first one we organized), with the difference that cows are shuffled and 40 and 50 skulls are turned off:";
             ul {
                 li : "S5 base";
@@ -111,6 +112,8 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                 : ": ";
                 code : "AJTWFCHYKAA8KLAH2UASAHCCYCHGLTDDAKJ8S8AAJAEAC2AJSDGBLADLED7JKQUXEANKCAAACGASSCS";
             }
+            */
+            p : "Settings to be announced.";
         },
         "rs1" => html! {
             p {
