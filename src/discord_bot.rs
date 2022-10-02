@@ -74,10 +74,12 @@ struct CommandIds {
     ban: CommandId,
     draft: CommandId,
     first: CommandId,
+    post_status: CommandId,
     pronoun_roles: CommandId,
     schedule: CommandId,
     second: CommandId,
     skip: CommandId,
+    status: CommandId,
     watch_roles: CommandId,
 }
 
@@ -150,7 +152,7 @@ impl Draft {
     }
 }
 
-async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: &ApplicationCommandInteraction) -> Result<Option<(Transaction<'a, Postgres>, String, Vec<Team>, Team)>, Box<dyn std::error::Error + Send + Sync>> {
+async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: &ApplicationCommandInteraction) -> Result<Option<(Transaction<'a, Postgres>, String, Vec<Team>, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
     let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
     Ok(if let Some(row) = sqlx::query!(r#"SELECT startgg_set, room IS NOT NULL OR async_room1 IS NOT NULL OR async_room2 IS NOT NULL AS "has_room!" FROM races WHERE scheduling_thread = $1"#, i64::from(interaction.channel_id)).fetch_optional(&mut transaction).await? {
         if row.has_room {
@@ -196,18 +198,7 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
             } else {
                 return Err(cal::Error::Teams.into())
             }
-            if let Some(team) = team {
-                Some((transaction, row.startgg_set, teams, team))
-            } else {
-                interaction.create_interaction_response(ctx, |r| r
-                    .interaction_response_data(|d| d
-                        .ephemeral(true)
-                        .content("Sorry, only participants in this race can use this command.")
-                    )
-                ).await?;
-                transaction.rollback().await?;
-                None
-            }
+            Some((transaction, row.startgg_set, teams, team))
         }
     } else {
         interaction.create_interaction_response(ctx, |r| r
@@ -391,6 +382,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 .dm_permission(false)
                 .description("Go first in the settings draft.")
             ).await?.id;
+            let post_status = guild.create_application_command(ctx, |c| c
+                .name("post-status")
+                .kind(serenity::model::application::command::CommandType::ChatInput)
+                .default_member_permissions(Permissions::ADMINISTRATOR)
+                .dm_permission(false)
+                .description("Posts this race's current status as a message visible by everyone, pinging the team whose turn it is in the settings.")
+            ).await?.id;
             let pronoun_roles = guild.create_application_command(ctx, |c| c
                 .name("pronoun-roles")
                 .kind(serenity::model::application::command::CommandType::ChatInput)
@@ -422,6 +420,12 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 .dm_permission(false)
                 .description("Skip your ban or the final pick of the settings draft.")
             ).await?.id;
+            let status = guild.create_application_command(ctx, |c| c
+                .name("status")
+                .kind(serenity::model::application::command::CommandType::ChatInput)
+                .dm_permission(false)
+                .description("Shows you this race's current scheduling and settings draft status.")
+            ).await?.id;
             let watch_roles = guild.create_application_command(ctx, |c| c
                 .name("watch-roles")
                 .kind(serenity::model::application::command::CommandType::ChatInput)
@@ -443,7 +447,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     .channel_types(&[ChannelType::Text, ChannelType::News])
                 )
             ).await?.id;
-            ctx.data.write().await.insert::<CommandIds>(CommandIds { assign, ban, draft, first, pronoun_roles, schedule, second, skip, watch_roles });
+            ctx.data.write().await.insert::<CommandIds>(CommandIds { assign, ban, draft, first, post_status, pronoun_roles, schedule, second, skip, status, watch_roles });
             Ok(())
         }))
         .on_interaction_create(|ctx, interaction| Box::pin(async move {
@@ -508,79 +512,89 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         }
                     } else if interaction.data.id == command_ids.ban {
                         if let Some((mut transaction, startgg_set, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
-                            if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
-                                if draft.state.went_first.is_none() {
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(true)
-                                            .content(MessageBuilder::default()
-                                                .push("Sorry, first pick hasn't been chosen yet, use ")
-                                                .mention_command(command_ids.first, "first")
-                                                .push(" or ")
-                                                .mention_command(command_ids.second, "second")
-                                                .push('.')
-                                            )
-                                        )
-                                    ).await?;
-                                    transaction.rollback().await?;
-                                } else if draft.state.pick_count() >= 2 {
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(true)
-                                            .content("Sorry, bans have already been chosen.")
-                                        )
-                                    ).await?;
-                                    transaction.rollback().await?;
-                                } else if draft.is_active_team(team.id) {
-                                    let setting = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
-                                        CommandDataOptionValue::String(setting) => setting.parse().expect("unknown setting in /ban"),
-                                        _ => panic!("unexpected slash command option type"),
-                                    };
-                                    if draft.state.available_settings().contains(&setting) {
-                                        match setting {
-                                            mw::S3Setting::Wincon => draft.state.wincon = Some(mw::Wincon::default()),
-                                            mw::S3Setting::Dungeons => draft.state.dungeons = Some(mw::Dungeons::default()),
-                                            mw::S3Setting::Er => draft.state.er = Some(mw::Er::default()),
-                                            mw::S3Setting::Trials => draft.state.trials = Some(mw::Trials::default()),
-                                            mw::S3Setting::Shops => draft.state.shops = Some(mw::Shops::default()),
-                                            mw::S3Setting::Scrubs => draft.state.scrubs = Some(mw::Scrubs::default()),
-                                            mw::S3Setting::Fountain => draft.state.fountain = Some(mw::Fountain::default()),
-                                            mw::S3Setting::Spawn => draft.state.spawn = Some(mw::Spawn::default()),
-                                        }
-                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
-                                        let guild_id = interaction.guild_id.expect("/ban called outside of a guild");
-                                        let response_content = MessageBuilder::default()
-                                            .mention_team(&mut transaction, guild_id, &team).await?
-                                            .push(" has locked in ") //TODO “have” with plural-form team names?
-                                            .push(match setting {
-                                                mw::S3Setting::Wincon => "default wincons",
-                                                mw::S3Setting::Dungeons => "tournament dungeons",
-                                                mw::S3Setting::Er => "no ER",
-                                                mw::S3Setting::Trials => "0 trials",
-                                                mw::S3Setting::Shops => "shops 4",
-                                                mw::S3Setting::Scrubs => "affordable scrubs",
-                                                mw::S3Setting::Fountain => "closed fountain",
-                                                mw::S3Setting::Spawn => "ToT spawns",
-                                            })
-                                            .push_line('.')
-                                            .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
-                                            .build();
-                                        interaction.create_interaction_response(ctx, |r| r
-                                            .interaction_response_data(|d| d
-                                                .ephemeral(false)
-                                                .content(response_content)
-                                            )
-                                        ).await?;
-                                        transaction.commit().await?;
-                                    } else {
+                            if let Some(team) = team {
+                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                    if draft.state.went_first.is_none() {
                                         interaction.create_interaction_response(ctx, |r| r
                                             .interaction_response_data(|d| d
                                                 .ephemeral(true)
                                                 .content(MessageBuilder::default()
-                                                    .push("Sorry, that setting is already locked in. Use ")
-                                                    .mention_command(command_ids.skip, "skip")
-                                                    .push(" if you don't want to ban anything.")
+                                                    .push("Sorry, first pick hasn't been chosen yet, use ")
+                                                    .mention_command(command_ids.first, "first")
+                                                    .push(" or ")
+                                                    .mention_command(command_ids.second, "second")
+                                                    .push('.')
                                                 )
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    } else if draft.state.pick_count() >= 2 {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, bans have already been chosen.")
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    } else if draft.is_active_team(team.id) {
+                                        let setting = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
+                                            CommandDataOptionValue::String(setting) => setting.parse().expect("unknown setting in /ban"),
+                                            _ => panic!("unexpected slash command option type"),
+                                        };
+                                        if draft.state.available_settings().contains(&setting) {
+                                            match setting {
+                                                mw::S3Setting::Wincon => draft.state.wincon = Some(mw::Wincon::default()),
+                                                mw::S3Setting::Dungeons => draft.state.dungeons = Some(mw::Dungeons::default()),
+                                                mw::S3Setting::Er => draft.state.er = Some(mw::Er::default()),
+                                                mw::S3Setting::Trials => draft.state.trials = Some(mw::Trials::default()),
+                                                mw::S3Setting::Shops => draft.state.shops = Some(mw::Shops::default()),
+                                                mw::S3Setting::Scrubs => draft.state.scrubs = Some(mw::Scrubs::default()),
+                                                mw::S3Setting::Fountain => draft.state.fountain = Some(mw::Fountain::default()),
+                                                mw::S3Setting::Spawn => draft.state.spawn = Some(mw::Spawn::default()),
+                                            }
+                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
+                                            let guild_id = interaction.guild_id.expect("/ban called outside of a guild");
+                                            let response_content = MessageBuilder::default()
+                                                .mention_team(&mut transaction, guild_id, &team).await?
+                                                .push(" has locked in ") //TODO “have” with plural-form team names?
+                                                .push(match setting {
+                                                    mw::S3Setting::Wincon => "default wincons",
+                                                    mw::S3Setting::Dungeons => "tournament dungeons",
+                                                    mw::S3Setting::Er => "no ER",
+                                                    mw::S3Setting::Trials => "0 trials",
+                                                    mw::S3Setting::Shops => "shops 4",
+                                                    mw::S3Setting::Scrubs => "affordable scrubs",
+                                                    mw::S3Setting::Fountain => "closed fountain",
+                                                    mw::S3Setting::Spawn => "ToT spawns",
+                                                })
+                                                .push_line('.')
+                                                .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
+                                                .build();
+                                            transaction.commit().await?;
+                                            interaction.create_interaction_response(ctx, |r| r
+                                                .interaction_response_data(|d| d
+                                                    .ephemeral(false)
+                                                    .content(response_content)
+                                                )
+                                            ).await?;
+                                        } else {
+                                            interaction.create_interaction_response(ctx, |r| r
+                                                .interaction_response_data(|d| d
+                                                    .ephemeral(true)
+                                                    .content(MessageBuilder::default()
+                                                        .push("Sorry, that setting is already locked in. Use ")
+                                                        .mention_command(command_ids.skip, "skip")
+                                                        .push(" if you don't want to ban anything.")
+                                                    )
+                                                )
+                                            ).await?;
+                                            transaction.rollback().await?;
+                                        }
+                                    } else {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, it's not your team's turn in the settings draft.")
                                             )
                                         ).await?;
                                         transaction.rollback().await?;
@@ -589,7 +603,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     interaction.create_interaction_response(ctx, |r| r
                                         .interaction_response_data(|d| d
                                             .ephemeral(true)
-                                            .content("Sorry, it's not your team's turn in the settings draft.")
+                                            .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
                                         )
                                     ).await?;
                                     transaction.rollback().await?;
@@ -598,7 +612,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 interaction.create_interaction_response(ctx, |r| r
                                     .interaction_response_data(|d| d
                                         .ephemeral(true)
-                                        .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
+                                        .content("Sorry, only participants in this race can use this command.")
                                     )
                                 ).await?;
                                 transaction.rollback().await?;
@@ -606,76 +620,87 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         }
                     } else if interaction.data.id == command_ids.draft {
                         if let Some((mut transaction, startgg_set, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
-                            if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
-                                if draft.state.went_first.is_none() {
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(true)
-                                            .content(MessageBuilder::default()
-                                                .push("Sorry, first pick hasn't been chosen yet, use ")
-                                                .mention_command(command_ids.first, "first")
-                                                .push(" or ")
-                                                .mention_command(command_ids.second, "second")
-                                            )
-                                        )
-                                    ).await?;
-                                    transaction.rollback().await?;
-                                } else if draft.state.pick_count() < 2 {
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(true)
-                                            .content(MessageBuilder::default()
-                                                .push("Sorry, bans haven't been chosen yet, use ")
-                                                .mention_command(command_ids.ban, "ban")
-                                            )
-                                        )
-                                    ).await?;
-                                    transaction.rollback().await?;
-                                } else if draft.is_active_team(team.id) {
-                                    let setting = interaction.data.options[0].name.parse().expect("unknown setting in /draft");
-                                    let value = match interaction.data.options[0].options[0].resolved.as_ref().expect("missing slash command option") {
-                                        CommandDataOptionValue::String(value) => value,
-                                        _ => panic!("unexpected slash command option type"),
-                                    };
-                                    if draft.state.available_settings().contains(&setting) {
-                                        let value = match setting {
-                                            mw::S3Setting::Wincon => { let value = all::<mw::Wincon>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.wincon = Some(value); value.to_string() }
-                                            mw::S3Setting::Dungeons => { let value = all::<mw::Dungeons>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.dungeons = Some(value); value.to_string() }
-                                            mw::S3Setting::Er => { let value = all::<mw::Er>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.er = Some(value); value.to_string() }
-                                            mw::S3Setting::Trials => { let value = all::<mw::Trials>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.trials = Some(value); value.to_string() }
-                                            mw::S3Setting::Shops => { let value = all::<mw::Shops>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.shops = Some(value); value.to_string() }
-                                            mw::S3Setting::Scrubs => { let value = all::<mw::Scrubs>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.scrubs = Some(value); value.to_string() }
-                                            mw::S3Setting::Fountain => { let value = all::<mw::Fountain>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.fountain = Some(value); value.to_string() }
-                                            mw::S3Setting::Spawn => { let value = all::<mw::Spawn>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.spawn = Some(value); value.to_string() }
-                                        };
-                                        let guild_id = interaction.guild_id.expect("/draft called outside of a guild");
-                                        let response_content = MessageBuilder::default()
-                                            .mention_team(&mut transaction, guild_id, &team).await?
-                                            .push(" has picked ") //TODO “have” with plural-form team names?
-                                            .push(value)
-                                            .push_line('.')
-                                            .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
-                                            .build();
-                                        interaction.create_interaction_response(ctx, |r| r
-                                            .interaction_response_data(|d| d
-                                                .ephemeral(false)
-                                                .content(response_content)
-                                            )
-                                        ).await?;
-                                        transaction.commit().await?;
-                                    } else {
-                                        let mut content = MessageBuilder::default();
-                                        content.push("Sorry, that setting is already locked in. Use one of the following: ");
-                                        for (i, setting) in draft.state.available_settings().into_iter().enumerate() {
-                                            if i > 0 {
-                                                content.push(" or ");
-                                            }
-                                            content.mention_command(command_ids.draft, &format!("draft {setting}"));
-                                        }
+                            if let Some(team) = team {
+                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                    if draft.state.went_first.is_none() {
                                         interaction.create_interaction_response(ctx, |r| r
                                             .interaction_response_data(|d| d
                                                 .ephemeral(true)
-                                                .content(content)
+                                                .content(MessageBuilder::default()
+                                                    .push("Sorry, first pick hasn't been chosen yet, use ")
+                                                    .mention_command(command_ids.first, "first")
+                                                    .push(" or ")
+                                                    .mention_command(command_ids.second, "second")
+                                                )
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    } else if draft.state.pick_count() < 2 {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content(MessageBuilder::default()
+                                                    .push("Sorry, bans haven't been chosen yet, use ")
+                                                    .mention_command(command_ids.ban, "ban")
+                                                )
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    } else if draft.is_active_team(team.id) {
+                                        let setting = interaction.data.options[0].name.parse().expect("unknown setting in /draft");
+                                        let value = match interaction.data.options[0].options[0].resolved.as_ref().expect("missing slash command option") {
+                                            CommandDataOptionValue::String(value) => value,
+                                            _ => panic!("unexpected slash command option type"),
+                                        };
+                                        if draft.state.available_settings().contains(&setting) {
+                                            let value = match setting {
+                                                mw::S3Setting::Wincon => { let value = all::<mw::Wincon>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.wincon = Some(value); value.to_string() }
+                                                mw::S3Setting::Dungeons => { let value = all::<mw::Dungeons>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.dungeons = Some(value); value.to_string() }
+                                                mw::S3Setting::Er => { let value = all::<mw::Er>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.er = Some(value); value.to_string() }
+                                                mw::S3Setting::Trials => { let value = all::<mw::Trials>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.trials = Some(value); value.to_string() }
+                                                mw::S3Setting::Shops => { let value = all::<mw::Shops>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.shops = Some(value); value.to_string() }
+                                                mw::S3Setting::Scrubs => { let value = all::<mw::Scrubs>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.scrubs = Some(value); value.to_string() }
+                                                mw::S3Setting::Fountain => { let value = all::<mw::Fountain>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.fountain = Some(value); value.to_string() }
+                                                mw::S3Setting::Spawn => { let value = all::<mw::Spawn>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.spawn = Some(value); value.to_string() }
+                                            };
+                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
+                                            let guild_id = interaction.guild_id.expect("/draft called outside of a guild");
+                                            let response_content = MessageBuilder::default()
+                                                .mention_team(&mut transaction, guild_id, &team).await?
+                                                .push(" has picked ") //TODO “have” with plural-form team names?
+                                                .push(value)
+                                                .push_line('.')
+                                                .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
+                                                .build();
+                                            transaction.commit().await?;
+                                            interaction.create_interaction_response(ctx, |r| r
+                                                .interaction_response_data(|d| d
+                                                    .ephemeral(false)
+                                                    .content(response_content)
+                                                )
+                                            ).await?;
+                                        } else {
+                                            let mut content = MessageBuilder::default();
+                                            content.push("Sorry, that setting is already locked in. Use one of the following: ");
+                                            for (i, setting) in draft.state.available_settings().into_iter().enumerate() {
+                                                if i > 0 {
+                                                    content.push(" or ");
+                                                }
+                                                content.mention_command(command_ids.draft, &format!("draft {setting}"));
+                                            }
+                                            interaction.create_interaction_response(ctx, |r| r
+                                                .interaction_response_data(|d| d
+                                                    .ephemeral(true)
+                                                    .content(content)
+                                                )
+                                            ).await?;
+                                            transaction.rollback().await?;
+                                        }
+                                    } else {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, it's not your team's turn in the settings draft.")
                                             )
                                         ).await?;
                                         transaction.rollback().await?;
@@ -684,49 +709,92 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     interaction.create_interaction_response(ctx, |r| r
                                         .interaction_response_data(|d| d
                                             .ephemeral(true)
-                                            .content("Sorry, it's not your team's turn in the settings draft.")
+                                            .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
                                         )
                                     ).await?;
                                     transaction.rollback().await?;
                                 }
+                            } else {
+                                interaction.create_interaction_response(ctx, |r| r
+                                    .interaction_response_data(|d| d
+                                        .ephemeral(true)
+                                        .content("Sorry, only participants in this race can use this command.")
+                                    )
+                                ).await?;
+                                transaction.rollback().await?;
                             }
                         }
                     } else if interaction.data.id == command_ids.first {
                         if let Some((mut transaction, startgg_set, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
-                            if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
-                                if draft.state.went_first.is_some() {
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(true)
-                                            .content("Sorry, first pick has already been chosen.")
-                                        )
-                                    ).await?;
-                                    transaction.rollback().await?;
-                                } else if draft.is_active_team(team.id) {
-                                    draft.state.went_first = Some(true);
-                                    sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
-                                    let guild_id = interaction.guild_id.expect("/first called outside of a guild");
-                                    let response_content = MessageBuilder::default()
-                                        .mention_team(&mut transaction, guild_id, &team).await?
-                                        .push_line(" has chosen to go first in the settings draft.") //TODO “have” with plural-form team names?
-                                        .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
-                                        .build();
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(false)
-                                            .content(response_content)
-                                        )
-                                    ).await?;
-                                    transaction.commit().await?;
+                            if let Some(team) = team {
+                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                    if draft.state.went_first.is_some() {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, first pick has already been chosen.")
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    } else if draft.is_active_team(team.id) {
+                                        draft.state.went_first = Some(true);
+                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
+                                        let guild_id = interaction.guild_id.expect("/first called outside of a guild");
+                                        let response_content = MessageBuilder::default()
+                                            .mention_team(&mut transaction, guild_id, &team).await?
+                                            .push_line(" has chosen to go first in the settings draft.") //TODO “have” with plural-form team names?
+                                            .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
+                                            .build();
+                                        transaction.commit().await?;
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(false)
+                                                .content(response_content)
+                                            )
+                                        ).await?;
+                                    } else {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, it's not your team's turn in the settings draft.")
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    }
                                 } else {
                                     interaction.create_interaction_response(ctx, |r| r
                                         .interaction_response_data(|d| d
                                             .ephemeral(true)
-                                            .content("Sorry, it's not your team's turn in the settings draft.")
+                                            .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
                                         )
                                     ).await?;
                                     transaction.rollback().await?;
                                 }
+                            } else {
+                                interaction.create_interaction_response(ctx, |r| r
+                                    .interaction_response_data(|d| d
+                                        .ephemeral(true)
+                                        .content("Sorry, only participants in this race can use this command.")
+                                    )
+                                ).await?;
+                                transaction.rollback().await?;
+                            }
+                        }
+                    } else if interaction.data.id == command_ids.post_status {
+                        if let Some((mut transaction, startgg_set, teams, _)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some(Json(draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                let guild_id = interaction.guild_id.expect("/post-status called outside of a guild");
+                                let response_content = MessageBuilder::default()
+                                    //TODO include scheduling status, both for regular races and for asyncs
+                                    .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
+                                    .build();
+                                interaction.create_interaction_response(ctx, |r| r
+                                    .interaction_response_data(|d| d
+                                        .ephemeral(false)
+                                        .content(response_content)
+                                    )
+                                ).await?;
+                                transaction.rollback().await?;
                             } else {
                                 interaction.create_interaction_response(ctx, |r| r
                                     .interaction_response_data(|d| d
@@ -790,35 +858,45 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             )
                         ).await?;
                     } else if interaction.data.id == command_ids.schedule {
-                        if let Some((mut transaction, startgg_set, _, _)) = check_scheduling_thread_permissions(ctx, interaction).await? {
-                            let start = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
-                                CommandDataOptionValue::String(start) => start,
-                                _ => panic!("unexpected slash command option type"),
-                            };
-                            if let Some(start) = parse_timestamp(start) {
-                                if start < Utc::now() + Duration::minutes(30) {
+                        if let Some((mut transaction, startgg_set, _, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if team.is_some() || interaction.member.as_ref().expect("/schedule called outside of a guild").permissions.expect("permissions should be included in interaction response").administrator() {
+                                let start = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
+                                    CommandDataOptionValue::String(start) => start,
+                                    _ => panic!("unexpected slash command option type"),
+                                };
+                                if let Some(start) = parse_timestamp(start) {
+                                    if start < Utc::now() + Duration::minutes(30) {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, races must be scheduled at least 30 minutes in advance.")
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    } else {
+                                        sqlx::query!("UPDATE races SET start = $1 WHERE startgg_set = $2", start, startgg_set).execute(&mut transaction).await?;
+                                        transaction.commit().await?;
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(false)
+                                                .content(format!("This race is now scheduled for <t:{}:F>.", start.timestamp()))
+                                            )
+                                        ).await?;
+                                    }
+                                } else {
                                     interaction.create_interaction_response(ctx, |r| r
                                         .interaction_response_data(|d| d
                                             .ephemeral(true)
-                                            .content("Sorry, races must be scheduled at least 30 minutes in advance.")
+                                            .content("Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one.")
                                         )
                                     ).await?;
                                     transaction.rollback().await?;
-                                } else {
-                                    sqlx::query!("UPDATE races SET start = $1 WHERE startgg_set = $2", start, startgg_set).execute(&mut transaction).await?;
-                                    transaction.commit().await?;
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(false)
-                                            .content(format!("This race is now scheduled for <t:{}:F>.", start.timestamp()))
-                                        )
-                                    ).await?;
                                 }
                             } else {
                                 interaction.create_interaction_response(ctx, |r| r
                                     .interaction_response_data(|d| d
                                         .ephemeral(true)
-                                        .content("Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one.")
+                                        .content("Sorry, only participants in this race and administrators can use this command.")
                                     )
                                 ).await?;
                                 transaction.rollback().await?;
@@ -826,36 +904,46 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         }
                     } else if interaction.data.id == command_ids.second {
                         if let Some((mut transaction, startgg_set, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
-                            if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
-                                if draft.state.went_first.is_some() {
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(true)
-                                            .content("Sorry, first pick has already been chosen.")
-                                        )
-                                    ).await?;
-                                    transaction.rollback().await?;
-                                } else if draft.is_active_team(team.id) {
-                                    draft.state.went_first = Some(false);
-                                    sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
-                                    let guild_id = interaction.guild_id.expect("/second called outside of a guild");
-                                    let response_content = MessageBuilder::default()
-                                        .mention_team(&mut transaction, guild_id, &team).await?
-                                        .push_line(" has chosen to go second in the settings draft.") //TODO “have” with plural-form team names?
-                                        .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
-                                        .build();
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(false)
-                                            .content(response_content)
-                                        )
-                                    ).await?;
-                                    transaction.commit().await?;
+                            if let Some(team) = team {
+                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                    if draft.state.went_first.is_some() {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, first pick has already been chosen.")
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    } else if draft.is_active_team(team.id) {
+                                        draft.state.went_first = Some(false);
+                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
+                                        let guild_id = interaction.guild_id.expect("/second called outside of a guild");
+                                        let response_content = MessageBuilder::default()
+                                            .mention_team(&mut transaction, guild_id, &team).await?
+                                            .push_line(" has chosen to go second in the settings draft.") //TODO “have” with plural-form team names?
+                                            .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
+                                            .build();
+                                        transaction.commit().await?;
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(false)
+                                                .content(response_content)
+                                            )
+                                        ).await?;
+                                    } else {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, it's not your team's turn in the settings draft.")
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    }
                                 } else {
                                     interaction.create_interaction_response(ctx, |r| r
                                         .interaction_response_data(|d| d
                                             .ephemeral(true)
-                                            .content("Sorry, it's not your team's turn in the settings draft.")
+                                            .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
                                         )
                                     ).await?;
                                     transaction.rollback().await?;
@@ -864,7 +952,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 interaction.create_interaction_response(ctx, |r| r
                                     .interaction_response_data(|d| d
                                         .ephemeral(true)
-                                        .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
+                                        .content("Sorry, only participants in this race can use this command.")
                                     )
                                 ).await?;
                                 transaction.rollback().await?;
@@ -872,60 +960,95 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         }
                     } else if interaction.data.id == command_ids.skip {
                         if let Some((mut transaction, startgg_set, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
-                            if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
-                                if draft.state.went_first.is_none() {
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(true)
-                                            .content(MessageBuilder::default()
-                                                .push("Sorry, first pick hasn't been chosen yet, use ")
-                                                .mention_command(command_ids.first, "first")
-                                                .push(" or ")
-                                                .mention_command(command_ids.second, "second")
+                            if let Some(team) = team {
+                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                    if draft.state.went_first.is_none() {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content(MessageBuilder::default()
+                                                    .push("Sorry, first pick hasn't been chosen yet, use ")
+                                                    .mention_command(command_ids.first, "first")
+                                                    .push(" or ")
+                                                    .mention_command(command_ids.second, "second")
+                                                )
                                             )
-                                        )
-                                    ).await?;
-                                    transaction.rollback().await?;
-                                } else if !matches!(draft.state.pick_count(), 0 | 1 | 5) {
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(true)
-                                            .content("Sorry, this part of the draft can't be skipped.")
-                                        )
-                                    ).await?;
-                                    transaction.rollback().await?;
-                                } else if draft.is_active_team(team.id) {
-                                    let skip_kind = match draft.state.pick_count() {
-                                        0 | 1 => "ban",
-                                        5 => "final pick",
-                                        _ => unreachable!(),
-                                    };
-                                    draft.state.skipped_bans += 1;
-                                    sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
-                                    let guild_id = interaction.guild_id.expect("/skip called outside of a guild");
-                                    let response_content = MessageBuilder::default()
-                                        .mention_team(&mut transaction, guild_id, &team).await?
-                                        .push(" has skipped their ") //TODO “have” with plural-form team names?
-                                        .push(skip_kind)
-                                        .push_line('.')
-                                        .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
-                                        .build();
-                                    interaction.create_interaction_response(ctx, |r| r
-                                        .interaction_response_data(|d| d
-                                            .ephemeral(false)
-                                            .content(response_content)
-                                        )
-                                    ).await?;
-                                    transaction.commit().await?;
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    } else if !matches!(draft.state.pick_count(), 0 | 1 | 5) {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, this part of the draft can't be skipped.")
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    } else if draft.is_active_team(team.id) {
+                                        let skip_kind = match draft.state.pick_count() {
+                                            0 | 1 => "ban",
+                                            5 => "final pick",
+                                            _ => unreachable!(),
+                                        };
+                                        draft.state.skipped_bans += 1;
+                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
+                                        let guild_id = interaction.guild_id.expect("/skip called outside of a guild");
+                                        let response_content = MessageBuilder::default()
+                                            .mention_team(&mut transaction, guild_id, &team).await?
+                                            .push(" has skipped their ") //TODO “have” with plural-form team names?
+                                            .push(skip_kind)
+                                            .push_line('.')
+                                            .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
+                                            .build();
+                                        transaction.commit().await?;
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(false)
+                                                .content(response_content)
+                                            )
+                                        ).await?;
+                                    } else {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, it's not your team's turn in the settings draft.")
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    }
                                 } else {
                                     interaction.create_interaction_response(ctx, |r| r
                                         .interaction_response_data(|d| d
                                             .ephemeral(true)
-                                            .content("Sorry, it's not your team's turn in the settings draft.")
+                                            .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
                                         )
                                     ).await?;
                                     transaction.rollback().await?;
                                 }
+                            } else {
+                                interaction.create_interaction_response(ctx, |r| r
+                                    .interaction_response_data(|d| d
+                                        .ephemeral(true)
+                                        .content("Sorry, only participants in this race can use this command.")
+                                    )
+                                ).await?;
+                                transaction.rollback().await?;
+                            }
+                        }
+                    } else if interaction.data.id == command_ids.status {
+                        if let Some((mut transaction, startgg_set, teams, _)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some(Json(draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                let guild_id = interaction.guild_id.expect("/status called outside of a guild");
+                                let response_content = MessageBuilder::default()
+                                    //TODO include scheduling status, both for regular races and for asyncs
+                                    .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
+                                    .build();
+                                interaction.create_interaction_response(ctx, |r| r
+                                    .interaction_response_data(|d| d
+                                        .ephemeral(true)
+                                        .content(response_content)
+                                    )
+                                ).await?;
+                                transaction.rollback().await?;
                             } else {
                                 interaction.create_interaction_response(ctx, |r| r
                                     .interaction_response_data(|d| d
