@@ -132,11 +132,16 @@ impl Draft {
                     .build(),
                 1 => MessageBuilder::default()
                     .mention_team(transaction, guild, team.choose(high_seed, low_seed)).await?
-                    .push(": pick two settings using ")
+                    .push(": pick a setting using ")
+                    .mention_command(command_ids.draft, "draft")
+                    .push(". You will have another pick after this.")
+                    .build(),
+                2 => MessageBuilder::default()
+                    .mention_team(transaction, guild, team.choose(high_seed, low_seed)).await?
+                    .push(": pick your second setting using ")
                     .mention_command(command_ids.draft, "draft")
                     .push('.')
                     .build(),
-                2 => format!("And your second pick?"),
                 3 => MessageBuilder::default()
                     .mention_team(transaction, guild, team.choose(high_seed, low_seed)).await?
                     .push(": pick a setting using ")
