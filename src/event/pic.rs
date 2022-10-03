@@ -92,28 +92,26 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
             }
         },
         "6" => html! {
-            /*
-            p : "The settings are mostly a repeat of the 3rd Pictionary spoiler log race (the first one we organized), with the difference that cows are shuffled and 40 and 50 skulls are turned off:";
+            p {
+                : "The seed will be rolled on ";
+                a(href = "https://ootrandomizer.com/generatorDev?version=devFenhl_6.2.206") : "version 6.2.206 Fenhl-5";
+                : " of the randomizer. That version contains these settings as a preset called “6th Pictionary Spoiler Log Race”.";
+            }
             ul {
-                li : "S5 base";
-                li : "CSMC off";
+                li : "weekly base";
+                li : "CAMC off";
                 li : "no hints (including altar)";
-                li : "2 medallion bridge";
-                li : "Ganon boss key on 6 medallions";
+                li : "Ganon boss key on LACS";
+                li : "vanilla dungeon rewards (i.e. you'll need to beat Shadow and Spirit temple)";
+                li : "full dungeon ER (including Ganon's castle)";
+                li : "13 token bridge";
                 li : "all skulls shuffled";
                 li : "40 and 50 skulls disabled";
-                li : "shuffled ocarinas";
-                li : "shuffled Gerudo card";
-                li : "shuffled cows";
+                li : "closed Deku";
+                li : "keyrings shuffled in their own dungeons";
+                li : "3 big Poes";
+                li : "midnight start";
             }
-            p {
-                : "Settings string for ";
-                a(href = "https://ootrandomizer.com/generator?version=6.2") : "version 6.2";
-                : ": ";
-                code : "AJTWFCHYKAA8KLAH2UASAHCCYCHGLTDDAKJ8S8AAJAEAC2AJSDGBLADLED7JKQUXEANKCAAACGASSCS";
-            }
-            */
-            p : "Settings to be announced.";
         },
         "rs1" => html! {
             p {
