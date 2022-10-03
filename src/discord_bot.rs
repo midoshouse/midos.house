@@ -113,7 +113,7 @@ impl Draft {
                 .mention_command(command_ids.first, "first")
                 .push(" or ")
                 .mention_command(command_ids.second, "second")
-                .push('.')
+                .push(" in the settings draft.")
                 .build(),
             mw::DraftStep::Ban { team, .. } => MessageBuilder::default()
                 .mention_team(transaction, guild, team.choose(high_seed, low_seed)).await?
@@ -490,7 +490,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     .mention_command(command_ids.first, "first")
                                     .push(" or ")
                                     .mention_command(command_ids.second, "second")
-                                    .push('.')
+                                    .push(" in the settings draft.")
                                     .build();
                                 transaction.commit().await?;
                                 interaction.create_interaction_response(ctx, |r| r
