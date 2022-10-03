@@ -574,8 +574,18 @@ impl RaceHandler<GlobalState> for Handler {
             for team in race.active_teams() {
                 let mut members = sqlx::query_scalar!(r#"SELECT racetime_id AS "racetime_id!" FROM users, team_members WHERE id = member AND team = $1 AND racetime_id IS NOT NULL"#, i64::from(team.id)).fetch(&mut transaction);
                 while let Some(member) = members.try_next().await.map_err(|e| Error::Custom(Box::new(e)))? {
-                    if data.entrants.iter().any(|entrant| entrant.status.value == EntrantStatusValue::Requested && entrant.user.id == member) {
-                        ctx.accept_request(&member).await?;
+                    if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
+                        match entrant.status.value {
+                            EntrantStatusValue::Requested => ctx.accept_request(&member).await?,
+                            EntrantStatusValue::Invited |
+                            EntrantStatusValue::Declined |
+                            EntrantStatusValue::Ready |
+                            EntrantStatusValue::NotReady |
+                            EntrantStatusValue::InProgress |
+                            EntrantStatusValue::Done |
+                            EntrantStatusValue::Dnf |
+                            EntrantStatusValue::Dq => {}
+                        }
                     } else {
                         ctx.invite_user(&member).await?;
                     }
