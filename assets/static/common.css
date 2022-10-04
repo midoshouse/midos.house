@@ -16,7 +16,6 @@ nav,
 nav > a {
     display: flex;
     flex-direction: row;
-    flex-grow: 1;
 }
 
 input[type="submit"],
@@ -49,6 +48,7 @@ nav h1 {
 }
 
 #login {
+    flex-grow: 1;
     text-align: end;
 }
 
