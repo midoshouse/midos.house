@@ -918,7 +918,7 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 [[package]]
 name = "graphql-introspection-query"
 version = "0.2.0"
-source = "git+https://github.com/fenhl/graphql-client?branch=skip-default-scalars#b7cb851121a281e2fc7d4c71b74ad3da3ea3fe2a"
+source = "git+https://github.com/fenhl/graphql-client?branch=skip-default-scalars#342dcd5a424f5adafaa3788db6147e25394e64ae"
 dependencies = [
  "serde",
 ]
@@ -936,7 +936,7 @@ dependencies = [
 [[package]]
 name = "graphql_client"
 version = "0.11.0"
-source = "git+https://github.com/fenhl/graphql-client?branch=skip-default-scalars#b7cb851121a281e2fc7d4c71b74ad3da3ea3fe2a"
+source = "git+https://github.com/fenhl/graphql-client?branch=skip-default-scalars#342dcd5a424f5adafaa3788db6147e25394e64ae"
 dependencies = [
  "graphql_query_derive",
  "serde",
@@ -946,7 +946,7 @@ dependencies = [
 [[package]]
 name = "graphql_client_codegen"
 version = "0.11.0"
-source = "git+https://github.com/fenhl/graphql-client?branch=skip-default-scalars#b7cb851121a281e2fc7d4c71b74ad3da3ea3fe2a"
+source = "git+https://github.com/fenhl/graphql-client?branch=skip-default-scalars#342dcd5a424f5adafaa3788db6147e25394e64ae"
 dependencies = [
  "graphql-introspection-query",
  "graphql-parser",
@@ -962,7 +962,7 @@ dependencies = [
 [[package]]
 name = "graphql_query_derive"
 version = "0.11.0"
-source = "git+https://github.com/fenhl/graphql-client?branch=skip-default-scalars#b7cb851121a281e2fc7d4c71b74ad3da3ea3fe2a"
+source = "git+https://github.com/fenhl/graphql-client?branch=skip-default-scalars#342dcd5a424f5adafaa3788db6147e25394e64ae"
 dependencies = [
  "graphql_client_codegen",
  "proc-macro2",
@@ -1497,6 +1497,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "typemap_rev",
  "url",
  "wheel",
  "xdg",

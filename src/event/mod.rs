@@ -389,7 +389,7 @@ impl<'a> Data<'a> {
                 } else {
                     a(class = "button", href = uri!(teams(self.series, &*self.event)).to_string()) : "Teams";
                 }
-                @if !self.is_single_race() {
+                @if !self.is_single_race() { //TODO also hide for past events with no race list
                     @if let Tab::Races = tab {
                         span(class = "button selected") : "Races";
                     } else {
