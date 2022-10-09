@@ -28,11 +28,13 @@ use {
     rand::prelude::*,
     reqwest::{
         IntoUrl,
-        RequestBuilder,
         StatusCode,
     },
     semver::Version,
-    serde::Deserialize,
+    serde::{
+        Deserialize,
+        Serialize,
+    },
     serde_json::json,
     serde_with::{
         DisplayFromStr,
@@ -293,30 +295,41 @@ impl MwSeedQueue {
         }
     }
 
-    async fn get(&self, uri: impl IntoUrl) -> RequestBuilder {
+    async fn get(&self, uri: impl IntoUrl, query: Option<&(impl Serialize + ?Sized)>) -> reqwest::Result<reqwest::Response> {
         let mut next_request = self.next_request.lock().await;
         sleep_until(*next_request).await;
+        let mut builder = self.http_client.get(uri);
+        if let Some(query) = query {
+            builder = builder.query(query);
+        }
+        let res = builder.send().await;
         *next_request = Instant::now() + Duration::from_millis(500);
-        self.http_client.get(uri)
+        res
     }
 
-    async fn post(&self, uri: impl IntoUrl) -> RequestBuilder {
+    async fn post(&self, uri: impl IntoUrl, query: Option<&(impl Serialize + ?Sized)>, json: Option<&(impl Serialize + ?Sized)>) -> reqwest::Result<reqwest::Response> {
         let mut next_request = self.next_request.lock().await;
         sleep_until(*next_request).await;
+        let mut builder = self.http_client.post(uri);
+        if let Some(query) = query {
+            builder = builder.query(query);
+        }
+        if let Some(json) = json {
+            builder = builder.json(json);
+        }
+        let res = builder.send().await;
         *next_request = Instant::now() + Duration::from_millis(500);
-        self.http_client.post(uri)
+        res
     }
 
-    async fn get_version(&self, branch: &str) -> Result<Version, RollError> {
+    async fn get_version(&self, branch: &str) -> reqwest::Result<Version> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct VersionResponse {
             currently_active_version: Version,
         }
 
-        Ok(self.get("https://ootrandomizer.com/api/version").await
-            .query(&[("key", &*self.ootr_api_key), ("branch", branch)])
-            .send().await?
+        Ok(self.get("https://ootrandomizer.com/api/version", Some(&[("key", &*self.ootr_api_key), ("branch", branch)])).await?
             .error_for_status()?
             .json::<VersionResponse>().await?
             .currently_active_version)
@@ -397,10 +410,7 @@ impl MwSeedQueue {
                 next_seed
             };
             update_tx.send(SeedRollUpdate::Started).await?;
-            let seed_id = self.post("https://ootrandomizer.com/api/v2/seed/create").await
-                .query(&[("key", &*self.ootr_api_key), ("version", &*format!("dev_{RANDO_VERSION}")), ("locked", "1")])
-                .json(&settings)
-                .send().await?
+            let seed_id = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[("key", &*self.ootr_api_key), ("version", &*format!("dev_{RANDO_VERSION}")), ("locked", "1")]), Some(&settings)).await?
                 .error_for_status()?
                 .json::<CreateSeedResponse>().await?
                 .id;
@@ -409,23 +419,20 @@ impl MwSeedQueue {
             sleep(MULTIWORLD_RATE_LIMIT).await; // extra rate limiting rule
             loop {
                 sleep(Duration::from_secs(1)).await;
-                let resp = self.get("https://ootrandomizer.com/api/v2/seed/status").await
-                    .query(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])
-                    .send().await?;
+                let resp = self.get(
+                    "https://ootrandomizer.com/api/v2/seed/status",
+                    Some(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())]),
+                ).await?;
                 if resp.status() == StatusCode::NO_CONTENT { continue }
                 resp.error_for_status_ref()?;
                 match resp.json::<SeedStatusResponse>().await?.status {
                     0 => continue, // still generating
                     1 => { // generated success
-                        let file_hash = self.get("https://ootrandomizer.com/api/v2/seed/details").await
-                            .query(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])
-                            .send().await?
+                        let file_hash = self.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])).await?
                             .error_for_status()?
                             .json::<SeedDetailsResponse>().await?
                             .settings_log.file_hash;
-                        let patch_response = self.get("https://ootrandomizer.com/api/v2/seed/patch").await
-                            .query(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])
-                            .send().await?
+                        let patch_response = self.get("https://ootrandomizer.com/api/v2/seed/patch", Some(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])).await?
                             .error_for_status()?;
                         let (_, patch_file_name) = regex_captures!("^attachment; filename=(.+)$", patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION).ok_or(RollError::PatchPath)?.to_str()?).ok_or(RollError::PatchPath)?;
                         let patch_file_name = patch_file_name.to_owned();
@@ -905,9 +912,7 @@ impl RaceHandler<GlobalState> for Handler {
                     *state = RaceState::SpoilerSent;
                 }
                 RaceState::RolledWeb(seed_id) => {
-                    self.global_state.mw_seed_queue.post("https://ootrandomizer.com/api/v2/seed/unlock").await
-                        .query(&[("key", &self.global_state.mw_seed_queue.ootr_api_key), ("id", &seed_id.to_string())])
-                        .send().await?
+                    self.global_state.mw_seed_queue.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &self.global_state.mw_seed_queue.ootr_api_key), ("id", &seed_id.to_string())]), None::<&()>).await?
                         .error_for_status()?;
                     //TODO also save spoiler log to local archive
                     *state = RaceState::SpoilerSent;
