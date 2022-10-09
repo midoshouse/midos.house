@@ -641,9 +641,9 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(this)
     }
 
-    async fn command(&mut self, ctx: &RaceContext, cmd_name: &str, args: Vec<&str>, _is_moderator: bool, _is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
+    async fn command(&mut self, ctx: &RaceContext, cmd_name: String, args: Vec<String>, _is_moderator: bool, _is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
-        match cmd_name {
+        match &*cmd_name.to_ascii_lowercase() {
             "ban" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.race_state.write().await;
                 match *state {
@@ -659,7 +659,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 ctx.send_message(&format!("Sorry {reply_to}, the setting is required. Use one of the following:")).await?;
                                 self.send_settings(ctx).await?;
                             }
-                            [setting] => {
+                            [ref setting] => {
                                 if let Ok(setting) = setting.parse() {
                                     if draft.available_settings().contains(&setting) {
                                         match setting {
@@ -706,7 +706,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 ctx.send_message(&format!("Sorry {reply_to}, the setting is required. Use one of the following:")).await?;
                                 self.send_settings(ctx).await?;
                             }
-                            [setting] => {
+                            [ref setting] => {
                                 if let Ok(setting) = setting.parse() {
                                     ctx.send_message(&format!("Sorry {reply_to}, the value is required. Use {}", match setting {
                                         mw::S3Setting::Wincon => all::<mw::Wincon>().map(|option| format!("“!draft wincon {}”", option.arg())).join(" or "),
@@ -724,7 +724,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     self.send_settings(ctx).await?;
                                 }
                             }
-                            [setting, value] => {
+                            [ref setting, ref value] => {
                                 if let Ok(setting) = setting.parse() {
                                     if draft.available_settings().contains(&setting) {
                                         match setting {
@@ -784,23 +784,25 @@ impl RaceHandler<GlobalState> for Handler {
                 } else {
                     ctx.send_message("Fair play agreement is not active. Race monitors may enable FPA for this race with !fpa on").await?;
                 },
-                ["on"] => if self.is_official() {
-                    ctx.send_message("Fair play agreement is always active in official races.").await?;
-                } else if self.fpa_enabled {
-                    ctx.send_message("Fair play agreement is already activated.").await?;
-                } else {
-                    self.fpa_enabled = true;
-                    ctx.send_message("Fair play agreement is now active. @entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat.").await?;
+                [ref arg] => match &arg[..] {
+                    "on" => if self.is_official() {
+                        ctx.send_message("Fair play agreement is always active in official races.").await?;
+                    } else if self.fpa_enabled {
+                        ctx.send_message("Fair play agreement is already activated.").await?;
+                    } else {
+                        self.fpa_enabled = true;
+                        ctx.send_message("Fair play agreement is now active. @entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat.").await?;
+                    },
+                    "off" => if self.is_official() {
+                        ctx.send_message(&format!("Sorry {reply_to}, but FPA can't be deactivated for official races.")).await?;
+                    } else if self.fpa_enabled {
+                        self.fpa_enabled = false;
+                        ctx.send_message("Fair play agreement is now deactivated.").await?;
+                    } else {
+                        ctx.send_message("Fair play agreement is not active.").await?;
+                    },
+                    _ => ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that subcommand. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
                 },
-                ["off"] => if self.is_official() {
-                    ctx.send_message(&format!("Sorry {reply_to}, but FPA can't be deactivated for official races.")).await?;
-                } else if self.fpa_enabled {
-                    self.fpa_enabled = false;
-                    ctx.send_message("Fair play agreement is now deactivated.").await?;
-                } else {
-                    ctx.send_message("Fair play agreement is not active.").await?;
-                },
-                [_] => ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that subcommand. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
                 [_, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
             },
             "presets" => send_presets(ctx).await?,
@@ -828,18 +830,19 @@ impl RaceHandler<GlobalState> for Handler {
                             ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
                             send_presets(ctx).await?;
                         }
-                        ["base"] => self.roll_seed(ctx, state, mw::S3Settings::default()).await,
-                        ["random"] => {
+                        [ref arg] if arg == "base" => self.roll_seed(ctx, state, mw::S3Settings::default()).await,
+                        [ref arg] if arg == "random" => {
                             let settings = mw::S3Settings::random(&mut thread_rng());
                             self.roll_seed(ctx, state, settings).await;
                         }
-                        ["draft"] => {
+                        [ref arg] if arg == "draft" => {
                             *state = RaceState::Draft(mw::S3Draft::default());
                             drop(state);
                             self.advance_draft(ctx).await?;
                         }
+                        //TODO different error message for single unexpected argument?
                         ref args => {
-                            let args = args.iter().map(|&arg| arg.to_owned()).collect_vec();
+                            let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
                             let mut settings = mw::S3Settings::default();
                             let mut tuples = args.into_iter().tuples();
                             for (setting, value) in &mut tuples {

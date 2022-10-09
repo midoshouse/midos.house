@@ -517,9 +517,11 @@ impl From<SpoilerLog> for ChestAppearances {
 #[serde(transparent)]
 pub(crate) struct ChestTextures(pub(crate) [ChestTexture; 4]);
 
-#[derive(Debug, From)]
+#[derive(Debug, thiserror::Error, From)]
 pub(crate) enum ChestTexturesFromParamError {
+    #[error("expected 4 characters, got {}", .0.len())]
     Len(Vec<ChestTexture>),
+    #[error("unknown chest texture abbreviation: {0}")]
     Texture(char),
 }
 
