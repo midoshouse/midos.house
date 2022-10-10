@@ -21,7 +21,6 @@ use {
         handler::{
             RaceContext,
             RaceHandler,
-            RaceInfoPos,
         },
         model::*,
     },
@@ -257,14 +256,14 @@ impl SeedRollUpdate {
                 let seed_url = format!("https://midos.house/seed/{patch_filename}");
                 ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
                 ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{spoiler_filename}")).await?;
-                ctx.set_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash)), RaceInfoPos::Overwrite).await?;
+                ctx.set_bot_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash))).await?;
             }
             Self::DoneWeb(seed_id, file_hash) => {
                 *state.write().await = RaceState::RolledWeb(seed_id);
                 let seed_url = format!("https://ootrandomizer.com/seed/get?id={seed_id}");
                 ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
                 ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
-                ctx.set_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash)), RaceInfoPos::Overwrite).await?;
+                ctx.set_bot_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash))).await?;
             }
             Self::Error(msg) => {
                 eprintln!("seed roll error: {msg:?}");

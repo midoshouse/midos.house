@@ -314,9 +314,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.0.11"
+version = "4.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ed45cc2c62a3eff523e718d8576ba762c83a3146151093283ac62ae11933a73"
+checksum = "385007cbbed899260395a4107435fead4cad80684461b3cc78238bdcb0bad58f"
 dependencies = [
  "atty",
  "bitflags",
@@ -1391,9 +1391,9 @@ checksum = "db13adb97ab515a3691f56e4dbab09283d0b86cb45abd991d8634a9d6f501760"
 
 [[package]]
 name = "libc"
-version = "0.2.134"
+version = "0.2.135"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "329c933548736bc49fd575ee68c89e8be4d260064184389a5b77517cddd99ffb"
+checksum = "68783febc7782c6c5cb401fbda4de5a9898be1762314da0bb2c10ced61f18b0c"
 
 [[package]]
 name = "libgit2-sys"
@@ -2001,9 +2001,9 @@ dependencies = [
 
 [[package]]
 name = "racetime"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68c8a1fa477e6136a8bdd5880a9b73170ebf176780054112c784c66527bfbdb5"
+checksum = "c45c3b39a01b3b813086e7c7945084244c7a5ec0ba415dd773b7119491c98d7a"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2075,18 +2075,18 @@ dependencies = [
 
 [[package]]
 name = "ref-cast"
-version = "1.0.9"
+version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed13bcd201494ab44900a96490291651d200730904221832b9547d24a87d332b"
+checksum = "b8ebf632f3e32bf35133f620cf481f29c99ae0fb01450fd3d85eee0225274ec1"
 dependencies = [
  "ref-cast-impl",
 ]
 
 [[package]]
 name = "ref-cast-impl"
-version = "1.0.9"
+version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5234cd6063258a5e32903b53b1b6ac043a0541c8adc1f610f67b0326c7a578fa"
+checksum = "caab98faa75ce294d40512ce514a46b15eafe78d72c9397a68ea45b3a88201b6"
 dependencies = [
  "proc-macro2",
  "quote",
