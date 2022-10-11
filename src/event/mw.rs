@@ -841,12 +841,12 @@ async fn validate_team(me: &User, client: &reqwest::Client, context: &mut Contex
         let user = client.get(format!("https://racetime.gg/user/{racetime_id}/data"))
             .send().await?
             .detailed_error_for_status().await?
-            .json::<RaceTimeUser>().await?;
+            .json_with_text_in_error::<RaceTimeUser>().await?;
         if user.teams.iter().any(|team| team.slug == team_slug) {
             let team = client.get(format!("https://racetime.gg/team/{team_slug}/data"))
                 .send().await?
                 .detailed_error_for_status().await?
-                .json::<RaceTimeTeamData>().await?;
+                .json_with_text_in_error::<RaceTimeTeamData>().await?;
             if team.members.len() != 3 {
                 context.push_error(form::Error::validation(format!("Multiworld teams must have exactly 3 members, but this team has {}", team.members.len())))
             }
@@ -869,7 +869,7 @@ pub(super) async fn enter_form(transaction: &mut Transaction<'_, Postgres>, me: 
             let racetime_user = client.get(format!("https://racetime.gg/user/{racetime_id}/data"))
                 .send().await?
                 .detailed_error_for_status().await?
-                .json::<RaceTimeUser>().await?;
+                .json_with_text_in_error::<RaceTimeUser>().await?;
             let mut errors = context.errors().collect_vec();
             if racetime_user.teams.is_empty() {
                 html! {
@@ -1001,7 +1001,7 @@ impl<'v> EnterFormStep2Defaults<'v> {
                     Ok(client.get(url)
                         .send().await?
                         .detailed_error_for_status().await?
-                        .json::<RaceTimeTeamData>().await?
+                        .json_with_text_in_error::<RaceTimeTeamData>().await?
                         .members
                     )
                 }.boxed()

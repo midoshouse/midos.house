@@ -101,7 +101,7 @@ async fn handle_racetime_token_response(env: &State<Environment>, client: &reqwe
         .bearer_auth(token.access_token())
         .send().await?
         .detailed_error_for_status().await?
-        .json().await?)
+        .json_with_text_in_error().await?)
 }
 
 async fn handle_discord_token_response(client: &reqwest::Client, cookies: &CookieJar<'_>, token: &TokenResponse<Discord>) -> Result<DiscordUser, UserFromRequestError> {
@@ -121,7 +121,7 @@ async fn handle_discord_token_response(client: &reqwest::Client, cookies: &Cooki
         .bearer_auth(token.access_token())
         .send().await?
         .detailed_error_for_status().await?
-        .json().await?)
+        .json_with_text_in_error().await?)
 }
 
 #[derive(Deserialize)]
@@ -155,7 +155,7 @@ impl<'r> FromRequest<'r> for RaceTimeUser {
                             .and_then(|response| response.detailed_error_for_status().err_into())
                             .await
                         {
-                            Ok(response) => Outcome::Success(guard_try!(response.json().await)),
+                            Ok(response) => Outcome::Success(guard_try!(response.json_with_text_in_error().await)),
                             Err(e) => Outcome::Failure((Status::BadGateway, e.into())),
                         }
                     } else if let Some(token) = cookies.get_private("racetime_refresh_token") {
@@ -194,7 +194,7 @@ impl<'r> FromRequest<'r> for DiscordUser {
                         .and_then(|response| response.detailed_error_for_status().err_into())
                         .await
                     {
-                        Ok(response) => Outcome::Success(guard_try!(response.json().await)),
+                        Ok(response) => Outcome::Success(guard_try!(response.json_with_text_in_error().await)),
                         Err(e) => Outcome::Failure((Status::BadGateway, e.into())),
                     }
                 } else if let Some(token) = cookies.get_private("discord_refresh_token") {

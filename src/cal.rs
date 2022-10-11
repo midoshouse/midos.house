@@ -76,7 +76,7 @@ impl Race {
             http_client.get(format!("{room}/data"))
                 .send().await?
                 .detailed_error_for_status().await?
-                .json::<RaceData>().await?
+                .json_with_text_in_error::<RaceData>().await?
                 .ended_at
         } else {
             None

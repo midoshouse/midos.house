@@ -314,9 +314,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.0.12"
+version = "4.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "385007cbbed899260395a4107435fead4cad80684461b3cc78238bdcb0bad58f"
+checksum = "69d64e88428747154bd8bc378d178377ef4dace7a5735ca1f3855be72f2c2cb5"
 dependencies = [
  "atty",
  "bitflags",
@@ -329,9 +329,9 @@ dependencies = [
 
 [[package]]
 name = "clap_derive"
-version = "4.0.10"
+version = "4.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db342ce9fda24fb191e2ed4e102055a4d381c1086a06630174cd8da8d5d917ce"
+checksum = "c42f169caba89a7d512b5418b09864543eeb4d497416c917d7137863bd2076ad"
 dependencies = [
  "heck",
  "proc-macro-error",
@@ -3032,9 +3032,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-stream"
-version = "0.1.10"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6edf2d6bc038a43d31353570e27270603f4648d18f5ed10c0e179abe43255af"
+checksum = "d660770404473ccd7bc9f8b28494a811bc18542b915c0855c51e8f419d5223ce"
 dependencies = [
  "futures-core",
  "pin-project-lite",
@@ -3525,13 +3525,15 @@ dependencies = [
 [[package]]
 name = "wheel"
 version = "0.8.1"
-source = "git+https://github.com/fenhl/wheel?branch=main#f02b4d02d890c786e87500db64bec4f07a49a6ba"
+source = "git+https://github.com/fenhl/wheel?branch=main#0ac814b080d632f3835708a059a017996a400c65"
 dependencies = [
  "async-trait",
  "clap",
  "itertools",
  "reqwest",
  "rocket",
+ "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "wheel-derive",
@@ -3540,7 +3542,7 @@ dependencies = [
 [[package]]
 name = "wheel-derive"
 version = "0.8.1"
-source = "git+https://github.com/fenhl/wheel?branch=main#f02b4d02d890c786e87500db64bec4f07a49a6ba"
+source = "git+https://github.com/fenhl/wheel?branch=main#0ac814b080d632f3835708a059a017996a400c65"
 dependencies = [
  "itertools",
  "proc-macro2",

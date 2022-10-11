@@ -91,7 +91,7 @@ where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Se
                 .json(&T::build_query(variables))
                 .send().await?
                 .detailed_error_for_status().await?
-                .json::<graphql_client::Response<T::ResponseData>>().await?;
+                .json_with_text_in_error::<graphql_client::Response<T::ResponseData>>().await?;
             let data = match (data, errors) {
                 (Some(_), Some(errors)) if !errors.is_empty() => Err(Error::GraphQL(errors)),
                 (Some(data), _) => Ok(data),

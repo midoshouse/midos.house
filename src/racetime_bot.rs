@@ -332,7 +332,7 @@ impl MwSeedQueue {
 
         Ok(self.get("https://ootrandomizer.com/api/version", Some(&[("key", &*self.ootr_api_key), ("branch", branch)])).await?
             .detailed_error_for_status().await?
-            .json::<VersionResponse>().await?
+            .json_with_text_in_error::<VersionResponse>().await?
             .currently_active_version)
     }
 
@@ -413,7 +413,7 @@ impl MwSeedQueue {
             update_tx.send(SeedRollUpdate::Started).await?;
             let seed_id = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[("key", &*self.ootr_api_key), ("version", &*format!("dev_{RANDO_VERSION}")), ("locked", "1")]), Some(&settings)).await?
                 .detailed_error_for_status().await?
-                .json::<CreateSeedResponse>().await?
+                .json_with_text_in_error::<CreateSeedResponse>().await?
                 .id;
             *next_seed = Instant::now() + MULTIWORLD_RATE_LIMIT;
             drop(next_seed);
@@ -426,12 +426,12 @@ impl MwSeedQueue {
                 ).await?;
                 if resp.status() == StatusCode::NO_CONTENT { continue }
                 resp.error_for_status_ref()?;
-                match resp.json::<SeedStatusResponse>().await?.status {
+                match resp.json_with_text_in_error::<SeedStatusResponse>().await?.status {
                     0 => continue, // still generating
                     1 => { // generated success
                         let file_hash = self.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])).await?
                             .detailed_error_for_status().await?
-                            .json::<SeedDetailsResponse>().await?
+                            .json_with_text_in_error::<SeedDetailsResponse>().await?
                             .settings_log.file_hash;
                         let patch_response = self.get("https://ootrandomizer.com/api/v2/seed/patch", Some(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])).await?
                             .detailed_error_for_status().await?;
