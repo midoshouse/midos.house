@@ -462,6 +462,7 @@ pub(crate) enum Error {
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
 }
 
 impl From<cal::Error> for StatusOrError<Error> {

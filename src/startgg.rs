@@ -18,6 +18,7 @@ use {
         TypeMap,
         TypeMapKey,
     },
+    wheel::traits::ReqwestResponseExt as _,
 };
 
 static CACHE: Lazy<Mutex<TypeMap>> = Lazy::new(Mutex::default);
@@ -34,6 +35,7 @@ where T::Variables: Send + Sync, T::ResponseData: Send + Sync {
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("{} GraphQL errors", .0.len())]
     GraphQL(Vec<graphql_client::Error>),
     #[error("GraphQL response returned neither `data` nor `errors`")]
@@ -88,7 +90,7 @@ where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Se
                 .bearer_auth(auth_token)
                 .json(&T::build_query(variables))
                 .send().await?
-                .error_for_status()?
+                .detailed_error_for_status().await?
                 .json::<graphql_client::Response<T::ResponseData>>().await?;
             let data = match (data, errors) {
                 (Some(_), Some(errors)) if !errors.is_empty() => Err(Error::GraphQL(errors)),

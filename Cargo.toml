@@ -110,7 +110,7 @@ features = ["serde"]
 [dependencies.wheel]
 git = "https://github.com/fenhl/wheel"
 branch = "main"
-features = ["rocket-beta"]
+features = ["reqwest", "rocket-beta"]
 
 [target.'cfg(unix)'.dependencies]
 xdg = "2"

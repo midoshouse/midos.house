@@ -1,5 +1,6 @@
 use {
     std::time::Duration,
+    futures::future::TryFutureExt as _,
     rocket::{
         State,
         http::{
@@ -30,6 +31,7 @@ use {
     serde::Deserialize,
     serenity::model::prelude::*,
     sqlx::PgPool,
+    wheel::traits::ReqwestResponseExt as _,
     crate::{
         Environment,
         http::{
@@ -69,6 +71,7 @@ pub(crate) enum UserFromRequestError {
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Time(#[from] rocket::time::error::ConversionRange),
     #[error(transparent)] TryFromInt(#[from] std::num::TryFromIntError),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("neither racetime_token cookie nor discord_token cookie present")]
     Cookie,
     #[error("missing database connection")]
@@ -97,7 +100,7 @@ async fn handle_racetime_token_response(env: &State<Environment>, client: &reqwe
     Ok(client.get(format!("https://{}/o/userinfo", env.racetime_host()))
         .bearer_auth(token.access_token())
         .send().await?
-        .error_for_status()?
+        .detailed_error_for_status().await?
         .json().await?)
 }
 
@@ -117,7 +120,7 @@ async fn handle_discord_token_response(client: &reqwest::Client, cookies: &Cooki
     Ok(client.get("https://discord.com/api/v9/users/@me")
         .bearer_auth(token.access_token())
         .send().await?
-        .error_for_status()?
+        .detailed_error_for_status().await?
         .json().await?)
 }
 
@@ -147,8 +150,10 @@ impl<'r> FromRequest<'r> for RaceTimeUser {
                     Outcome::Success(env) => if let Some(token) = cookies.get_private("racetime_token") {
                         match client.get(format!("https://{}/o/userinfo", env.racetime_host()))
                             .bearer_auth(token.value())
-                            .send().await
-                            .and_then(|response| response.error_for_status())
+                            .send()
+                            .err_into::<UserFromRequestError>()
+                            .and_then(|response| response.detailed_error_for_status().err_into())
+                            .await
                         {
                             Ok(response) => Outcome::Success(guard_try!(response.json().await)),
                             Err(e) => Outcome::Failure((Status::BadGateway, e.into())),
@@ -184,8 +189,10 @@ impl<'r> FromRequest<'r> for DiscordUser {
                 Outcome::Success(client) => if let Some(token) = cookies.get_private("discord_token") {
                     match client.get("https://discord.com/api/v9/users/@me")
                         .bearer_auth(token.value())
-                        .send().await
-                        .and_then(|response| response.error_for_status())
+                        .send()
+                        .err_into::<UserFromRequestError>()
+                        .and_then(|response| response.detailed_error_for_status().err_into())
+                        .await
                     {
                         Ok(response) => Outcome::Success(guard_try!(response.json().await)),
                         Err(e) => Outcome::Failure((Status::BadGateway, e.into())),

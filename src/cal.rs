@@ -32,6 +32,7 @@ use {
         types::Json,
     },
     url::Url,
+    wheel::traits::ReqwestResponseExt as _,
     crate::{
         Environment,
         config::Config,
@@ -74,7 +75,7 @@ impl Race {
         } else if let Some(ref room) = room {
             http_client.get(format!("{room}/data"))
                 .send().await?
-                .error_for_status()?
+                .detailed_error_for_status().await?
                 .json::<RaceData>().await?
                 .ended_at
         } else {
@@ -185,6 +186,7 @@ pub(crate) enum Error {
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("wrong number of teams or missing data")]
     Teams,
     #[error("this start.gg team ID is not associated with a Mido's House team")]

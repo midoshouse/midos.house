@@ -73,6 +73,7 @@ use {
         Postgres,
         Transaction,
     },
+    wheel::traits::ReqwestResponseExt as _,
     crate::{
         auth,
         event::{
@@ -835,16 +836,16 @@ struct RaceTimeTeamMember {
     name: String,
 }
 
-async fn validate_team(me: &User, client: &reqwest::Client, context: &mut Context<'_>, team_slug: &str) -> reqwest::Result<Option<RaceTimeTeamData>> {
+async fn validate_team(me: &User, client: &reqwest::Client, context: &mut Context<'_>, team_slug: &str) -> Result<Option<RaceTimeTeamData>, Error> {
     Ok(if let Some(ref racetime_id) = me.racetime_id {
         let user = client.get(format!("https://racetime.gg/user/{racetime_id}/data"))
             .send().await?
-            .error_for_status()?
+            .detailed_error_for_status().await?
             .json::<RaceTimeUser>().await?;
         if user.teams.iter().any(|team| team.slug == team_slug) {
             let team = client.get(format!("https://racetime.gg/team/{team_slug}/data"))
                 .send().await?
-                .error_for_status()?
+                .detailed_error_for_status().await?
                 .json::<RaceTimeTeamData>().await?;
             if team.members.len() != 3 {
                 context.push_error(form::Error::validation(format!("Multiworld teams must have exactly 3 members, but this team has {}", team.members.len())))
@@ -867,7 +868,7 @@ pub(super) async fn enter_form(transaction: &mut Transaction<'_, Postgres>, me: 
         if let Some(ref racetime_id) = me.racetime_id {
             let racetime_user = client.get(format!("https://racetime.gg/user/{racetime_id}/data"))
                 .send().await?
-                .error_for_status()?
+                .detailed_error_for_status().await?
                 .json::<RaceTimeUser>().await?;
             let mut errors = context.errors().collect_vec();
             if racetime_user.teams.is_empty() {
@@ -955,7 +956,7 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
         if form.context.errors().next().is_some() {
             enter_form(&mut transaction, Some(me), uri, csrf, data, form.context, client).await?
         } else {
-            enter_form_step2(&mut transaction, Some(me), uri, csrf, data, EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?
+            enter_form_step2(&mut transaction, Some(me), uri, client, csrf, data, EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?
         }
     } else {
         enter_form(&mut transaction, Some(me), uri, csrf, data, form.context, client).await?
@@ -991,13 +992,15 @@ impl<'v> EnterFormStep2Defaults<'v> {
         }
     }
 
-    fn racetime_members(&self) -> impl Future<Output = reqwest::Result<Vec<RaceTimeTeamMember>>> {
+    fn racetime_members(&self, client: &reqwest::Client) -> impl Future<Output = Result<Vec<RaceTimeTeamMember>, Error>> {
         match self {
             Self::Context(ctx) => if let Some(team_slug) = ctx.field_value("racetime_team") {
+                let client = client.clone();
                 let url = format!("https://racetime.gg/team/{team_slug}/data");
                 async move {
-                    Ok(reqwest::get(url).await?
-                        .error_for_status()?
+                    Ok(client.get(url)
+                        .send().await?
+                        .detailed_error_for_status().await?
                         .json::<RaceTimeTeamData>().await?
                         .members
                     )
@@ -1036,8 +1039,8 @@ impl<'v> EnterFormStep2Defaults<'v> {
     }
 }
 
-fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(transaction: &'a mut Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'b>, csrf: Option<CsrfToken>, data: Data<'c>, defaults: EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
-    let team_members = defaults.racetime_members();
+fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(transaction: &'a mut Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'b>, client: &reqwest::Client, csrf: Option<CsrfToken>, data: Data<'c>, defaults: EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
+    let team_members = defaults.racetime_members(client);
     Box::pin(async move {
         let header = data.header(transaction, me.as_ref(), Tab::Enter).await?;
         let page_content = {
@@ -1199,7 +1202,7 @@ pub(crate) async fn enter_post_step2(pool: &State<PgPool>, discord_ctx: &State<R
             Default::default()
         };
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(enter_form_step2(&mut transaction, Some(me), uri, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
+            RedirectOrContent::Content(enter_form_step2(&mut transaction, Some(me), uri, client, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
         } else {
             let id = Id::new(&mut transaction, IdTable::Teams).await?;
             sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent) VALUES ($1, 'mw', $2, $3, $4, $5)", id as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent).execute(&mut transaction).await?;
@@ -1213,7 +1216,7 @@ pub(crate) async fn enter_post_step2(pool: &State<PgPool>, discord_ctx: &State<R
             RedirectOrContent::Redirect(Redirect::to(uri!(super::teams(SERIES, event))))
         }
     } else {
-        RedirectOrContent::Content(enter_form_step2(&mut transaction, Some(me), uri, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
+        RedirectOrContent::Content(enter_form_step2(&mut transaction, Some(me), uri, client, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
     })
 }
 

@@ -76,6 +76,7 @@ use {
     },
     tokio_util::io::StreamReader,
     url::Url,
+    wheel::traits::ReqwestResponseExt as _,
     crate::{
         Environment,
         cal::{
@@ -200,6 +201,7 @@ enum RollError {
     #[error(transparent)] Io(#[from] std::io::Error),
     #[error(transparent)] Json(#[from] serde_json::Error),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
     #[cfg(unix)] #[error(transparent)] Xdg(#[from] xdg::BaseDirectoriesError),
     #[error("there is nothing waiting for this seed anymore")]
     ChannelClosed,
@@ -321,7 +323,7 @@ impl MwSeedQueue {
         res
     }
 
-    async fn get_version(&self, branch: &str) -> reqwest::Result<Version> {
+    async fn get_version(&self, branch: &str) -> Result<Version, RollError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct VersionResponse {
@@ -329,7 +331,7 @@ impl MwSeedQueue {
         }
 
         Ok(self.get("https://ootrandomizer.com/api/version", Some(&[("key", &*self.ootr_api_key), ("branch", branch)])).await?
-            .error_for_status()?
+            .detailed_error_for_status().await?
             .json::<VersionResponse>().await?
             .currently_active_version)
     }
@@ -410,7 +412,7 @@ impl MwSeedQueue {
             };
             update_tx.send(SeedRollUpdate::Started).await?;
             let seed_id = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[("key", &*self.ootr_api_key), ("version", &*format!("dev_{RANDO_VERSION}")), ("locked", "1")]), Some(&settings)).await?
-                .error_for_status()?
+                .detailed_error_for_status().await?
                 .json::<CreateSeedResponse>().await?
                 .id;
             *next_seed = Instant::now() + MULTIWORLD_RATE_LIMIT;
@@ -428,11 +430,11 @@ impl MwSeedQueue {
                     0 => continue, // still generating
                     1 => { // generated success
                         let file_hash = self.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])).await?
-                            .error_for_status()?
+                            .detailed_error_for_status().await?
                             .json::<SeedDetailsResponse>().await?
                             .settings_log.file_hash;
                         let patch_response = self.get("https://ootrandomizer.com/api/v2/seed/patch", Some(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])).await?
-                            .error_for_status()?;
+                            .detailed_error_for_status().await?;
                         let (_, patch_file_name) = regex_captures!("^attachment; filename=(.+)$", patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION).ok_or(RollError::PatchPath)?.to_str()?).ok_or(RollError::PatchPath)?;
                         let patch_file_name = patch_file_name.to_owned();
                         //let (_, patch_file_stem) = regex_captures!(r"^(.+)\.zpfz?$", patch_file_name).ok_or(RollError::PatchPath)?;
@@ -915,7 +917,7 @@ impl RaceHandler<GlobalState> for Handler {
                 }
                 RaceState::RolledWeb(seed_id) => {
                     self.global_state.mw_seed_queue.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &self.global_state.mw_seed_queue.ootr_api_key), ("id", &seed_id.to_string())]), None::<&()>).await?
-                        .error_for_status()?;
+                        .detailed_error_for_status().await.map_err(|e| Error::Custom(Box::new(e)))?;
                     //TODO also save spoiler log to local archive
                     *state = RaceState::SpoilerSent;
                 }

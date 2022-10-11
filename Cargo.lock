@@ -3530,6 +3530,7 @@ dependencies = [
  "async-trait",
  "clap",
  "itertools",
+ "reqwest",
  "rocket",
  "thiserror",
  "tokio",
