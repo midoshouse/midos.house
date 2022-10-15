@@ -937,50 +937,58 @@ async fn create_rooms(global_state: Arc<GlobalState>, discord_ctx: RwFuture<Disc
                 let mut transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
                 for row in sqlx::query!(r#"SELECT series AS "series: Series", event, startgg_set, draft_state AS "draft_state: Json<Draft>", start AS "start!", end_time FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut transaction).await.map_err(|e| Error::Custom(Box::new(e)))? {
                     let race = Race::new(&mut transaction, &global_state.http_client, &global_state.startgg_token, row.startgg_set, row.draft_state.clone().map(|Json(draft)| draft), row.start, row.end_time, None, RaceKind::Normal).await.map_err(|e| Error::Custom(Box::new(e)))?;
-                    let (access_token, _) = racetime::authorize_with_host(global_state.host, &racetime_config.client_id, &racetime_config.client_secret, &global_state.http_client).await?;
-                    let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
-                    let race_slug = racetime::StartRace {
-                        goal: format!("3rd Multiworld Tournament"), //TODO don't hardcode
-                        goal_is_custom: true,
-                        team_race: true,
-                        invitational: true,
-                        unlisted: false,
-                        info_user: format!("{} {}: {} vs {}", race.phase, race.round, race.team1, race.team2),
-                        info_bot: String::default(),
-                        require_even_teams: true,
-                        start_delay: 15,
-                        time_limit: 24,
-                        time_limit_auto_complete: false,
-                        streaming_required: None,
-                        auto_start: true, //TODO no autostart if restreamed
-                        allow_comments: true,
-                        hide_comments: true,
-                        allow_prerace_chat: true,
-                        allow_midrace_chat: true,
-                        allow_non_entrant_chat: true,
-                        chat_message_delay: 0,
-                    }.start_with_host(global_state.host, &access_token, &global_state.http_client, CATEGORY).await?;
-                    let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", global_state.host))?;
-                    sqlx::query!("UPDATE races SET room = $1 WHERE startgg_set = $2", room_url.to_string(), race.startgg_set).execute(&mut transaction).await.map_err(|e| Error::Custom(Box::new(e)))?;
-                    transaction.commit().await.map_err(|e| Error::Custom(Box::new(e)))?;
-                    drop(new_room_lock);
-                    transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
-                    if let Some(race) = Race::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, room_url.clone()).await.map_err(|e| Error::Custom(Box::new(e)))? {
-                        if let Some(event) = event::Data::new(&mut transaction, row.series, row.event).await.map_err(|e| Error::Custom(Box::new(e)))? {
-                            if let (Some(guild), Some(channel)) = (event.discord_guild, event.discord_race_room_channel) {
-                                channel.say(&*discord_ctx.read().await, MessageBuilder::default()
-                                    .push_safe(race.phase)
-                                    .push(' ')
-                                    .push_safe(race.round)
-                                    .push(": ")
-                                    .mention_team(&mut transaction, guild, &race.team1).await.map_err(|e| Error::Custom(Box::new(e)))?
-                                    .push(" vs ")
-                                    .mention_team(&mut transaction, guild, &race.team2).await.map_err(|e| Error::Custom(Box::new(e)))?
-                                    .push(' ')
-                                    .push(room_url)
-                                ).await.map_err(|e| Error::Custom(Box::new(e)))?;
+                    match racetime::authorize_with_host(global_state.host, &racetime_config.client_id, &racetime_config.client_secret, &global_state.http_client).await {
+                        Ok((access_token, _)) => {
+                            let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
+                            let race_slug = racetime::StartRace {
+                                goal: format!("3rd Multiworld Tournament"), //TODO don't hardcode
+                                goal_is_custom: true,
+                                team_race: true,
+                                invitational: true,
+                                unlisted: false,
+                                info_user: format!("{} {}: {} vs {}", race.phase, race.round, race.team1, race.team2),
+                                info_bot: String::default(),
+                                require_even_teams: true,
+                                start_delay: 15,
+                                time_limit: 24,
+                                time_limit_auto_complete: false,
+                                streaming_required: None,
+                                auto_start: true, //TODO no autostart if restreamed
+                                allow_comments: true,
+                                hide_comments: true,
+                                allow_prerace_chat: true,
+                                allow_midrace_chat: true,
+                                allow_non_entrant_chat: true,
+                                chat_message_delay: 0,
+                            }.start_with_host(global_state.host, &access_token, &global_state.http_client, CATEGORY).await?;
+                            let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", global_state.host))?;
+                            sqlx::query!("UPDATE races SET room = $1 WHERE startgg_set = $2", room_url.to_string(), race.startgg_set).execute(&mut transaction).await.map_err(|e| Error::Custom(Box::new(e)))?;
+                            transaction.commit().await.map_err(|e| Error::Custom(Box::new(e)))?;
+                            drop(new_room_lock);
+                            transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
+                            if let Some(race) = Race::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, room_url.clone()).await.map_err(|e| Error::Custom(Box::new(e)))? {
+                                if let Some(event) = event::Data::new(&mut transaction, row.series, row.event).await.map_err(|e| Error::Custom(Box::new(e)))? {
+                                    if let (Some(guild), Some(channel)) = (event.discord_guild, event.discord_race_room_channel) {
+                                        channel.say(&*discord_ctx.read().await, MessageBuilder::default()
+                                            .push_safe(race.phase)
+                                            .push(' ')
+                                            .push_safe(race.round)
+                                            .push(": ")
+                                            .mention_team(&mut transaction, guild, &race.team1).await.map_err(|e| Error::Custom(Box::new(e)))?
+                                            .push(" vs ")
+                                            .mention_team(&mut transaction, guild, &race.team2).await.map_err(|e| Error::Custom(Box::new(e)))?
+                                            .push(' ')
+                                            .push(room_url)
+                                        ).await.map_err(|e| Error::Custom(Box::new(e)))?;
+                                    }
+                                }
                             }
                         }
+                        Err(Error::Reqwest(e)) if e.status().map_or(false, |status| status.is_server_error()) => {
+                            // racetime.gg's auth endpoint has been known to return server errors intermittently.
+                            // In that case, we simply try again in the next iteration of the sleep loop.
+                        }
+                        Err(e) => return Err(e),
                     }
                 }
                 transaction.commit().await.map_err(|e| Error::Custom(Box::new(e)))?;
