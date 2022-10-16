@@ -575,28 +575,44 @@ impl RaceHandler<GlobalState> for Handler {
     }
 
     async fn new(ctx: &RaceContext, global_state: Arc<GlobalState>) -> Result<Self, Error> {
-        let data = ctx.data().await;
         let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
         let mut transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
         let (official_race_start, race_state, high_seed_name, low_seed_name) = if let Some(race) = Race::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, format!("https://{}{}", global_state.host, ctx.data().await.url).parse()?).await.map_err(|e| Error::Custom(Box::new(e)))? {
             for team in race.active_teams() {
                 let mut members = sqlx::query_scalar!(r#"SELECT racetime_id AS "racetime_id!" FROM users, team_members WHERE id = member AND team = $1 AND racetime_id IS NOT NULL"#, i64::from(team.id)).fetch(&mut transaction);
                 while let Some(member) = members.try_next().await.map_err(|e| Error::Custom(Box::new(e)))? {
-                    if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
-                        match entrant.status.value {
-                            EntrantStatusValue::Requested => ctx.accept_request(&member).await?,
-                            EntrantStatusValue::Invited |
-                            EntrantStatusValue::Declined |
-                            EntrantStatusValue::Ready |
-                            EntrantStatusValue::NotReady |
-                            EntrantStatusValue::InProgress |
-                            EntrantStatusValue::Done |
-                            EntrantStatusValue::Dnf |
-                            EntrantStatusValue::Dq => {}
+                    let ctx = ctx.clone();
+                    tokio::spawn(async move {
+                        loop {
+                            let data = ctx.data().await;
+                            if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
+                                match entrant.status.value {
+                                    EntrantStatusValue::Requested => ctx.accept_request(&member).await.expect("failed to accept race join request"),
+                                    EntrantStatusValue::Invited |
+                                    EntrantStatusValue::Declined |
+                                    EntrantStatusValue::Ready |
+                                    EntrantStatusValue::NotReady |
+                                    EntrantStatusValue::InProgress |
+                                    EntrantStatusValue::Done |
+                                    EntrantStatusValue::Dnf |
+                                    EntrantStatusValue::Dq => {}
+                                }
+                            } else {
+                                drop(data);
+                                match ctx.invite_user(&member).await {
+                                    Ok(()) => {}
+                                    Err(e) => if Utc::now() + chrono::Duration::minutes(11) < race.start {
+                                        sleep(Duration::from_secs(60)).await;
+                                        continue
+                                    } else {
+                                        eprintln!("failed to invite {member}: {e:?}");
+                                        let _ = ctx.send_message("Repeatedly failed to invite one of the racers. Please contact a category moderator for assistance.").await;
+                                    },
+                                }
+                            }
+                            break
                         }
-                    } else {
-                        ctx.invite_user(&member).await?;
-                    }
+                    });
                 }
             }
             ctx.send_message(&format!("Welcome to this {} {} race! Learn more about the tournament at https://midos.house/event/mw/3", race.phase, race.round)).await?; //TODO don't hardcode event name/URL
