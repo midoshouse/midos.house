@@ -402,6 +402,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb4a24b1aaf0fd0ce8b45161144d6f42cd91677fd5940fd431183eb023b3a2b8"
 
 [[package]]
+name = "convert_case"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec182b0ca2f35d8fc196cf3404988fd8b8c739a4d270ff118a398feb0cbec1ca"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "cookie"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2232,8 +2241,8 @@ dependencies = [
 
 [[package]]
 name = "rocket-util"
-version = "0.2.4"
-source = "git+https://github.com/fenhl/rocket-util?branch=main#e2bc3c6f41fdefc32fa2470bfce59d3fe55407c9"
+version = "0.2.5"
+source = "git+https://github.com/fenhl/rocket-util?branch=main#ff25cbcca2a0b9c8e7320f810a719bc364904c43"
 dependencies = [
  "ics",
  "image",
@@ -2245,10 +2254,10 @@ dependencies = [
 
 [[package]]
 name = "rocket-util-derive"
-version = "0.2.4"
-source = "git+https://github.com/fenhl/rocket-util?branch=main#e2bc3c6f41fdefc32fa2470bfce59d3fe55407c9"
+version = "0.2.5"
+source = "git+https://github.com/fenhl/rocket-util?branch=main#ff25cbcca2a0b9c8e7320f810a719bc364904c43"
 dependencies = [
- "convert_case",
+ "convert_case 0.6.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -2609,7 +2618,7 @@ name = "serenity-utils-derive"
 version = "0.10.0"
 source = "git+https://github.com/fenhl/serenity-utils?branch=main#9195da873f42e53447f6adea34c8368c437600db"
 dependencies = [
- "convert_case",
+ "convert_case 0.5.0",
  "if_chain",
  "itertools",
  "proc-macro2",
@@ -3521,11 +3530,12 @@ dependencies = [
 
 [[package]]
 name = "wheel"
-version = "0.8.1"
-source = "git+https://github.com/fenhl/wheel?branch=main#0ac814b080d632f3835708a059a017996a400c65"
+version = "0.8.2"
+source = "git+https://github.com/fenhl/wheel?branch=main#914aa063f01980f6edf24b5ae50b1e2db4b636fa"
 dependencies = [
  "async-trait",
  "clap",
+ "futures",
  "itertools",
  "reqwest",
  "rocket",
@@ -3538,8 +3548,8 @@ dependencies = [
 
 [[package]]
 name = "wheel-derive"
-version = "0.8.1"
-source = "git+https://github.com/fenhl/wheel?branch=main#0ac814b080d632f3835708a059a017996a400c65"
+version = "0.8.2"
+source = "git+https://github.com/fenhl/wheel?branch=main#914aa063f01980f6edf24b5ae50b1e2db4b636fa"
 dependencies = [
  "itertools",
  "proc-macro2",

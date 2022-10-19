@@ -103,6 +103,7 @@ use {
 
 pub(crate) mod mw;
 pub(crate) mod pic;
+mod s;
 
 #[derive(Debug, Clone, Copy, sqlx::Type)]
 #[sqlx(type_name = "signup_status", rename_all = "snake_case")]
@@ -121,6 +122,8 @@ impl SignupStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
 #[sqlx(type_name = "team_role", rename_all = "snake_case")]
 pub(crate) enum Role {
+    /// for solo events
+    None,
     /// “runner” in Pictionary
     Sheikah,
     /// “pilot” in Pictionary
@@ -134,13 +137,14 @@ pub(crate) enum Role {
 }
 
 impl Role {
-    fn css_class(&self) -> &'static str {
+    fn css_class(&self) -> Option<&'static str> {
         match self {
-            Self::Sheikah => "sheikah",
-            Self::Gerudo => "gerudo",
-            Self::Power => "power",
-            Self::Wisdom => "wisdom",
-            Self::Courage => "courage",
+            Self::None => None,
+            Self::Sheikah => Some("sheikah"),
+            Self::Gerudo => Some("gerudo"),
+            Self::Power => Some("power"),
+            Self::Wisdom => Some("wisdom"),
+            Self::Courage => Some("courage"),
         }
     }
 }
@@ -149,6 +153,7 @@ impl Role {
 pub(crate) enum Series {
     Multiworld,
     Pictionary,
+    Standard,
 }
 
 impl Series {
@@ -156,6 +161,7 @@ impl Series {
         match self {
             Self::Multiworld => "mw",
             Self::Pictionary => "pic",
+            Self::Standard => "s",
         }
     }
 }
@@ -167,6 +173,7 @@ impl FromStr for Series {
         match s {
             "mw" => Ok(Self::Multiworld),
             "pic" => Ok(Self::Pictionary),
+            "s" => Ok(Self::Standard),
             _ => Err(()),
         }
     }
@@ -230,6 +237,7 @@ impl UriDisplay<Path> for Series {
 impl_from_uri_param_identity!([Path] Series);
 
 pub(crate) enum TeamConfig {
+    Solo,
     Pictionary,
     Multiworld,
 }
@@ -237,6 +245,9 @@ pub(crate) enum TeamConfig {
 impl TeamConfig {
     fn roles(&self) -> Vec<(Role, &'static str)> {
         match self {
+            Self::Solo => vec![
+                (Role::None, "Runner"),
+            ],
             Self::Multiworld => vec![
                 (Role::Power, "Player 1"),
                 (Role::Wisdom, "Player 2"),
@@ -292,6 +303,7 @@ impl<'a> Data<'a> {
         match self.series {
             Series::Multiworld => false,
             Series::Pictionary => true,
+            Series::Standard => false,
         }
     }
 
@@ -299,6 +311,7 @@ impl<'a> Data<'a> {
         match self.series {
             Series::Multiworld => TeamConfig::Multiworld,
             Series::Pictionary => TeamConfig::Pictionary,
+            Series::Standard => TeamConfig::Solo,
         }
     }
 
@@ -351,6 +364,8 @@ impl<'a> Data<'a> {
             (Series::Multiworld, "3") => mw::S3Settings::random(&mut thread_rng()).chests(),
             (Series::Multiworld, _) => unimplemented!(),
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
+            (Series::Standard, "6") => ChestAppearances::VANILLA, // classic CSMC with no keys in overworld
+            (Series::Standard, _) => unimplemented!(),
         }
     }
 
@@ -525,6 +540,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
     let content = match data.series {
         Series::Multiworld => mw::info(pool, event).await?,
         Series::Pictionary => pic::info(pool, event).await?,
+        Series::Standard => s::info(event),
     };
     page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
         : header;
@@ -660,7 +676,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                 }
                             }
                             @for (role, user, is_confirmed, qualifier_time, qualifier_vod) in &members {
-                                td(class = role.css_class()) {
+                                td(class? = role.css_class()) {
                                     : user;
                                     @if *is_confirmed {
                                         @if me.as_ref().map_or(false, |me| me == user) && members.iter().any(|(_, _, is_confirmed, _, _)| !is_confirmed) {
@@ -888,6 +904,7 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
                         } else {
                             : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
                         }
+                        Series::Standard => @unimplemented // no signups on Mido's House
                     }
                     h2 : "Options";
                     p : "More options coming soon"; //TODO options to change team name, swap roles, or opt in/out for restreaming
@@ -930,9 +947,10 @@ pub(crate) async fn status(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Di
 pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<crate::event::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(match data.team_config() {
-        TeamConfig::Multiworld => mw::enter_form(&mut transaction, me, uri, csrf, data, Context::default(), client).await?,
-        TeamConfig::Pictionary => pic::enter_form(&mut transaction, me, uri, csrf, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?,
+    Ok(match series {
+        Series::Multiworld => mw::enter_form(&mut transaction, me, uri, csrf, data, Context::default(), client).await?,
+        Series::Pictionary => pic::enter_form(&mut transaction, me, uri, csrf, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?,
+        Series::Standard => s::enter_form(&mut transaction, me, uri, data).await?,
     })
 }
 
@@ -950,6 +968,13 @@ pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origi
     let mut transaction = pool.begin().await.map_err(FindTeamError::Sql)?;
     let data = Data::new(&mut transaction, series, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(match data.team_config() {
+        TeamConfig::Solo => {
+            let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam).await.map_err(FindTeamError::Sql)?;
+            page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+                : header;
+                : "This is a solo event.";
+            }).await.map_err(FindTeamError::Page)?
+        }
         TeamConfig::Multiworld => mw::find_team_form(&mut transaction, me, uri, csrf, data, Context::default()).await?,
         TeamConfig::Pictionary => pic::find_team_form(&mut transaction, me, uri, csrf, data, Context::default()).await?,
     })

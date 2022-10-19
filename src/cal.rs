@@ -277,6 +277,40 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
             cal_event.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string()));
             cal.add_event(cal_event);
         }
+        Series::Standard => match &*event.event {
+            "6" => {
+                for (i, (start, weekly)) in [
+                    // source: https://docs.google.com/document/d/1fyNO82G2D0Z7J9wobxEbjDjGnomTaIRdKgETGV_ufmc/edit
+                    (Utc.ymd(2022, 11, 19).and_hms(23, 0, 0), Some("NA")),
+                    (Utc.ymd(2022, 11, 20).and_hms(14, 0, 0), Some("EU")),
+                    (Utc.ymd(2022, 11, 23).and_hms(3, 0, 0), None),
+                    (Utc.ymd(2022, 11, 26).and_hms(23, 0, 0), Some("NA")),
+                    (Utc.ymd(2022, 11, 27).and_hms(14, 0, 0), Some("EU")),
+                    (Utc.ymd(2022, 11, 29).and_hms(19, 0, 0), None),
+                    (Utc.ymd(2022, 12, 2).and_hms(1, 0, 0), None),
+                    (Utc.ymd(2022, 12, 3).and_hms(23, 0, 0), Some("NA")),
+                    (Utc.ymd(2022, 12, 4).and_hms(14, 0, 0), Some("EU")),
+                    (Utc.ymd(2022, 12, 6).and_hms(1, 0, 0), None),
+                    (Utc.ymd(2022, 12, 8).and_hms(19, 0, 0), None),
+                    (Utc.ymd(2022, 12, 10).and_hms(23, 0, 0), Some("NA")),
+                    (Utc.ymd(2022, 12, 11).and_hms(14, 0, 0), Some("EU")),
+                    (Utc.ymd(2022, 12, 12).and_hms(19, 0, 0), None),
+                    (Utc.ymd(2022, 12, 15).and_hms(1, 0, 0), None),
+                    (Utc.ymd(2022, 12, 17).and_hms(23, 0, 0), Some("NA")),
+                    (Utc.ymd(2022, 12, 18).and_hms(14, 0, 0), Some("EU")),
+                    (Utc.ymd(2022, 12, 21).and_hms(19, 0, 0), None),
+                    (Utc.ymd(2022, 12, 23).and_hms(3, 0, 0), None),
+                ].into_iter().enumerate() {
+                    let mut cal_event = ics::Event::new(format!("{}-{}-q{}@midos.house", event.series, event.event, i + 1), ics_datetime(Utc::now()));
+                    cal_event.push(Summary::new(format!("S6 Qualifier {}{}", i + 1, if let Some(weekly) = weekly { format!(" ({weekly} Weekly)") } else { String::default() })));
+                    cal_event.push(DtStart::new(ics_datetime(start)));
+                    cal_event.push(DtEnd::new(ics_datetime(start + Duration::hours(4)))); //TODO get from race room; better duration estimate from past seasons
+                    cal_event.push(URL::new("https://docs.google.com/document/d/1fyNO82G2D0Z7J9wobxEbjDjGnomTaIRdKgETGV_ufmc/edit")); //TODO race room link
+                }
+                //TODO bracket matches
+            }
+            _ => unimplemented!(),
+        },
     }
     Ok(())
 }

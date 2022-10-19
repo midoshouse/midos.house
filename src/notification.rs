@@ -154,6 +154,7 @@ impl Notification {
                             : user;
                             : " (";
                             @match event.team_config() {
+                                TeamConfig::Solo => @unreachable // team invite for solo event
                                 TeamConfig::Multiworld => {
                                     : mw::Role::try_from(member.role).expect("non-multiworld role in multiworld team");
                                     : ", ";
@@ -175,6 +176,7 @@ impl Notification {
                 let my_role = my_role.ok_or(Error::UnknownUser)?;
                 html! {
                     @match event.team_config() {
+                        TeamConfig::Solo => @unreachable // team invite for solo event
                         TeamConfig::Multiworld => {
                             : creator;
                             : " (";
