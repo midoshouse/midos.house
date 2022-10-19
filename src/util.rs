@@ -337,6 +337,9 @@ pub(crate) fn static_url(path: &str) -> String {
 
 pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
     match url.host_str() {
+        Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("document") => html! {
+            img(class = "favicon", alt = "external link (docs.google.com/document)", src = "https://ssl.gstatic.com/docs/documents/images/kix-favicon7.ico");
+        },
         Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("spreadsheets") => html! {
             img(class = "favicon", alt = "external link (docs.google.com/spreadsheets)", src = "https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico");
         },

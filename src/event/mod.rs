@@ -394,15 +394,16 @@ impl<'a> Data<'a> {
                 } else {
                     a(class = "button", href = uri!(info(self.series, &*self.event)).to_string()) : "Info";
                 }
+                @let teams_label = if let TeamConfig::Solo = self.team_config() { "Entrants" } else { "Teams" };
                 @if let Tab::Teams = tab {
-                    span(class = "button selected") : "Teams";
+                    span(class = "button selected") : teams_label;
                 } else if let Some(ref teams_url) = self.teams_url {
                     a(class = "button", href = teams_url.to_string()) {
                         : favicon(teams_url);
-                        : "Teams";
+                        : teams_label;
                     }
                 } else {
-                    a(class = "button", href = uri!(teams(self.series, &*self.event)).to_string()) : "Teams";
+                    a(class = "button", href = uri!(teams(self.series, &*self.event)).to_string()) : teams_label;
                 }
                 @if !self.is_single_race() { //TODO also hide for past events with no race list
                     @if let Tab::Races = tab {
@@ -423,10 +424,12 @@ impl<'a> Data<'a> {
                     } else {
                         a(class = "button", href = uri!(enter(self.series, &*self.event, _, _)).to_string()) : "Enter";
                     }
-                    @if let Tab::FindTeam = tab {
-                        span(class = "button selected") : "Find Teammates";
-                    } else {
-                        a(class = "button", href = uri!(find_team(self.series, &*self.event)).to_string()) : "Find Teammates";
+                    @if !matches!(self.team_config(), TeamConfig::Solo) {
+                        @if let Tab::FindTeam = tab {
+                            span(class = "button selected") : "Find Teammates";
+                        } else {
+                            a(class = "button", href = uri!(find_team(self.series, &*self.event)).to_string()) : "Find Teammates";
+                        }
                     }
                 }
                 //a(class = "button") : "Volunteer"; //TODO
@@ -627,12 +630,15 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
         );
     }
     let mut footnotes = Vec::default();
-    page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Teams — {}", data.display_name), html! {
+    let teams_label = if let TeamConfig::Solo = data.team_config() { "Entrants" } else { "Teams" };
+    page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), html! {
         : header;
         table {
             thead {
                 tr {
-                    th : "Team Name";
+                    @if !matches!(data.team_config(), TeamConfig::Solo) {
+                        th : "Team Name";
+                    }
                     @for &(role, display_name) in &roles {
                         th(class = role.css_class()) : display_name;
                     }
@@ -644,33 +650,35 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             tbody {
                 @if signups.is_empty() {
                     tr {
-                        td(colspan = roles.len() + if has_qualifier && !show_qualifier_times { 2 } else { 1 }) {
+                        td(colspan = if let TeamConfig::Solo = data.team_config() { 0 } else { 1 } + roles.len() + if has_qualifier && !show_qualifier_times { 1 } else { 0 }) {
                             i : "(no signups yet)";
                         }
                     }
                 } else {
                     @for (team_id, team_name, racetime_slug, members, qualified) in signups {
                         tr {
-                            td {
-                                //TODO use Team type
-                                @if let Some(racetime_slug) = racetime_slug {
-                                    a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
-                                        @if let Some(team_name) = team_name {
-                                            : team_name;
-                                        } else {
-                                            i : "(unnamed)";
+                            @if !matches!(data.team_config(), TeamConfig::Solo) {
+                                td {
+                                    //TODO use Team type
+                                    @if let Some(racetime_slug) = racetime_slug {
+                                        a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
+                                            @if let Some(team_name) = team_name {
+                                                : team_name;
+                                            } else {
+                                                i : "(unnamed)";
+                                            }
                                         }
+                                    } else {
+                                        : team_name.unwrap_or_default();
                                     }
-                                } else {
-                                    : team_name.unwrap_or_default();
-                                }
-                                @if show_qualifier_times && qualified {
-                                    br;
-                                    small {
-                                        @if let Some(time) = members.iter().try_fold(Duration::default(), |acc, &(_, _, _, time, _)| Some(acc + time?)) {
-                                            : format_duration(time / 3, false);
-                                        } else {
-                                            : "DNF";
+                                    @if show_qualifier_times && qualified {
+                                        br;
+                                        small {
+                                            @if let Some(time) = members.iter().try_fold(Duration::default(), |acc, &(_, _, _, time, _)| Some(acc + time?)) {
+                                                : format_duration(time / 3, false);
+                                            } else {
+                                                : "DNF";
+                                            }
                                         }
                                     }
                                 }
