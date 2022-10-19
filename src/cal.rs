@@ -306,6 +306,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                     cal_event.push(DtStart::new(ics_datetime(start)));
                     cal_event.push(DtEnd::new(ics_datetime(start + Duration::hours(4)))); //TODO get from race room; better duration estimate from past seasons
                     cal_event.push(URL::new("https://docs.google.com/document/d/1fyNO82G2D0Z7J9wobxEbjDjGnomTaIRdKgETGV_ufmc/edit")); //TODO race room link
+                    cal.add_event(cal_event);
                 }
                 //TODO bracket matches
             }
