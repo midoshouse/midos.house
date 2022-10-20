@@ -11,6 +11,8 @@ ThrowOnNativeFailure
 wsl cargo build --release
 ThrowOnNativeFailure
 
+#TODO warn if there are any active races on racetime.gg/ootr that should be handled by Mido
+
 ssh midos.house sudo systemctl stop midos-house
 ThrowOnNativeFailure
 

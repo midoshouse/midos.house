@@ -73,11 +73,19 @@ impl Race {
         let end = if let Some(end) = end {
             Some(end)
         } else if let Some(ref room) = room {
-            http_client.get(format!("{room}/data"))
+            let end = http_client.get(format!("{room}/data"))
                 .send().await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error::<RaceData>().await?
-                .ended_at
+                .ended_at;
+            if let Some(end) = end {
+                match kind {
+                    RaceKind::Normal => { sqlx::query!("UPDATE races SET end_time = $1 WHERE startgg_set = $2", end, &startgg_set).execute(&mut *transaction).await?; }
+                    RaceKind::Async1 => { sqlx::query!("UPDATE races SET async_end1 = $1 WHERE startgg_set = $2", end, &startgg_set).execute(&mut *transaction).await?; }
+                    RaceKind::Async2 => { sqlx::query!("UPDATE races SET async_end2 = $1 WHERE startgg_set = $2", end, &startgg_set).execute(&mut *transaction).await?; }
+                }
+            }
+            end
         } else {
             None
         };
