@@ -177,7 +177,7 @@ impl GlobalState {
             };
             if can_roll_on_web {
                 match self.mw_seed_queue.roll_seed_web(update_tx.clone(), settings).await {
-                    Ok((seed_id, file_hash)) => update_tx.send(SeedRollUpdate::DoneWeb(seed_id, file_hash)).await?,
+                    Ok((seed_id, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::DoneWeb { seed_id, file_hash, file_stem }).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
                 drop(permit);
@@ -235,7 +235,11 @@ enum SeedRollUpdate {
     /// The seed has been rolled locally, includes the patch filename.
     DoneLocal(String, PathBuf),
     /// The seed has been rolled on ootrandomizer.com, includes the seed ID.
-    DoneWeb(u64, [HashIcon; 5]),
+    DoneWeb {
+        seed_id: u64,
+        file_hash: [HashIcon; 5],
+        file_stem: String,
+    },
     /// Seed rolling failed.
     Error(RollError),
 }
@@ -260,8 +264,8 @@ impl SeedRollUpdate {
                 ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{spoiler_filename}")).await?;
                 ctx.set_bot_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash))).await?;
             }
-            Self::DoneWeb(seed_id, file_hash) => {
-                *state.write().await = RaceState::RolledWeb(seed_id);
+            Self::DoneWeb { seed_id, file_hash, file_stem } => {
+                *state.write().await = RaceState::RolledWeb { seed_id, file_stem };
                 let seed_url = format!("https://ootrandomizer.com/seed/get?id={seed_id}");
                 ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
                 ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
@@ -375,7 +379,7 @@ impl MwSeedQueue {
         Err(RollError::Retries)
     }
 
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, settings: serde_json::Map<String, serde_json::Value>) -> Result<(u64, [HashIcon; 5]), RollError> {
+    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, settings: serde_json::Map<String, serde_json::Value>) -> Result<(u64, [HashIcon; 5], String), RollError> {
         #[serde_as]
         #[derive(Deserialize)]
         struct CreateSeedResponse {
@@ -437,9 +441,9 @@ impl MwSeedQueue {
                             .detailed_error_for_status().await?;
                         let (_, patch_file_name) = regex_captures!("^attachment; filename=(.+)$", patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION).ok_or(RollError::PatchPath)?.to_str()?).ok_or(RollError::PatchPath)?;
                         let patch_file_name = patch_file_name.to_owned();
-                        //let (_, patch_file_stem) = regex_captures!(r"^(.+)\.zpfz?$", patch_file_name).ok_or(RollError::PatchPath)?;
-                        io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut File::create(Path::new(seed::DIR).join(patch_file_name)).await?).await?;
-                        return Ok((seed_id, file_hash))
+                        let (_, patch_file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_file_name).ok_or(RollError::PatchPath)?;
+                        io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut File::create(Path::new(seed::DIR).join(&patch_file_name)).await?).await?;
+                        return Ok((seed_id, file_hash, patch_file_stem.to_owned()))
                     }
                     2 => unreachable!(), // generated with link (not possible from API)
                     3 => break, // failed to generate
@@ -470,7 +474,10 @@ enum RaceState {
     Draft(mw::S3Draft),
     Rolling,
     RolledLocally(PathBuf),
-    RolledWeb(u64),
+    RolledWeb {
+        seed_id: u64,
+        file_stem: String,
+    },
     SpoilerSent,
 }
 
@@ -703,7 +710,7 @@ impl RaceHandler<GlobalState> for Handler {
                             [_, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!ban <setting>”")).await?,
                         }
                     },
-                    RaceState::Rolling | RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                    RaceState::Rolling | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
@@ -768,7 +775,7 @@ impl RaceHandler<GlobalState> for Handler {
                             [_, _, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!draft <setting> <value>”")).await?,
                         }
                     },
-                    RaceState::Rolling | RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                    RaceState::Rolling | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
@@ -784,7 +791,7 @@ impl RaceHandler<GlobalState> for Handler {
                         drop(state);
                         self.advance_draft(ctx).await?;
                     },
-                    RaceState::Rolling | RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                    RaceState::Rolling | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
@@ -834,7 +841,7 @@ impl RaceHandler<GlobalState> for Handler {
                         drop(state);
                         self.advance_draft(ctx).await?;
                     },
-                    RaceState::Rolling | RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                    RaceState::Rolling | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
@@ -898,9 +905,9 @@ impl RaceHandler<GlobalState> for Handler {
                             }
                         }
                     },
-                    RaceState::Draft(_) => ctx.send_message(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
+                    RaceState::Draft(..) => ctx.send_message(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
                     RaceState::Rolling => ctx.send_message(&format!("Sorry {reply_to}, but I'm already rolling a seed for this room. Please wait.")).await?,
-                    RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, but I already rolled a seed. Check the race info!")).await?,
+                    RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, but I already rolled a seed. Check the race info!")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
@@ -919,7 +926,7 @@ impl RaceHandler<GlobalState> for Handler {
                     } else {
                         ctx.send_message(&format!("Sorry {reply_to}, this part of the draft can't be skipped.")).await?;
                     },
-                    RaceState::Rolling | RaceState::RolledLocally(_) | RaceState::RolledWeb(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                    RaceState::Rolling | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
@@ -930,20 +937,31 @@ impl RaceHandler<GlobalState> for Handler {
     }
 
     async fn race_data(&mut self, ctx: &RaceContext, _old_race_data: RaceData) -> Result<(), Error> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct SeedDetailsResponse {
+            spoiler_log: String,
+        }
+
         if let RaceStatusValue::Finished = ctx.data().await.status.value {
             //TODO also make sure this isn't the first half of an async
             let mut state = self.race_state.write().await;
             match *state {
                 RaceState::RolledLocally(ref spoiler_log_path) => {
                     let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name");
-                    fs::rename(&spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await?;
+                    fs::rename(spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await?;
                     *state = RaceState::SpoilerSent;
                 }
-                RaceState::RolledWeb(seed_id) => {
+                RaceState::RolledWeb { seed_id, ref file_stem } => {
+                    let spoiler_filename = format!("{file_stem}_Spoiler.json");
                     self.global_state.mw_seed_queue.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &self.global_state.mw_seed_queue.ootr_api_key), ("id", &seed_id.to_string())]), None::<&()>).await?
                         .detailed_error_for_status().await.map_err(|e| Error::Custom(Box::new(e)))?;
-                    //TODO also save spoiler log to local archive
                     *state = RaceState::SpoilerSent;
+                    let spoiler_log = self.global_state.mw_seed_queue.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &self.global_state.mw_seed_queue.ootr_api_key), ("id", &seed_id.to_string())])).await?
+                        .detailed_error_for_status().await.map_err(|e| Error::Custom(Box::new(e)))?
+                        .json_with_text_in_error::<SeedDetailsResponse>().await.map_err(|e| Error::Custom(Box::new(e)))?
+                        .spoiler_log;
+                    fs::write(Path::new(seed::DIR).join(spoiler_filename), &spoiler_log).await?;
                 }
                 _ => {}
             }
