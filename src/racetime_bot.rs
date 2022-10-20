@@ -548,7 +548,7 @@ impl Handler {
                             if let Some(update) = seed_state.take() {
                                 update.handle(&ctx, &state, settings).await?;
                             } else {
-                                //TODO “still rolling” message? If there's still no progress at this point, something has probably gone wrong
+                                panic!("no seed rolling progress after 15 minutes")
                             }
                         }
                         Some(update) = updates.recv() => seed_state = Some(update),
@@ -857,7 +857,15 @@ impl RaceHandler<GlobalState> for Handler {
                             drop(state);
                             self.advance_draft(ctx).await?;
                         }
-                        //TODO different error message for single unexpected argument?
+                        [ref arg] if arg.parse::<mw::S3Setting>().is_ok() => {
+                            drop(state);
+                            ctx.send_message(&format!("Sorry {reply_to}, you need to pair each setting with a value.")).await?;
+                            self.send_settings(ctx).await?;
+                        }
+                        [_] => {
+                            ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                            send_presets(ctx).await?;
+                        }
                         ref args => {
                             let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
                             let mut settings = mw::S3Settings::default();
