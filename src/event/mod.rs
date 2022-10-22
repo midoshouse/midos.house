@@ -545,7 +545,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
         Series::Pictionary => pic::info(pool, event).await?,
         Series::Standard => s::info(event),
     };
-    page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
+    page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
         : header;
         : content;
     }).await.map_err(|e| StatusOrError::Err(InfoError::Page(e)))
@@ -631,7 +631,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     }
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config() { "Entrants" } else { "Teams" };
-    page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), html! {
+    page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), html! {
         : header;
         table {
             thead {
@@ -780,7 +780,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
         .partition::<Vec<_>, _>(|race| race.end.is_some());
     past_races.sort_by_key(|race| race.end);
     let any_races_ongoing_or_upcoming = !ongoing_and_upcoming_races.is_empty();
-    Ok(page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Races — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Races — {}", data.display_name), html! {
         : header;
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
@@ -943,7 +943,7 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
             }
         }
     };
-    Ok(page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("My Status — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("My Status — {}", data.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
@@ -956,9 +956,9 @@ pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(match series {
-        Series::Multiworld => mw::enter_form(&mut transaction, me, uri, csrf, data, Context::default(), client).await?,
-        Series::Pictionary => pic::enter_form(&mut transaction, me, uri, csrf, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?,
-        Series::Standard => s::enter_form(&mut transaction, me, uri, data).await?,
+        Series::Multiworld => mw::enter_form(transaction, me, uri, csrf, data, Context::default(), client).await?,
+        Series::Pictionary => pic::enter_form(transaction, me, uri, csrf, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?,
+        Series::Standard => s::enter_form(transaction, me, uri, data).await?,
     })
 }
 
@@ -978,13 +978,13 @@ pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origi
     Ok(match data.team_config() {
         TeamConfig::Solo => {
             let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam).await.map_err(FindTeamError::Sql)?;
-            page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+            page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
                 : header;
                 : "This is a solo event.";
             }).await.map_err(FindTeamError::Page)?
         }
-        TeamConfig::Multiworld => mw::find_team_form(&mut transaction, me, uri, csrf, data, Context::default()).await?,
-        TeamConfig::Pictionary => pic::find_team_form(&mut transaction, me, uri, csrf, data, Context::default()).await?,
+        TeamConfig::Multiworld => mw::find_team_form(transaction, me, uri, csrf, data, Context::default()).await?,
+        TeamConfig::Pictionary => pic::find_team_form(transaction, me, uri, csrf, data, Context::default()).await?,
     })
 }
 
@@ -1075,7 +1075,7 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
     if data.is_ended() {
         return Err(StatusOrError::Status(Status::Forbidden))
     }
-    Ok(page(&mut transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
         //TODO different wording if the event has started
         p {
             : "Are you sure you want to retract your team's registration from ";

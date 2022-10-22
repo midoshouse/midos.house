@@ -260,8 +260,7 @@ impl<'r> FromRequest<'r> for User {
 
 #[rocket::get("/login?<redirect_to>")]
 pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, redirect_to: Option<Origin<'_>>) -> PageResult {
-    let mut transaction = pool.begin().await?;
-    page(&mut transaction, &me, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Login — Mido's House", if let Some(ref me) = me {
+    page(pool.begin().await?, &me, &uri, PageStyle { kind: PageKind::Login, ..PageStyle::default() }, "Login — Mido's House", if let Some(ref me) = me {
         html! {
             p {
                 : "You are already signed in as ";

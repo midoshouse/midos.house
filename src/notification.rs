@@ -245,7 +245,7 @@ pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, uri: O
         for notification in Notification::get(&mut transaction, &me).await? {
             notifications.push(notification.into_html(&mut transaction, &me, &csrf).await?);
         }
-        page(&mut transaction, &Some(me), &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
+        page(transaction, &Some(me), &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
             h1 : "Notifications";
             @if notifications.is_empty() {
                 p : "You have no notifications.";
@@ -258,7 +258,7 @@ pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, uri: O
             }
         }).await?
     } else {
-        page(&mut transaction, &me, &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
+        page(transaction, &me, &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
             p {
                 a(href = uri!(auth::login(Some(uri!(notifications)))).to_string()) : "Sign in or create a Mido's House account";
                 : " to view your notifications.";

@@ -96,12 +96,12 @@ pub(crate) enum PageError {
 
 pub(crate) type PageResult = Result<RawHtml<String>, PageError>;
 
-pub(crate) async fn page(transaction: &mut Transaction<'_, Postgres>, me: &Option<User>, uri: &Origin<'_>, style: PageStyle, title: &str, content: impl ToHtml) -> PageResult {
+pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option<User>, uri: &Origin<'_>, style: PageStyle, title: &str, content: impl ToHtml) -> PageResult {
     let notifications = if let Some(me) = me {
         if let PageKind::Notifications = style.kind {
             Vec::default()
         } else {
-            Notification::get(transaction, me).await?
+            Notification::get(&mut transaction, me).await?
         }
     } else {
         Vec::default()
@@ -111,7 +111,8 @@ pub(crate) async fn page(transaction: &mut Transaction<'_, Postgres>, me: &Optio
     } else {
         (None, Some(content))
     };
-    let fenhl = User::from_id(transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+    let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+    transaction.commit().await?;
     Ok(html! {
         : Doctype;
         html {
@@ -259,7 +260,7 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
         }
         //p : "You can also find calendar links for individual events on their pages."; //TODO figure out where to put these calendar links (below the date for single races, “Schedule” tab for tournaments?)
     };
-    Ok(page(&mut transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", page_content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", page_content).await?)
 }
 
 #[rocket::get("/archive")]
@@ -286,14 +287,14 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Res
             }
         }
     };
-    Ok(page(&mut transaction, &me, &uri, PageStyle { chests, ..PageStyle::default() }, "Event Archive — Mido's House", page_content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests, ..PageStyle::default() }, "Event Archive — Mido's House", page_content).await?)
 }
 
 #[rocket::get("/new")]
 async fn new_event(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
     let mut transaction = pool.begin().await?;
     let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
-    page(&mut transaction, &me, &uri, PageStyle::default(), "New Event — Mido's House", html! {
+    page(transaction, &me, &uri, PageStyle::default(), "New Event — Mido's House", html! {
         p {
             : "If you are planning a tournament, community race, or other event for the Ocarina of Time randomizer community, or if you would like Mido's House to archive data about a past event you organized, please contact ";
             : fenhl;
@@ -307,8 +308,7 @@ async fn not_found(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    let mut transaction = pool.begin().await?;
-    page(&mut transaction, &me, &uri, PageStyle { kind: PageKind::Banner, chests: ChestAppearances::INVISIBLE, ..PageStyle::default() }, "Not Found — Mido's House", html! {
+    page(pool.begin().await?, &me, &uri, PageStyle { kind: PageKind::Banner, chests: ChestAppearances::INVISIBLE, ..PageStyle::default() }, "Not Found — Mido's House", html! {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }
@@ -322,8 +322,7 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    let mut transaction = pool.begin().await?;
-    page(&mut transaction, &me, &uri, PageStyle::default(), "Internal Server Error — Mido's House", html! {
+    page(pool.begin().await?, &me, &uri, PageStyle::default(), "Internal Server Error — Mido's House", html! {
         h1 : "Error 500: Internal Server Error";
         p : "Sorry, something went wrong. Please notify Fenhl on Discord.";
     }).await

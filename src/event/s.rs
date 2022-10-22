@@ -37,8 +37,8 @@ pub(super) fn info(event: &str) -> RawHtml<String> {
     }
 }
 
-pub(super) async fn enter_form(transaction: &mut Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, data: Data<'_>) -> Result<RawHtml<String>, Error> {
-    let header = data.header(transaction, me.as_ref(), Tab::Enter).await?;
+pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, data: Data<'_>) -> Result<RawHtml<String>, Error> {
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Enter).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
         : header;
         article {

@@ -333,6 +333,7 @@ pub(crate) async fn index(env: &State<Environment>, config: &State<Config>, pool
         let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during calendar load");
         add_event_races(&mut transaction, http_client, startgg_token, &mut cal, &event).await?;
     }
+    transaction.commit().await?;
     Ok(Response(cal))
 }
 
@@ -343,5 +344,6 @@ pub(crate) async fn for_event(env: &State<Environment>, config: &State<Config>, 
     let event = event::Data::new(&mut transaction, series, event).await.map_err(Error::Event)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     add_event_races(&mut transaction, http_client, startgg_token, &mut cal, &event).await?;
+    transaction.commit().await.map_err(Error::Sql)?;
     Ok(Response(cal))
 }
