@@ -59,7 +59,7 @@ impl From<IdInner> for ID {
 }
 
 /// Workaround for <https://github.com/smashgg/developer-portal/issues/171>
-#[derive(Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(from = "IdInner", into = "String")]
 pub struct ID(pub(crate) String);
 
@@ -77,7 +77,7 @@ type String = std::string::String;
     query_path = "assets/graphql/startgg-set-query.graphql",
     skip_default_scalars, // workaround for https://github.com/smashgg/developer-portal/issues/171
     variables_derives = "Clone, PartialEq, Eq, Hash",
-    response_derives = "Clone",
+    response_derives = "Debug, Clone",
 )]
 pub(crate) struct SetQuery;
 

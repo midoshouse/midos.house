@@ -172,16 +172,17 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
         } else {
             let mut teams = Vec::with_capacity(2);
             let mut team = None;
-            if let startgg::set_query::ResponseData {
-                set: Some(startgg::set_query::SetQuerySet {
-                    slots: Some(slots),
-                    .. //TODO separate query with only the data used?
-                }),
-            } = startgg::query::<startgg::SetQuery>(
+            let response_data = startgg::query::<startgg::SetQuery>(
                 ctx.data.read().await.get::<HttpClient>().expect("HTTP client missing from Discord context"),
                 ctx.data.read().await.get::<StartggToken>().expect("start.gg auth token missing from Discord context"),
                 startgg::set_query::Variables { set_id: startgg::ID(row.startgg_set.clone()) },
-            ).await? {
+            ).await?;
+            if let startgg::set_query::ResponseData {
+                set: Some(startgg::set_query::SetQuerySet {
+                    slots: Some(ref slots),
+                    .. //TODO separate query with only the data used?
+                }),
+            } = response_data {
                 for slot in slots {
                     if let Some(startgg::set_query::SetQuerySetSlots {
                         entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant {
@@ -197,11 +198,11 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
                         }
                         teams.push(iter_team);
                     } else {
-                        return Err(cal::Error::Teams.into())
+                        return Err(cal::Error::Teams(response_data).into())
                     }
                 }
             } else {
-                return Err(cal::Error::Teams.into())
+                return Err(cal::Error::Teams(response_data).into())
             }
             Some((transaction, row.startgg_set, teams, team))
         }

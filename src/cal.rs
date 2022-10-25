@@ -89,34 +89,38 @@ impl Race {
         } else {
             None
         };
+        let response_data = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) }).await?;
         if let startgg::set_query::ResponseData {
             set: Some(startgg::set_query::SetQuerySet {
-                full_round_text: Some(round),
+                full_round_text: Some(ref round),
                 phase_group: Some(startgg::set_query::SetQuerySetPhaseGroup {
                     phase: Some(startgg::set_query::SetQuerySetPhaseGroupPhase {
                         event: Some(startgg::set_query::SetQuerySetPhaseGroupPhaseEvent {
-                            slug: Some(startgg_event),
+                            slug: Some(ref startgg_event),
                         }),
-                        name: Some(phase),
+                        name: Some(ref phase),
                     }),
                 }),
-                slots: Some(slots),
+                slots: Some(ref slots),
             }),
-        } = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) }).await? {
+        } = response_data {
             if let [
                 Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team1)), on: _ }) }) }),
                 Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team2)), on: _ }) }) }),
-            ] = *slots {
+            ] = **slots {
                 Ok(Self {
+                    startgg_event: startgg_event.clone(),
                     team1: Team::from_startgg(transaction, team1).await?.ok_or(Error::UnknownTeam)?,
                     team2: Team::from_startgg(transaction, team2).await?.ok_or(Error::UnknownTeam)?,
-                    draft, start, end, startgg_event, startgg_set, room, phase, round, kind,
+                    phase: phase.clone(),
+                    round: round.clone(),
+                    draft, start, end, startgg_set, room, kind,
                 })
             } else {
-                Err(Error::Teams)
+                Err(Error::Teams(response_data))
             }
         } else {
-            Err(Error::Teams)
+            Err(Error::Teams(response_data))
         }
     }
 
@@ -196,7 +200,7 @@ pub(crate) enum Error {
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("wrong number of teams or missing data")]
-    Teams,
+    Teams(<startgg::SetQuery as graphql_client::GraphQLQuery>::ResponseData),
     #[error("this start.gg team ID is not associated with a Mido's House team")]
     UnknownTeam,
 }
