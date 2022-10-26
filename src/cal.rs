@@ -117,10 +117,10 @@ impl Race {
                     draft, start, end, startgg_set, room, kind,
                 })
             } else {
-                Err(Error::Teams(response_data))
+                Err(Error::Teams { startgg_set, response_data })
             }
         } else {
-            Err(Error::Teams(response_data))
+            Err(Error::Teams { startgg_set, response_data })
         }
     }
 
@@ -199,8 +199,11 @@ pub(crate) enum Error {
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
-    #[error("wrong number of teams or missing data")]
-    Teams(<startgg::SetQuery as graphql_client::GraphQLQuery>::ResponseData),
+    #[error("wrong number of teams or missing data in start.gg set {startgg_set}")]
+    Teams {
+        startgg_set: String,
+        response_data: <startgg::SetQuery as graphql_client::GraphQLQuery>::ResponseData,
+    },
     #[error("this start.gg team ID is not associated with a Mido's House team")]
     UnknownTeam,
 }

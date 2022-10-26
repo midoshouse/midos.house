@@ -198,11 +198,11 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
                         }
                         teams.push(iter_team);
                     } else {
-                        return Err(cal::Error::Teams(response_data).into())
+                        return Err(cal::Error::Teams { startgg_set: row.startgg_set, response_data }.into())
                     }
                 }
             } else {
-                return Err(cal::Error::Teams(response_data).into())
+                return Err(cal::Error::Teams { startgg_set: row.startgg_set, response_data }.into())
             }
             Some((transaction, row.startgg_set, teams, team))
         }
