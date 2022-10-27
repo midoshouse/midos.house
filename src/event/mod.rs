@@ -10,6 +10,7 @@ use {
     anyhow::anyhow,
     chrono::prelude::*,
     futures::stream::TryStreamExt as _,
+    once_cell::sync::Lazy,
     rand::prelude::*,
     rocket::{
         FromForm,
@@ -101,6 +102,7 @@ use {
 
 pub(crate) mod mw;
 pub(crate) mod pic;
+mod rsl;
 mod s;
 
 #[derive(Debug, Clone, Copy, sqlx::Type)]
@@ -151,6 +153,7 @@ impl Role {
 pub(crate) enum Series {
     Multiworld,
     Pictionary,
+    Rsl,
     Standard,
 }
 
@@ -159,6 +162,7 @@ impl Series {
         match self {
             Self::Multiworld => "mw",
             Self::Pictionary => "pic",
+            Self::Rsl => "rsl",
             Self::Standard => "s",
         }
     }
@@ -171,6 +175,7 @@ impl FromStr for Series {
         match s {
             "mw" => Ok(Self::Multiworld),
             "pic" => Ok(Self::Pictionary),
+            "rsl" => Ok(Self::Rsl),
             "s" => Ok(Self::Standard),
             _ => Err(()),
         }
@@ -268,6 +273,7 @@ pub(crate) struct Data<'a> {
     pub(crate) end: Option<DateTime<Utc>>,
     url: Option<Url>,
     teams_url: Option<Url>,
+    enter_url: Option<Url>,
     video_url: Option<Url>,
     pub(crate) discord_guild: Option<GuildId>,
     pub(crate) discord_race_room_channel: Option<ChannelId>,
@@ -282,13 +288,14 @@ pub(crate) enum DataError {
 impl<'a> Data<'a> {
     pub(crate) async fn new(transaction: &mut Transaction<'_, Postgres>, series: Series, event: impl Into<Cow<'a, str>>) -> Result<Option<Data<'a>>, DataError> {
         let event = event.into();
-        sqlx::query!(r#"SELECT display_name, start, end_time, url, teams_url, video_url, discord_guild AS "discord_guild: Id", discord_race_room_channel AS "discord_race_room_channel: Id" FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
+        sqlx::query!(r#"SELECT display_name, start, end_time, url, teams_url, enter_url, video_url, discord_guild AS "discord_guild: Id", discord_race_room_channel AS "discord_race_room_channel: Id" FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
                 display_name: row.display_name,
                 base_start: row.start,
                 end: row.end_time,
                 url: row.url.map(|url| url.parse()).transpose()?,
                 teams_url: row.teams_url.map(|url| url.parse()).transpose()?,
+                enter_url: row.enter_url.map(|url| url.parse()).transpose()?,
                 video_url: row.video_url.map(|url| url.parse()).transpose()?,
                 discord_guild: row.discord_guild.map(|Id(id)| id.into()),
                 discord_race_room_channel: row.discord_race_room_channel.map(|Id(id)| id.into()),
@@ -301,6 +308,7 @@ impl<'a> Data<'a> {
         match self.series {
             Series::Multiworld => false,
             Series::Pictionary => true,
+            Series::Rsl => false,
             Series::Standard => false,
         }
     }
@@ -309,6 +317,7 @@ impl<'a> Data<'a> {
         match self.series {
             Series::Multiworld => TeamConfig::Multiworld,
             Series::Pictionary => TeamConfig::Pictionary,
+            Series::Rsl => TeamConfig::Solo,
             Series::Standard => TeamConfig::Solo,
         }
     }
@@ -362,6 +371,12 @@ impl<'a> Data<'a> {
             (Series::Multiworld, "3") => mw::S3Settings::random(&mut thread_rng()).chests(),
             (Series::Multiworld, _) => unimplemented!(),
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
+            (Series::Rsl, "5") => {
+                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-5-20cd31a.json")).expect("failed to parse chest weights"));
+
+                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
+            }
+            (Series::Rsl, _) => unimplemented!(),
             (Series::Standard, "6") => ChestAppearances::VANILLA, // classic CSMC with no keys in overworld
             (Series::Standard, _) => unimplemented!(),
         }
@@ -419,6 +434,11 @@ impl<'a> Data<'a> {
                 } else if !self.is_started(transaction).await? {
                     @if let Tab::Enter = tab {
                         span(class = "button selected") : "Enter";
+                    } else if let Some(ref enter_url) = self.enter_url {
+                        a(class = "button", href = enter_url.to_string()) {
+                            : favicon(enter_url);
+                            : "Enter";
+                        }
                     } else {
                         a(class = "button", href = uri!(enter(self.series, &*self.event, _, _)).to_string()) : "Enter";
                     }
@@ -541,6 +561,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
     let content = match data.series {
         Series::Multiworld => mw::info(pool, event).await?,
         Series::Pictionary => pic::info(pool, event).await?,
+        Series::Rsl => rsl::info(event),
         Series::Standard => s::info(event),
     };
     page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
@@ -953,6 +974,7 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
                         } else {
                             : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
                         }
+                        Series::Rsl => @unimplemented // no signups on Mido's House
                         Series::Standard => @unimplemented // no signups on Mido's House
                     }
                     h2 : "Options";
@@ -999,6 +1021,7 @@ pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     Ok(match series {
         Series::Multiworld => mw::enter_form(transaction, me, uri, csrf, data, Context::default(), client).await?,
         Series::Pictionary => pic::enter_form(transaction, me, uri, csrf, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?,
+        Series::Rsl => rsl::enter_form(transaction, me, uri, data, event).await?,
         Series::Standard => s::enter_form(transaction, me, uri, data).await?,
     })
 }

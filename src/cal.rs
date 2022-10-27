@@ -464,6 +464,10 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
             cal_event.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string()));
             cal.add_event(cal_event);
         }
+        Series::Rsl => match &*event.event {
+            "5" => {} //TODO
+            _ => unimplemented!(),
+        },
         Series::Standard => match &*event.event {
             "6" => {
                 for (i, (start, weekly)) in [
