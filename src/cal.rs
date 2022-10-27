@@ -409,8 +409,8 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                             cal_event.push(DtEnd::new(ics_datetime(race.end)));
                             if let Some(restream_url) = race.restream {
                                 cal_event.push(URL::new(restream_url.to_string()));
-                            } else if let Some(ref room_slug) = race.room {
-                                cal_event.push(URL::new(format!("https://racetime.gg/ootr/{room_slug}"))); //TODO support misc category rooms
+                            } else if let Some(room_slug) = race.room {
+                                cal_event.push(URL::new(room_slug));
                             }
                             cal_event
                         })

@@ -340,6 +340,9 @@ pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
         Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("document") => html! {
             img(class = "favicon", alt = "external link (docs.google.com/document)", src = "https://ssl.gstatic.com/docs/documents/images/kix-favicon7.ico");
         },
+        Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("forms") => html! {
+            img(class = "favicon", alt = "external link (docs.google.com/forms)", srcset = "https://ssl.gstatic.com/docs/spreadsheets/forms/favicon_qp2.png 16w, https://ssl.gstatic.com/docs/forms/device_home/android_192.png 192w");
+        },
         Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("spreadsheets") => html! {
             img(class = "favicon", alt = "external link (docs.google.com/spreadsheets)", src = "https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico");
         },
