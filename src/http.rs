@@ -130,7 +130,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                         a(class = "nav", href? = (!matches!(style.kind, PageKind::Index)).then(|| uri!(index).to_string())) {
                             div(class = "logo") {
                                 @for chest in style.chests.0 {
-                                    img(class = "chest", src = static_url(&format!("chest/{}512.png", char::from(chest.texture))));
+                                    img(class = format!("chest chest-{}", char::from(chest.texture)), src = static_url(&format!("chest/{}512.png", char::from(chest.texture))));
                                 }
                             }
                             h1 : "Mido's House";
