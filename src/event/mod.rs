@@ -4,14 +4,12 @@ use {
         collections::HashSet,
         fmt,
         io,
-        iter,
         str::FromStr,
         time::Duration,
     },
     anyhow::anyhow,
     chrono::prelude::*,
     futures::stream::TryStreamExt as _,
-    itertools::Itertools as _,
     rand::prelude::*,
     rocket::{
         FromForm,
@@ -73,7 +71,7 @@ use {
         cal::{
             self,
             Race,
-            RaceKind,
+            RaceSchedule,
         },
         config::Config,
         favicon::ChestAppearances,
@@ -775,10 +773,9 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, me.as_ref(), Tab::Races).await?;
-    let (mut past_races, ongoing_and_upcoming_races) = Race::for_event(&mut transaction, http_client, startgg_token, series, event).await?
+    let (past_races, ongoing_and_upcoming_races) = Race::for_event(&mut transaction, http_client, startgg_token, series, event).await?
         .into_iter()
-        .partition::<Vec<_>, _>(|race| race.end.is_some());
-    past_races.sort_by_key(|race| race.end);
+        .partition::<Vec<_>, _>(|race| race.schedule.is_ended());
     let any_races_ongoing_or_upcoming = !ongoing_and_upcoming_races.is_empty();
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Races — {}", data.display_name), html! {
         : header;
@@ -796,17 +793,39 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                 tbody {
                     @for race in ongoing_and_upcoming_races {
                         tr {
-                            td : format_datetime(race.start, DateTimeFormat { long: false, running_text: false });
+                            td {
+                                @match race.schedule {
+                                    RaceSchedule::Unscheduled => {}
+                                    RaceSchedule::Live { start, .. } => : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+                                    RaceSchedule::Async { .. } => : "(async)";
+                                }
+                            }
                             td {
                                 : race.phase;
                                 : " ";
                                 : race.round;
                             }
-                            td(class = iter::once("vs1").chain(matches!(race.kind, RaceKind::Async2).then(|| "dimmed")).join(" ")) : race.team1.to_html(false);
-                            td(class = iter::once("vs2").chain(matches!(race.kind, RaceKind::Async1).then(|| "dimmed")).join(" ")) : race.team2.to_html(false);
+                            td(class = "vs1") {
+                                : race.team1.to_html(false);
+                                @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {
+                                    br;
+                                    small {
+                                        : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+                                    }
+                                }
+                            }
+                            td(class = "vs2") {
+                                : race.team2.to_html(false);
+                                @if let RaceSchedule::Async { start2: Some(start), .. } = race.schedule {
+                                    br;
+                                    small {
+                                        : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+                                    }
+                                }
+                            }
                             td {
                                 a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?);
-                                @if let Some(room) = race.room {
+                                @for room in race.rooms() {
                                     a(class = "favicon", href = room.to_string()) : favicon(&room);
                                 }
                             }
@@ -832,17 +851,39 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                 tbody {
                     @for race in past_races.into_iter().rev() {
                         tr {
-                            td : format_datetime(race.start, DateTimeFormat { long: false, running_text: false });
+                            td {
+                                @match race.schedule {
+                                    RaceSchedule::Unscheduled => {}
+                                    RaceSchedule::Live { start, .. } => : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+                                    RaceSchedule::Async { .. } => : "(async)";
+                                }
+                            }
                             td {
                                 : race.phase;
                                 : " ";
                                 : race.round;
                             }
-                            td(class = iter::once("vs1").chain(matches!(race.kind, RaceKind::Async2).then(|| "dimmed")).join(" ")) : race.team1.to_html(false);
-                            td(class = iter::once("vs2").chain(matches!(race.kind, RaceKind::Async1).then(|| "dimmed")).join(" ")) : race.team2.to_html(false);
+                            td(class = "vs1") {
+                                : race.team1.to_html(false);
+                                @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {
+                                    br;
+                                    small {
+                                        : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+                                    }
+                                }
+                            }
+                            td(class = "vs2") {
+                                : race.team2.to_html(false);
+                                @if let RaceSchedule::Async { start2: Some(start), .. } = race.schedule {
+                                    br;
+                                    small {
+                                        : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+                                    }
+                                }
+                            }
                             td {
                                 a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?);
-                                @if let Some(room) = race.room {
+                                @for room in race.rooms() {
                                     a(class = "favicon", href = room.to_string()) : favicon(&room);
                                 }
                             }

@@ -21,6 +21,10 @@ pub(crate) struct Team {
 }
 
 impl Team {
+    pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, id: Id) -> sqlx::Result<Option<Self>> {
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug FROM teams WHERE id = $1"#, i64::from(id)).fetch_optional(transaction).await
+    }
+
     pub(crate) async fn from_discord(transaction: &mut Transaction<'_, Postgres>, discord_role: RoleId) -> sqlx::Result<Option<Self>> {
         sqlx::query_as!(Self, r#"SELECT teams.id AS "id: Id", name, racetime_slug FROM teams, discord_roles WHERE discord_roles.id = $1 AND racetime_slug = racetime_team"#, i64::from(discord_role)).fetch_optional(transaction).await
     }

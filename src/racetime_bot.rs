@@ -45,10 +45,7 @@ use {
         utils::MessageBuilder,
     },
     serenity_utils::RwFuture,
-    sqlx::{
-        PgPool,
-        types::Json,
-    },
+    sqlx::PgPool,
     tokio::{
         fs::{
             self,
@@ -80,8 +77,8 @@ use {
     crate::{
         Environment,
         cal::{
+            self,
             Race,
-            RaceKind,
         },
         config::Config,
         discord_bot::Draft,
@@ -455,6 +452,35 @@ impl MwSeedQueue {
     }
 }
 
+async fn invite_or_accept<Tz: TimeZone>(ctx: &RaceContext, member: &str, start: DateTime<Tz>) -> bool {
+    let data = ctx.data().await;
+    if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
+        match entrant.status.value {
+            EntrantStatusValue::Requested => ctx.accept_request(member).await.expect("failed to accept race join request"),
+            EntrantStatusValue::Invited |
+            EntrantStatusValue::Declined |
+            EntrantStatusValue::Ready |
+            EntrantStatusValue::NotReady |
+            EntrantStatusValue::InProgress |
+            EntrantStatusValue::Done |
+            EntrantStatusValue::Dnf |
+            EntrantStatusValue::Dq => {}
+        }
+    } else {
+        drop(data);
+        match ctx.invite_user(member).await {
+            Ok(()) => {}
+            Err(e) => if Utc::now() + chrono::Duration::minutes(11) < start {
+                return false
+            } else {
+                eprintln!("failed to invite {member}: {e:?}");
+                let _ = ctx.send_message("Repeatedly failed to invite one of the racers. Please contact a category moderator for assistance.").await;
+            },
+        }
+    }
+    true
+}
+
 async fn send_presets(ctx: &RaceContext) -> Result<(), Error> {
     ctx.send_message("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
     ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
@@ -584,61 +610,38 @@ impl RaceHandler<GlobalState> for Handler {
     async fn new(ctx: &RaceContext, global_state: Arc<GlobalState>) -> Result<Self, Error> {
         let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
         let mut transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
-        let (official_race_start, race_state, high_seed_name, low_seed_name) = if let Some(race) = Race::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, format!("https://{}{}", global_state.host, ctx.data().await.url).parse()?).await.map_err(|e| Error::Custom(Box::new(e)))? {
-            for team in race.active_teams() {
-                let mut members = sqlx::query_scalar!(r#"SELECT racetime_id AS "racetime_id!" FROM users, team_members WHERE id = member AND team = $1 AND racetime_id IS NOT NULL"#, i64::from(team.id)).fetch(&mut transaction);
+        let (official_race_start, race_state, high_seed_name, low_seed_name) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, format!("https://{}{}", global_state.host, ctx.data().await.url).parse()?).await.map_err(|e| Error::Custom(Box::new(e)))? {
+            let start = cal_event.start().expect("handling room for official race without start time");
+            for team in cal_event.active_teams() {
+                let mut members = sqlx::query_scalar!(r#"SELECT racetime_id AS "racetime_id!: String" FROM users, team_members WHERE id = member AND team = $1 AND racetime_id IS NOT NULL"#, i64::from(team.id)).fetch(&mut transaction);
                 while let Some(member) = members.try_next().await.map_err(|e| Error::Custom(Box::new(e)))? {
-                    let ctx = ctx.clone();
-                    tokio::spawn(async move {
-                        loop {
-                            let data = ctx.data().await;
-                            if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
-                                match entrant.status.value {
-                                    EntrantStatusValue::Requested => ctx.accept_request(&member).await.expect("failed to accept race join request"),
-                                    EntrantStatusValue::Invited |
-                                    EntrantStatusValue::Declined |
-                                    EntrantStatusValue::Ready |
-                                    EntrantStatusValue::NotReady |
-                                    EntrantStatusValue::InProgress |
-                                    EntrantStatusValue::Done |
-                                    EntrantStatusValue::Dnf |
-                                    EntrantStatusValue::Dq => {}
-                                }
-                            } else {
-                                drop(data);
-                                match ctx.invite_user(&member).await {
-                                    Ok(()) => {}
-                                    Err(e) => if Utc::now() + chrono::Duration::minutes(11) < race.start {
-                                        sleep(Duration::from_secs(60)).await;
-                                        continue
-                                    } else {
-                                        eprintln!("failed to invite {member}: {e:?}");
-                                        let _ = ctx.send_message("Repeatedly failed to invite one of the racers. Please contact a category moderator for assistance.").await;
-                                    },
-                                }
+                    if !invite_or_accept(ctx, &member, start).await { // first try synchronously so in the common case invitation messages appear before the intro in the chatlog
+                        let ctx = ctx.clone();
+                        tokio::spawn(async move {
+                            while !invite_or_accept(&ctx, &member, start).await {
+                                sleep(Duration::from_secs(60)).await;
                             }
-                            break
-                        }
-                    });
+                        });
+                    }
                 }
             }
-            ctx.send_message(&format!("Welcome to this {} {} race! Learn more about the tournament at https://midos.house/event/mw/3", race.phase, race.round)).await?; //TODO don't hardcode event name/URL
+            ctx.send_message(&format!("Welcome to this {} {} race! Learn more about the tournament at https://midos.house/event/mw/3", cal_event.race.phase, cal_event.race.round)).await?; //TODO don't hardcode event name/URL
             ctx.send_message("Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat.").await?; //TODO different message for monitorless FPA?
-            let (high_seed_name, low_seed_name) = if let Some(Draft { ref state, high_seed }) = race.draft {
+            let (high_seed_name, low_seed_name) = if let Some(Draft { ref state, high_seed }) = cal_event.race.draft {
                 if let mw::DraftStep::Done(settings) = state.next_step() {
                     ctx.send_message(&format!("Your seed with {settings} will be posted in 15 minutes.")).await?;
                 }
-                if race.team1.id == high_seed {
-                    (race.team1.name.clone().unwrap_or_else(|| format!("Team A")), race.team2.name.clone().unwrap_or_else(|| format!("Team B")))
+                if cal_event.race.team1.id == high_seed {
+                    (cal_event.race.team1.name.clone().unwrap_or_else(|| format!("Team A")), cal_event.race.team2.name.clone().unwrap_or_else(|| format!("Team B")))
                 } else {
-                    (race.team2.name.clone().unwrap_or_else(|| format!("Team A")), race.team1.name.clone().unwrap_or_else(|| format!("Team B")))
+                    (cal_event.race.team2.name.clone().unwrap_or_else(|| format!("Team A")), cal_event.race.team1.name.clone().unwrap_or_else(|| format!("Team B")))
                 }
             } else {
                 (format!("Team A"), format!("Team B"))
             };
             (
-                Some(race.start),
-                RaceState::Draft(race.draft.map(|draft| draft.state).unwrap_or_default()), //TODO restrict draft picks
+                Some(start),
+                RaceState::Draft(cal_event.race.draft.map(|draft| draft.state).unwrap_or_default()), //TODO restrict draft picks
                 high_seed_name,
                 low_seed_name,
             )
@@ -977,8 +980,8 @@ async fn create_rooms(global_state: Arc<GlobalState>, discord_ctx: RwFuture<Disc
             () = &mut shutdown => break,
             _ = sleep(Duration::from_secs(60)) => {
                 let mut transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
-                for row in sqlx::query!(r#"SELECT series AS "series: Series", event, startgg_set, draft_state AS "draft_state: Json<Draft>", start AS "start!", end_time FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut transaction).await.map_err(|e| Error::Custom(Box::new(e)))? {
-                    let race = Race::new(&mut transaction, &global_state.http_client, &global_state.startgg_token, row.startgg_set, row.draft_state.clone().map(|Json(draft)| draft), row.start, row.end_time, None, RaceKind::Normal).await.map_err(|e| Error::Custom(Box::new(e)))?;
+                for row in sqlx::query!(r#"SELECT series AS "series: Series", event, startgg_set FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut transaction).await.map_err(|e| Error::Custom(Box::new(e)))? { //TODO get permission to create private rooms, then also use for asyncs
+                    let race = Race::from_startgg(&mut transaction, &global_state.http_client, &global_state.startgg_token, row.startgg_set).await.map_err(|e| Error::Custom(Box::new(e)))?;
                     match racetime::authorize_with_host(global_state.host, &racetime_config.client_id, &racetime_config.client_secret, &global_state.http_client).await {
                         Ok((access_token, _)) => {
                             let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
@@ -988,7 +991,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, discord_ctx: RwFuture<Disc
                                 team_race: true,
                                 invitational: true,
                                 unlisted: false,
-                                info_user: format!("{} {}: {} vs {}", race.phase, race.round, race.team1, race.team2),
+                                info_user: format!("{} {}: {} vs {}", race.phase, race.round, race.team1, race.team2), //TODO adjust for asyncs
                                 info_bot: String::default(),
                                 require_even_teams: true,
                                 start_delay: 15,
@@ -1008,21 +1011,19 @@ async fn create_rooms(global_state: Arc<GlobalState>, discord_ctx: RwFuture<Disc
                             transaction.commit().await.map_err(|e| Error::Custom(Box::new(e)))?;
                             drop(new_room_lock);
                             transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
-                            if let Some(race) = Race::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, room_url.clone()).await.map_err(|e| Error::Custom(Box::new(e)))? {
-                                if let Some(event) = event::Data::new(&mut transaction, row.series, row.event).await.map_err(|e| Error::Custom(Box::new(e)))? {
-                                    if let (Some(guild), Some(channel)) = (event.discord_guild, event.discord_race_room_channel) {
-                                        channel.say(&*discord_ctx.read().await, MessageBuilder::default()
-                                            .push_safe(race.phase)
-                                            .push(' ')
-                                            .push_safe(race.round)
-                                            .push(": ")
-                                            .mention_team(&mut transaction, guild, &race.team1).await.map_err(|e| Error::Custom(Box::new(e)))?
-                                            .push(" vs ")
-                                            .mention_team(&mut transaction, guild, &race.team2).await.map_err(|e| Error::Custom(Box::new(e)))?
-                                            .push(' ')
-                                            .push(room_url)
-                                        ).await.map_err(|e| Error::Custom(Box::new(e)))?;
-                                    }
+                            if let Some(event) = event::Data::new(&mut transaction, row.series, row.event).await.map_err(|e| Error::Custom(Box::new(e)))? {
+                                if let (Some(guild), Some(channel)) = (event.discord_guild, event.discord_race_room_channel) {
+                                    channel.say(&*discord_ctx.read().await, MessageBuilder::default()
+                                        .push_safe(race.phase)
+                                        .push(' ')
+                                        .push_safe(race.round)
+                                        .push(": ")
+                                        .mention_team(&mut transaction, guild, &race.team1).await.map_err(|e| Error::Custom(Box::new(e)))?
+                                        .push(" vs ")
+                                        .mention_team(&mut transaction, guild, &race.team2).await.map_err(|e| Error::Custom(Box::new(e)))?
+                                        .push(' ')
+                                        .push(room_url)
+                                    ).await.map_err(|e| Error::Custom(Box::new(e)))?;
                                 }
                             }
                         }

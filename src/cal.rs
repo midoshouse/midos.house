@@ -43,52 +43,120 @@ use {
         },
         startgg,
         team::Team,
-        util::StatusOrError,
+        util::{
+            Id,
+            StatusOrError,
+        },
     },
 };
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum RaceKind {
-    Normal,
-    Async1,
-    Async2,
+#[derive(Clone)]
+pub(crate) enum RaceSchedule {
+    Unscheduled,
+    Live {
+        start: DateTime<Utc>,
+        end: Option<DateTime<Utc>>,
+        room: Option<Url>,
+    },
+    Async {
+        start1: Option<DateTime<Utc>>,
+        start2: Option<DateTime<Utc>>,
+        end1: Option<DateTime<Utc>>,
+        end2: Option<DateTime<Utc>>,
+        room1: Option<Url>,
+        room2: Option<Url>,
+    },
 }
 
+impl RaceSchedule {
+    fn new(
+        live_start: Option<DateTime<Utc>>, async_start1: Option<DateTime<Utc>>, async_start2: Option<DateTime<Utc>>,
+        live_end: Option<DateTime<Utc>>, async_end1: Option<DateTime<Utc>>, async_end2: Option<DateTime<Utc>>,
+        live_room: Option<Url>, async_room1: Option<Url>, async_room2: Option<Url>,
+    ) -> Self {
+        match (live_start, async_start1, async_start2) {
+            (None, None, None) => Self::Unscheduled,
+            (Some(start), None, None) => Self::Live {
+                end: live_end,
+                room: live_room,
+                start,
+            },
+            (None, start1, start2) => Self::Async {
+                end1: async_end1,
+                end2: async_end2,
+                room1: async_room1,
+                room2: async_room2,
+                start1, start2,
+            },
+            (Some(_), _, _) => unreachable!("both live and async starts included, should be prevented by SQL constraint"),
+        }
+    }
+
+    pub(crate) fn is_ended(&self) -> bool {
+        // Since the end time of a race isn't known in advance, we assume that if a race has an end time, that end time is in the past.
+        match *self {
+            Self::Unscheduled => false,
+            Self::Live { end, .. } => end.is_some(),
+            Self::Async { end1, end2, .. } => end1.is_some() && end2.is_some(),
+        }
+    }
+}
+
+impl PartialEq for RaceSchedule {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for RaceSchedule {}
+
+impl PartialOrd for RaceSchedule {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RaceSchedule {
+    fn cmp(&self, other: &Self) -> Ordering {
+        let (start_a1, start_a2, end_a) = match *self {
+            Self::Unscheduled => (None, None, None),
+            Self::Live { start, end, .. } => (Some(start), Some(start), end),
+            Self::Async { start1, start2, end1, end2, .. } => (start1, start2, end1.and_then(|end1| Some(end1.max(end2?)))),
+        };
+        let (start_b1, start_b2, end_b) = match *other {
+            Self::Unscheduled => (None, None, None),
+            Self::Live { start, end, .. } => (Some(start), Some(start), end),
+            Self::Async { start1, start2, end1, end2, .. } => (start1, start2, end1.and_then(|end1| Some(end1.max(end2?)))),
+        };
+        end_a.is_none().cmp(&end_b.is_none()) // races that have ended first
+            .then_with(|| end_a.cmp(&end_b)) // races that ended earlier first
+            .then_with(|| (start_a1.is_none() && start_a2.is_none()).cmp(&(start_b1.is_none() && start_b2.is_none()))) // races that have at least 1 starting time first
+            .then_with(||
+                start_a1.map_or(start_a2, |start_a1| start_a2.map_or(Some(start_a1), |start_a2| Some(start_a1.min(start_a2))))
+                .cmp(&start_b1.map_or(start_b2, |start_b1| start_b2.map_or(Some(start_b1), |start_b2| Some(start_b1.min(start_b2)))))
+            ) // races whose first half started earlier first
+            .then_with(|| (start_a1.is_none() || start_a2.is_none()).cmp(&(start_b1.is_none() || start_b2.is_none()))) // races that have both starting times first
+            .then_with(||
+                start_a1.map_or(start_a2, |start_a1| start_a2.map_or(Some(start_a1), |start_a2| Some(start_a1.max(start_a2))))
+                .cmp(&start_b1.map_or(start_b2, |start_b1| start_b2.map_or(Some(start_b1), |start_b2| Some(start_b1.max(start_b2)))))
+            ) // races whose second half started earlier first
+    }
+}
+
+#[derive(Clone)]
 pub(crate) struct Race {
-    pub(crate) start: DateTime<Utc>,
-    pub(crate) end: Option<DateTime<Utc>>,
     pub(crate) startgg_event: String,
     pub(crate) startgg_set: String,
-    pub(crate) room: Option<Url>,
     pub(crate) team1: Team,
     pub(crate) team2: Team,
     pub(crate) phase: String,
     pub(crate) round: String,
-    pub(crate) kind: RaceKind,
+    pub(crate) schedule: RaceSchedule,
     pub(crate) draft: Option<Draft>,
 }
 
 impl Race {
-    pub(crate) async fn new(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, draft: Option<Draft>, start: DateTime<Utc>, end: Option<DateTime<Utc>>, room: Option<Url>, kind: RaceKind) -> Result<Self, Error> {
-        let end = if let Some(end) = end {
-            Some(end)
-        } else if let Some(ref room) = room {
-            let end = http_client.get(format!("{room}/data"))
-                .send().await?
-                .detailed_error_for_status().await?
-                .json_with_text_in_error::<RaceData>().await?
-                .ended_at;
-            if let Some(end) = end {
-                match kind {
-                    RaceKind::Normal => { sqlx::query!("UPDATE races SET end_time = $1 WHERE startgg_set = $2", end, &startgg_set).execute(&mut *transaction).await?; }
-                    RaceKind::Async1 => { sqlx::query!("UPDATE races SET async_end1 = $1 WHERE startgg_set = $2", end, &startgg_set).execute(&mut *transaction).await?; }
-                    RaceKind::Async2 => { sqlx::query!("UPDATE races SET async_end2 = $1 WHERE startgg_set = $2", end, &startgg_set).execute(&mut *transaction).await?; }
-                }
-            }
-            end
-        } else {
-            None
-        };
+    pub(crate) async fn from_startgg(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, startgg_set: String) -> Result<Self, Error> {
         let response_data = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) }).await?;
         if let startgg::set_query::ResponseData {
             set: Some(startgg::set_query::SetQuerySet {
@@ -104,66 +172,88 @@ impl Race {
                 slots: Some(ref slots),
             }),
         } = response_data {
-            if let [
+            let row = sqlx::query!(r#"SELECT team1 AS "team1: Id", team2 AS "team2: Id", draft_state AS "draft_state: Json<Draft>", start, async_start1, async_start2, end_time, async_end1, async_end2, room, async_room1, async_room2 FROM races WHERE startgg_set = $1"#, &startgg_set).fetch_one(&mut *transaction).await?;
+            let (team1, team2) = if let (Some(team1), Some(team2)) = (row.team1, row.team2) {
+                (
+                    Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?,
+                    Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?,
+                )
+            } else if let [
                 Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team1)), on: _ }) }) }),
                 Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team2)), on: _ }) }) }),
             ] = **slots {
-                Ok(Self {
-                    startgg_event: startgg_event.clone(),
-                    team1: Team::from_startgg(transaction, team1).await?.ok_or(Error::UnknownTeam)?,
-                    team2: Team::from_startgg(transaction, team2).await?.ok_or(Error::UnknownTeam)?,
-                    phase: phase.clone(),
-                    round: round.clone(),
-                    draft, start, end, startgg_set, room, kind,
-                })
+                (
+                    Team::from_startgg(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?,
+                    Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?,
+                )
             } else {
-                Err(Error::Teams { startgg_set, response_data })
+                return Err(Error::Teams { startgg_set, response_data })
+            };
+
+            macro_rules! update_end {
+                ($var:ident, $room:ident, $query:literal) => {
+                    let $var = if let Some(end) = row.$var {
+                        Some(end)
+                    } else if let Some(ref room) = row.$room {
+                        let end = http_client.get(format!("{room}/data"))
+                            .send().await?
+                            .detailed_error_for_status().await?
+                            .json_with_text_in_error::<RaceData>().await?
+                            .ended_at;
+                        if let Some(end) = end {
+                            sqlx::query!($query, end, &startgg_set).execute(&mut *transaction).await?;
+                        }
+                        end
+                    } else {
+                        None
+                    };
+                };
             }
+
+            update_end!(end_time, room, "UPDATE races SET end_time = $1 WHERE startgg_set = $2");
+            update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE startgg_set = $2");
+            update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE startgg_set = $2");
+            Ok(Self {
+                startgg_event: startgg_event.clone(),
+                phase: phase.clone(),
+                round: round.clone(),
+                schedule: RaceSchedule::new(
+                    row.start, row.async_start1, row.async_start2,
+                    end_time, async_end1, async_end2,
+                    row.room.map(|room| room.parse()).transpose()?, row.async_room1.map(|room| room.parse()).transpose()?, row.async_room2.map(|room| room.parse()).transpose()?,
+                ),
+                draft: row.draft_state.map(|Json(draft)| draft),
+                startgg_set, team1, team2,
+            })
         } else {
             Err(Error::Teams { startgg_set, response_data })
         }
     }
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, series: Series, event: &str) -> Result<Vec<Self>, Error> {
+        //TODO unify with add_event_races
         let mut races = Vec::default();
-        for row in sqlx::query!(r#"SELECT startgg_set, draft_state AS "draft_state: Json<Draft>", start, async_start1, async_start2, end_time, async_end1, async_end2, room, async_room1, async_room2 FROM races WHERE series = $1 AND event = $2 AND (start IS NOT NULL OR async_start1 IS NOT NULL OR async_start2 IS NOT NULL)"#, series as _, event).fetch_all(&mut *transaction).await? {
-            if let Some(start) = row.start {
-                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.draft_state.clone().map(|Json(draft)| draft), start, row.end_time, row.room.as_deref().map(Url::parse).transpose()?, RaceKind::Normal).await?);
-            }
-            if let Some(start) = row.async_start1 {
-                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.draft_state.clone().map(|Json(draft)| draft), start, row.async_end1, row.async_room1.as_deref().map(Url::parse).transpose()?, RaceKind::Async1).await?);
-            }
-            if let Some(start) = row.async_start2 {
-                races.push(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set.clone(), row.draft_state.clone().map(|Json(draft)| draft), start, row.async_end2, row.async_room2.as_deref().map(Url::parse).transpose()?, RaceKind::Async2).await?);
-            }
+        for startgg_set in sqlx::query_scalar!("SELECT startgg_set FROM races WHERE series = $1 AND event = $2", series as _, event).fetch_all(&mut *transaction).await? {
+            races.push(Self::from_startgg(&mut *transaction, http_client, startgg_token, startgg_set).await?);
         }
         races.sort_unstable();
         Ok(races)
-    }
-
-    pub(crate) async fn from_room(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, room: Url) -> Result<Option<Self>, Error> {
-        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, draft_state AS "draft_state: Json<Draft>", start AS "start!", end_time FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
-            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set, row.draft_state.map(|Json(draft)| draft), row.start, row.end_time, Some(room), RaceKind::Normal).await?))
-        }
-        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, draft_state AS "draft_state: Json<Draft>", async_start1 AS "async_start1!", async_end1 FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
-            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set, row.draft_state.map(|Json(draft)| draft), row.async_start1, row.async_end1, Some(room), RaceKind::Async1).await?))
-        }
-        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, draft_state AS "draft_state: Json<Draft>", async_start2 AS "async_start2!", async_end2 FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
-            return Ok(Some(Self::new(&mut *transaction, http_client, startgg_token, row.startgg_set, row.draft_state.map(|Json(draft)| draft), row.async_start2, row.async_end2, Some(room), RaceKind::Async2).await?))
-        }
-        Ok(None)
     }
 
     pub(crate) fn startgg_set_url(&self) -> Result<Url, url::ParseError> {
         format!("https://start.gg/{}/set/{}", self.startgg_event, self.startgg_set).parse()
     }
 
-    pub(crate) fn active_teams(&self) -> impl Iterator<Item = &Team> + Send {
-        match self.kind {
-            RaceKind::Normal => Box::new([&self.team1, &self.team2].into_iter()) as Box<dyn Iterator<Item = &Team> + Send>,
-            RaceKind::Async1 => Box::new(iter::once(&self.team1)),
-            RaceKind::Async2 => Box::new(iter::once(&self.team2)),
+    fn cal_events(&self) -> impl Iterator<Item = Event> + Send {
+        match self.schedule {
+            RaceSchedule::Unscheduled => Box::new(iter::empty()) as Box<dyn Iterator<Item = Event> + Send>,
+            RaceSchedule::Live { .. } => Box::new(iter::once(Event { race: self.clone(), kind: EventKind::Normal })),
+            RaceSchedule::Async { .. } => Box::new([Event { race: self.clone(), kind: EventKind::Async1 }, Event { race: self.clone(), kind: EventKind::Async2 }].into_iter()),
         }
+    }
+
+    pub(crate) fn rooms(&self) -> impl Iterator<Item = Url> + Send {
+        self.cal_events().filter_map(|event| event.room().cloned())
     }
 }
 
@@ -183,11 +273,89 @@ impl PartialOrd for Race {
 
 impl Ord for Race {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.start.cmp(&other.start)
-            .then_with(|| self.end.cmp(&other.end))
+        self.schedule.cmp(&other.schedule)
             .then_with(|| self.startgg_event.cmp(&other.startgg_event))
             .then_with(|| self.startgg_set.cmp(&other.startgg_set))
-            .then_with(|| self.kind.cmp(&other.kind))
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum EventKind {
+    Normal,
+    Async1,
+    Async2,
+}
+
+pub(crate) struct Event {
+    pub(crate) race: Race,
+    kind: EventKind,
+}
+
+impl Event {
+    pub(crate) async fn from_room(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, room: Url) -> Result<Option<Self>, Error> {
+        if let Some(startgg_set) = sqlx::query_scalar!(r#"SELECT startgg_set FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+            return Ok(Some(Self {
+                race: Race::from_startgg(&mut *transaction, http_client, startgg_token, startgg_set).await?,
+                kind: EventKind::Normal,
+            }))
+        }
+        if let Some(startgg_set) = sqlx::query_scalar!(r#"SELECT startgg_set FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+            return Ok(Some(Self {
+                race: Race::from_startgg(&mut *transaction, http_client, startgg_token, startgg_set).await?,
+                kind: EventKind::Async1,
+            }))
+        }
+        if let Some(startgg_set) = sqlx::query_scalar!(r#"SELECT startgg_set FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+            return Ok(Some(Self {
+                race: Race::from_startgg(&mut *transaction, http_client, startgg_token, startgg_set).await?,
+                kind: EventKind::Async2,
+            }))
+        }
+        Ok(None)
+    }
+
+    pub(crate) fn active_teams(&self) -> impl Iterator<Item = &Team> + Send {
+        match self.kind {
+            EventKind::Normal => Box::new([&self.race.team1, &self.race.team2].into_iter()) as Box<dyn Iterator<Item = &Team> + Send>,
+            EventKind::Async1 => Box::new(iter::once(&self.race.team1)),
+            EventKind::Async2 => Box::new(iter::once(&self.race.team2)),
+        }
+    }
+
+    fn room(&self) -> Option<&Url> {
+        match self.race.schedule {
+            RaceSchedule::Unscheduled => unreachable!(),
+            RaceSchedule::Live { ref room, .. } => room.as_ref(),
+            RaceSchedule::Async { ref room1, ref room2, .. } => match self.kind {
+                EventKind::Normal => unreachable!(),
+                EventKind::Async1 => room1.as_ref(),
+                EventKind::Async2 => room2.as_ref(),
+            },
+        }
+    }
+
+    pub(crate) fn start(&self) -> Option<DateTime<Utc>> {
+        match self.race.schedule {
+            RaceSchedule::Unscheduled => unreachable!(),
+            RaceSchedule::Live { start, .. } => Some(start),
+            RaceSchedule::Async { start1, start2, .. } => match self.kind {
+                EventKind::Normal => unreachable!(),
+                EventKind::Async1 => start1,
+                EventKind::Async2 => start2,
+            },
+        }
+    }
+
+    pub(crate) fn end(&self) -> Option<DateTime<Utc>> {
+        match self.race.schedule {
+            RaceSchedule::Unscheduled => unreachable!(),
+            RaceSchedule::Live { end, .. } => end,
+            RaceSchedule::Async { end1, end2, .. } => match self.kind {
+                EventKind::Normal => unreachable!(),
+                EventKind::Async1 => end1,
+                EventKind::Async2 => end2,
+            },
+        }
     }
 }
 
@@ -255,29 +423,33 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
             }
             _ => {
                 for race in Race::for_event(transaction, http_client, startgg_token, event.series, &event.event).await? {
-                    let mut cal_event = ics::Event::new(format!("{}-{}-{}{}@midos.house",
-                        event.series,
-                        event.event,
-                        race.startgg_set,
-                        match race.kind {
-                            RaceKind::Normal => "",
-                            RaceKind::Async1 => "-1",
-                            RaceKind::Async2 => "-2",
-                        },
-                    ), ics_datetime(Utc::now()));
-                    cal_event.push(Summary::new(match race.kind {
-                        RaceKind::Normal => format!("MW S{} {} {}: {} vs {}", event.event, race.phase, race.round, race.team1, race.team2),
-                        RaceKind::Async1 => format!("MW S{} {} {} (async): {} vs {}", event.event, race.phase, race.round, race.team1, race.team2),
-                        RaceKind::Async2 => format!("MW S{} {} {} (async): {} vs {}", event.event, race.phase, race.round, race.team2, race.team1),
-                    }));
-                    cal_event.push(DtStart::new(ics_datetime(race.start)));
-                    cal_event.push(DtEnd::new(ics_datetime(race.end.unwrap_or_else(|| race.start + Duration::hours(4))))); //TODO better fallback duration estimates depending on participants
-                    cal_event.push(URL::new(if let Some(room) = race.room {
-                        room.to_string()
-                    } else {
-                        race.startgg_set_url()?.to_string()
-                    })); //TODO prefer restream URL if one exists
-                    cal.add_event(cal_event);
+                    for race_event in race.cal_events() {
+                        if let Some(start) = race_event.start() {
+                            let mut cal_event = ics::Event::new(format!("{}-{}-{}{}@midos.house",
+                                event.series,
+                                event.event,
+                                race.startgg_set,
+                                match race_event.kind {
+                                    EventKind::Normal => "",
+                                    EventKind::Async1 => "-1",
+                                    EventKind::Async2 => "-2",
+                                },
+                            ), ics_datetime(Utc::now()));
+                            cal_event.push(Summary::new(match race_event.kind {
+                                EventKind::Normal => format!("MW S{} {} {}: {} vs {}", event.event, race.phase, race.round, race.team1, race.team2),
+                                EventKind::Async1 => format!("MW S{} {} {} (async): {} vs {}", event.event, race.phase, race.round, race.team1, race.team2),
+                                EventKind::Async2 => format!("MW S{} {} {} (async): {} vs {}", event.event, race.phase, race.round, race.team2, race.team1),
+                            }));
+                            cal_event.push(DtStart::new(ics_datetime(start)));
+                            cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + Duration::hours(4))))); //TODO better fallback duration estimates depending on participants
+                            cal_event.push(URL::new(if let Some(room) = race_event.room() {
+                                room.to_string()
+                            } else {
+                                race.startgg_set_url()?.to_string()
+                            })); //TODO prefer restream URL if one exists
+                            cal.add_event(cal_event);
+                        }
+                    }
                 }
             }
         },
