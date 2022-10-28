@@ -119,6 +119,46 @@ pub(crate) enum CorrectChestAppearances {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum MinorItemAsMajorChest {
+    Bombchus,
+    Shields,
+}
+
+/// The `minor_items_as_major_chest` setting is a checkbox on main Dev but a multiselect on dev-fenhl.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum JsonMinorItemsAsMajorChest {
+    Checkbox(bool),
+    Multiselect(Vec<MinorItemAsMajorChest>),
+}
+
+impl From<JsonMinorItemsAsMajorChest> for MinorItemsAsMajorChest {
+    fn from(value: JsonMinorItemsAsMajorChest) -> Self {
+        match value {
+            JsonMinorItemsAsMajorChest::Checkbox(value) => Self { bombchus: value, shields: value },
+            JsonMinorItemsAsMajorChest::Multiselect(items) => {
+                let mut value = Self { bombchus: false, shields: false };
+                for item in items {
+                    match item {
+                        MinorItemAsMajorChest::Bombchus => value.bombchus = true,
+                        MinorItemAsMajorChest::Shields => value.shields = true,
+                    }
+                }
+                value
+            }
+        }
+    }
+}
+
+#[derive(Default, Deserialize)]
+#[serde(from = "JsonMinorItemsAsMajorChest")]
+pub(crate) struct MinorItemsAsMajorChest {
+    bombchus: bool,
+    shields: bool,
+}
+
+#[derive(Deserialize)]
 #[serde(untagged)]
 enum JsonItem {
     Simple(String),
@@ -219,7 +259,7 @@ impl ChestAppearance {
         big: false,
     };
 
-    fn from_item(invisible_chests: bool, camc_version: CamcVersion, camc_kind: CorrectChestAppearances, chus_in_logic: bool, token_wincon: bool, heart_wincon: bool, item: &Item) -> Self {
+    fn from_item(invisible_chests: bool, camc_version: CamcVersion, camc_kind: CorrectChestAppearances, chus_in_major_chests: bool, shields_in_major_chests: bool, token_wincon: bool, heart_wincon: bool, item: &Item) -> Self {
         if invisible_chests { return Self::INVISIBLE }
         if let CorrectChestAppearances::Off = camc_kind { return Self::VANILLA }
         let item_name = if item.item == "Ice Trap" {
@@ -401,10 +441,12 @@ impl ChestAppearance {
             "Bombchus (10)" |
             "Bombchus (20)" => match camc_kind {
                 CorrectChestAppearances::Off => unreachable!(),
-                CorrectChestAppearances::Classic => ChestAppearance { texture: ChestTexture::Normal, big: chus_in_logic },
-                CorrectChestAppearances::Textures => ChestAppearance { texture: if chus_in_logic { ChestTexture::Major } else { ChestTexture::Normal }, big: false },
-                CorrectChestAppearances::Both => ChestAppearance { texture: if chus_in_logic { ChestTexture::Major } else { ChestTexture::Normal }, big: chus_in_logic },
+                CorrectChestAppearances::Classic => ChestAppearance { texture: ChestTexture::Normal, big: chus_in_major_chests },
+                CorrectChestAppearances::Textures => ChestAppearance { texture: if chus_in_major_chests { ChestTexture::Major } else { ChestTexture::Normal }, big: false },
+                CorrectChestAppearances::Both => ChestAppearance { texture: if chus_in_major_chests { ChestTexture::Major } else { ChestTexture::Normal }, big: chus_in_major_chests },
             },
+            "Deku Shield" |
+            "Hylian Shield" => ChestAppearance { texture: if shields_in_major_chests { ChestTexture::Major } else { ChestTexture::Normal }, big: shields_in_major_chests },
             "Gold Skulltula Token" => match camc_kind {
                 CorrectChestAppearances::Off => unreachable!(),
                 CorrectChestAppearances::Classic => ChestAppearance { texture: ChestTexture::Normal, big: token_wincon },
@@ -423,8 +465,6 @@ impl ChestAppearance {
             "Deku Nuts (5)" |
             "Deku Stick (1)" |
             "Magic Bean" |
-            "Deku Shield" |
-            "Hylian Shield" |
             "Deku Seeds (5)" |
             "Compass (Deku Tree)" |
             "Compass (Dodongos Cavern)" |
@@ -505,14 +545,16 @@ impl From<SpoilerLog> for ChestAppearances {
             CamcVersion::Classic => if settings.correct_chest_sizes { CorrectChestAppearances::Classic } else { CorrectChestAppearances::Off },
             CamcVersion::Initial | CamcVersion::Current => settings.correct_chest_appearances.unwrap_or_default(),
         };
+        let chus_in_major_chests = settings.bombchus_in_logic || settings.minor_items_as_major_chest.bombchus;
+        let shields_in_major_chests = settings.minor_items_as_major_chest.shields;
         let token_wincon = matches!(settings.bridge, Bridge::Tokens) || matches!(settings.lacs_condition, LacsCondition::Tokens) || matches!(settings.shuffle_ganon_bosskey, ShuffleGanonBosskey::Tokens);
         let heart_wincon = matches!(settings.bridge, Bridge::Hearts) || matches!(settings.lacs_condition, LacsCondition::Hearts) || matches!(settings.shuffle_ganon_bosskey, ShuffleGanonBosskey::Hearts);
         let locations = locations.choose(&mut thread_rng()).expect("no worlds in location list");
         Self([
-            ChestAppearance::from_item(settings.invisible_chests, camc_version, camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_top_left_chest),
-            ChestAppearance::from_item(settings.invisible_chests, camc_version, camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_top_right_chest),
-            ChestAppearance::from_item(settings.invisible_chests, camc_version, camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_bottom_left_chest),
-            ChestAppearance::from_item(settings.invisible_chests, camc_version, camc_kind, settings.bombchus_in_logic, token_wincon, heart_wincon, &locations.kf_midos_bottom_right_chest),
+            ChestAppearance::from_item(settings.invisible_chests, camc_version, camc_kind, chus_in_major_chests, shields_in_major_chests, token_wincon, heart_wincon, &locations.kf_midos_top_left_chest),
+            ChestAppearance::from_item(settings.invisible_chests, camc_version, camc_kind, chus_in_major_chests, shields_in_major_chests, token_wincon, heart_wincon, &locations.kf_midos_top_right_chest),
+            ChestAppearance::from_item(settings.invisible_chests, camc_version, camc_kind, chus_in_major_chests, shields_in_major_chests, token_wincon, heart_wincon, &locations.kf_midos_bottom_left_chest),
+            ChestAppearance::from_item(settings.invisible_chests, camc_version, camc_kind, chus_in_major_chests, shields_in_major_chests, token_wincon, heart_wincon, &locations.kf_midos_bottom_right_chest),
         ])
     }
 }

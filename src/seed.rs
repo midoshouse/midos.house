@@ -39,6 +39,7 @@ use {
             Bridge,
             CorrectChestAppearances,
             LacsCondition,
+            MinorItemsAsMajorChest,
             ShuffleGanonBosskey,
             SpoilerLogLocations,
         },
@@ -273,6 +274,8 @@ pub(crate) struct SpoilerLogSettings {
     #[serde(default)]
     pub(crate) correct_chest_sizes: bool,
     pub(crate) correct_chest_appearances: Option<CorrectChestAppearances>,
+    #[serde(default)]
+    pub(crate) minor_items_as_major_chest: MinorItemsAsMajorChest,
     #[serde(default)]
     pub(crate) invisible_chests: bool,
 }
