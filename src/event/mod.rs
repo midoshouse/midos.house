@@ -272,6 +272,7 @@ pub(crate) struct Data<'a> {
     pub(crate) base_start: Option<DateTime<Utc>>,
     pub(crate) end: Option<DateTime<Utc>>,
     url: Option<Url>,
+    hide_teams_tab: bool,
     teams_url: Option<Url>,
     enter_url: Option<Url>,
     video_url: Option<Url>,
@@ -288,12 +289,13 @@ pub(crate) enum DataError {
 impl<'a> Data<'a> {
     pub(crate) async fn new(transaction: &mut Transaction<'_, Postgres>, series: Series, event: impl Into<Cow<'a, str>>) -> Result<Option<Data<'a>>, DataError> {
         let event = event.into();
-        sqlx::query!(r#"SELECT display_name, start, end_time, url, teams_url, enter_url, video_url, discord_guild AS "discord_guild: Id", discord_race_room_channel AS "discord_race_room_channel: Id" FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
+        sqlx::query!(r#"SELECT display_name, start, end_time, url, hide_teams_tab, teams_url, enter_url, video_url, discord_guild AS "discord_guild: Id", discord_race_room_channel AS "discord_race_room_channel: Id" FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
                 display_name: row.display_name,
                 base_start: row.start,
                 end: row.end_time,
                 url: row.url.map(|url| url.parse()).transpose()?,
+                hide_teams_tab: row.hide_teams_tab,
                 teams_url: row.teams_url.map(|url| url.parse()).transpose()?,
                 enter_url: row.enter_url.map(|url| url.parse()).transpose()?,
                 video_url: row.video_url.map(|url| url.parse()).transpose()?,
@@ -408,15 +410,17 @@ impl<'a> Data<'a> {
                     a(class = "button", href = uri!(info(self.series, &*self.event)).to_string()) : "Info";
                 }
                 @let teams_label = if let TeamConfig::Solo = self.team_config() { "Entrants" } else { "Teams" };
-                @if let Tab::Teams = tab {
-                    span(class = "button selected") : teams_label;
-                } else if let Some(ref teams_url) = self.teams_url {
-                    a(class = "button", href = teams_url.to_string()) {
-                        : favicon(teams_url);
-                        : teams_label;
+                @if !self.hide_teams_tab {
+                    @if let Tab::Teams = tab {
+                        span(class = "button selected") : teams_label;
+                    } else if let Some(ref teams_url) = self.teams_url {
+                        a(class = "button", href = teams_url.to_string()) {
+                            : favicon(teams_url);
+                            : teams_label;
+                        }
+                    } else {
+                        a(class = "button", href = uri!(teams(self.series, &*self.event)).to_string()) : teams_label;
                     }
-                } else {
-                    a(class = "button", href = uri!(teams(self.series, &*self.event)).to_string()) : teams_label;
                 }
                 @if !self.is_single_race() { //TODO also hide for past events with no race list
                     @if let Tab::Races = tab {
