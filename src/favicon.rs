@@ -95,6 +95,7 @@ pub(crate) enum ShuffleGanonBosskey {
     Vanilla,
     #[default]
     Dungeon,
+    Regional,
     Overworld,
     AnyDungeon,
     Keysanity,
@@ -308,7 +309,10 @@ impl ChestAppearance {
             "Easter Egg (Pink)" |
             "Easter Egg (Orange)" |
             "Easter Egg (Green)" |
-            "Easter Egg (Blue)" => match camc_kind {
+            "Easter Egg (Blue)" |
+            "Triforce of Power" |
+            "Triforce of Wisdom" |
+            "Triforce of Courage" => match camc_kind {
                 CorrectChestAppearances::Off => unreachable!(),
                 CorrectChestAppearances::Classic => ChestAppearance { texture: ChestTexture::Normal, big: true },
                 CorrectChestAppearances::Textures => ChestAppearance { texture: ChestTexture::Major, big: false },
