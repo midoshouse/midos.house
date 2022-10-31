@@ -535,7 +535,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                         a(href = "https://en.wikipedia.org/wiki/Swiss-system_tournament") : "Swiss";
                         : " rounds. These will be played as best of 1. There will be 6 rounds, with each round lasting two weeks. In the event that teams do not schedule in time, tournament organizers will use their discretion to determine the correct outcome based on the failures to schedule. In unusual circumstances that affect the entire tournament base (such as a GDQ), a round can be extended at the discretion of tournament organizers.";
                     }
-                    p : "After all Swiss rounds are done, plus an additional tiebreaker async if needed, the top 8 teams will advance to a single elimination bracket to crown the champions. The bracket stage of the tournament will be played as best of 3.";
+                    p : "After all Swiss rounds are done, plus an additional tiebreaker async, the top 8 teams will advance to a single elimination bracket to crown the champions. The bracket stage of the tournament will be played as best of 3.";
                     h2 : "Match Format";
                     p : "Each match will consist of a 3v3 Multiworld where both sides compete to see which team will have all three of its members beat the game with the lowest average time of finish:";
                     ul {
@@ -574,7 +574,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                         li : "Maps and Compasses Give Information: On";
                     }
                     p : "You can use the “Multiworld Tournament Season 3” preset to load these settings.";
-                    p : "However, in every race several of the settings may be modified by the teams. The team that placed higher in the qualifier async gets to pick who starts the procedure, then it will follow this pattern:";
+                    p : "However, in every race several of the settings may be modified by the teams. During Swiss, the team that placed higher in the qualifier async gets to pick who starts the procedure. For the first game of a top 8 match, this choice is made by the team with the higher seed in the bracket, and for subsequent games of a match, by the team that lost the previous game. Ties are broken by coin flip. The draft itself follows this pattern:";
                     ul {
                         li(class = "sheikah") : "Ban";
                         li(class = "gerudo") : "Ban";
