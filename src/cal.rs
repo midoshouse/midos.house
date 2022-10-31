@@ -7,6 +7,7 @@ use {
         Duration,
         prelude::*,
     },
+    chrono_tz::America,
     ics::{
         ICalendar,
         properties::{
@@ -25,6 +26,7 @@ use {
     },
     rocket_util::Response,
     serde::Deserialize,
+    sheets::Sheets,
     sqlx::{
         PgPool,
         Postgres,
@@ -33,6 +35,10 @@ use {
     },
     url::Url,
     wheel::traits::ReqwestResponseExt as _,
+    yup_oauth2::{
+        ServiceAccountAuthenticator,
+        read_service_account_key,
+    },
     crate::{
         Environment,
         config::Config,
@@ -363,6 +369,7 @@ impl Event {
 pub(crate) enum Error {
     #[error(transparent)] Event(#[from] event::DataError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Sheets(#[from] SheetsError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
@@ -374,6 +381,29 @@ pub(crate) enum Error {
     },
     #[error("this start.gg team ID is not associated with a Mido's House team")]
     UnknownTeam,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum SheetsError {
+    #[error(transparent)] Api(#[from] sheets::APIError),
+    #[error(transparent)] Io(#[from] tokio::io::Error),
+    #[error(transparent)] OAuth(#[from] yup_oauth2::Error),
+    #[error("empty token is not valid")]
+    EmptyToken,
+    #[error("no values in sheet range")]
+    NoValues,
+}
+
+async fn sheet_values(sheet_id: &str, range: String) -> Result<Vec<Vec<String>>, SheetsError> {
+    let gsuite_secret = read_service_account_key("assets/google-client-secret.json").await?;
+    let auth = ServiceAccountAuthenticator::builder(gsuite_secret)
+        .build()
+        .await?;
+    let token = auth.token(&["https://www.googleapis.com/auth/spreadsheets"]).await?;
+    if token.as_str().is_empty() { return Err(SheetsError::EmptyToken) }
+    let sheets_client = Sheets::new(token);
+    let sheet_values = sheets_client.get_values(sheet_id, range).await?;
+    sheet_values.values.ok_or(SheetsError::NoValues)
 }
 
 fn ics_datetime<Tz: TimeZone>(datetime: DateTime<Tz>) -> String {
@@ -465,6 +495,43 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
             cal.add_event(cal_event);
         }
         Series::Rsl => match &*event.event {
+            /*
+            "2" => {
+                let sheet_values = sheet_values("1TEb48hIarEXnsnGxJbq1Y4YiZxNSM1t1oBsXh_bM4LM", format!("Raw form data!B2:F")).await;
+                for (i, race) in Race::rsl_s2(sheet_values).await.into_iter().enumerate() {
+                    cal.add_event(race.to_event("RSL S2", "rsl-2", i));
+                }
+            }
+            "3" => {
+                let sheet_values = sheet_values("1475TTqezcSt-okMfQaG6Rf7AlJsqBx8c_rGDKs4oBYk", format!("Sign Ups!B2:I")).await;
+                for (i, race) in Race::rsl_s3(sheet_values).await.into_iter().enumerate() {
+                    cal.add_event(race.to_event("RSL S3", "rsl-3", i));
+                }
+            }
+            */ //TODO
+            "4" => for (i, row) in sheet_values("1LRJ3oo_2AWGq8KpNNclRXOq4OW8O7LrHra7uY7oQQlA", format!("Form responses 1!B2:H")).await?.into_iter().enumerate() {
+                if !row.is_empty() {
+                    let mut row = row.into_iter().fuse();
+                    let p1 = row.next().unwrap();
+                    let p2 = row.next().unwrap();
+                    let round = row.next().unwrap();
+                    let date_et = row.next().unwrap();
+                    let time_et = row.next().unwrap();
+                    let _monitor = row.next();
+                    let stream = row.next();
+                    assert!(row.next().is_none());
+                    let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
+                    let duration = Duration::hours(4) + Duration::minutes(30); //TODO better duration estimate
+                    let mut event = ics::Event::new(format!("rsl-4-{i}@midos.house"), ics_datetime(Utc::now()));
+                    event.push(Summary::new(format!("RSL S4 {}: {p1} vs {p2}", if start >= Utc.ymd(2022, 5, 8).and_hms(23, 51, 35) { round } else { format!("Swiss Round {round}") })));
+                    event.push(DtStart::new(ics_datetime(start)));
+                    event.push(DtEnd::new(ics_datetime(start + duration)));
+                    if let Some(stream) = stream {
+                        event.push(URL::new(format!("https://{stream}")));
+                    }
+                    cal.add_event(event);
+                }
+            }
             "5" => {} //TODO
             _ => unimplemented!(),
         },
@@ -514,6 +581,19 @@ pub(crate) async fn index(env: &State<Environment>, config: &State<Config>, pool
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for row in sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed"#).fetch_all(&mut transaction).await? {
         let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during calendar load");
+        add_event_races(&mut transaction, http_client, startgg_token, &mut cal, &event).await?;
+    }
+    transaction.commit().await?;
+    Ok(Response(cal))
+}
+
+#[rocket::get("/event/<series>/calendar.ics")]
+pub(crate) async fn for_series(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series) -> Result<Response<ICalendar<'static>>, Error> {
+    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+    let mut transaction = pool.begin().await?;
+    let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
+    for event in sqlx::query_scalar!(r#"SELECT event FROM events WHERE listed AND series = $1"#, series as _).fetch_all(&mut transaction).await? {
+        let event = event::Data::new(&mut transaction, series, event).await?.expect("event deleted during calendar load");
         add_event_races(&mut transaction, http_client, startgg_token, &mut cal, &event).await?;
     }
     transaction.commit().await?;

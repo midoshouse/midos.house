@@ -384,6 +384,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         auth::register_discord,
         auth::merge_accounts,
         cal::index,
+        cal::for_series,
         cal::for_event,
         event::info,
         event::teams,
