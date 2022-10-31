@@ -452,35 +452,6 @@ impl MwSeedQueue {
     }
 }
 
-async fn invite_or_accept<Tz: TimeZone>(ctx: &RaceContext, member: &str, start: DateTime<Tz>) -> bool {
-    let data = ctx.data().await;
-    if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
-        match entrant.status.value {
-            EntrantStatusValue::Requested => ctx.accept_request(member).await.expect("failed to accept race join request"),
-            EntrantStatusValue::Invited |
-            EntrantStatusValue::Declined |
-            EntrantStatusValue::Ready |
-            EntrantStatusValue::NotReady |
-            EntrantStatusValue::InProgress |
-            EntrantStatusValue::Done |
-            EntrantStatusValue::Dnf |
-            EntrantStatusValue::Dq => {}
-        }
-    } else {
-        drop(data);
-        match ctx.invite_user(member).await {
-            Ok(()) => {}
-            Err(e) => if Utc::now() + chrono::Duration::minutes(11) < start {
-                return false
-            } else {
-                eprintln!("failed to invite {member}: {e:?}");
-                let _ = ctx.send_message("Repeatedly failed to invite one of the racers. Please contact a category moderator for assistance.").await;
-            },
-        }
-    }
-    true
-}
-
 async fn send_presets(ctx: &RaceContext) -> Result<(), Error> {
     ctx.send_message("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
     ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
@@ -507,9 +478,14 @@ enum RaceState {
     SpoilerSent,
 }
 
+struct OfficialRaceData {
+    entrants: Vec<String>,
+    start: DateTime<Utc>,
+}
+
 struct Handler {
     global_state: Arc<GlobalState>,
-    official_race_start: Option<DateTime<Utc>>,
+    official_data: Option<OfficialRaceData>,
     high_seed_name: String,
     low_seed_name: String,
     fpa_enabled: bool,
@@ -517,7 +493,7 @@ struct Handler {
 }
 
 impl Handler {
-    fn is_official(&self) -> bool { self.official_race_start.is_some() }
+    fn is_official(&self) -> bool { self.official_data.is_some() }
 
     async fn send_settings(&self, ctx: &RaceContext) -> Result<(), Error> {
         let available_settings = {
@@ -570,7 +546,7 @@ impl Handler {
         let ctx = ctx.clone();
         let state = Arc::clone(&self.race_state);
         let mut updates = Arc::clone(&self.global_state).roll_seed(settings);
-        let mut official_start = self.official_race_start;
+        let mut official_start = self.official_data.as_ref().map(|official_data| official_data.start);
         tokio::spawn(async move {
             let mut seed_state = None::<SeedRollUpdate>;
             loop {
@@ -608,21 +584,31 @@ impl RaceHandler<GlobalState> for Handler {
     }
 
     async fn new(ctx: &RaceContext, global_state: Arc<GlobalState>) -> Result<Self, Error> {
+        let data = ctx.data().await;
         let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
         let mut transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
-        let (official_race_start, race_state, high_seed_name, low_seed_name) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, format!("https://{}{}", global_state.host, ctx.data().await.url).parse()?).await.map_err(|e| Error::Custom(Box::new(e)))? {
+        let (official_data, race_state, high_seed_name, low_seed_name) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, format!("https://{}{}", global_state.host, ctx.data().await.url).parse()?).await.map_err(|e| Error::Custom(Box::new(e)))? {
+            let mut entrants = Vec::default();
             let start = cal_event.start().expect("handling room for official race without start time");
             for team in cal_event.active_teams() {
                 let mut members = sqlx::query_scalar!(r#"SELECT racetime_id AS "racetime_id!: String" FROM users, team_members WHERE id = member AND team = $1 AND racetime_id IS NOT NULL"#, i64::from(team.id)).fetch(&mut transaction);
                 while let Some(member) = members.try_next().await.map_err(|e| Error::Custom(Box::new(e)))? {
-                    if !invite_or_accept(ctx, &member, start).await { // first try synchronously so in the common case invitation messages appear before the intro in the chatlog
-                        let ctx = ctx.clone();
-                        tokio::spawn(async move {
-                            while !invite_or_accept(&ctx, &member, start).await {
-                                sleep(Duration::from_secs(60)).await;
-                            }
-                        });
+                    if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
+                        match entrant.status.value {
+                            EntrantStatusValue::Requested => ctx.accept_request(&member).await.expect("failed to accept race join request"),
+                            EntrantStatusValue::Invited |
+                            EntrantStatusValue::Declined |
+                            EntrantStatusValue::Ready |
+                            EntrantStatusValue::NotReady |
+                            EntrantStatusValue::InProgress |
+                            EntrantStatusValue::Done |
+                            EntrantStatusValue::Dnf |
+                            EntrantStatusValue::Dq => {}
+                        }
+                    } else {
+                        ctx.invite_user(&member).await?;
                     }
+                    entrants.push(member);
                 }
             }
             ctx.send_message(&format!("Welcome to this {} {} race! Learn more about the tournament at https://midos.house/event/mw/3", cal_event.race.phase, cal_event.race.round)).await?; //TODO don't hardcode event name/URL
@@ -640,7 +626,7 @@ impl RaceHandler<GlobalState> for Handler {
                 (format!("Team A"), format!("Team B"))
             };
             (
-                Some(start),
+                Some(OfficialRaceData { entrants, start }),
                 RaceState::Draft(cal_event.race.draft.map(|draft| draft.state).unwrap_or_default()), //TODO restrict draft picks
                 high_seed_name,
                 low_seed_name,
@@ -657,12 +643,13 @@ impl RaceHandler<GlobalState> for Handler {
         };
         transaction.commit().await.map_err(|e| Error::Custom(Box::new(e)))?;
         drop(new_room_lock);
+        let is_official = official_data.is_some();
         let this = Self {
             race_state: Arc::new(RwLock::new(race_state)),
-            fpa_enabled: official_race_start.is_some(),
-            global_state, official_race_start, high_seed_name, low_seed_name,
+            fpa_enabled: is_official,
+            global_state, official_data, high_seed_name, low_seed_name,
         };
-        if official_race_start.is_some() {
+        if is_official {
             this.advance_draft(ctx).await?;
         }
         Ok(this)
@@ -946,7 +933,15 @@ impl RaceHandler<GlobalState> for Handler {
             spoiler_log: String,
         }
 
-        if let RaceStatusValue::Finished = ctx.data().await.status.value {
+        let data = ctx.data().await;
+        if let Some(OfficialRaceData { ref entrants, .. }) = self.official_data {
+            for entrant in &data.entrants {
+                if entrant.status.value == EntrantStatusValue::Requested && entrants.contains(&entrant.user.id) {
+                    ctx.accept_request(&entrant.user.id).await?;
+                }
+            }
+        }
+        if let RaceStatusValue::Finished = data.status.value {
             //TODO also make sure this isn't the first half of an async
             let mut state = self.race_state.write().await;
             match *state {
@@ -970,6 +965,15 @@ impl RaceHandler<GlobalState> for Handler {
             }
         }
         Ok(())
+    }
+
+    async fn error(&mut self, _ctx: &RaceContext, mut errors: Vec<String>) -> Result<(), Error> {
+        errors.retain(|error| !error.ends_with(" is not allowed to join this race.")); // failing to invite a user should not crash the race handler
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::Server(errors))
+        }
     }
 }
 
