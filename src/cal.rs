@@ -587,7 +587,7 @@ pub(crate) async fn index(env: &State<Environment>, config: &State<Config>, pool
     Ok(Response(cal))
 }
 
-#[rocket::get("/calendar/series/<series>/calendar.ics")]
+#[rocket::get("/series/<series>/calendar.ics")]
 pub(crate) async fn for_series(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series) -> Result<Response<ICalendar<'static>>, Error> {
     let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
     let mut transaction = pool.begin().await?;
