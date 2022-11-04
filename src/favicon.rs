@@ -46,14 +46,18 @@ enum CamcVersion {
     Initial,
     /// The second iteration of “Chest Appearance Matches Contents” which updated the textures for major items and small keys to make them more distinctive, and reintroduced the classic behavior as an option.
     /// Added in [PR #1500](https://github.com/TestRunnerSRL/OoT-Randomizer/pull/1500), [version 6.2.54](https://github.com/TestRunnerSRL/OoT-Randomizer/tree/1e39a95e8a4629e962634bd7e02f71d7d3602353)
-    Current,
+    Pr1500,
+    /// The adjusted small key texture from [PR #1751](https://github.com/TestRunnerSRL/OoT-Randomizer/pull/1751), [version 6.2.233](https://github.com/TestRunnerSRL/OoT-Randomizer/tree/38334774503cd9a2c7389e222abe5884617830b7)
+    Pr1751,
 }
 
 impl CamcVersion {
     fn from_rando_version(rando_version: &str) -> Self {
         let rando_base_version = rando_version.split_once(' ').expect("invalid randomizer version").0.parse::<Version>().expect("failed to parse randomizer version");
-        if rando_base_version >= Version::new(6, 2, 54) {
-            Self::Current
+        if rando_base_version >= Version::new(6, 2, 233) {
+            Self::Pr1751
+        } else if rando_base_version >= Version::new(6, 2, 54) {
+            Self::Pr1500
         } else if rando_base_version >= Version::new(6, 2, 4) {
             Self::Initial
         } else {
@@ -202,8 +206,9 @@ pub(crate) enum ChestTexture {
     Normal,
     OldMajor,
     Major,
-    OldSmallKey,
-    SmallKey,
+    SmallKeyOld,
+    SmallKey1500,
+    SmallKey1751,
     BossKey,
     Token,
     Invisible,
@@ -217,8 +222,9 @@ impl TryFrom<char> for ChestTexture {
             'n' => Ok(Self::Normal),
             'm' => Ok(Self::OldMajor),
             'i' => Ok(Self::Major),
-            'k' => Ok(Self::OldSmallKey),
-            'y' => Ok(Self::SmallKey),
+            'k' => Ok(Self::SmallKeyOld),
+            'y' => Ok(Self::SmallKey1500),
+            'a' => Ok(Self::SmallKey1751),
             'b' => Ok(Self::BossKey),
             's' => Ok(Self::Token),
             'd' => Ok(Self::Invisible),
@@ -233,8 +239,9 @@ impl From<ChestTexture> for char {
             ChestTexture::Normal => 'n',
             ChestTexture::OldMajor => 'm',
             ChestTexture::Major => 'i',
-            ChestTexture::OldSmallKey => 'k',
-            ChestTexture::SmallKey => 'y',
+            ChestTexture::SmallKeyOld => 'k',
+            ChestTexture::SmallKey1500 => 'y',
+            ChestTexture::SmallKey1751 => 'a',
             ChestTexture::BossKey => 'b',
             ChestTexture::Token => 's',
             ChestTexture::Invisible => 'd',
@@ -433,8 +440,8 @@ impl ChestAppearance {
             "Silver Rupee Pouch (Ganons Castle Forest Trial)" => match camc_kind {
                 CorrectChestAppearances::Off => unreachable!(),
                 CorrectChestAppearances::Classic => ChestAppearance { texture: ChestTexture::BossKey, big: false },
-                CorrectChestAppearances::Textures => ChestAppearance { texture: ChestTexture::SmallKey, big: false },
-                CorrectChestAppearances::Both => ChestAppearance { texture: ChestTexture::SmallKey, big: false },
+                CorrectChestAppearances::Textures => ChestAppearance { texture: ChestTexture::SmallKeyOld, big: false },
+                CorrectChestAppearances::Both => ChestAppearance { texture: ChestTexture::SmallKeyOld, big: false },
             },
             "Ice Trap" => unreachable!(),
             "Bombchus (5)" |
@@ -507,12 +514,11 @@ impl ChestAppearance {
             "Deku Nut Capacity" => ChestAppearance { texture: ChestTexture::Normal, big: false },
             _ => unimplemented!(),
         };
-        if let CamcVersion::Initial = camc_version {
-            appearance.texture = match appearance.texture {
-                ChestTexture::Major => ChestTexture::OldMajor,
-                ChestTexture::SmallKey => ChestTexture::OldSmallKey,
-                texture => texture,
-            };
+        match camc_version {
+            CamcVersion::Classic => {}
+            CamcVersion::Initial => if let ChestTexture::Major = appearance.texture { appearance.texture = ChestTexture::OldMajor },
+            CamcVersion::Pr1500 => if let ChestTexture::SmallKeyOld = appearance.texture { appearance.texture = ChestTexture::SmallKey1500 },
+            CamcVersion::Pr1751 => if let ChestTexture::SmallKeyOld = appearance.texture { appearance.texture = ChestTexture::SmallKey1751 },
         }
         appearance
     }
@@ -543,7 +549,7 @@ impl From<SpoilerLog> for ChestAppearances {
         let camc_version = CamcVersion::from_rando_version(&version);
         let camc_kind = match camc_version {
             CamcVersion::Classic => if settings.correct_chest_sizes { CorrectChestAppearances::Classic } else { CorrectChestAppearances::Off },
-            CamcVersion::Initial | CamcVersion::Current => settings.correct_chest_appearances.unwrap_or_default(),
+            CamcVersion::Initial | CamcVersion::Pr1500 | CamcVersion::Pr1751 => settings.correct_chest_appearances.unwrap_or_default(),
         };
         let chus_in_major_chests = settings.bombchus_in_logic || settings.minor_items_as_major_chest.bombchus;
         let shields_in_major_chests = settings.minor_items_as_major_chest.shields;
@@ -559,8 +565,7 @@ impl From<SpoilerLog> for ChestAppearances {
     }
 }
 
-#[derive(Clone, Copy, Deserialize)]
-#[serde(transparent)]
+#[derive(Clone, Copy)]
 pub(crate) struct ChestTextures(pub(crate) [ChestTexture; 4]);
 
 #[derive(Debug, thiserror::Error, From)]
