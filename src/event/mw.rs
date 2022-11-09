@@ -734,6 +734,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                         li : "Fire Arrow Entry is allowed";
                         li : "Playing Treasure Chest Game without magic and lens is banned";
                         li : "DMC “pot push” is banned";
+                        li : "All custom models are banned";
                     }
                     h2 : "Multiworld Plugins";
                     p {
