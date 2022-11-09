@@ -191,8 +191,10 @@ impl ToHtml for HashIcon {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Data {
     pub(crate) web: Option<OotrWebData>,
+    pub(crate) file_hash: Option<[HashIcon; 5]>,
     pub(crate) file_stem: Cow<'static, str>,
 }
 
@@ -200,7 +202,6 @@ pub(crate) struct Data {
 pub(crate) struct OotrWebData {
     pub(crate) id: u64,
     pub(crate) gen_time: DateTime<Utc>,
-    pub(crate) file_hash: [HashIcon; 5],
 }
 
 fn deserialize_multiworld<'de, D: Deserializer<'de>, T: Deserialize<'de>>(deserializer: D) -> Result<Vec<T>, D::Error> {
@@ -280,52 +281,77 @@ pub(crate) struct SpoilerLogSettings {
     pub(crate) invisible_chests: bool,
 }
 
+pub(crate) fn table_header_cells(spoiler_logs: bool) -> RawHtml<String> {
+    html! {
+        th : "Hash";
+        th : "Patch File";
+        @if spoiler_logs {
+            th : "Spoiler Log";
+        }
+    }
+}
+
+pub(crate) fn table_empty_cells(spoiler_logs: bool) -> RawHtml<String> {
+    html! {
+        td;
+        td;
+        @if spoiler_logs {
+            td;
+        }
+    }
+}
+
+pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool) -> io::Result<RawHtml<String>> {
+    let (spoiler_file_name, spoiler_contents) = if seed.file_hash.is_none() || seed.web.map_or(true, |web| web.gen_time <= now - chrono::Duration::days(90)) {
+        let spoiler_file_name = format!("{}_Spoiler.json", seed.file_stem);
+        let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
+        (Some(spoiler_file_name), Some(serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_path).await?)?))
+    } else {
+        (None, None)
+    };
+    Ok(html! {
+        @if let Some(file_hash) = seed.file_hash {
+            td(class = "hash") {
+                @for hash_icon in file_hash {
+                    : hash_icon;
+                }
+            }
+        } else {
+            td {
+                @for hash_icon in spoiler_contents.as_ref().expect("should be present since file_hash is None").file_hash {
+                    : hash_icon;
+                }
+            }
+        }
+        // ootrandomizer.com seeds are deleted after 90 days
+        @if let Some(web) = seed.web.and_then(|web| (web.gen_time > now - chrono::Duration::days(90)).then_some(web)) {
+            td(colspan? = spoiler_logs.then(|| "2")) {
+                a(href = format!("https://ootrandomizer.com/seed/get?id={}", web.id)) : "View";
+            }
+        } else {
+            td {
+                a(href = format!("/seed/{}.{}", seed.file_stem, if spoiler_contents.as_ref().expect("should be present since web seed missing or expired").settings.world_count.get() > 1 { "zpfz" } else { "zpf" })) : "Download";
+            }
+            @if spoiler_logs {
+                td {
+                    a(href = format!("/seed/{}", spoiler_file_name.expect("should be present since web seed missing or expired"))) : "View";
+                }
+            }
+        }
+    })
+}
+
 pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -> io::Result<RawHtml<String>> {
     pin!(seeds);
     let now = Utc::now();
     Ok(html! {
         table {
             thead {
-                tr {
-                    th : "Hash";
-                    th : "Patch File";
-                    @if spoiler_logs {
-                        th : "Spoiler Log";
-                    }
-                }
+                tr : table_header_cells(spoiler_logs);
             }
             tbody {
                 @while let Some(seed) = seeds.next().await {
-                    tr {
-                        // ootrandomizer.com seeds are deleted after 90 days
-                        @if let Some(web) = seed.web.and_then(|web| (web.gen_time > now - chrono::Duration::days(90)).then_some(web)) {
-                            td(class = "hash") {
-                                @for hash_icon in web.file_hash {
-                                    : hash_icon;
-                                }
-                            }
-                            td(colspan? = spoiler_logs.then(|| "2")) {
-                                a(href = format!("https://ootrandomizer.com/seed/get?id={}", web.id)) : "View";
-                            }
-                        } else {
-                            @let spoiler_file_name = format!("{}_Spoiler.json", seed.file_stem);
-                            @let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
-                            @let spoiler_contents = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_path).await?)?;
-                            td {
-                                @for hash_icon in spoiler_contents.file_hash {
-                                    : hash_icon;
-                                }
-                            }
-                            td {
-                                a(href = format!("/seed/{}.{}", seed.file_stem, if spoiler_contents.settings.world_count.get() > 1 { "zpfz" } else { "zpf" })) : "Download";
-                            }
-                            @if spoiler_logs {
-                                td {
-                                    a(href = format!("/seed/{}", spoiler_file_name)) : "View";
-                                }
-                            }
-                        }
-                    }
+                    tr : table_cells(now, &seed, spoiler_logs).await?;
                 }
             }
         }

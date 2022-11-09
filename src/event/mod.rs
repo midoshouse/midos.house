@@ -82,6 +82,7 @@ use {
             page,
         },
         notification::SimpleNotificationKind,
+        seed,
         user::User,
         util::{
             DateTimeFormat,
@@ -537,6 +538,7 @@ pub(crate) enum Error {
     #[error(transparent)] Calendar(#[from] cal::Error),
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Discord(#[from] serenity::Error),
+    #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
@@ -910,10 +912,11 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                         th : "Round";
                         th(colspan = "2") : "Entrants";
                         th : "Links";
-                        //TODO seed info (hash, patch, log)
+                        : seed::table_header_cells(true);
                     }
                 }
                 tbody {
+                    @let now = Utc::now();
                     @for race in past_races.into_iter().rev() {
                         tr {
                             td {
@@ -951,6 +954,11 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 @for room in race.rooms() {
                                     a(class = "favicon", href = room.to_string()) : favicon(&room);
                                 }
+                            }
+                            @if let Some(ref seed) = race.seed {
+                                : seed::table_cells(now, seed, true).await.map_err(Error::Io)?;
+                            } else {
+                                : seed::table_empty_cells(true);
                             }
                         }
                     }

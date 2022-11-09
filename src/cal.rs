@@ -1,5 +1,6 @@
 use {
     std::{
+        borrow::Cow,
         cmp::Ordering,
         iter,
     },
@@ -46,6 +47,10 @@ use {
         event::{
             self,
             Series,
+        },
+        seed::{
+            self,
+            HashIcon,
         },
         startgg,
         team::Team,
@@ -159,6 +164,7 @@ pub(crate) struct Race {
     pub(crate) round: String,
     pub(crate) schedule: RaceSchedule,
     pub(crate) draft: Option<Draft>,
+    pub(crate) seed: Option<seed::Data>,
 }
 
 impl Race {
@@ -178,7 +184,28 @@ impl Race {
                 slots: Some(ref slots),
             }),
         } = response_data {
-            let row = sqlx::query!(r#"SELECT team1 AS "team1: Id", team2 AS "team2: Id", draft_state AS "draft_state: Json<Draft>", start, async_start1, async_start2, end_time, async_end1, async_end2, room, async_room1, async_room2 FROM races WHERE startgg_set = $1"#, &startgg_set).fetch_one(&mut *transaction).await?;
+            let row = sqlx::query!(r#"SELECT
+                team1 AS "team1: Id",
+                team2 AS "team2: Id",
+                draft_state AS "draft_state: Json<Draft>",
+                start,
+                async_start1,
+                async_start2,
+                end_time,
+                async_end1,
+                async_end2,
+                room,
+                async_room1,
+                async_room2,
+                web_id AS "web_id: Id",
+                web_gen_time,
+                file_stem,
+                hash1 AS "hash1: HashIcon",
+                hash2 AS "hash2: HashIcon",
+                hash3 AS "hash3: HashIcon",
+                hash4 AS "hash4: HashIcon",
+                hash5 AS "hash5: HashIcon"
+            FROM races WHERE startgg_set = $1"#, &startgg_set).fetch_one(&mut *transaction).await?;
             let (team1, team2) = if let (Some(team1), Some(team2)) = (row.team1, row.team2) {
                 (
                     Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?,
@@ -229,6 +256,19 @@ impl Race {
                     row.room.map(|room| room.parse()).transpose()?, row.async_room1.map(|room| room.parse()).transpose()?, row.async_room2.map(|room| room.parse()).transpose()?,
                 ),
                 draft: row.draft_state.map(|Json(draft)| draft),
+                seed: row.file_stem.map(|file_stem| seed::Data {
+                    web: match (row.web_id, row.web_gen_time) {
+                        (Some(Id(id)), Some(gen_time)) => Some(seed::OotrWebData { id, gen_time }),
+                        (None, None) => None,
+                        _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
+                    },
+                    file_hash: match (row.hash1, row.hash2, row.hash3, row.hash4, row.hash5) {
+                        (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
+                        (None, None, None, None, None) => None,
+                        _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
+                    },
+                    file_stem: Cow::Owned(file_stem),
+                }),
                 startgg_set, team1, team2,
             })
         } else {
