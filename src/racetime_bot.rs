@@ -174,7 +174,7 @@ impl GlobalState {
             };
             if can_roll_on_web {
                 match self.mw_seed_queue.roll_seed_web(update_tx.clone(), settings).await {
-                    Ok((seed_id, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::DoneWeb { seed_id, file_hash, file_stem }).await?,
+                    Ok((seed_id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::DoneWeb { seed_id, gen_time, file_hash, file_stem }).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
                 drop(permit);
@@ -234,6 +234,7 @@ enum SeedRollUpdate {
     /// The seed has been rolled on ootrandomizer.com, includes the seed ID.
     DoneWeb {
         seed_id: u64,
+        gen_time: DateTime<Utc>,
         file_hash: [HashIcon; 5],
         file_stem: String,
     },
@@ -242,7 +243,7 @@ enum SeedRollUpdate {
 }
 
 impl SeedRollUpdate {
-    async fn handle(self, ctx: &RaceContext, state: &Arc<RwLock<RaceState>>, settings: mw::S3Settings) -> Result<(), Error> {
+    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext, state: &Arc<RwLock<RaceState>>, startgg_set: Option<&str>, settings: mw::S3Settings) -> Result<(), Error> {
         match self {
             Self::Queued(0) => ctx.send_message("I'm already rolling other seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
             Self::Queued(1) => ctx.send_message("I'm already rolling other seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
@@ -255,13 +256,22 @@ impl SeedRollUpdate {
             Self::DoneLocal(patch_filename, spoiler_log_path) => {
                 let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename").to_owned();
                 let file_hash = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_log_path).await?)?.file_hash;
+                if let Some(startgg_set) = startgg_set {
+                    let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(Error::Custom(Box::new(RollError::PatchPath)))?;
+                    let [hash1, hash2, hash3, hash4, hash5] = file_hash;
+                    sqlx::query!("UPDATE races SET file_stem = $1, hash1 = $2, hash2 = $3, hash3 = $4, hash4 = $5, hash5 = $6 WHERE startgg_set = $7", file_stem, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, startgg_set).execute(db_pool).await.map_err(|e| Error::Custom(Box::new(e)))?;
+                }
                 *state.write().await = RaceState::RolledLocally(spoiler_log_path);
                 let seed_url = format!("https://midos.house/seed/{patch_filename}");
                 ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
                 ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{spoiler_filename}")).await?;
                 ctx.set_bot_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash))).await?;
             }
-            Self::DoneWeb { seed_id, file_hash, file_stem } => {
+            Self::DoneWeb { seed_id, gen_time, file_hash, file_stem } => {
+                if let Some(startgg_set) = startgg_set {
+                    let [hash1, hash2, hash3, hash4, hash5] = file_hash;
+                    sqlx::query!("UPDATE races SET web_id = $1, web_gen_time = $2, file_stem = $3, hash1 = $4, hash2 = $5, hash3 = $6, hash4 = $7, hash5 = $8 WHERE startgg_set = $9", seed_id as i64, gen_time, &file_stem, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, startgg_set).execute(db_pool).await.map_err(|e| Error::Custom(Box::new(e)))?;
+                }
                 *state.write().await = RaceState::RolledWeb { seed_id, file_stem };
                 let seed_url = format!("https://ootrandomizer.com/seed/get?id={seed_id}");
                 ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
@@ -376,12 +386,14 @@ impl MwSeedQueue {
         Err(RollError::Retries)
     }
 
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, settings: serde_json::Map<String, serde_json::Value>) -> Result<(u64, [HashIcon; 5], String), RollError> {
+    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, settings: serde_json::Map<String, serde_json::Value>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
         #[serde_as]
         #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
         struct CreateSeedResponse {
             #[serde_as(as = "DisplayFromStr")]
             id: u64,
+            creation_timestamp: DateTime<Utc>,
         }
 
         #[derive(Deserialize)]
@@ -412,10 +424,9 @@ impl MwSeedQueue {
                 next_seed
             };
             update_tx.send(SeedRollUpdate::Started).await?;
-            let seed_id = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[("key", &*self.ootr_api_key), ("version", &*format!("dev_{RANDO_VERSION}")), ("locked", "1")]), Some(&settings)).await?
+            let CreateSeedResponse { id, creation_timestamp } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[("key", &*self.ootr_api_key), ("version", &*format!("dev_{RANDO_VERSION}")), ("locked", "1")]), Some(&settings)).await?
                 .detailed_error_for_status().await?
-                .json_with_text_in_error::<CreateSeedResponse>().await?
-                .id;
+                .json_with_text_in_error().await?;
             *next_seed = Instant::now() + MULTIWORLD_RATE_LIMIT;
             drop(next_seed);
             sleep(MULTIWORLD_RATE_LIMIT).await; // extra rate limiting rule
@@ -423,24 +434,24 @@ impl MwSeedQueue {
                 sleep(Duration::from_secs(1)).await;
                 let resp = self.get(
                     "https://ootrandomizer.com/api/v2/seed/status",
-                    Some(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())]),
+                    Some(&[("key", &self.ootr_api_key), ("id", &id.to_string())]),
                 ).await?;
                 if resp.status() == StatusCode::NO_CONTENT { continue }
                 resp.error_for_status_ref()?;
                 match resp.json_with_text_in_error::<SeedStatusResponse>().await?.status {
                     0 => continue, // still generating
                     1 => { // generated success
-                        let file_hash = self.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])).await?
+                        let file_hash = self.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &self.ootr_api_key), ("id", &id.to_string())])).await?
                             .detailed_error_for_status().await?
                             .json_with_text_in_error::<SeedDetailsResponse>().await?
                             .settings_log.file_hash;
-                        let patch_response = self.get("https://ootrandomizer.com/api/v2/seed/patch", Some(&[("key", &self.ootr_api_key), ("id", &seed_id.to_string())])).await?
+                        let patch_response = self.get("https://ootrandomizer.com/api/v2/seed/patch", Some(&[("key", &self.ootr_api_key), ("id", &id.to_string())])).await?
                             .detailed_error_for_status().await?;
                         let (_, patch_file_name) = regex_captures!("^attachment; filename=(.+)$", patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION).ok_or(RollError::PatchPath)?.to_str()?).ok_or(RollError::PatchPath)?;
                         let patch_file_name = patch_file_name.to_owned();
                         let (_, patch_file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_file_name).ok_or(RollError::PatchPath)?;
                         io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut File::create(Path::new(seed::DIR).join(&patch_file_name)).await?).await?;
-                        return Ok((seed_id, file_hash, patch_file_stem.to_owned()))
+                        return Ok((id, creation_timestamp, file_hash, patch_file_stem.to_owned()))
                     }
                     2 => unreachable!(), // generated with link (not possible from API)
                     3 => break, // failed to generate
@@ -479,6 +490,7 @@ enum RaceState {
 }
 
 struct OfficialRaceData {
+    startgg_set: String,
     entrants: Vec<String>,
     start: DateTime<Utc>,
 }
@@ -543,9 +555,11 @@ impl Handler {
     async fn roll_seed(&self, ctx: &RaceContext, mut state: OwnedRwLockWriteGuard<RaceState>, settings: mw::S3Settings) {
         *state = RaceState::Rolling;
         drop(state);
+        let db_pool = self.global_state.db_pool.clone();
         let ctx = ctx.clone();
         let state = Arc::clone(&self.race_state);
         let mut updates = Arc::clone(&self.global_state).roll_seed(settings);
+        let startgg_set = self.official_data.as_ref().map(|official_data| official_data.startgg_set.clone());
         let mut official_start = self.official_data.as_ref().map(|official_data| official_data.start);
         tokio::spawn(async move {
             let mut seed_state = None::<SeedRollUpdate>;
@@ -555,7 +569,7 @@ impl Handler {
                         () = sleep((start - chrono::Duration::minutes(15) - Utc::now()).to_std().expect("official race room opened after seed roll deadline")) => {
                             official_start = None;
                             if let Some(update) = seed_state.take() {
-                                update.handle(&ctx, &state, settings).await?;
+                                update.handle(&db_pool, &ctx, &state, startgg_set.as_deref(), settings).await?;
                             } else {
                                 panic!("no seed rolling progress after 15 minutes")
                             }
@@ -564,7 +578,7 @@ impl Handler {
                     }
                 } else {
                     while let Some(update) = updates.recv().await {
-                        update.handle(&ctx, &state, settings).await?;
+                        update.handle(&db_pool, &ctx, &state, startgg_set.as_deref(), settings).await?;
                     }
                     return Ok::<_, Error>(())
                 }
@@ -626,7 +640,10 @@ impl RaceHandler<GlobalState> for Handler {
                 (format!("Team A"), format!("Team B"))
             };
             (
-                Some(OfficialRaceData { entrants, start }),
+                Some(OfficialRaceData {
+                    startgg_set: cal_event.race.startgg_set.clone(),
+                    entrants, start,
+                }),
                 RaceState::Draft(cal_event.race.draft.map(|draft| draft.state).unwrap_or_default()), //TODO restrict draft picks
                 high_seed_name,
                 low_seed_name,
