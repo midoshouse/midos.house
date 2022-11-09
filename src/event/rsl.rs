@@ -24,6 +24,42 @@ use {
 
 pub(super) fn info(event: &str) -> RawHtml<String> {
     match event {
+        "2" => html! {
+            article {
+                p : "This is an archive of the 2nd season of the Random Settings League tournament.";
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = "https://rsl-leaderboard.web.app/season2") : "Leaderboard (qualifiers)";
+                    }
+                }
+            }
+        },
+        "3" => html! {
+            article {
+                p : "This is an archive of the 3rd season of the Random Settings League tournament.";
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = "https://rsl-leaderboard.web.app/season3") : "Leaderboard (qualifiers)";
+                    }
+                }
+            }
+        },
+        "4" => html! {
+            article {
+                p : "This is an archive of the 4th season of the Random Settings League tournament.";
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = "https://rsl-leaderboard.web.app/season4") : "Leaderboard (qualifiers)";
+                    }
+                    li {
+                        a(href = "https://docs.google.com/spreadsheets/d/1IyXCCq0iowzCoUH7mB8oSduiQU6QqLY6LE1nJEKUOMs/edit") : "Swiss pairings";
+                    }
+                }
+            }
+        },
         "5" => html! {
             article {
                 p {
