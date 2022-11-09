@@ -535,20 +535,52 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
             cal.add_event(cal_event);
         }
         Series::Rsl => match &*event.event {
-            /*
-            "2" => {
-                let sheet_values = sheet_values("1TEb48hIarEXnsnGxJbq1Y4YiZxNSM1t1oBsXh_bM4LM", format!("Raw form data!B2:F")).await;
-                for (i, race) in Race::rsl_s2(sheet_values).await.into_iter().enumerate() {
-                    cal.add_event(race.to_event("RSL S2", "rsl-2", i));
+            "2" => for (i, row) in sheet_values("1TEb48hIarEXnsnGxJbq1Y4YiZxNSM1t1oBsXh_bM4LM", format!("Raw form data!B2:F")).await?.into_iter().enumerate() {
+                if !row.is_empty() {
+                    let mut row = row.into_iter().fuse();
+                    let p1 = row.next().unwrap();
+                    let p2 = row.next().unwrap();
+                    let date_et = row.next().unwrap();
+                    let time_et = row.next().unwrap();
+                    let stream = row.next();
+                    assert!(row.next().is_none());
+                    let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
+                    let duration = Duration::hours(4) + Duration::minutes(30); //TODO better duration estimate
+                    let mut event = ics::Event::new(format!("rsl-2-{i}@midos.house"), ics_datetime(Utc::now()));
+                    event.push(Summary::new(format!("RSL S2: {p1} vs {p2}"))); //TODO add round numbers from https://challonge.com/ymq48xum
+                    event.push(DtStart::new(ics_datetime(start)));
+                    event.push(DtEnd::new(ics_datetime(start + duration)));
+                    if let Some(stream) = stream {
+                        event.push(URL::new(format!("https://{stream}")));
+                    }
+                    cal.add_event(event);
                 }
-            }
-            "3" => {
-                let sheet_values = sheet_values("1475TTqezcSt-okMfQaG6Rf7AlJsqBx8c_rGDKs4oBYk", format!("Sign Ups!B2:I")).await;
-                for (i, race) in Race::rsl_s3(sheet_values).await.into_iter().enumerate() {
-                    cal.add_event(race.to_event("RSL S3", "rsl-3", i));
+            },
+            "3" => for (i, row) in sheet_values("1475TTqezcSt-okMfQaG6Rf7AlJsqBx8c_rGDKs4oBYk", format!("Sign Ups!B2:I")).await?.into_iter().enumerate() {
+                if !row.is_empty() {
+                    let mut row = row.into_iter().fuse();
+                    let p1 = row.next().unwrap();
+                    if p1.is_empty() { continue }
+                    let p2 = row.next().unwrap();
+                    let _round = row.next().unwrap();
+                    let date_et = row.next().unwrap();
+                    let time_et = row.next().unwrap();
+                    if row.next().map_or(false, |cancel| cancel == "TRUE") { continue }
+                    let _monitor = row.next();
+                    let stream = row.next();
+                    assert!(row.next().is_none());
+                    let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
+                    let duration = Duration::hours(4) + Duration::minutes(30); //TODO better duration estimate
+                    let mut event = ics::Event::new(format!("rsl-3-{i}@midos.house"), ics_datetime(Utc::now()));
+                    event.push(Summary::new(format!("RSL S3: {p1} vs {p2}"))); //TODO add round numbers from https://challonge.com/RSL_S3
+                    event.push(DtStart::new(ics_datetime(start)));
+                    event.push(DtEnd::new(ics_datetime(start + duration)));
+                    if let Some(stream) = stream {
+                        event.push(URL::new(format!("https://{stream}")));
+                    }
+                    cal.add_event(event);
                 }
-            }
-            */ //TODO
+            },
             "4" => for (i, row) in sheet_values("1LRJ3oo_2AWGq8KpNNclRXOq4OW8O7LrHra7uY7oQQlA", format!("Form responses 1!B2:H")).await?.into_iter().enumerate() {
                 if !row.is_empty() {
                     let mut row = row.into_iter().fuse();
@@ -571,8 +603,30 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                     }
                     cal.add_event(event);
                 }
-            }
-            "5" => {} //TODO
+            },
+            "5" => for (i, row) in sheet_values("1nz7XtNxKFTq_6bfjlUmIq0fCXKkQfDC848YmVcbaoQw", format!("Form responses 1!B2:H")).await?.into_iter().enumerate() {
+                if !row.is_empty() {
+                    let mut row = row.into_iter().fuse();
+                    let p1 = row.next().unwrap();
+                    let p2 = row.next().unwrap();
+                    let round = row.next().unwrap();
+                    let date_utc = row.next().unwrap();
+                    let time_utc = row.next().unwrap();
+                    let _monitor = row.next();
+                    let stream = row.next();
+                    assert!(row.next().is_none());
+                    let start = Utc.datetime_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_utc:?} at {time_utc:?}"));
+                    let duration = Duration::hours(4) + Duration::minutes(30); //TODO better duration estimate
+                    let mut event = ics::Event::new(format!("rsl-5-{i}@midos.house"), ics_datetime(Utc::now()));
+                    event.push(Summary::new(format!("RSL S5 Swiss Round {round}: {p1} vs {p2}")));
+                    event.push(DtStart::new(ics_datetime(start)));
+                    event.push(DtEnd::new(ics_datetime(start + duration)));
+                    if let Some(stream) = stream {
+                        event.push(URL::new(format!("https://{stream}")));
+                    }
+                    cal.add_event(event);
+                }
+            },
             _ => unimplemented!(),
         },
         Series::Standard => match &*event.event {
