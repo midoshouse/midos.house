@@ -824,7 +824,7 @@ struct RaceTimeTeam {
 }
 
 #[derive(Deserialize)]
-struct RaceTimeTeamData {
+pub(super) struct RaceTimeTeamData {
     name: String,
     slug: String,
     members: Vec<RaceTimeTeamMember>,
@@ -836,7 +836,7 @@ struct RaceTimeTeamMember {
     name: String,
 }
 
-async fn validate_team(me: &User, client: &reqwest::Client, context: &mut Context<'_>, team_slug: &str) -> Result<Option<RaceTimeTeamData>, Error> {
+pub(super) async fn validate_team(me: &User, client: &reqwest::Client, context: &mut Context<'_>, team_slug: &str) -> Result<Option<RaceTimeTeamData>, Error> {
     Ok(if let Some(ref racetime_id) = me.racetime_id {
         let user = client.get(format!("https://racetime.gg/user/{racetime_id}/data"))
             .send().await?
@@ -903,7 +903,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
                 };
                 html! {
                     : header;
-                    form(action = uri!(enter_post(&*data.event)).to_string(), method = "post") {
+                    form(action = uri!(super::enter_post(data.series, &*data.event)).to_string(), method = "post") {
                         @for error in errors {
                             : render_form_error(error);
                         }
@@ -935,35 +935,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
     }).await?)
 }
 
-#[derive(FromForm, CsrfForm)]
-pub(crate) struct EnterForm {
-    #[field(default = String::new())]
-    csrf: String,
-    racetime_team: String,
-}
-
-#[rocket::post("/event/mw/<event>/enter", data = "<form>")]
-pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
-    let data = Data::new(&mut transaction, SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let mut form = form.into_inner();
-    form.verify(&csrf);
-    if data.is_started(&mut transaction).await? {
-        form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
-    }
-    Ok(if let Some(ref value) = form.value {
-        let racetime_team = validate_team(&me, client, &mut form.context, &value.racetime_team).await?;
-        if form.context.errors().next().is_some() {
-            enter_form(transaction, Some(me), uri, csrf, data, form.context, client).await?
-        } else {
-            enter_form_step2(transaction, Some(me), uri, client, csrf, data, EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?
-        }
-    } else {
-        enter_form(transaction, Some(me), uri, csrf, data, form.context, client).await?
-    })
-}
-
-enum EnterFormStep2Defaults<'a> {
+pub(super) enum EnterFormStep2Defaults<'a> {
     Context(Context<'a>),
     Values {
         racetime_team: RaceTimeTeamData,
@@ -1039,7 +1011,7 @@ impl<'v> EnterFormStep2Defaults<'v> {
     }
 }
 
-fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, me: Option<User>, uri: Origin<'b>, client: &reqwest::Client, csrf: Option<CsrfToken>, data: Data<'c>, defaults: EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
+pub(super) fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, me: Option<User>, uri: Origin<'b>, client: &reqwest::Client, csrf: Option<CsrfToken>, data: Data<'c>, defaults: EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
     let team_members = defaults.racetime_members(client);
     Box::pin(async move {
         let header = data.header(&mut transaction, me.as_ref(), Tab::Enter).await?;

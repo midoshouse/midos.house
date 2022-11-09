@@ -58,7 +58,6 @@ use {
         user::User,
         util::{
             Id,
-            IdTable,
             RedirectOrContent,
             StatusOrError,
             form_field,
@@ -482,7 +481,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
         };
         html! {
             : header;
-            form(action = uri!(enter_post(&*data.event)).to_string(), method = "post") {
+            form(action = uri!(super::enter_post(data.series, &*data.event)).to_string(), method = "post") {
                 @for error in errors {
                     : render_form_error(error);
                 }
@@ -500,85 +499,6 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
             }
         }
     }).await?)
-}
-
-#[derive(FromForm, CsrfForm)]
-pub(crate) struct EnterForm {
-    #[field(default = String::new())]
-    csrf: String,
-    team_name: String,
-    my_role: Role,
-    teammate: Id,
-}
-
-#[rocket::post("/event/pic/<event>/enter", data = "<form>")]
-pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
-    let data = Data::new(&mut transaction, SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let mut form = form.into_inner();
-    form.verify(&csrf);
-    if data.is_started(&mut transaction).await? {
-        form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
-    }
-    Ok(if let Some(ref value) = form.value {
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
-            id = team
-            AND series = 'pic'
-            AND event = $1
-            AND member = $2
-            AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
-        ) AS "exists!""#, event, i64::from(me.id), i64::from(value.teammate)).fetch_one(&mut transaction).await? {
-            form.context.push_error(form::Error::validation("A team with these members is already proposed for this race. Check your notifications to accept the invite, or ask your teammate to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
-        }
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
-            id = team
-            AND series = 'pic'
-            AND event = $1
-            AND member = $2
-            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        ) AS "exists!""#, event, i64::from(me.id)).fetch_one(&mut transaction).await? {
-            form.context.push_error(form::Error::validation("You are already signed up for this race."));
-        }
-        if !value.team_name.is_empty() && sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
-            series = 'pic'
-            AND event = $1
-            AND name = $2
-            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        ) AS "exists!""#, event, value.team_name).fetch_one(&mut transaction).await? {
-            form.context.push_error(form::Error::validation("A team with this name is already signed up for this race.").with_name("team_name"));
-        }
-        if value.my_role == Role::Sheikah && me.racetime_id.is_none() {
-            form.context.push_error(form::Error::validation("A racetime.gg account is required to enter as runner. Go to your profile and select “Connect a racetime.gg account”.").with_name("my_role")); //TODO direct link?
-        }
-        if value.teammate == me.id {
-            form.context.push_error(form::Error::validation("You cannot be your own teammate.").with_name("teammate"));
-        }
-        if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
-            form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("teammate"));
-        }
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
-            id = team
-            AND series = 'pic'
-            AND event = $1
-            AND member = $2
-            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        ) AS "exists!""#, event, i64::from(value.teammate)).fetch_one(&mut transaction).await? {
-            form.context.push_error(form::Error::validation("This user is already signed up for this race.").with_name("teammate"));
-        }
-        //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
-        if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(enter_form(transaction, Some(me), uri, csrf, data, EnterFormDefaults::Context(form.context)).await?)
-        } else {
-            let id = Id::new(&mut transaction, IdTable::Teams).await?;
-            sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, 'pic', $2, $3)", id as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
-            sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, super::Role::from(value.my_role) as _).execute(&mut transaction).await?;
-            sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", id as _, value.teammate as _, match value.my_role { Role::Sheikah => super::Role::Gerudo, Role::Gerudo => super::Role::Sheikah } as _).execute(&mut transaction).await?;
-            transaction.commit().await?;
-            RedirectOrContent::Redirect(Redirect::to(uri!(super::teams(SERIES, event))))
-        }
-    } else {
-        RedirectOrContent::Content(enter_form(transaction, Some(me), uri, csrf, data, EnterFormDefaults::Context(form.context)).await?)
-    })
 }
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths

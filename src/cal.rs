@@ -483,7 +483,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                 }
             }
         },
-        Series::Pictionary => {
+        Series::NineDaysOfSaws | Series::Pictionary => {
             let mut cal_event = ics::Event::new(format!("{}-{}@midos.house", event.series, event.event), ics_datetime(Utc::now()));
             cal_event.push(Summary::new(event.display_name.clone()));
             if let Some(start) = event.start(transaction).await? {

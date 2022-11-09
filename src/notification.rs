@@ -155,12 +155,13 @@ impl Notification {
                             : " (";
                             @match event.team_config() {
                                 TeamConfig::Solo => @unreachable // team invite for solo event
-                                TeamConfig::Multiworld => {
-                                    : mw::Role::try_from(member.role).expect("non-multiworld role in multiworld team");
-                                    : ", ";
-                                }
+                                TeamConfig::CoOp => {}
                                 TeamConfig::Pictionary => {
                                     : pic::Role::try_from(member.role).expect("non-Pictionary role in Pictionary team");
+                                    : ", ";
+                                }
+                                TeamConfig::Multiworld => {
+                                    : mw::Role::try_from(member.role).expect("non-multiworld role in multiworld team");
                                     : ", ";
                                 }
                             }
@@ -177,16 +178,18 @@ impl Notification {
                 html! {
                     @match event.team_config() {
                         TeamConfig::Solo => @unreachable // team invite for solo event
-                        TeamConfig::Multiworld => {
+                        TeamConfig::CoOp => {
                             : creator;
-                            : " (";
-                            : mw::Role::try_from(creator_role).expect("non-multiworld role in multiworld team");
-                            : ") invited you to enter ";
+                            : " invited you to join ";
+                            : creator.possessive_pronoun();
+                            : " team";
+                            @if let Some(team_name) = team_row.name {
+                                : " “";
+                                : team_name;
+                                : "”";
+                            }
+                            : " for ";
                             : event;
-                            : " as ";
-                            : mw::Role::try_from(my_role).expect("non-multiworld role in multiworld team");
-                            : " for team ";
-                            a(href = format!("https://racetime.gg/team/{}", team_row.racetime_slug.expect("multiworld team without racetime slug"))) : team_row.name; //TODO use Team type
                             @if let Some(teammates) = natjoin_html(teammates) {
                                 : " together with ";
                                 : teammates;
@@ -209,6 +212,22 @@ impl Notification {
                             : event;
                             : " as ";
                             : pic::Role::try_from(my_role).expect("non-Pictionary role in Pictionary team");
+                            @if let Some(teammates) = natjoin_html(teammates) {
+                                : " together with ";
+                                : teammates;
+                            }
+                            : ".";
+                        }
+                        TeamConfig::Multiworld => {
+                            : creator;
+                            : " (";
+                            : mw::Role::try_from(creator_role).expect("non-multiworld role in multiworld team");
+                            : ") invited you to enter ";
+                            : event;
+                            : " as ";
+                            : mw::Role::try_from(my_role).expect("non-multiworld role in multiworld team");
+                            : " for team ";
+                            a(href = format!("https://racetime.gg/team/{}", team_row.racetime_slug.expect("multiworld team without racetime slug"))) : team_row.name; //TODO use Team type
                             @if let Some(teammates) = natjoin_html(teammates) {
                                 : " together with ";
                                 : teammates;

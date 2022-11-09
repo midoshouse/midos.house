@@ -101,6 +101,7 @@ use {
 };
 
 pub(crate) mod mw;
+mod ndos;
 pub(crate) mod pic;
 mod rsl;
 mod s;
@@ -122,17 +123,17 @@ impl SignupStatus {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type)]
 #[sqlx(type_name = "team_role", rename_all = "snake_case")]
 pub(crate) enum Role {
-    /// for solo events
+    /// For solo events.
     None,
-    /// “runner” in Pictionary
+    /// Player 1 of 2. “Runner” in Pictionary.
     Sheikah,
-    /// “pilot” in Pictionary
+    /// Player 2 of 2. “Pilot” in Pictionary.
     Gerudo,
-    /// world 1
+    /// Player 1 of 3.
     Power,
-    /// world 2
+    /// Player 2 of 3.
     Wisdom,
-    /// world 3
+    /// Player 3 of 3.
     Courage,
 }
 
@@ -152,6 +153,7 @@ impl Role {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Series {
     Multiworld,
+    NineDaysOfSaws,
     Pictionary,
     Rsl,
     Standard,
@@ -161,6 +163,7 @@ impl Series {
     fn to_str(&self) -> &'static str {
         match self {
             Self::Multiworld => "mw",
+            Self::NineDaysOfSaws => "9dos",
             Self::Pictionary => "pic",
             Self::Rsl => "rsl",
             Self::Standard => "s",
@@ -173,6 +176,7 @@ impl FromStr for Series {
 
     fn from_str(s: &str) -> Result<Self, ()> {
         match s {
+            "9dos" => Ok(Self::NineDaysOfSaws),
             "mw" => Ok(Self::Multiworld),
             "pic" => Ok(Self::Pictionary),
             "rsl" => Ok(Self::Rsl),
@@ -239,26 +243,37 @@ impl UriDisplay<Path> for Series {
 
 impl_from_uri_param_identity!([Path] Series);
 
+enum EnterFlow {
+    RaceTime,
+    RaceTimeDiscord,
+    Extern,
+}
+
 pub(crate) enum TeamConfig {
     Solo,
+    CoOp,
     Pictionary,
     Multiworld,
 }
 
 impl TeamConfig {
-    fn roles(&self) -> Vec<(Role, &'static str)> {
+    fn roles(&self) -> &'static [(Role, &'static str)] {
         match self {
-            Self::Solo => vec![
+            Self::Solo => &[
                 (Role::None, "Runner"),
             ],
-            Self::Multiworld => vec![
+            Self::CoOp => &[
+                (Role::Sheikah, "Player 1"),
+                (Role::Gerudo, "Player 2"),
+            ],
+            Self::Pictionary => &[
+                (Role::Sheikah, "Runner"),
+                (Role::Gerudo, "Pilot"),
+            ],
+            Self::Multiworld => &[
                 (Role::Power, "Player 1"),
                 (Role::Wisdom, "Player 2"),
                 (Role::Courage, "Player 3"),
-            ],
-            Self::Pictionary => vec![
-                (Role::Sheikah, "Runner"),
-                (Role::Gerudo, "Pilot"),
             ],
         }
     }
@@ -306,18 +321,59 @@ impl<'a> Data<'a> {
             .transpose()
     }
 
+    pub(crate) fn chests(&self) -> ChestAppearances {
+        match (self.series, &*self.event) {
+            (Series::Multiworld, "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
+            (Series::Multiworld, "3") => mw::S3Settings::random(&mut thread_rng()).chests(),
+            (Series::Multiworld, _) => unimplemented!(),
+            (Series::NineDaysOfSaws, _) => ChestAppearances::VANILLA, // no CAMC in SAWS
+            (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
+            (Series::Rsl, "5") => {
+                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-5-20cd31a.json")).expect("failed to parse chest weights"));
+
+                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
+            }
+            (Series::Rsl, _) => unimplemented!(),
+            (Series::Standard, "6") => ChestAppearances::VANILLA, //TODO update for new CAMC
+            (Series::Standard, _) => unimplemented!(),
+        }
+    }
+
     pub(crate) fn is_single_race(&self) -> bool {
         match self.series {
             Series::Multiworld => false,
+            Series::NineDaysOfSaws => true,
             Series::Pictionary => true,
             Series::Rsl => false,
             Series::Standard => false,
         }
     }
 
+    fn enter_flow(&self) -> EnterFlow {
+        match self.series {
+            Series::Multiworld => EnterFlow::RaceTimeDiscord,
+            Series::NineDaysOfSaws => EnterFlow::RaceTime,
+            Series::Pictionary => EnterFlow::RaceTime,
+            Series::Rsl => EnterFlow::Extern,
+            Series::Standard => EnterFlow::Extern,
+        }
+    }
+
     pub(crate) fn team_config(&self) -> TeamConfig {
         match self.series {
             Series::Multiworld => TeamConfig::Multiworld,
+            Series::NineDaysOfSaws => match &*self.event {
+                "1" => TeamConfig::Solo,
+                "2" => TeamConfig::CoOp,
+                "3" => TeamConfig::Solo,
+                "4" => TeamConfig::Solo,
+                "5" => TeamConfig::Solo,
+                "6" => TeamConfig::Multiworld,
+                "7" => TeamConfig::Solo,
+                "8" => TeamConfig::CoOp,
+                "9" => TeamConfig::Solo,
+                _ => unimplemented!(),
+            },
             Series::Pictionary => TeamConfig::Pictionary,
             Series::Rsl => TeamConfig::Solo,
             Series::Standard => TeamConfig::Solo,
@@ -365,23 +421,6 @@ impl<'a> Data<'a> {
 
     fn is_ended(&self) -> bool {
         self.end.map_or(false, |end| end <= Utc::now())
-    }
-
-    pub(crate) fn chests(&self) -> ChestAppearances {
-        match (self.series, &*self.event) {
-            (Series::Multiworld, "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
-            (Series::Multiworld, "3") => mw::S3Settings::random(&mut thread_rng()).chests(),
-            (Series::Multiworld, _) => unimplemented!(),
-            (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
-            (Series::Rsl, "5") => {
-                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-5-20cd31a.json")).expect("failed to parse chest weights"));
-
-                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
-            }
-            (Series::Rsl, _) => unimplemented!(),
-            (Series::Standard, "6") => ChestAppearances::VANILLA, // classic CSMC with no keys in overworld
-            (Series::Standard, _) => unimplemented!(),
-        }
     }
 
     async fn header(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>, tab: Tab) -> sqlx::Result<RawHtml<String>> {
@@ -564,6 +603,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
     let header = data.header(&mut transaction, me.as_ref(), Tab::Info).await.map_err(InfoError::Sql)?;
     let content = match data.series {
         Series::Multiworld => mw::info(pool, event).await?,
+        Series::NineDaysOfSaws => ndos::info(event),
         Series::Pictionary => pic::info(pool, event).await?,
         Series::Rsl => rsl::info(event),
         Series::Standard => s::info(event),
@@ -606,7 +646,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     let roles = data.team_config().roles();
     for team in teams {
         let mut members = Vec::with_capacity(roles.len());
-        for &(role, _) in &roles {
+        for &(role, _) in roles {
             let row = sqlx::query!(r#"
                 SELECT member AS "id: Id", status AS "status: SignupStatus", time, vod
                 FROM team_members LEFT OUTER JOIN async_players ON (member = player)
@@ -662,7 +702,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                     @if !matches!(data.team_config(), TeamConfig::Solo) {
                         th : "Team Name";
                     }
-                    @for &(role, display_name) in &roles {
+                    @for &(role, display_name) in roles {
                         th(class = role.css_class()) : display_name;
                     }
                     @if has_qualifier && !show_qualifier_times {
@@ -960,6 +1000,17 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
                 } else {
                     @match data.series {
                         Series::Multiworld => : mw::status(&mut transaction, discord_ctx, csrf, &data, row.id, context).await?;
+                        Series::NineDaysOfSaws => @if data.is_ended() {
+                            p : "This race has been completed."; //TODO ranking and finish time
+                        } else if let Some(ref race_room) = data.url {
+                            p {
+                                : "Please join ";
+                                a(href = race_room.to_string()) : "the race room";
+                                : " as soon as possible. You will receive further instructions there.";
+                            }
+                        } else {
+                            : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
+                        }
                         Series::Pictionary => @if data.is_ended() {
                             p : "This race has been completed."; //TODO ranking and finish time
                         } else if let Some(ref race_room) = data.url {
@@ -1022,12 +1073,178 @@ pub(crate) async fn status(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Di
 pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<crate::event::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(match series {
-        Series::Multiworld => mw::enter_form(transaction, me, uri, csrf, data, Context::default(), client).await?,
-        Series::Pictionary => pic::enter_form(transaction, me, uri, csrf, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?,
-        Series::Rsl => rsl::enter_form(transaction, me, uri, data, event).await?,
-        Series::Standard => s::enter_form(transaction, me, uri, data).await?,
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Enter).await?;
+    Ok(match data.enter_flow() {
+        EnterFlow::RaceTime => match data.team_config() {
+            TeamConfig::Solo => page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
+                : header;
+                //TODO check to make sure the user has a racetime.gg account connected
+                @if data.is_single_race() {
+                    article {
+                        p {
+                            @if let Some(ref url) = data.url {
+                                : "Enter ";
+                                a(href = url.to_string()) : "the race room";
+                                : " to participate in this race.";
+                            } else {
+                                : "The race room will be opened around 30 minutes before the scheduled starting time. You don't need to sign up beforehand.";
+                            }
+                        }
+                    }
+                } else {
+                    form(action = uri!(enter_post(series, event)).to_string(), method = "post") {
+                        : csrf;
+                        fieldset {
+                            input(type = "submit", value = "Enter");
+                        }
+                    }
+                }
+            }).await?,
+            TeamConfig::CoOp => unimplemented!(), //TODO like old MW enter flow but without Discord account check and without role choice
+            TeamConfig::Pictionary => pic::enter_form(transaction, me, uri, csrf, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?,
+            TeamConfig::Multiworld => unimplemented!(), //TODO like old MW enter flow but without Discord account check
+        },
+        EnterFlow::RaceTimeDiscord => if let TeamConfig::Solo = data.team_config() {
+            unimplemented!() //TODO like EnterFlow::RaceTime but also check to make sure the user has a Discord account connected
+        } else {
+            mw::enter_form(transaction, me, uri, csrf, data, Context::default(), client).await?
+        },
+        EnterFlow::Extern => match series {
+            Series::Multiworld => unimplemented!(),
+            Series::NineDaysOfSaws => unimplemented!(),
+            Series::Pictionary => unimplemented!(),
+            Series::Rsl => rsl::enter_form(transaction, me, uri, data, event).await?,
+            Series::Standard => s::enter_form(transaction, me, uri, data).await?,
+        },
     })
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct EnterForm {
+    #[field(default = String::new())]
+    csrf: String,
+    racetime_team: Option<String>,
+    #[field(default = String::new())]
+    team_name: String,
+    my_role: Option<pic::Role>,
+    teammate: Option<Id>,
+}
+
+#[rocket::post("/event/<series>/<event>/enter", data = "<form>")]
+pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    match series {
+        Series::Multiworld => {
+            let mut transaction = pool.begin().await?;
+            let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+            let mut form = form.into_inner();
+            form.verify(&csrf);
+            if data.is_started(&mut transaction).await? {
+                form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
+            }
+            Ok(if let Some(ref value) = form.value {
+                let racetime_team = if let Some(ref racetime_team) = value.racetime_team {
+                    mw::validate_team(&me, client, &mut form.context, racetime_team).await?
+                } else {
+                    form.context.push_error(form::Error::validation("This field is required.").with_name("tacetime_team"));
+                    None
+                };
+                if form.context.errors().next().is_some() {
+                    RedirectOrContent::Content(mw::enter_form(transaction, Some(me), uri, csrf, data, form.context, client).await?)
+                } else {
+                    RedirectOrContent::Content(mw::enter_form_step2(transaction, Some(me), uri, client, csrf, data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?)
+                }
+            } else {
+                RedirectOrContent::Content(mw::enter_form(transaction, Some(me), uri, csrf, data, form.context, client).await?)
+            })
+        }
+        Series::Pictionary => {
+            let mut transaction = pool.begin().await?;
+            let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+            let mut form = form.into_inner();
+            form.verify(&csrf);
+            if data.is_started(&mut transaction).await? {
+                form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
+            }
+            Ok(if let Some(ref value) = form.value {
+                let (my_role, teammate) = match (value.my_role, value.teammate) {
+                    (Some(my_role), Some(teammate)) => {
+                        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+                            id = team
+                            AND series = 'pic'
+                            AND event = $1
+                            AND member = $2
+                            AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
+                        ) AS "exists!""#, event, i64::from(me.id), i64::from(teammate)).fetch_one(&mut transaction).await? {
+                            form.context.push_error(form::Error::validation("A team with these members is already proposed for this race. Check your notifications to accept the invite, or ask your teammate to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
+                        }
+                        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+                            id = team
+                            AND series = 'pic'
+                            AND event = $1
+                            AND member = $2
+                            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+                        ) AS "exists!""#, event, i64::from(me.id)).fetch_one(&mut transaction).await? {
+                            form.context.push_error(form::Error::validation("You are already signed up for this race."));
+                        }
+                        if !value.team_name.is_empty() && sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
+                            series = 'pic'
+                            AND event = $1
+                            AND name = $2
+                            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+                        ) AS "exists!""#, event, value.team_name).fetch_one(&mut transaction).await? {
+                            form.context.push_error(form::Error::validation("A team with this name is already signed up for this race.").with_name("team_name"));
+                        }
+                        if my_role == pic::Role::Sheikah && me.racetime_id.is_none() {
+                            form.context.push_error(form::Error::validation("A racetime.gg account is required to enter as runner. Go to your profile and select “Connect a racetime.gg account”.").with_name("my_role")); //TODO direct link?
+                        }
+                        if teammate == me.id {
+                            form.context.push_error(form::Error::validation("You cannot be your own teammate.").with_name("teammate"));
+                        }
+                        if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, i64::from(teammate)).fetch_one(&mut transaction).await? {
+                            form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("teammate"));
+                        }
+                        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+                            id = team
+                            AND series = 'pic'
+                            AND event = $1
+                            AND member = $2
+                            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+                        ) AS "exists!""#, event, i64::from(teammate)).fetch_one(&mut transaction).await? {
+                            form.context.push_error(form::Error::validation("This user is already signed up for this race.").with_name("teammate"));
+                        }
+                        //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
+                        (Some(my_role), Some(teammate))
+                    }
+                    (Some(_), None) => {
+                        form.context.push_error(form::Error::validation("This field is required.").with_name("teammate"));
+                        (None, None)
+                    }
+                    (None, Some(_)) => {
+                        form.context.push_error(form::Error::validation("This field is required.").with_name("my_role"));
+                        (None, None)
+                    }
+                    (None, None) => {
+                        form.context.push_error(form::Error::validation("This field is required.").with_name("my_role"));
+                        form.context.push_error(form::Error::validation("This field is required.").with_name("teammate"));
+                        (None, None)
+                    }
+                };
+                if form.context.errors().next().is_some() {
+                    RedirectOrContent::Content(pic::enter_form(transaction, Some(me), uri, csrf, data, pic::EnterFormDefaults::Context(form.context)).await?)
+                } else {
+                    let id = Id::new(&mut transaction, IdTable::Teams).await?;
+                    sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, 'pic', $2, $3)", id as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
+                    sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, Role::from(my_role.expect("validated")) as _).execute(&mut transaction).await?;
+                    sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", id as _, teammate.expect("validated") as _, match my_role.expect("validated") { pic::Role::Sheikah => Role::Gerudo, pic::Role::Gerudo => Role::Sheikah } as _).execute(&mut transaction).await?;
+                    transaction.commit().await?;
+                    RedirectOrContent::Redirect(Redirect::to(uri!(teams(series, event))))
+                }
+            } else {
+                RedirectOrContent::Content(pic::enter_form(transaction, Some(me), uri, csrf, data, pic::EnterFormDefaults::Context(form.context)).await?)
+            })
+        }
+        _ => unimplemented!() //TODO
+    }
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -1051,8 +1268,9 @@ pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origi
                 : "This is a solo event.";
             }).await.map_err(FindTeamError::Page)?
         }
-        TeamConfig::Multiworld => mw::find_team_form(transaction, me, uri, csrf, data, Context::default()).await?,
+        TeamConfig::CoOp => unimplemented!(), //TODO
         TeamConfig::Pictionary => pic::find_team_form(transaction, me, uri, csrf, data, Context::default()).await?,
+        TeamConfig::Multiworld => mw::find_team_form(transaction, me, uri, csrf, data, Context::default()).await?,
     })
 }
 
