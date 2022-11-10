@@ -337,6 +337,9 @@ pub(crate) fn static_url(path: &str) -> String {
 
 pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
     match url.host_str() {
+        Some("challonge.com" | "www.challonge.com") => html! {
+            img(class = "favicon", alt = "external link (challonge.com)", srcset = "https://assets.challonge.com/favicon-16x16.png 16w, https://assets.challonge.com/favicon-32x32.png 32w");
+        },
         Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("document") => html! {
             img(class = "favicon", alt = "external link (docs.google.com/document)", src = "https://ssl.gstatic.com/docs/documents/images/kix-favicon7.ico");
         },

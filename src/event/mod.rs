@@ -507,7 +507,7 @@ impl<'a> Data<'a> {
                         : favicon(url);
                         @match url.host_str() {
                             Some("racetime.gg") => : "Race Room";
-                            Some("start.gg" | "www.start.gg") => : "Brackets";
+                            Some("challonge.com" | "www.challonge.com" | "start.gg" | "www.start.gg") => : "Brackets";
                             _ => : "Website";
                         }
                     }
