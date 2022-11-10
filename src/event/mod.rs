@@ -329,6 +329,7 @@ impl<'a> Data<'a> {
             (Series::Multiworld, _) => unimplemented!(),
             (Series::NineDaysOfSaws, _) => ChestAppearances::VANILLA, // no CAMC in SAWS
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
+            (Series::Rsl, "2" | "3" | "4") => ChestAppearances::random(), //TODO
             (Series::Rsl, "5") => {
                 static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-5-20cd31a.json")).expect("failed to parse chest weights"));
 
