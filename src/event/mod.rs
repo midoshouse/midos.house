@@ -611,7 +611,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
     let header = data.header(&mut transaction, me.as_ref(), Tab::Info).await.map_err(InfoError::Sql)?;
     let content = match data.series {
         Series::Multiworld => mw::info(pool, event).await?,
-        Series::NineDaysOfSaws => ndos::info(event),
+        Series::NineDaysOfSaws => ndos::info(pool, event).await?,
         Series::Pictionary => pic::info(pool, event).await?,
         Series::Rsl => rsl::info(event),
         Series::Standard => s::info(event),
