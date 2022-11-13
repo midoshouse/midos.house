@@ -336,7 +336,10 @@ impl<'a> Data<'a> {
                 WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
             }
             (Series::Rsl, "5") => {
-                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-5-20cd31a.json")).expect("failed to parse chest weights"));
+                // rsl/5 moved from version 20cd31a of the RSL script to version 05bfcd2 after the first two races of the first Swiss round.
+                // For the sake of simplicity, only the new version is used for chests weights right now.
+                //TODO After the event, the version should be randomized based on the total number of races played on each version.
+                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-5-05bfcd2.json")).expect("failed to parse chest weights"));
 
                 WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
             }
