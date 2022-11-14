@@ -393,7 +393,6 @@ impl MwSeedQueue {
         struct CreateSeedResponse {
             #[serde_as(as = "DisplayFromStr")]
             id: u64,
-            creation_timestamp: DateTime<Utc>,
         }
 
         #[derive(Deserialize)]
@@ -410,6 +409,7 @@ impl MwSeedQueue {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct SeedDetailsResponse {
+            creation_timestamp: DateTime<Utc>,
             #[serde_as(as = "JsonString")]
             settings_log: SettingsLog,
         }
@@ -424,7 +424,7 @@ impl MwSeedQueue {
                 next_seed
             };
             update_tx.send(SeedRollUpdate::Started).await?;
-            let CreateSeedResponse { id, creation_timestamp } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[("key", &*self.ootr_api_key), ("version", &*format!("dev_{RANDO_VERSION}")), ("locked", "1")]), Some(&settings)).await?
+            let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[("key", &*self.ootr_api_key), ("version", &*format!("dev_{RANDO_VERSION}")), ("locked", "1")]), Some(&settings)).await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error().await?;
             *next_seed = Instant::now() + MULTIWORLD_RATE_LIMIT;
@@ -441,17 +441,16 @@ impl MwSeedQueue {
                 match resp.json_with_text_in_error::<SeedStatusResponse>().await?.status {
                     0 => continue, // still generating
                     1 => { // generated success
-                        let file_hash = self.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &self.ootr_api_key), ("id", &id.to_string())])).await?
+                        let SeedDetailsResponse { creation_timestamp, settings_log } = self.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &self.ootr_api_key), ("id", &id.to_string())])).await?
                             .detailed_error_for_status().await?
-                            .json_with_text_in_error::<SeedDetailsResponse>().await?
-                            .settings_log.file_hash;
+                            .json_with_text_in_error().await?;
                         let patch_response = self.get("https://ootrandomizer.com/api/v2/seed/patch", Some(&[("key", &self.ootr_api_key), ("id", &id.to_string())])).await?
                             .detailed_error_for_status().await?;
                         let (_, patch_file_name) = regex_captures!("^attachment; filename=(.+)$", patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION).ok_or(RollError::PatchPath)?.to_str()?).ok_or(RollError::PatchPath)?;
                         let patch_file_name = patch_file_name.to_owned();
                         let (_, patch_file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_file_name).ok_or(RollError::PatchPath)?;
                         io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut File::create(Path::new(seed::DIR).join(&patch_file_name)).await?).await?;
-                        return Ok((id, creation_timestamp, file_hash, patch_file_stem.to_owned()))
+                        return Ok((id, creation_timestamp, settings_log.file_hash, patch_file_stem.to_owned()))
                     }
                     2 => unreachable!(), // generated with link (not possible from API)
                     3 => break, // failed to generate
