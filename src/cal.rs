@@ -622,7 +622,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                     event.push(DtStart::new(ics_datetime(start)));
                     event.push(DtEnd::new(ics_datetime(start + duration)));
                     if let Some(stream) = stream {
-                        event.push(URL::new(format!("https://{stream}")));
+                        event.push(URL::new(format!("https://twitch.tv/{stream}"))); //TODO vod links
                     }
                     cal.add_event(event);
                 }
