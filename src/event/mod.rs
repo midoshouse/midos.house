@@ -329,7 +329,11 @@ impl<'a> Data<'a> {
             (Series::Multiworld, _) => unimplemented!(),
             (Series::NineDaysOfSaws, _) => ChestAppearances::VANILLA, // no CAMC in SAWS
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
-            (Series::Rsl, "2") => ChestAppearances::random(), //TODO
+            (Series::Rsl, "2") => {
+                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-2-7028072.json")).expect("failed to parse chest weights"));
+
+                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
+            }
             (Series::Rsl, "3") => {
                 static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-3-a0f568b.json")).expect("failed to parse chest weights"));
 
