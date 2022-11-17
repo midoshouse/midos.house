@@ -353,7 +353,11 @@ impl<'a> Data<'a> {
                 WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
             }
             (Series::Rsl, _) => unimplemented!(),
-            (Series::Standard, "6") => ChestAppearances::VANILLA, //TODO update for new CAMC
+            (Series::Standard, "6") => {
+                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/s/chests-6-6.9.10.json")).expect("failed to parse chest weights"));
+
+                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
+            }
             (Series::Standard, _) => unimplemented!(),
         }
     }
