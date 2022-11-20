@@ -73,12 +73,12 @@ pub(super) fn info(event: &str) -> RawHtml<String> {
     }
 }
 
-pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, data: Data<'_>, event: &str) -> Result<RawHtml<String>, Error> {
+pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, data: Data<'_>) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
         : header;
         article {
-            @match event {
+            @match &*data.event {
                 "5" => {
                     p {
                         a(href = "https://docs.google.com/forms/d/e/1FAIpQLSei3qjXA7DOHskgIOBSBObQXH3Y-qXynrsxY8rXbobFOkjdYA/viewform") : "Opt in using the official form";

@@ -1117,10 +1117,7 @@ pub(crate) async fn status(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Di
     status_page(pool, &*discord_ctx.read().await, me, uri, csrf, series, event, Context::default()).await
 }
 
-#[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
-pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<crate::event::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
-    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter).await?;
     Ok(match data.enter_flow() {
         EnterFlow::RaceTime => match data.team_config() {
@@ -1140,7 +1137,7 @@ pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                         }
                     }
                 } else {
-                    form(action = uri!(enter_post(series, event)).to_string(), method = "post") {
+                    form(action = uri!(enter_post(data.series, &*data.event)).to_string(), method = "post") {
                         : csrf;
                         fieldset {
                             input(type = "submit", value = "Enter");
@@ -1149,7 +1146,7 @@ pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                 }
             }).await?,
             TeamConfig::CoOp => unimplemented!(), //TODO like old MW enter flow but without Discord account check and without role choice
-            TeamConfig::Pictionary => pic::enter_form(transaction, me, uri, csrf, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?,
+            TeamConfig::Pictionary => pic::enter_form(transaction, me, uri, csrf, data, defaults).await?,
             TeamConfig::Multiworld => unimplemented!(), //TODO like old MW enter flow but without Discord account check
         },
         EnterFlow::RaceTimeDiscord => if let TeamConfig::Solo = data.team_config() {
@@ -1157,14 +1154,21 @@ pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
         } else {
             mw::enter_form(transaction, me, uri, csrf, data, Context::default(), client).await?
         },
-        EnterFlow::Extern => match series {
+        EnterFlow::Extern => match data.series {
             Series::Multiworld => unimplemented!(),
             Series::NineDaysOfSaws => unimplemented!(),
             Series::Pictionary => unimplemented!(),
-            Series::Rsl => rsl::enter_form(transaction, me, uri, data, event).await?,
+            Series::Rsl => rsl::enter_form(transaction, me, uri, data).await?,
             Series::Standard => s::enter_form(transaction, me, uri, data).await?,
         },
     })
+}
+
+#[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
+pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<crate::event::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    Ok(enter_form(transaction, me, uri, csrf, client, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1180,40 +1184,27 @@ pub(crate) struct EnterForm {
 
 #[rocket::post("/event/<series>/<event>/enter", data = "<form>")]
 pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    match series {
-        Series::Multiworld => {
-            let mut transaction = pool.begin().await?;
-            let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-            let mut form = form.into_inner();
-            form.verify(&csrf);
-            if data.is_started(&mut transaction).await? {
-                form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
-            }
-            Ok(if let Some(ref value) = form.value {
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    if data.is_started(&mut transaction).await? {
+        form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
+    }
+    if let Some(ref value) = form.value {
+        match series {
+            Series::Multiworld => {
                 let racetime_team = if let Some(ref racetime_team) = value.racetime_team {
                     mw::validate_team(&me, client, &mut form.context, racetime_team).await?
                 } else {
                     form.context.push_error(form::Error::validation("This field is required.").with_name("tacetime_team"));
                     None
                 };
-                if form.context.errors().next().is_some() {
-                    RedirectOrContent::Content(mw::enter_form(transaction, Some(me), uri, csrf, data, form.context, client).await?)
-                } else {
-                    RedirectOrContent::Content(mw::enter_form_step2(transaction, Some(me), uri, client, csrf, data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?)
+                if form.context.errors().next().is_none() {
+                    return Ok(RedirectOrContent::Content(mw::enter_form_step2(transaction, Some(me), uri, client, csrf, data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?))
                 }
-            } else {
-                RedirectOrContent::Content(mw::enter_form(transaction, Some(me), uri, csrf, data, form.context, client).await?)
-            })
-        }
-        Series::Pictionary => {
-            let mut transaction = pool.begin().await?;
-            let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-            let mut form = form.into_inner();
-            form.verify(&csrf);
-            if data.is_started(&mut transaction).await? {
-                form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
             }
-            Ok(if let Some(ref value) = form.value {
+            Series::Pictionary => {
                 let (my_role, teammate) = match (value.my_role, value.teammate) {
                     (Some(my_role), Some(teammate)) => {
                         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
@@ -1277,22 +1268,19 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
                         (None, None)
                     }
                 };
-                if form.context.errors().next().is_some() {
-                    RedirectOrContent::Content(pic::enter_form(transaction, Some(me), uri, csrf, data, pic::EnterFormDefaults::Context(form.context)).await?)
-                } else {
+                if form.context.errors().next().is_none() {
                     let id = Id::new(&mut transaction, IdTable::Teams).await?;
                     sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, 'pic', $2, $3)", id as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, Role::from(my_role.expect("validated")) as _).execute(&mut transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", id as _, teammate.expect("validated") as _, match my_role.expect("validated") { pic::Role::Sheikah => Role::Gerudo, pic::Role::Gerudo => Role::Sheikah } as _).execute(&mut transaction).await?;
                     transaction.commit().await?;
-                    RedirectOrContent::Redirect(Redirect::to(uri!(teams(series, event))))
+                    return Ok(RedirectOrContent::Redirect(Redirect::to(uri!(teams(series, event)))))
                 }
-            } else {
-                RedirectOrContent::Content(pic::enter_form(transaction, Some(me), uri, csrf, data, pic::EnterFormDefaults::Context(form.context)).await?)
-            })
+            }
+            _ => unimplemented!() //TODO
         }
-        _ => unimplemented!() //TODO
     }
+    Ok(RedirectOrContent::Content(enter_form(transaction, Some(me), uri, csrf, client, data, pic::EnterFormDefaults::Context(form.context)).await?))
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]

@@ -6,6 +6,7 @@ use {
         },
         hash::Hash,
         marker::PhantomData,
+        time::Duration,
     },
     graphql_client::GraphQLQuery,
     once_cell::sync::Lazy,
@@ -13,7 +14,13 @@ use {
         Deserialize,
         Serialize,
     },
-    tokio::sync::Mutex,
+    tokio::{
+        sync::Mutex,
+        time::{
+            Instant,
+            sleep_until,
+        },
+    },
     typemap_rev::{
         TypeMap,
         TypeMapKey,
@@ -21,7 +28,7 @@ use {
     wheel::traits::ReqwestResponseExt as _,
 };
 
-static CACHE: Lazy<Mutex<TypeMap>> = Lazy::new(Mutex::default);
+static CACHE: Lazy<Mutex<(Instant, TypeMap)>> = Lazy::new(|| Mutex::new((Instant::now(), TypeMap::default())));
 
 struct QueryCache<T: GraphQLQuery> {
     _phantom: PhantomData<T>,
@@ -83,15 +90,20 @@ pub(crate) struct SetQuery;
 
 pub(crate) async fn query<T: GraphQLQuery + 'static>(client: &reqwest::Client, auth_token: &str, variables: T::Variables) -> Result<T::ResponseData, Error>
 where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Send + Sync {
-    Ok(match CACHE.lock().await.entry::<QueryCache<T>>().or_default().entry(variables.clone()) {
+    let (ref mut next_request, ref mut cache) = *CACHE.lock().await;
+    Ok(match cache.entry::<QueryCache<T>>().or_default().entry(variables.clone()) {
         hash_map::Entry::Occupied(entry) => entry.get().clone(), //TODO expire cache after some amount of time?
         hash_map::Entry::Vacant(entry) => {
+            sleep_until(*next_request).await;
             let graphql_client::Response { data, errors, extensions: _ } = client.post("https://api.start.gg/gql/alpha")
                 .bearer_auth(auth_token)
                 .json(&T::build_query(variables))
                 .send().await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error::<graphql_client::Response<T::ResponseData>>().await?;
+            // from https://dev.start.gg/docs/rate-limits
+            // “You may not average more than 80 requests per 60 seconds.”
+            *next_request = Instant::now() + Duration::from_millis(60_000 / 80);
             let data = match (data, errors) {
                 (Some(_), Some(errors)) if !errors.is_empty() => Err(Error::GraphQL(errors)),
                 (Some(data), _) => Ok(data),
