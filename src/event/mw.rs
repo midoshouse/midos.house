@@ -1322,136 +1322,185 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
 }
 
 pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> sqlx::Result<RawHtml<String>> {
-    Ok(if let Some(async_row) = sqlx::query!(r#"SELECT discord_channel AS "discord_channel: Id", web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_optional(&mut *transaction).await? {
-        if let Some(team_row) = sqlx::query!("SELECT requested, submitted FROM async_teams WHERE team = $1", i64::from(team_id)).fetch_optional(&mut *transaction).await? {
-            if team_row.submitted.is_some() {
-                if data.is_started(transaction).await? {
-                    //TODO get this team's known matchup(s) from start.gg
-                    html! {
-                        p : "Please schedule your matches using Discord threads in the scheduling channel.";
+    Ok(if let Some(team) = crate::team::Team::from_id(&mut *transaction, team_id).await? {
+        if let Some(async_kind) = data.active_async(&mut *transaction, &team).await? {
+            let async_row = sqlx::query!(r#"SELECT discord_channel AS "discord_channel: Id", web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
+            if let Some(team_row) = sqlx::query!(r#"SELECT requested AS "requested!", submitted FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL"#, i64::from(team_id), async_kind as _).fetch_optional(&mut *transaction).await? {
+                if team_row.submitted.is_some() {
+                    if data.is_started(transaction).await? {
+                        //TODO get this team's known matchup(s) from start.gg
+                        html! {
+                            p : "Please schedule your matches using Discord threads in the scheduling channel.";
+                        }
+                        //TODO form to submit matches
+                    } else {
+                        //TODO if any vods are still missing, show form to add them
+                        html! {
+                            p : "Waiting for the start of the tournament and round 1 pairings. Keep an eye out for an announcement on Discord."; //TODO include start date?
+                        }
                     }
-                    //TODO form to submit matches
                 } else {
-                    //TODO if any vods are still missing, show form to add them
+                    let seed = seed::Data {
+                        web: match (async_row.web_id, async_row.web_gen_time) {
+                            (Some(Id(id)), Some(gen_time)) => Some(seed::OotrWebData { id, gen_time }),
+                            (None, None) => None,
+                            _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
+                        },
+                        file_hash: match (async_row.hash1, async_row.hash2, async_row.hash3, async_row.hash4, async_row.hash5) {
+                            (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
+                            (None, None, None, None, None) => None,
+                            _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
+                        },
+                        file_stem: Cow::Owned(async_row.file_stem),
+                    };
+                    let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
+                    let mut errors = context.errors().collect_vec();
+                    let form_content = html! {
+                        : csrf;
+                        : form_field("time1", &mut errors, html! {
+                            label(for = "time1", class = "power") : "Player 1 Finishing Time:";
+                            input(type = "text", name = "time1", value? = context.field_value("time1")); //TODO h:m:s fields?
+                            label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
+                        });
+                        : form_field("vod1", &mut errors, html! {
+                            label(for = "vod1", class = "power") : "Player 1 VoD:";
+                            input(type = "text", name = "vod1", value? = context.field_value("vod1"));
+                            label(class = "help") {
+                                : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
+                                @if let Some(Id(discord_channel)) = async_row.discord_channel {
+                                    : "post it in ";
+                                    @if let Some(discord_channel) = ChannelId(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                        : "#";
+                                        : discord_channel.name;
+                                    } else {
+                                        : "the results channel for this async";
+                                    }
+                                } else {
+                                    : "DM an admin";
+                                }
+                                : " once it is ready.)";
+                                //TODO form to submit vods later
+                            }
+                        });
+                        : form_field("time2", &mut errors, html! {
+                            label(for = "time2", class = "wisdom") : "Player 2 Finishing Time:";
+                            input(type = "text", name = "time2", value? = context.field_value("time2")); //TODO h:m:s fields?
+                            label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
+                        });
+                        : form_field("vod2", &mut errors, html! {
+                            label(for = "vod2", class = "wisdom") : "Player 2 VoD:";
+                            input(type = "text", name = "vod2", value? = context.field_value("vod2"));
+                            label(class = "help") {
+                                : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
+                                @if let Some(Id(discord_channel)) = async_row.discord_channel {
+                                    : "post it in ";
+                                    @if let Some(discord_channel) = ChannelId(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                        : "#";
+                                        : discord_channel.name;
+                                    } else {
+                                        : "the results channel for this async";
+                                    }
+                                } else {
+                                    : "DM an admin";
+                                }
+                                : " once it is ready.)";
+                                //TODO form to submit vods later
+                            }
+                        });
+                        : form_field("time3", &mut errors, html! {
+                            label(for = "time3", class = "courage") : "Player 3 Finishing Time:";
+                            input(type = "text", name = "time3", value? = context.field_value("time3")); //TODO h:m:s fields?
+                            label(class = "help") : "(If player 3 did not finish, leave this field blank.)";
+                        });
+                        : form_field("vod3", &mut errors, html! {
+                            label(for = "vod3", class = "courage") : "Player 3 VoD:";
+                            input(type = "text", name = "vod3", value? = context.field_value("vod3"));
+                            label(class = "help") {
+                                : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
+                                @if let Some(Id(discord_channel)) = async_row.discord_channel {
+                                    : "post it in ";
+                                    @if let Some(discord_channel) = ChannelId(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                        : "#";
+                                        : discord_channel.name;
+                                    } else {
+                                        : "the results channel for this async";
+                                    }
+                                } else {
+                                    : "DM an admin";
+                                }
+                                : " once it is ready.)";
+                                //TODO form to submit vods later
+                            }
+                        });
+                        : form_field("fpa", &mut errors, html! {
+                            label(for = "fpa") {
+                                : "If you would like to invoke the ";
+                                a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
+                                : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
+                            }
+                            textarea(name = "fpa");
+                        });
+                        fieldset {
+                            input(type = "submit", value = "Submit");
+                        }
+                    };
                     html! {
-                        p : "Waiting for the start of the tournament and round 1 pairings. Keep an eye out for an announcement on Discord."; //TODO include start date?
+                        div(class = "info") {
+                            p {
+                                : "You requested the qualifier async on ";
+                                : format_datetime(team_row.requested, DateTimeFormat { long: true, running_text: true });
+                                : ".";
+                            };
+                            : seed_table;
+                            p : "After playing the async, fill out the form below.";
+                            form(action = uri!(super::submit_async(data.series, &*data.event)).to_string(), method = "post") {
+                                @for error in errors {
+                                    : render_form_error(error);
+                                }
+                                : form_content;
+                            }
+                        }
                     }
                 }
             } else {
-                let seed = seed::Data {
-                    web: match (async_row.web_id, async_row.web_gen_time) {
-                        (Some(Id(id)), Some(gen_time)) => Some(seed::OotrWebData { id, gen_time }),
-                        (None, None) => None,
-                        _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
-                    },
-                    file_hash: match (async_row.hash1, async_row.hash2, async_row.hash3, async_row.hash4, async_row.hash5) {
-                        (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
-                        (None, None, None, None, None) => None,
-                        _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
-                    },
-                    file_stem: Cow::Owned(async_row.file_stem),
-                };
-                let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
                 let mut errors = context.errors().collect_vec();
                 let form_content = html! {
                     : csrf;
-                    : form_field("time1", &mut errors, html! {
-                        label(for = "time1", class = "power") : "Player 1 Finishing Time:";
-                        input(type = "text", name = "time1", value? = context.field_value("time1")); //TODO h:m:s fields?
-                        label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
-                    });
-                    : form_field("vod1", &mut errors, html! {
-                        label(for = "vod1", class = "power") : "Player 1 VoD:";
-                        input(type = "text", name = "vod1", value? = context.field_value("vod1"));
-                        label(class = "help") {
-                            : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
-                            @if let Some(Id(discord_channel)) = async_row.discord_channel {
-                                : "post it in ";
-                                @if let Some(discord_channel) = ChannelId(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
-                                    : "#";
-                                    : discord_channel.name;
-                                } else {
-                                    : "the results channel for this async";
-                                }
-                            } else {
-                                : "DM an admin";
-                            }
-                            : " once it is ready.)";
-                            //TODO form to submit vods later
-                        }
-                    });
-                    : form_field("time2", &mut errors, html! {
-                        label(for = "time2", class = "wisdom") : "Player 2 Finishing Time:";
-                        input(type = "text", name = "time2", value? = context.field_value("time2")); //TODO h:m:s fields?
-                        label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
-                    });
-                    : form_field("vod2", &mut errors, html! {
-                        label(for = "vod2", class = "wisdom") : "Player 2 VoD:";
-                        input(type = "text", name = "vod2", value? = context.field_value("vod2"));
-                        label(class = "help") {
-                            : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
-                            @if let Some(Id(discord_channel)) = async_row.discord_channel {
-                                : "post it in ";
-                                @if let Some(discord_channel) = ChannelId(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
-                                    : "#";
-                                    : discord_channel.name;
-                                } else {
-                                    : "the results channel for this async";
-                                }
-                            } else {
-                                : "DM an admin";
-                            }
-                            : " once it is ready.)";
-                            //TODO form to submit vods later
-                        }
-                    });
-                    : form_field("time3", &mut errors, html! {
-                        label(for = "time3", class = "courage") : "Player 3 Finishing Time:";
-                        input(type = "text", name = "time3", value? = context.field_value("time3")); //TODO h:m:s fields?
-                        label(class = "help") : "(If player 3 did not finish, leave this field blank.)";
-                    });
-                    : form_field("vod3", &mut errors, html! {
-                        label(for = "vod3", class = "courage") : "Player 3 VoD:";
-                        input(type = "text", name = "vod3", value? = context.field_value("vod3"));
-                        label(class = "help") {
-                            : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
-                            @if let Some(Id(discord_channel)) = async_row.discord_channel {
-                                : "post it in ";
-                                @if let Some(discord_channel) = ChannelId(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
-                                    : "#";
-                                    : discord_channel.name;
-                                } else {
-                                    : "the results channel for this async";
-                                }
-                            } else {
-                                : "DM an admin";
-                            }
-                            : " once it is ready.)";
-                            //TODO form to submit vods later
-                        }
-                    });
-                    : form_field("fpa", &mut errors, html! {
-                        label(for = "fpa") {
-                            : "If you would like to invoke the ";
-                            a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
-                            : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
-                        }
-                        textarea(name = "fpa");
+                    : form_field("confirm", &mut errors, html! {
+                        input(type = "checkbox", id = "confirm", name = "confirm");
+                        label(for = "confirm") : "We have read the above and are ready to play the seed";
                     });
                     fieldset {
-                        input(type = "submit", value = "Submit");
+                        input(type = "submit", value = "Request Now");
                     }
                 };
                 html! {
                     div(class = "info") {
-                        p {
-                            : "You requested the qualifier async on ";
-                            : format_datetime(team_row.requested, DateTimeFormat { long: true, running_text: true });
-                            : ".";
-                        };
-                        : seed_table;
-                        p : "After playing the async, fill out the form below.";
-                        form(action = uri!(super::submit_async(data.series, &*data.event)).to_string(), method = "post") {
+                        p : "Play the qualifier async to qualify for the tournament.";
+                        p : "Rules:";
+                        ol {
+                            li : "In order to play in the tournament, your team must make a reasonable attempt at completing this seed. In the event of a forfeit, you can still participate, but will be considered the bottom seed for settings draft purposes.";
+                            li {
+                                @if let Some(base_start) = data.base_start {
+                                    : "The time must be submitted by ";
+                                    : format_datetime(base_start, DateTimeFormat { long: true, running_text: true });
+                                    : ". In the event that an odd number of teams is qualified at the time of the deadline, one additional team may qualify within 24 hours.";
+                                } else {
+                                    : "The time must be submitted by the starting time of the tournament, which is yet to be announced.";
+                                }
+                            }
+                            li : "You must start the seed within 30 minutes of obtaining it and submit your time within 30 minutes of the last finish. Any additional time taken will be added to your final time. If anything prevents you from obtaining the seed/submitting your time, please DM an admin (or ping the Discord role) to get it sorted out.";
+                            li : "While required for the tournament, the results from the qualifier seed will only determine which team chooses who goes first in the settings draft. Swiss pairings will be seeded randomly.";
+                            li : "While you are not strictly required to stream, you must have video proof of your run. Feel free to simply record your run and upload it to YouTube and provide a link. If you do stream or make your upload public, please make sure it is clearly marked so people can avoid spoilers. If you're a big streamer, be extra sure to note what is happening, as several of your viewers are likely going to want to participate as well.";
+                            li : "Do not spoil yourself on this seed by watching another playthrough. If you do stream, you are responsible for what your chat says, so either do not read chat, set it to emote only, or take the risk at your own discretion. If you do get spoiled, please report it to the admins, we will try to work out something equitable.";
+                            li : "You must use the world numbers with which you entered the tournament for this seed. Once you request the seed, the world numbers you selected are the world numbers you play with for the rest of the tournament. If you wish to change your player order, do not request the qualifier and contact an admin."; //TODO allow changing player order in options below
+                            li {
+                                : "This should be run like an actual race. In the event of a technical issue, teams are allowed to invoke the ";
+                                a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
+                                : " and have up to a 15 minute time where the affected runner can try to catch back up. If you do this, you must fill out the appropriate field when submitting your time so it can be authenticated.";
+                            }
+                        }
+                        form(action = uri!(super::request_async(data.series, &*data.event)).to_string(), method = "post") {
                             @for error in errors {
                                 : render_form_error(error);
                             }
@@ -1461,55 +1510,14 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                 }
             }
         } else {
-            let mut errors = context.errors().collect_vec();
-            let form_content = html! {
-                : csrf;
-                : form_field("confirm", &mut errors, html! {
-                    input(type = "checkbox", id = "confirm", name = "confirm");
-                    label(for = "confirm") : "We have read the above and are ready to play the seed";
-                });
-                fieldset {
-                    input(type = "submit", value = "Request Now");
-                }
-            };
             html! {
-                div(class = "info") {
-                    p : "Play the qualifier async to qualify for the tournament.";
-                    p : "Rules:";
-                    ol {
-                        li : "In order to play in the tournament, your team must make a reasonable attempt at completing this seed. In the event of a forfeit, you can still participate, but will be considered the bottom seed for settings draft purposes.";
-                        li {
-                            @if let Some(base_start) = data.base_start {
-                                : "The time must be submitted by ";
-                                : format_datetime(base_start, DateTimeFormat { long: true, running_text: true });
-                                : ". In the event that an odd number of teams is qualified at the time of the deadline, one additional team may qualify within 24 hours.";
-                            } else {
-                                : "The time must be submitted by the starting time of the tournament, which is yet to be announced.";
-                            }
-                        }
-                        li : "You must start the seed within 30 minutes of obtaining it and submit your time within 30 minutes of the last finish. Any additional time taken will be added to your final time. If anything prevents you from obtaining the seed/submitting your time, please DM an admin (or ping the Discord role) to get it sorted out.";
-                        li : "While required for the tournament, the results from the qualifier seed will only determine which team chooses who goes first in the settings draft. Swiss pairings will be seeded randomly.";
-                        li : "While you are not strictly required to stream, you must have video proof of your run. Feel free to simply record your run and upload it to YouTube and provide a link. If you do stream or make your upload public, please make sure it is clearly marked so people can avoid spoilers. If you're a big streamer, be extra sure to note what is happening, as several of your viewers are likely going to want to participate as well.";
-                        li : "Do not spoil yourself on this seed by watching another playthrough. If you do stream, you are responsible for what your chat says, so either do not read chat, set it to emote only, or take the risk at your own discretion. If you do get spoiled, please report it to the admins, we will try to work out something equitable.";
-                        li : "You must use the world numbers with which you entered the tournament for this seed. Once you request the seed, the world numbers you selected are the world numbers you play with for the rest of the tournament. If you wish to change your player order, do not request the qualifier and contact an admin."; //TODO allow changing player order in options below
-                        li {
-                            : "This should be run like an actual race. In the event of a technical issue, teams are allowed to invoke the ";
-                            a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
-                            : " and have up to a 15 minute time where the affected runner can try to catch back up. If you do this, you must fill out the appropriate field when submitting your time so it can be authenticated.";
-                        }
-                    }
-                    form(action = uri!(super::request_async(data.series, &*data.event)).to_string(), method = "post") {
-                        @for error in errors {
-                            : render_form_error(error);
-                        }
-                        : form_content;
-                    }
-                }
+                p : "Waiting for the qualifier async to be published. Keep an eye out for an announcement on Discord.";
             }
         }
     } else {
         html! {
-            p : "Waiting for the qualifier async to be published. Keep an eye out for an announcement on Discord.";
+            p : "You are not signed up for this event.";
+            p : "You can accept, decline, or retract unconfirmed team invitations on the teams page.";
         }
     })
 }

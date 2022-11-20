@@ -88,7 +88,7 @@ impl MessageBuilderExt for MessageBuilder {
             self.push_italic_safe(team_name);
         } else {
             //TODO pothole if racetime slug exists?
-            self.push("a new team");
+            self.push("an unnamed team");
         }
         Ok(self)
     }
