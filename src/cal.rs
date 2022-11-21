@@ -219,10 +219,11 @@ impl Race {
                 Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team1)), on: _ }) }) }),
                 Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team2)), on: _ }) }) }),
             ] = **slots {
-                (
-                    Team::from_startgg(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?,
-                    Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?,
-                )
+                let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?;
+                let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
+                sqlx::query!("UPDATE races SET team1 = $1 WHERE startgg_set = $2", team1.id as _, &startgg_set).execute(&mut *transaction).await?;
+                sqlx::query!("UPDATE races SET team2 = $1 WHERE startgg_set = $2", team2.id as _, &startgg_set).execute(&mut *transaction).await?;
+                (team1, team2)
             } else {
                 return Err(Error::Teams { startgg_set, response_data })
             };

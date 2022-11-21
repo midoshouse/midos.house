@@ -817,7 +817,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                         br;
                                         small {
                                             @if let Some(time) = members.iter().try_fold(Duration::default(), |acc, &(_, _, _, time, _)| Some(acc + time?)) {
-                                                : format_duration(time / 3, false);
+                                                : format_duration(time / u32::try_from(members.len()).expect("too many team members"), false);
                                             } else {
                                                 : "DNF";
                                             }
