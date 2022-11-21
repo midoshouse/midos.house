@@ -43,7 +43,7 @@ use {
             ShuffleGanonBosskey,
             SpoilerLogLocations,
         },
-        util::static_url,
+        http::static_url,
     },
 };
 

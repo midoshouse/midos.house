@@ -124,14 +124,15 @@ struct GlobalState {
     http_client: reqwest::Client,
     startgg_token: String,
     mw_seed_queue: MwSeedQueue,
+    discord_ctx: RwFuture<DiscordCtx>,
 }
 
 impl GlobalState {
-    fn new(db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str) -> Self {
+    fn new(db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>) -> Self {
         Self {
             new_room_lock: Mutex::default(),
             mw_seed_queue: MwSeedQueue::new(http_client.clone(), ootr_api_key),
-            host, db_pool, http_client, startgg_token,
+            host, db_pool, http_client, startgg_token, discord_ctx,
         }
     }
 
@@ -489,9 +490,11 @@ enum RaceState {
 }
 
 struct OfficialRaceData {
+    event: event::Data<'static>,
     startgg_set: String,
     entrants: Vec<String>,
     start: DateTime<Utc>,
+    fpa_invoked: bool,
 }
 
 struct Handler {
@@ -640,7 +643,9 @@ impl RaceHandler<GlobalState> for Handler {
             };
             (
                 Some(OfficialRaceData {
+                    event: cal_event.race.event(&mut transaction).await.map_err(|e| Error::Custom(Box::new(e)))?,
                     startgg_set: cal_event.race.startgg_set.clone(),
+                    fpa_invoked: false,
                     entrants, start,
                 }),
                 RaceState::Draft(cal_event.race.draft.map(|draft| draft.state).unwrap_or_default()), //TODO restrict draft picks
@@ -807,7 +812,9 @@ impl RaceHandler<GlobalState> for Handler {
                     if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                         ctx.send_message("FPA cannot be invoked before the race starts.").await?;
                     } else {
-                        //TODO tag race as “don't auto-post results”
+                        if let Some(OfficialRaceData { ref mut fpa_invoked, .. }) = self.official_data {
+                            *fpa_invoked = true;
+                        }
                         //TODO different message for restreamed races
                         ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. The team that did not call FPA can continue playing; the race will be retimed once completed.")).await?;
                     }
@@ -977,7 +984,24 @@ impl RaceHandler<GlobalState> for Handler {
                         .spoiler_log;
                     fs::write(Path::new(seed::DIR).join(spoiler_filename), &spoiler_log).await?;
                 }
-                _ => {}
+                _ => return Ok(()),
+            }
+            drop(state);
+            if let Some(OfficialRaceData { ref event, fpa_invoked, .. }) = self.official_data {
+                if fpa_invoked {
+                    if let Some(organizer_channel) = event.discord_organizer_channel {
+                        organizer_channel.say(&*self.global_state.discord_ctx.read().await, MessageBuilder::default()
+                            //TODO mention organizer role
+                            .push("race finished with FPA call: <")
+                            .push(&ctx.data().await.url)
+                            .push('>')
+                        ).await.map_err(|e| Error::Custom(Box::new(e)))?;
+                    }
+                } else {
+                    if let Some(_ /*results_channel*/) = event.discord_race_results_channel {
+                        //TODO determine winner, post in results channel
+                    }
+                }
             }
         }
         Ok(())
@@ -993,7 +1017,7 @@ impl RaceHandler<GlobalState> for Handler {
     }
 }
 
-async fn create_rooms(global_state: Arc<GlobalState>, discord_ctx: RwFuture<DiscordCtx>, env: Environment, config: Config, mut shutdown: rocket::Shutdown) -> Result<(), Error> {
+async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: Config, mut shutdown: rocket::Shutdown) -> Result<(), Error> {
     let racetime_config = if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production };
     loop {
         select! {
@@ -1033,7 +1057,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, discord_ctx: RwFuture<Disc
                             transaction = global_state.db_pool.begin().await.map_err(|e| Error::Custom(Box::new(e)))?;
                             if let Some(event) = event::Data::new(&mut transaction, row.series, row.event).await.map_err(|e| Error::Custom(Box::new(e)))? {
                                 if let (Some(guild), Some(channel)) = (event.discord_guild, event.discord_race_room_channel) {
-                                    channel.say(&*discord_ctx.read().await, MessageBuilder::default()
+                                    channel.say(&*global_state.discord_ctx.read().await, MessageBuilder::default()
                                         .push_safe(race.phase)
                                         .push(' ')
                                         .push_safe(race.round)
@@ -1089,9 +1113,9 @@ async fn handle_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
 
 pub(crate) async fn main(db_pool: PgPool, http_client: reqwest::Client, discord_ctx: RwFuture<DiscordCtx>, ootr_api_key: String, env: Environment, config: Config, shutdown: rocket::Shutdown) -> Result<(), Error> {
     let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
-    let global_state = Arc::new(GlobalState::new(db_pool.clone(), http_client.clone(), ootr_api_key.clone(), startgg_token.to_owned(), env.racetime_host()));
+    let global_state = Arc::new(GlobalState::new(db_pool.clone(), http_client.clone(), ootr_api_key.clone(), startgg_token.to_owned(), env.racetime_host(), discord_ctx));
     let ((), ()) = tokio::try_join!(
-        create_rooms(global_state.clone(), discord_ctx, env, config.clone(), shutdown.clone()),
+        create_rooms(global_state.clone(), env, config.clone(), shutdown.clone()),
         handle_rooms(global_state, env, config, shutdown),
     )?;
     Ok(())

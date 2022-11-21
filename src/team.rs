@@ -18,19 +18,24 @@ pub(crate) struct Team {
     pub(crate) id: Id,
     pub(crate) name: Option<String>,
     pub(crate) racetime_slug: Option<String>,
+    pub(crate) plural_name: Option<bool>,
 }
 
 impl Team {
     pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, id: Id) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug FROM teams WHERE id = $1"#, i64::from(id)).fetch_optional(transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams WHERE id = $1"#, i64::from(id)).fetch_optional(transaction).await
     }
 
     pub(crate) async fn from_discord(transaction: &mut Transaction<'_, Postgres>, discord_role: RoleId) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT teams.id AS "id: Id", name, racetime_slug FROM teams, discord_roles WHERE discord_roles.id = $1 AND racetime_slug = racetime_team"#, i64::from(discord_role)).fetch_optional(transaction).await
+        sqlx::query_as!(Self, r#"SELECT teams.id AS "id: Id", name, racetime_slug, plural_name FROM teams, discord_roles WHERE discord_roles.id = $1 AND racetime_slug = racetime_team"#, i64::from(discord_role)).fetch_optional(transaction).await
     }
 
     pub(crate) async fn from_startgg(transaction: &mut Transaction<'_, Postgres>, startgg_id: &str) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug FROM teams WHERE startgg_id = $1"#, startgg_id).fetch_optional(transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams WHERE startgg_id = $1"#, startgg_id).fetch_optional(transaction).await
+    }
+
+    pub(crate) fn name_is_plural(&self) -> bool {
+        self.plural_name.unwrap_or(false)
     }
 
     pub(crate) fn to_html(&self, running_text: bool) -> RawHtml<String> {

@@ -156,6 +156,8 @@ impl Ord for RaceSchedule {
 
 #[derive(Clone)]
 pub(crate) struct Race {
+    series: Series,
+    event: String,
     pub(crate) startgg_event: String,
     pub(crate) startgg_set: String,
     pub(crate) team1: Team,
@@ -185,6 +187,8 @@ impl Race {
             }),
         } = response_data {
             let row = sqlx::query!(r#"SELECT
+                series AS "series: Series",
+                event,
                 team1 AS "team1: Id",
                 team2 AS "team2: Id",
                 draft_state AS "draft_state: Json<Draft>",
@@ -247,6 +251,8 @@ impl Race {
             update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE startgg_set = $2");
             update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE startgg_set = $2");
             Ok(Self {
+                series: row.series,
+                event: row.event,
                 startgg_event: startgg_event.clone(),
                 phase: phase.clone(),
                 round: round.clone(),
@@ -284,6 +290,10 @@ impl Race {
         }
         races.sort_unstable();
         Ok(races)
+    }
+
+    pub(crate) async fn event(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<event::Data<'static>, event::DataError> {
+        event::Data::new(transaction, self.series, self.event.clone()).await?.ok_or(event::DataError::Missing)
     }
 
     pub(crate) fn startgg_set_url(&self) -> Result<Url, url::ParseError> {
@@ -595,7 +605,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                     let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
                     let duration = Duration::hours(4) + Duration::minutes(30); //TODO better duration estimate
                     let mut event = ics::Event::new(format!("rsl-4-{i}@midos.house"), ics_datetime(Utc::now()));
-                    event.push(Summary::new(format!("RSL S4 {}: {p1} vs {p2}", if start >= Utc.ymd(2022, 5, 8).and_hms(23, 51, 35) { round } else { format!("Swiss Round {round}") })));
+                    event.push(Summary::new(format!("RSL S4 {}: {p1} vs {p2}", if start >= Utc.with_ymd_and_hms(2022, 5, 8, 23, 51, 35).single().expect("wrong hardcoded datetime") { round } else { format!("Swiss Round {round}") })));
                     event.push(DtStart::new(ics_datetime(start)));
                     event.push(DtEnd::new(ics_datetime(start + duration)));
                     if let Some(stream) = stream {
@@ -633,25 +643,25 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
             "6" => {
                 for (i, (start, weekly, vod)) in [
                     // source: https://docs.google.com/document/d/1fyNO82G2D0Z7J9wobxEbjDjGnomTaIRdKgETGV_ufmc/edit
-                    (Utc.ymd(2022, 11, 19).and_hms(23, 0, 0), Some("NA"), Some("https://twitch.tv/videos/1657562512")), //TODO permanent highlight/YouTube upload //TODO seed info (https://racetime.gg/ootr/neutral-bongobongo-4042)
-                    (Utc.ymd(2022, 11, 20).and_hms(14, 0, 0), Some("EU"), None),
-                    (Utc.ymd(2022, 11, 23).and_hms(3, 0, 0), None, None),
-                    (Utc.ymd(2022, 11, 26).and_hms(23, 0, 0), Some("NA"), None),
-                    (Utc.ymd(2022, 11, 27).and_hms(14, 0, 0), Some("EU"), None),
-                    (Utc.ymd(2022, 11, 29).and_hms(19, 0, 0), None, Some("https://twitch.tv/thesilvergauntlets")),
-                    (Utc.ymd(2022, 12, 2).and_hms(1, 0, 0), None, None),
-                    (Utc.ymd(2022, 12, 3).and_hms(23, 0, 0), Some("NA"), None),
-                    (Utc.ymd(2022, 12, 4).and_hms(14, 0, 0), Some("EU"), None),
-                    (Utc.ymd(2022, 12, 6).and_hms(1, 0, 0), None, None),
-                    (Utc.ymd(2022, 12, 8).and_hms(19, 0, 0), None, None),
-                    (Utc.ymd(2022, 12, 10).and_hms(23, 0, 0), Some("NA"), None),
-                    (Utc.ymd(2022, 12, 11).and_hms(14, 0, 0), Some("EU"), None),
-                    (Utc.ymd(2022, 12, 12).and_hms(19, 0, 0), None, None),
-                    (Utc.ymd(2022, 12, 15).and_hms(1, 0, 0), None, None),
-                    (Utc.ymd(2022, 12, 17).and_hms(23, 0, 0), Some("NA"), None),
-                    (Utc.ymd(2022, 12, 18).and_hms(14, 0, 0), Some("EU"), None),
-                    (Utc.ymd(2022, 12, 21).and_hms(19, 0, 0), None, None),
-                    (Utc.ymd(2022, 12, 23).and_hms(3, 0, 0), None, None),
+                    (Utc.with_ymd_and_hms(2022, 11, 19, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://twitch.tv/videos/1657562512")), //TODO permanent highlight/YouTube upload //TODO seed info (https://racetime.gg/ootr/neutral-bongobongo-4042)
+                    (Utc.with_ymd_and_hms(2022, 11, 20, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://twitch.tv/videos/1658095931")), //TODO permanent highlight/YouTube upload //TODO seed info (https://racetime.gg/ootr/trusty-volvagia-2022)
+                    (Utc.with_ymd_and_hms(2022, 11, 23, 3, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
+                    (Utc.with_ymd_and_hms(2022, 11, 26, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), None),
+                    (Utc.with_ymd_and_hms(2022, 11, 27, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), None),
+                    (Utc.with_ymd_and_hms(2022, 11, 29, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://twitch.tv/thesilvergauntlets")),
+                    (Utc.with_ymd_and_hms(2022, 12, 2, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
+                    (Utc.with_ymd_and_hms(2022, 12, 3, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), None),
+                    (Utc.with_ymd_and_hms(2022, 12, 4, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), None),
+                    (Utc.with_ymd_and_hms(2022, 12, 6, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
+                    (Utc.with_ymd_and_hms(2022, 12, 8, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
+                    (Utc.with_ymd_and_hms(2022, 12, 10, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), None),
+                    (Utc.with_ymd_and_hms(2022, 12, 11, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), None),
+                    (Utc.with_ymd_and_hms(2022, 12, 12, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
+                    (Utc.with_ymd_and_hms(2022, 12, 15, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
+                    (Utc.with_ymd_and_hms(2022, 12, 17, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), None),
+                    (Utc.with_ymd_and_hms(2022, 12, 18, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), None),
+                    (Utc.with_ymd_and_hms(2022, 12, 21, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
+                    (Utc.with_ymd_and_hms(2022, 12, 23, 3, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
                 ].into_iter().enumerate() {
                     let mut cal_event = ics::Event::new(format!("{}-{}-q{}@midos.house", event.series, event.event, i + 1), ics_datetime(Utc::now()));
                     cal_event.push(Summary::new(format!("S6 Qualifier {}{}", i + 1, if let Some(weekly) = weekly { format!(" ({weekly} Weekly)") } else { String::default() })));

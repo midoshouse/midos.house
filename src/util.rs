@@ -56,7 +56,10 @@ use {
     },
     url::Url,
     crate::{
-        http::PageError,
+        http::{
+            PageError,
+            static_url,
+        },
         team::Team,
         user::User,
     },
@@ -329,12 +332,6 @@ pub(crate) fn decode_pginterval(PgInterval { months, days, microseconds }: PgInt
     }
 }
 
-/// Cache busting for static resources by including the current git commit hash in the URL
-//TODO use commit hash of when the file was last modified?
-pub(crate) fn static_url(path: &str) -> String {
-    format!("/static/{path}?v={:02x}", crate::GIT_COMMIT_HASH.iter().format(""))
-}
-
 pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
     match url.host_str() {
         Some("challonge.com" | "www.challonge.com") => html! {
@@ -415,13 +412,13 @@ pub(crate) fn format_datetime<Tz: TimeZone>(datetime: DateTime<Tz>, format: Date
             } else {
                 : " • ";
             }
-            : berlin.format(if berlin.date() == utc.date() { "%H:%M %Z" } else { "%A %H:%M %Z" }).to_string();
+            : berlin.format(if berlin.date_naive() == utc.date_naive() { "%H:%M %Z" } else { "%A %H:%M %Z" }).to_string();
             @if format.running_text {
                 : ", ";
             } else {
                 : " • ";
             }
-            : new_york.format(match (new_york.date() == utc.date(), new_york.minute() == 0) {
+            : new_york.format(match (new_york.date_naive() == utc.date_naive(), new_york.minute() == 0) {
                 (false, false) => "%A %-I:%M %p %Z",
                 (false, true) => "%A %-I%p %Z",
                 (true, false) => "%-I:%M %p %Z",

@@ -20,7 +20,10 @@ use {
         },
         response::{
             Response,
-            content::RawHtml,
+            content::{
+                RawHtml,
+                RawText,
+            },
         },
         uri,
     },
@@ -59,10 +62,15 @@ use {
             Id,
             format_date_range,
             format_datetime,
-            static_url,
         },
     },
 };
+
+/// Cache busting for static resources by including the current git commit hash in the URL
+//TODO use commit hash of when the file was last modified? (see https://github.com/rust-lang/git2-rs/issues/588)
+pub(crate) fn static_url(path: &str) -> String {
+    format!("/static/{path}?v={:02x}", GIT_COMMIT_HASH.iter().format(""))
+}
 
 pub(crate) enum PageKind {
     Index,
@@ -303,6 +311,11 @@ async fn new_event(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> P
     }).await
 }
 
+#[rocket::get("/robots.txt")]
+async fn robots_txt() -> RawText<&'static str> {
+    RawText("User-agent: *\nDisallow: /seed/\nDisallow: /static/\n")
+}
+
 #[rocket::catch(404)]
 async fn not_found(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
@@ -374,6 +387,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         index,
         archive,
         new_event,
+        robots_txt,
         auth::racetime_callback,
         auth::discord_callback,
         auth::login,

@@ -5,12 +5,16 @@ use {
         convert::identity,
         fmt,
         io,
+        pin::Pin,
         str::FromStr,
         time::Duration,
     },
     anyhow::anyhow,
     chrono::prelude::*,
-    futures::stream::TryStreamExt as _,
+    futures::{
+        future::Future,
+        stream::TryStreamExt as _,
+    },
     once_cell::sync::Lazy,
     rand::prelude::*,
     rocket::{
@@ -67,6 +71,7 @@ use {
         },
     },
     url::Url,
+    wheel::traits::ReqwestResponseExt as _,
     crate::{
         Environment,
         auth,
@@ -96,9 +101,11 @@ use {
             StatusOrError,
             decode_pginterval,
             favicon,
+            form_field,
             format_datetime,
             format_duration,
             parse_duration,
+            render_form_error,
         },
     },
 };
@@ -141,6 +148,17 @@ pub(crate) enum Role {
 }
 
 impl Role {
+    fn from_css_class(css_class: &str) -> Option<Self> {
+        match css_class {
+            "sheikah" => Some(Self::Sheikah),
+            "gerudo" => Some(Self::Gerudo),
+            "power" => Some(Self::Power),
+            "wisdom" => Some(Self::Wisdom),
+            "courage" => Some(Self::Courage),
+            _ => None,
+        }
+    }
+
     fn css_class(&self) -> Option<&'static str> {
         match self {
             Self::None => None,
@@ -274,9 +292,9 @@ impl TeamConfig {
                 (Role::Gerudo, "Pilot"),
             ],
             Self::Multiworld => &[
-                (Role::Power, "Player 1"),
-                (Role::Wisdom, "Player 2"),
-                (Role::Courage, "Player 3"),
+                (Role::Power, "World 1"),
+                (Role::Wisdom, "World 2"),
+                (Role::Courage, "World 3"),
             ],
         }
     }
@@ -296,18 +314,35 @@ pub(crate) struct Data<'a> {
     video_url: Option<Url>,
     pub(crate) discord_guild: Option<GuildId>,
     pub(crate) discord_race_room_channel: Option<ChannelId>,
+    pub(crate) discord_race_results_channel: Option<ChannelId>,
+    pub(crate) discord_organizer_channel: Option<ChannelId>,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum DataError {
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
+    #[error("no event with this series and identifier")]
+    Missing,
 }
 
 impl<'a> Data<'a> {
     pub(crate) async fn new(transaction: &mut Transaction<'_, Postgres>, series: Series, event: impl Into<Cow<'a, str>>) -> Result<Option<Data<'a>>, DataError> {
         let event = event.into();
-        sqlx::query!(r#"SELECT display_name, start, end_time, url, hide_teams_tab, teams_url, enter_url, video_url, discord_guild AS "discord_guild: Id", discord_race_room_channel AS "discord_race_room_channel: Id" FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
+        sqlx::query!(r#"SELECT
+            display_name,
+            start,
+            end_time,
+            url,
+            hide_teams_tab,
+            teams_url,
+            enter_url,
+            video_url,
+            discord_guild AS "discord_guild: Id",
+            discord_race_room_channel AS "discord_race_room_channel: Id",
+            discord_race_results_channel AS "discord_race_results_channel: Id",
+            discord_organizer_channel AS "discord_organizer_channel: Id"
+        FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
                 display_name: row.display_name,
                 base_start: row.start,
@@ -319,6 +354,8 @@ impl<'a> Data<'a> {
                 video_url: row.video_url.map(|url| url.parse()).transpose()?,
                 discord_guild: row.discord_guild.map(|Id(id)| id.into()),
                 discord_race_room_channel: row.discord_race_room_channel.map(|Id(id)| id.into()),
+                discord_race_results_channel: row.discord_race_results_channel.map(|Id(id)| id.into()),
+                discord_organizer_channel: row.discord_organizer_channel.map(|Id(id)| id.into()),
                 series, event,
             }))
             .transpose()
@@ -644,7 +681,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
     let header = data.header(&mut transaction, me.as_ref(), Tab::Info).await.map_err(InfoError::Sql)?;
     let content = match data.series {
         Series::Multiworld => mw::info(pool, event).await?,
-        Series::NineDaysOfSaws => ndos::info(pool, event).await?,
+        Series::NineDaysOfSaws => ndos::info(pool, &data).await?,
         Series::Pictionary => pic::info(pool, event).await?,
         Series::Rsl => rsl::info(event),
         Series::Standard => s::info(event),
@@ -1117,13 +1154,39 @@ pub(crate) async fn status(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Di
     status_page(pool, &*discord_ctx.read().await, me, uri, csrf, series, event, Context::default()).await
 }
 
+async fn validate_team(me: &User, client: &reqwest::Client, context: &mut Context<'_>, team_slug: &str, team_config: TeamConfig) -> Result<Option<mw::RaceTimeTeamData>, Error> {
+    Ok(if let Some(ref racetime_id) = me.racetime_id {
+        let user = client.get(format!("https://racetime.gg/user/{racetime_id}/data"))
+            .send().await?
+            .detailed_error_for_status().await?
+            .json_with_text_in_error::<mw::RaceTimeUser>().await?;
+        if user.teams.iter().any(|team| team.slug == team_slug) {
+            let team = client.get(format!("https://racetime.gg/team/{team_slug}/data"))
+                .send().await?
+                .detailed_error_for_status().await?
+                .json_with_text_in_error::<mw::RaceTimeTeamData>().await?;
+            let expected_size = team_config.roles().len();
+            if team.members.len() != expected_size {
+                context.push_error(form::Error::validation(format!("Teams for this event must have exactly {expected_size} members, but this team has {}", team.members.len())))
+            }
+            //TODO get each team member's Mido's House account for displaying in step 2
+            Some(team)
+        } else {
+            context.push_error(form::Error::validation("This racetime.gg team does not exist or you're not in it.").with_name("racetime_team"));
+            None
+        }
+    } else {
+        context.push_error(form::Error::validation("A racetime.gg account is required to enter this tournament. Go to your profile and select “Connect a racetime.gg account”.")); //TODO direct link?
+        None
+    })
+}
+
 async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter).await?;
     Ok(match data.enter_flow() {
         EnterFlow::RaceTime => match data.team_config() {
             TeamConfig::Solo => page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
                 : header;
-                //TODO check to make sure the user has a racetime.gg account connected
                 @if data.is_single_race() {
                     article {
                         p {
@@ -1132,7 +1195,14 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>
                                 a(href = url.to_string()) : "the race room";
                                 : " to participate in this race.";
                             } else {
-                                : "The race room will be opened around 30 minutes before the scheduled starting time. You don't need to sign up beforehand.";
+                                : "The race room will be opened around 30 minutes before the scheduled starting time. ";
+                                @if me.as_ref().map_or(false, |me| me.racetime_id.is_some()) {
+                                    : "You don't need to sign up beforehand.";
+                                } else {
+                                    : "You will need a ";
+                                    a(href = "https://racetime.gg/") : "racetime.gg";
+                                    : " account to participate.";
+                                }
                             }
                         }
                     }
@@ -1164,6 +1234,74 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>
     })
 }
 
+fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, me: Option<User>, uri: Origin<'b>, client: &reqwest::Client, csrf: Option<CsrfToken>, data: Data<'c>, defaults: mw::EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
+    let team_members = defaults.racetime_members(client);
+    Box::pin(async move {
+        let header = data.header(&mut transaction, me.as_ref(), Tab::Enter).await?;
+        let page_content = {
+            let team_members = team_members.await?;
+            let mut errors = defaults.errors();
+            let form_content = html! {
+                : csrf;
+                : form_field("racetime_team", &mut errors, html! {
+                    label(for = "racetime_team") {
+                        : "racetime.gg Team: ";
+                        a(href = format!("https://racetime.gg/team/{}", defaults.racetime_team_slug().expect("missing racetime team slug"))) : defaults.racetime_team_name().expect("missing racetime team name");
+                        : " • ";
+                        a(href = uri!(enter(data.series, &*data.event, _, _)).to_string()) : "Change";
+                    }
+                    input(type = "hidden", name = "racetime_team", value = defaults.racetime_team_slug());
+                    input(type = "hidden", name = "racetime_team_name", value = defaults.racetime_team_name());
+                });
+                @for team_member in team_members {
+                    : form_field(&format!("world_number[{}]", team_member.id), &mut errors, html! {
+                        label(for = &format!("world_number[{}]", team_member.id)) : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
+                        @for (role, display_name) in data.team_config().roles() {
+                            @let css_class = role.css_class().expect("tried to render enter_form_step2 for a solo event");
+                            input(id = &format!("world_number[{}]-{css_class}", team_member.id), class = css_class, type = "radio", name = &format!("world_number[{}]", team_member.id), value = css_class, checked? = defaults.role(&team_member.id) == Some(*role));
+                            label(class = css_class, for = &format!("world_number[{}]-{css_class}", team_member.id)) : display_name;
+                        }
+                    });
+                    : form_field(&format!("startgg_id[{}]", team_member.id), &mut errors, html! {
+                        label(for = &format!("startgg_id[{}]", team_member.id)) : "start.gg User ID:";
+                        input(type = "text", name = &format!("startgg_id[{}]", team_member.id), value? = defaults.startgg_id(&team_member.id));
+                        label(class = "help") {
+                            : "(Optional. Can be found by going to your ";
+                            a(href = "https://start.gg/") : "start.gg";
+                            : " profile and clicking your name.)";
+                        }
+                    });
+                }
+                : form_field("restream_consent", &mut errors, html! {
+                    input(type = "checkbox", id = "restream_consent", name = "restream_consent", checked? = defaults.restream_consent());
+                    label(for = "restream_consent") {
+                        @if data.is_single_race() {
+                            : "We are okay with being restreamed. (Optional. Can be changed later.)";
+                        } else {
+                            //TODO allow changing on Status page during Swiss, except revoking while a restream is planned
+                            //TODO change text depending on tournament structure
+                            : "We are okay with being restreamed. (Optional for Swiss, required for top 8. Can be changed later.)";
+                        }
+                    }
+                });
+                fieldset {
+                    input(type = "submit", value = "Submit");
+                }
+            };
+            html! {
+                : header;
+                form(action = uri!(mw::enter_post_step2(&*data.event)).to_string(), method = "post") { //TODO compatibility with other team configs
+                    @for error in errors {
+                        : render_form_error(error);
+                    }
+                    : form_content;
+                }
+            }
+        };
+        Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), page_content).await?)
+    })
+}
+
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
 pub(crate) async fn enter(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<crate::event::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
@@ -1192,92 +1330,122 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
         form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
     }
     if let Some(ref value) = form.value {
-        match series {
-            Series::Multiworld => {
-                let racetime_team = if let Some(ref racetime_team) = value.racetime_team {
-                    mw::validate_team(&me, client, &mut form.context, racetime_team).await?
-                } else {
-                    form.context.push_error(form::Error::validation("This field is required.").with_name("tacetime_team"));
-                    None
-                };
-                if form.context.errors().next().is_none() {
-                    return Ok(RedirectOrContent::Content(mw::enter_form_step2(transaction, Some(me), uri, client, csrf, data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?))
+        match data.enter_flow() {
+            EnterFlow::RaceTime => match data.team_config() {
+                TeamConfig::Solo => {
+                    if me.racetime_id.is_none() {
+                        form.context.push_error(form::Error::validation("A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.")); //TODO direct link?
+                    }
+                    //TODO if no errors, sign up and redirect to teams page
                 }
-            }
-            Series::Pictionary => {
-                let (my_role, teammate) = match (value.my_role, value.teammate) {
-                    (Some(my_role), Some(teammate)) => {
-                        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
-                            id = team
-                            AND series = 'pic'
-                            AND event = $1
-                            AND member = $2
-                            AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
-                        ) AS "exists!""#, event, i64::from(me.id), i64::from(teammate)).fetch_one(&mut transaction).await? {
-                            form.context.push_error(form::Error::validation("A team with these members is already proposed for this race. Check your notifications to accept the invite, or ask your teammate to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
+                TeamConfig::Pictionary => {
+                    let (my_role, teammate) = match (value.my_role, value.teammate) {
+                        (Some(my_role), Some(teammate)) => {
+                            if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+                                id = team
+                                AND series = 'pic'
+                                AND event = $1
+                                AND member = $2
+                                AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
+                            ) AS "exists!""#, event, i64::from(me.id), i64::from(teammate)).fetch_one(&mut transaction).await? {
+                                form.context.push_error(form::Error::validation("A team with these members is already proposed for this race. Check your notifications to accept the invite, or ask your teammate to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
+                            }
+                            if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+                                id = team
+                                AND series = 'pic'
+                                AND event = $1
+                                AND member = $2
+                                AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+                            ) AS "exists!""#, event, i64::from(me.id)).fetch_one(&mut transaction).await? {
+                                form.context.push_error(form::Error::validation("You are already signed up for this race."));
+                            }
+                            if !value.team_name.is_empty() && sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
+                                series = 'pic'
+                                AND event = $1
+                                AND name = $2
+                                AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+                            ) AS "exists!""#, event, value.team_name).fetch_one(&mut transaction).await? {
+                                form.context.push_error(form::Error::validation("A team with this name is already signed up for this race.").with_name("team_name"));
+                            }
+                            if my_role == pic::Role::Sheikah && me.racetime_id.is_none() {
+                                form.context.push_error(form::Error::validation("A racetime.gg account is required to enter as runner. Go to your profile and select “Connect a racetime.gg account”.").with_name("my_role")); //TODO direct link?
+                            }
+                            if teammate == me.id {
+                                form.context.push_error(form::Error::validation("You cannot be your own teammate.").with_name("teammate"));
+                            }
+                            if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, i64::from(teammate)).fetch_one(&mut transaction).await? {
+                                form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("teammate"));
+                            }
+                            if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+                                id = team
+                                AND series = 'pic'
+                                AND event = $1
+                                AND member = $2
+                                AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+                            ) AS "exists!""#, event, i64::from(teammate)).fetch_one(&mut transaction).await? {
+                                form.context.push_error(form::Error::validation("This user is already signed up for this race.").with_name("teammate"));
+                            }
+                            //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
+                            (Some(my_role), Some(teammate))
                         }
-                        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
-                            id = team
-                            AND series = 'pic'
-                            AND event = $1
-                            AND member = $2
-                            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                        ) AS "exists!""#, event, i64::from(me.id)).fetch_one(&mut transaction).await? {
-                            form.context.push_error(form::Error::validation("You are already signed up for this race."));
+                        (Some(_), None) => {
+                            form.context.push_error(form::Error::validation("This field is required.").with_name("teammate"));
+                            (None, None)
                         }
-                        if !value.team_name.is_empty() && sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
-                            series = 'pic'
-                            AND event = $1
-                            AND name = $2
-                            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                        ) AS "exists!""#, event, value.team_name).fetch_one(&mut transaction).await? {
-                            form.context.push_error(form::Error::validation("A team with this name is already signed up for this race.").with_name("team_name"));
+                        (None, Some(_)) => {
+                            form.context.push_error(form::Error::validation("This field is required.").with_name("my_role"));
+                            (None, None)
                         }
-                        if my_role == pic::Role::Sheikah && me.racetime_id.is_none() {
-                            form.context.push_error(form::Error::validation("A racetime.gg account is required to enter as runner. Go to your profile and select “Connect a racetime.gg account”.").with_name("my_role")); //TODO direct link?
+                        (None, None) => {
+                            form.context.push_error(form::Error::validation("This field is required.").with_name("my_role"));
+                            form.context.push_error(form::Error::validation("This field is required.").with_name("teammate"));
+                            (None, None)
                         }
-                        if teammate == me.id {
-                            form.context.push_error(form::Error::validation("You cannot be your own teammate.").with_name("teammate"));
-                        }
-                        if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, i64::from(teammate)).fetch_one(&mut transaction).await? {
-                            form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("teammate"));
-                        }
-                        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
-                            id = team
-                            AND series = 'pic'
-                            AND event = $1
-                            AND member = $2
-                            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                        ) AS "exists!""#, event, i64::from(teammate)).fetch_one(&mut transaction).await? {
-                            form.context.push_error(form::Error::validation("This user is already signed up for this race.").with_name("teammate"));
-                        }
-                        //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
-                        (Some(my_role), Some(teammate))
+                    };
+                    if form.context.errors().next().is_none() {
+                        let id = Id::new(&mut transaction, IdTable::Teams).await?;
+                        sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, 'pic', $2, $3)", id as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
+                        sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, Role::from(my_role.expect("validated")) as _).execute(&mut transaction).await?;
+                        sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", id as _, teammate.expect("validated") as _, match my_role.expect("validated") { pic::Role::Sheikah => Role::Gerudo, pic::Role::Gerudo => Role::Sheikah } as _).execute(&mut transaction).await?;
+                        transaction.commit().await?;
+                        return Ok(RedirectOrContent::Redirect(Redirect::to(uri!(teams(series, event)))))
                     }
-                    (Some(_), None) => {
-                        form.context.push_error(form::Error::validation("This field is required.").with_name("teammate"));
-                        (None, None)
-                    }
-                    (None, Some(_)) => {
-                        form.context.push_error(form::Error::validation("This field is required.").with_name("my_role"));
-                        (None, None)
-                    }
-                    (None, None) => {
-                        form.context.push_error(form::Error::validation("This field is required.").with_name("my_role"));
-                        form.context.push_error(form::Error::validation("This field is required.").with_name("teammate"));
-                        (None, None)
-                    }
-                };
-                if form.context.errors().next().is_none() {
-                    let id = Id::new(&mut transaction, IdTable::Teams).await?;
-                    sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, 'pic', $2, $3)", id as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
-                    sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, Role::from(my_role.expect("validated")) as _).execute(&mut transaction).await?;
-                    sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", id as _, teammate.expect("validated") as _, match my_role.expect("validated") { pic::Role::Sheikah => Role::Gerudo, pic::Role::Gerudo => Role::Sheikah } as _).execute(&mut transaction).await?;
-                    transaction.commit().await?;
-                    return Ok(RedirectOrContent::Redirect(Redirect::to(uri!(teams(series, event)))))
                 }
-            }
-            _ => unimplemented!() //TODO
+                _ => {
+                    let racetime_team = if let Some(ref racetime_team) = value.racetime_team {
+                        validate_team(&me, client, &mut form.context, racetime_team, data.team_config()).await?
+                    } else {
+                        form.context.push_error(form::Error::validation("This field is required.").with_name("racetime_team"));
+                        None
+                    };
+                    if form.context.errors().next().is_none() { //TODO check if step2 data is already present
+                        return Ok(RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, client, csrf, data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?))
+                    }
+                }
+            },
+            EnterFlow::RaceTimeDiscord => match data.team_config() {
+                TeamConfig::Solo => {
+                    if me.racetime_id.is_none() {
+                        form.context.push_error(form::Error::validation("A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.")); //TODO direct link?
+                    }
+                    if me.discord_id.is_none() {
+                        form.context.push_error(form::Error::validation("A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.")); //TODO direct link?
+                    }
+                }
+                TeamConfig::Pictionary => unimplemented!(), //TODO (only check racetime.gg connection for runner, but check Discord connection for both?)
+                _ => {
+                    let racetime_team = if let Some(ref racetime_team) = value.racetime_team {
+                        validate_team(&me, client, &mut form.context, racetime_team, data.team_config()).await?
+                    } else {
+                        form.context.push_error(form::Error::validation("This field is required.").with_name("racetime_team"));
+                        None
+                    };
+                    if form.context.errors().next().is_none() { //TODO check if step2 data is already present
+                        return Ok(RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, client, csrf, data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?))
+                    }
+                }
+            },
+            EnterFlow::Extern => form.context.push_error(form::Error::validation("Mido's House does not handle signups for this event.")),
         }
     }
     Ok(RedirectOrContent::Content(enter_form(transaction, Some(me), uri, csrf, client, data, pic::EnterFormDefaults::Context(form.context)).await?))
@@ -1484,7 +1652,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, discord_ctx: &State<RwFu
         form.context.push_error(form::Error::validation("You can no longer request the qualifier async since the event has already started."));
     }
     Ok(if let Some(ref value) = form.value {
-        let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id", name, racetime_slug FROM teams, team_members WHERE
+        let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams, team_members WHERE
             id = team
             AND series = $1
             AND event = $2
@@ -1546,7 +1714,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
     let mut form = form.into_inner();
     form.verify(&csrf);
     Ok(if let Some(ref value) = form.value {
-        let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id", name, racetime_slug FROM teams, team_members WHERE
+        let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams, team_members WHERE
             id = team
             AND series = $1
             AND event = $2

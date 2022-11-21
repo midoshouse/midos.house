@@ -221,7 +221,7 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
 fn parse_timestamp(timestamp: &str) -> Option<DateTime<Utc>> {
     regex_captures!("^<t:(-?[0-9]+)(?::[tTdDfFR])?>$", timestamp)
         .and_then(|(_, timestamp)| timestamp.parse().ok())
-        .map(|timestamp| Utc.timestamp(timestamp, 0))
+        .and_then(|timestamp| Utc.timestamp_opt(timestamp, 0).single())
 }
 
 pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_pool: PgPool, http_client: reqwest::Client, config: Config, env: Environment, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
@@ -562,7 +562,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             let guild_id = interaction.guild_id.expect("/ban called outside of a guild");
                                             let response_content = MessageBuilder::default()
                                                 .mention_team(&mut transaction, guild_id, &team).await?
-                                                .push(" has locked in ") //TODO “have” with plural-form team names?
+                                                .push(if team.name_is_plural() { " have locked in " } else { " has locked in " })
                                                 .push(match setting {
                                                     mw::S3Setting::Wincon => "default wincons",
                                                     mw::S3Setting::Dungeons => "tournament dungeons",
@@ -673,7 +673,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             let guild_id = interaction.guild_id.expect("/draft called outside of a guild");
                                             let response_content = MessageBuilder::default()
                                                 .mention_team(&mut transaction, guild_id, &team).await?
-                                                .push(" has picked ") //TODO “have” with plural-form team names?
+                                                .push(if team.name_is_plural() { " have picked " } else { " has picked " })
                                                 .push(value)
                                                 .push_line('.')
                                                 .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
@@ -748,7 +748,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         let guild_id = interaction.guild_id.expect("/first called outside of a guild");
                                         let response_content = MessageBuilder::default()
                                             .mention_team(&mut transaction, guild_id, &team).await?
-                                            .push_line(" has chosen to go first in the settings draft.") //TODO “have” with plural-form team names?
+                                            .push(if team.name_is_plural() { " have" } else { " has" })
+                                            .push_line(" chosen to go first in the settings draft.")
                                             .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
                                             .build();
                                         transaction.commit().await?;
@@ -926,7 +927,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         let guild_id = interaction.guild_id.expect("/second called outside of a guild");
                                         let response_content = MessageBuilder::default()
                                             .mention_team(&mut transaction, guild_id, &team).await?
-                                            .push_line(" has chosen to go second in the settings draft.") //TODO “have” with plural-form team names?
+                                            .push(if team.name_is_plural() { " have" } else { " has" })
+                                            .push_line(" chosen to go second in the settings draft.")
                                             .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
                                             .build();
                                         transaction.commit().await?;
@@ -1000,7 +1002,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         let guild_id = interaction.guild_id.expect("/skip called outside of a guild");
                                         let response_content = MessageBuilder::default()
                                             .mention_team(&mut transaction, guild_id, &team).await?
-                                            .push(" has skipped their ") //TODO “have” with plural-form team names?
+                                            .push(if team.name_is_plural() { " have skipped their " } else { " has skipped their " })
                                             .push(skip_kind)
                                             .push_line('.')
                                             .push(draft.next_step(&mut transaction, guild_id, &command_ids, &teams).await?)
