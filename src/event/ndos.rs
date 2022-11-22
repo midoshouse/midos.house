@@ -72,13 +72,15 @@ pub(super) async fn info(pool: &PgPool, data: &Data<'_>) -> Result<RawHtml<Strin
                 li : "Streaming is not required";
             }
             @if let TeamConfig::CoOp | TeamConfig::Multiworld = data.team_config() {
-                p : "Each team will be ranked by the average of the finish times of its members. Timing for an individual player ends on the first frame of the cutscene that plays upon killing Ganon. Players are allowed to kill Ganon to stop their timer and then reset their game, allowing them to continue ";
-                @match data.team_config() {
-                    TeamConfig::CoOp => : "exploring the seed";
-                    TeamConfig::Multiworld => : "collecting items for their team";
-                    _ => @unimplemented
+                p {
+                    : "Each team will be ranked by the average of the finish times of its members. Timing for an individual player ends on the first frame of the cutscene that plays upon killing Ganon. Players are allowed to kill Ganon to stop their timer and then reset their game, allowing them to continue ";
+                    @match data.team_config() {
+                        TeamConfig::CoOp => : "exploring the seed";
+                        TeamConfig::Multiworld => : "collecting items for their team";
+                        _ => @unimplemented
+                    }
+                    : " if necessary.";
                 }
-                : " if necessary.";
             }
             h2 : "Settings";
             p {
