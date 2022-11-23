@@ -138,7 +138,7 @@ impl HashIcon {
             Self::MasterSword |
             Self::SoldOut |
             Self::StoneOfAgony => html! {
-                img(class = "hash-icon", alt = self.to_string(), src = static_url(&format!("hash-icon/{url_part}.png")).await?, srcset = static_url(&format!("hash-icon-500/{url_part}.png 10x")).await?);
+                img(class = "hash-icon", alt = self.to_string(), src = static_url(&format!("hash-icon/{url_part}.png")).await?, srcset = format!("{} 10x", static_url(&format!("hash-icon-500/{url_part}.png")).await?));
             },
             _ => html! {
                 img(class = "hash-icon", alt = self.to_string(), src = static_url(&format!("hash-icon/{url_part}.png")).await?);
