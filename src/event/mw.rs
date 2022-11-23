@@ -26,26 +26,16 @@ use {
     once_cell::sync::Lazy,
     rand::prelude::*,
     rocket::{
-        FromForm,
         FromFormField,
-        State,
         form::{
             self,
             Context,
-            Contextual,
-            Form,
         },
-        http::Status,
-        response::{
-            Redirect,
-            content::RawHtml,
-        },
+        response::content::RawHtml,
         uri,
     },
     rocket_csrf::CsrfToken,
     rocket_util::{
-        ContextualExt as _,
-        CsrfForm,
         Origin,
         ToHtml,
         html,
@@ -66,7 +56,6 @@ use {
         client::Context as DiscordCtx,
         model::prelude::*,
     },
-    serenity_utils::RwFuture,
     sqlx::{
         PgPool,
         Postgres,
@@ -81,9 +70,7 @@ use {
             FindTeamError,
             InfoError,
             Series,
-            SignupStatus,
             Tab,
-            TeamConfig,
         },
         favicon::ChestAppearances,
         http::{
@@ -98,9 +85,6 @@ use {
         util::{
             DateTimeFormat,
             Id,
-            IdTable,
-            RedirectOrContent,
-            StatusOrError,
             form_field,
             format_datetime,
             natjoin_html,
@@ -109,8 +93,6 @@ use {
         },
     },
 };
-
-const SERIES: Series = Series::Multiworld;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Wincon { #[default] Meds, Scrubs, Th }
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Dungeons { #[default] Tournament, Skulls, Keyrings }
@@ -826,8 +808,8 @@ pub(super) struct RaceTimeTeam {
 
 #[derive(Deserialize)]
 pub(super) struct RaceTimeTeamData {
-    name: String,
-    slug: String,
+    pub(super) name: String,
+    pub(super) slug: String,
     pub(super) members: Vec<RaceTimeTeamMember>,
 }
 
@@ -910,6 +892,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
     }).await?)
 }
 
+//TODO this is no longer needed since the forms have been merged
 pub(super) enum EnterFormStep2Defaults<'a> {
     Context(Context<'a>),
     Values {
@@ -961,7 +944,7 @@ impl<'v> EnterFormStep2Defaults<'v> {
 
     pub(super) fn role(&self, racetime_id: &str) -> Option<super::Role> {
         match self {
-            Self::Context(ctx) => ctx.field_value(&*format!("world_number[{racetime_id}]")).and_then(super::Role::from_css_class),
+            Self::Context(ctx) => ctx.field_value(&*format!("roles[{racetime_id}]")).and_then(super::Role::from_css_class),
             Self::Values { .. } => None,
         }
     }
@@ -979,126 +962,6 @@ impl<'v> EnterFormStep2Defaults<'v> {
             Self::Values { .. } => false,
         }
     }
-}
-
-#[derive(FromForm, CsrfForm)]
-pub(crate) struct EnterFormStep2 {
-    #[field(default = String::new())]
-    csrf: String,
-    racetime_team: String,
-    world_number: HashMap<String, Role>,
-    startgg_id: HashMap<String, String>,
-    restream_consent: bool,
-}
-
-#[rocket::post("/event/mw/<event>/enter/step2", data = "<form>")]
-pub(crate) async fn enter_post_step2(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, EnterFormStep2>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
-    let data = Data::new(&mut transaction, SERIES, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let mut form = form.into_inner();
-    form.verify(&csrf);
-    if data.is_started(&mut transaction).await? {
-        form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
-    }
-    Ok(if let Some(ref value) = form.value {
-        // verify team again since it's sent by the client
-        let (team_slug, team_name, users, roles, startgg_ids) = if let Some(racetime_team) = super::validate_team(&me, client, &mut form.context, &value.racetime_team, TeamConfig::Multiworld).await? {
-            let mut all_accounts_exist = true;
-            let mut users = Vec::default();
-            let mut roles = Vec::default();
-            let mut startgg_ids = Vec::default();
-            for member in &racetime_team.members {
-                if let Some(user) = User::from_racetime(&mut transaction, &member.id).await? {
-                    if let Some(discord_id) = user.discord_id {
-                        if let Some(discord_guild) = data.discord_guild {
-                            if discord_guild.member(&*discord_ctx.read().await, discord_id).await.is_err() {
-                                form.context.push_error(form::Error::validation("This user has not joined the tournament's Discord server.").with_name(format!("world_number[{}]", member.id)));
-                            }
-                        }
-                    } else {
-                        form.context.push_error(form::Error::validation("This Mido's House account is not associated with a Discord account.").with_name(format!("world_number[{}]", member.id)));
-                    }
-                    if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
-                        id = team
-                        AND series = 'mw'
-                        AND event = $1
-                        AND member = $2
-                        AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                    ) AS "exists!""#, event, i64::from(user.id)).fetch_one(&mut transaction).await? {
-                        form.context.push_error(form::Error::validation("This user is already signed up for this tournament."));
-                    }
-                    users.push(user);
-                } else {
-                    form.context.push_error(form::Error::validation("This racetime.gg account is not associated with a Mido's House account.").with_name(format!("world_number[{}]", member.id)));
-                    all_accounts_exist = false;
-                }
-                if let Some(&role) = value.world_number.get(&member.id) {
-                    roles.push(role);
-                } else {
-                    form.context.push_error(form::Error::validation("This field is required.").with_name(format!("world_number[{}]", member.id)));
-                }
-                if let Some(id) = value.startgg_id.get(&member.id) {
-                    if id.is_empty() {
-                        startgg_ids.push(None);
-                    } else if id.len() != 8 {
-                        form.context.push_error(form::Error::validation("User IDs on start.gg are exactly 8 characters in length.").with_name(format!("startgg_id[{}]", member.id)));
-                    } else {
-                        startgg_ids.push(Some(id.clone()));
-                    }
-                } else {
-                    startgg_ids.push(None);
-                }
-            }
-            if all_accounts_exist {
-                match &*users {
-                    [u1, u2, u3] => if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
-                        series = 'mw'
-                        AND event = $1
-                        AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $2)
-                        AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
-                        AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)
-                    ) AS "exists!""#, event, i64::from(u1.id), i64::from(u2.id), i64::from(u3.id)).fetch_one(&mut transaction).await? {
-                        form.context.push_error(form::Error::validation("A team with these members is already proposed for this tournament. Check your notifications to accept the invite, and/or ask your teammates to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
-                    },
-                    _ => unimplemented!("exact proposed team check for {} members", users.len()),
-                }
-            }
-            for role in all::<Role>() {
-                let mut found = false;
-                for (member_id, world_number) in &value.world_number {
-                    if *world_number == role {
-                        if found {
-                            form.context.push_error(form::Error::validation("Each team member must have a different world number.").with_name(format!("world_number[{member_id}]")));
-                        } else {
-                            found = true;
-                        }
-                    }
-                }
-                if !found {
-                    form.context.push_error(form::Error::validation(format!("No team member is assigned as {role}.")));
-                }
-            }
-            (racetime_team.slug, racetime_team.name, users, roles, startgg_ids)
-        } else {
-            Default::default()
-        };
-        if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(super::enter_form_step2(transaction, Some(me), uri, client, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
-        } else {
-            let id = Id::new(&mut transaction, IdTable::Teams).await?;
-            sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent) VALUES ($1, 'mw', $2, $3, $4, $5)", id as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent).execute(&mut transaction).await?;
-            for ((user, role), startgg_id) in users.into_iter().zip_eq(roles).zip_eq(startgg_ids) {
-                sqlx::query!(
-                    "INSERT INTO team_members (team, member, status, role, startgg_id) VALUES ($1, $2, $3, $4, $5)",
-                    id as _, user.id as _, if user == me { SignupStatus::Created } else { SignupStatus::Unconfirmed } as _, super::Role::from(role) as _, startgg_id,
-                ).execute(&mut transaction).await?;
-            }
-            transaction.commit().await?;
-            RedirectOrContent::Redirect(Redirect::to(uri!(super::teams(SERIES, event))))
-        }
-    } else {
-        RedirectOrContent::Content(super::enter_form_step2(transaction, Some(me), uri, client, csrf, data, EnterFormStep2Defaults::Context(form.context)).await?)
-    })
 }
 
 pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
