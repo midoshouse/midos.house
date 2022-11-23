@@ -1015,7 +1015,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 }
                             }
                             let mut team_averages = team_times.into_iter()
-                                .map(|(team_slug, times)| (team_slug, times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?))))
+                                .map(|(team_slug, times)| (team_slug, times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many teams"))))
                                 .collect_vec();
                             team_averages.sort_by_key(|(_, average)| (average.is_none(), *average)); // sort DNF last
                             if let [(winner, winning_time), (loser, losing_time)] = *team_averages {
