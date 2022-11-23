@@ -462,7 +462,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     if interaction.data.id == command_ids.assign {
                         let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
                         let guild_id = interaction.guild_id.expect("/assign called outside of a guild");
-                        if let Some(event_row) = sqlx::query!("SELECT series, event FROM events WHERE discord_guild = $1", i64::from(guild_id)).fetch_optional(&mut transaction).await? {
+                        if let Some(event_row) = sqlx::query!("SELECT series, event FROM events WHERE discord_guild = $1 AND end_time IS NULL", i64::from(guild_id)).fetch_optional(&mut transaction).await? {
                             let startgg_set = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
                                 CommandDataOptionValue::String(startgg_set) => startgg_set,
                                 _ => panic!("unexpected slash command option type"),
@@ -512,7 +512,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             interaction.create_interaction_response(ctx, |r| r
                                 .interaction_response_data(|d| d
                                     .ephemeral(true)
-                                    .content("Sorry, this Discord server is not associated with a Mido's House event.")
+                                    .content("Sorry, this Discord server is not associated with an ongoing Mido's House event.")
                                 )
                             ).await?;
                         }
