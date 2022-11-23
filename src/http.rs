@@ -335,7 +335,7 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
-    page(pool.begin().await?, &me, &uri, PageStyle::default(), "Internal Server Error — Mido's House", html! {
+    page(pool.begin().await?, &me, &uri, PageStyle { chests: ChestAppearances::TOKENS, ..PageStyle::default() }, "Internal Server Error — Mido's House", html! {
         h1 : "Error 500: Internal Server Error";
         p : "Sorry, something went wrong. Please notify Fenhl on Discord.";
     }).await

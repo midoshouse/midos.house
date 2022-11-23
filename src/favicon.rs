@@ -266,6 +266,11 @@ impl ChestAppearance {
         big: false,
     };
 
+    const TOKEN: Self = Self {
+        texture: ChestTexture::Token,
+        big: false,
+    };
+
     fn from_item(invisible_chests: bool, camc_version: CamcVersion, camc_kind: CorrectChestAppearances, chus_in_major_chests: bool, shields_in_major_chests: bool, token_wincon: bool, heart_wincon: bool, item: &Item) -> Self {
         if invisible_chests { return Self::INVISIBLE }
         if let CorrectChestAppearances::Off = camc_kind { return Self::VANILLA }
@@ -531,6 +536,7 @@ pub(crate) struct ChestAppearances(pub(crate) [ChestAppearance; 4]);
 impl ChestAppearances {
     pub(crate) const VANILLA: Self = Self([ChestAppearance::VANILLA; 4]);
     pub(crate) const INVISIBLE: Self = Self([ChestAppearance::INVISIBLE; 4]);
+    pub(crate) const TOKENS: Self = Self([ChestAppearance::TOKEN; 4]);
 
     pub(crate) fn random() -> Self {
         //TODO automatically keep up to date with the dev-fenhl branch of the RSL script
