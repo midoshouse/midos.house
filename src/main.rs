@@ -27,8 +27,6 @@ mod team;
 mod user;
 mod util;
 
-include!(concat!(env!("OUT_DIR"), "/version.rs"));
-
 #[derive(Default, Clone, Copy, clap::ValueEnum)]
 enum Environment {
     #[cfg_attr(not(debug_assertions), default)]

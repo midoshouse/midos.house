@@ -1,6 +1,12 @@
 use {
-    std::io,
+    std::{
+        collections::HashMap,
+        io,
+        path::Path,
+    },
+    git2::Repository,
     itertools::Itertools as _,
+    once_cell::sync::Lazy,
     rand::prelude::*,
     rocket::{
         Request,
@@ -45,7 +51,10 @@ use {
         Postgres,
         Transaction,
     },
-    tokio::process::Command,
+    tokio::{
+        process::Command,
+        sync::Mutex,
+    },
     crate::{
         *,
         config::Config,
@@ -66,10 +75,38 @@ use {
     },
 };
 
-/// Cache busting for static resources by including the current git commit hash in the URL
-//TODO use commit hash of when the file was last modified? (see https://github.com/rust-lang/git2-rs/issues/588)
-pub(crate) fn static_url(path: &str) -> String {
-    format!("/static/{path}?v={:02x}", GIT_COMMIT_HASH.iter().format(""))
+/// Cache busting for static resources by including the git commit hash when the file was last modified in the URL
+pub(crate) async fn static_url(path: &str) -> Result<String, git2::Error> {
+    static CACHE: Lazy<Mutex<HashMap<String, git2::Oid>>> = Lazy::new(Mutex::default);
+
+    let mut cache = CACHE.lock().await;
+    let last_modified_commit = if let Some(commit_id) = cache.get(path) {
+        *commit_id
+    } else {
+        let repo = Repository::open_from_env()?;
+        let mut revwalk = repo.revwalk()?;
+        revwalk.push_head()?;
+        let mut commit_id = repo.head()?.peel_to_commit()?.id();
+        'revwalk: for iter_commit_id in revwalk {
+            let iter_commit_id = iter_commit_id?;
+            let commit = repo.find_commit(commit_id)?;
+            if commit.parent_count() != 1 {
+                // initial commit or merge commit; mark the file as updated here to be safe
+                commit_id = iter_commit_id;
+                break
+            }
+            let diff = repo.diff_tree_to_tree(Some(&commit.parent(0)?.tree()?), Some(&commit.tree()?), None)?;
+            for delta in diff.deltas() {
+                if delta.new_file().path() == Some(&Path::new("assets").join("static").join(path)) {
+                    commit_id = iter_commit_id;
+                    break 'revwalk
+                }
+            }
+        }
+        cache.insert(path.to_owned(), commit_id);
+        commit_id
+    };
+    Ok(format!("/static/{path}?v={last_modified_commit}"))
 }
 
 pub(crate) enum PageKind {
@@ -97,6 +134,7 @@ impl Default for PageStyle {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum PageError {
+    #[error(transparent)] Git(#[from] git2::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("missing user data for Fenhl")]
     FenhlUserData,
@@ -129,8 +167,8 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                 title : title;
                 meta(name = "viewport", content = "width=device-width, initial-scale=1, shrink-to-fit=no");
                 link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(style.chests.textures(), Suffix(1024, "png"))).to_string());
-                link(rel = "stylesheet", href = static_url("common.css"));
-                script(defer, src = static_url("common.js"));
+                link(rel = "stylesheet", href = static_url("common.css").await?);
+                script(defer, src = static_url("common.js").await?);
             }
             body(class = matches!(style.kind, PageKind::Banner).then(|| "fullscreen")) {
                 div {
@@ -138,7 +176,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                         a(class = "nav", href? = (!matches!(style.kind, PageKind::Index)).then(|| uri!(index).to_string())) {
                             div(class = "logo") {
                                 @for chest in style.chests.0 {
-                                    img(class = format!("chest chest-{}", char::from(chest.texture)), src = static_url(&format!("chest/{}512.png", char::from(chest.texture))));
+                                    img(class = format!("chest chest-{}", char::from(chest.texture)), src = static_url(&format!("chest/{}512.png", char::from(chest.texture))).await?);
                                 }
                             }
                             h1 : "Mido's House";
@@ -407,14 +445,13 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         event::enter,
         event::enter_post,
         event::find_team,
+        event::find_team_post,
         event::confirm_signup,
         event::resign,
         event::resign_post,
         event::request_async,
         event::submit_async,
         event::mw::enter_post_step2,
-        event::mw::find_team_post,
-        event::pic::find_team_post,
         favicon::favicon_ico,
         favicon::favicon_png,
         notification::notifications,

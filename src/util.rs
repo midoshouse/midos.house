@@ -332,8 +332,8 @@ pub(crate) fn decode_pginterval(PgInterval { months, days, microseconds }: PgInt
     }
 }
 
-pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
-    match url.host_str() {
+pub(crate) async fn favicon(url: &Url) -> Result<RawHtml<String>, git2::Error> {
+    Ok(match url.host_str() {
         Some("challonge.com" | "www.challonge.com") => html! {
             img(class = "favicon", alt = "external link (challonge.com)", srcset = "https://assets.challonge.com/favicon-16x16.png 16w, https://assets.challonge.com/favicon-32x32.png 32w");
         },
@@ -349,8 +349,11 @@ pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
         Some("youtube.com" | "www.youtube.com") => html! {
             img(class = "favicon", alt = "external link (youtube.com)", srcset = "https://www.youtube.com/s/desktop/435d54f2/img/favicon.ico 16w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_32x32.png 32w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_48x48.png 48w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_96x96.png 96w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_144x144.png 144w");
         },
+        Some("zeldaspeedruns.com" | "www.zeldaspeedruns.com") => html! {
+            img(class = "favicon", alt = "external link (zeldaspeedruns.com)", srcset = "https://www.zeldaspeedruns.com/favicon-16x16.png 16w, https://www.zeldaspeedruns.com/favicon-32x32.png 32w, https://www.zeldaspeedruns.com/favicon-96x96.png 96w, https://www.zeldaspeedruns.com/android-chrome-192x192.png 192w, https://www.zeldaspeedruns.com/favicon-194x194.png 194w");
+        },
         Some("racetime.gg") => html! {
-            img(class = "favicon", alt = "external link (racetime.gg)", src = static_url("racetimeGG-favicon.svg"));
+            img(class = "favicon", alt = "external link (racetime.gg)", src = static_url("racetimeGG-favicon.svg").await?);
         },
         Some("start.gg" | "www.start.gg") => html! {
             img(class = "favicon", alt = "external link (start.gg)", src = "https://www.start.gg/__static/images/favicon/favicon.ico");
@@ -361,7 +364,7 @@ pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
         _ => html! {
             : "🌐";
         },
-    }
+    })
 }
 
 pub(crate) fn parse_duration(s: &str) -> Option<Duration> {

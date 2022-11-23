@@ -7,10 +7,6 @@ edition = "2021"
 lto = true
 strip = true
 
-[build-dependencies]
-git2 = "0.15"
-itertools = "0.10"
-
 [dependencies]
 anyhow = "1"
 async-trait = "0.1"
@@ -19,6 +15,7 @@ chrono-tz = "0.8"
 collect-mac = "0.1"
 enum-iterator = "1"
 futures = "0.3"
+git2 = "0.15"
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171
 ics = "0.5"
 itertools = "0.10"

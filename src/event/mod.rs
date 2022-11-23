@@ -500,7 +500,7 @@ impl<'a> Data<'a> {
         Ok(None)
     }
 
-    async fn header(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>, tab: Tab) -> sqlx::Result<RawHtml<String>> {
+    async fn header(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>, tab: Tab) -> Result<RawHtml<String>, Error> {
         let signed_up = if let Some(me) = me {
             sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
                 id = team
@@ -531,7 +531,7 @@ impl<'a> Data<'a> {
                         span(class = "button selected") : teams_label;
                     } else if let Some(ref teams_url) = self.teams_url {
                         a(class = "button", href = teams_url.to_string()) {
-                            : favicon(teams_url);
+                            : favicon(teams_url).await?;
                             : teams_label;
                         }
                     } else {
@@ -556,7 +556,7 @@ impl<'a> Data<'a> {
                         span(class = "button selected") : "Enter";
                     } else if let Some(ref enter_url) = self.enter_url {
                         a(class = "button", href = enter_url.to_string()) {
-                            : favicon(enter_url);
+                            : favicon(enter_url).await?;
                             : "Enter";
                         }
                     } else {
@@ -573,13 +573,13 @@ impl<'a> Data<'a> {
                 //a(class = "button") : "Volunteer"; //TODO
                 @if let Some(ref video_url) = self.video_url {
                     a(class = "button", href = video_url.to_string()) {
-                        : favicon(video_url);
+                        : favicon(video_url).await?;
                         : "Watch";
                     }
                 }
                 @if let Some(ref url) = self.url {
                     a(class = "button", href = url.to_string()) {
-                        : favicon(url);
+                        : favicon(url).await?;
                         @match url.host_str() {
                             Some("racetime.gg") => : "Race Room";
                             Some("challonge.com" | "www.challonge.com" | "start.gg" | "www.start.gg") => : "Brackets";
@@ -614,6 +614,7 @@ pub(crate) enum Error {
     #[error(transparent)] Calendar(#[from] cal::Error),
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Discord(#[from] serenity::Error),
+    #[error(transparent)] Git(#[from] git2::Error),
     #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -637,6 +638,12 @@ impl From<DataError> for StatusOrError<Error> {
 impl From<serenity::Error> for StatusOrError<Error> {
     fn from(e: serenity::Error) -> Self {
         Self::Err(Error::Discord(e))
+    }
+}
+
+impl From<git2::Error> for StatusOrError<Error> {
+    fn from(e: git2::Error) -> Self {
+        Self::Err(Error::Git(e))
     }
 }
 
@@ -667,6 +674,7 @@ impl From<url::ParseError> for StatusOrError<Error> {
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum InfoError {
     #[error(transparent)] Data(#[from] DataError),
+    #[error(transparent)] Event(#[from] Error),
     #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
@@ -678,7 +686,7 @@ pub(crate) enum InfoError {
 pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
     let mut transaction = pool.begin().await.map_err(InfoError::Sql)?;
     let data = Data::new(&mut transaction, series, event).await.map_err(InfoError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, me.as_ref(), Tab::Info).await.map_err(InfoError::Sql)?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Info).await.map_err(InfoError::Event)?;
     let content = match data.series {
         Series::Multiworld => mw::info(pool, event).await?,
         Series::NineDaysOfSaws => ndos::info(pool, &data).await?,
@@ -695,6 +703,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum TeamsError {
     #[error(transparent)] Data(#[from] DataError),
+    #[error(transparent)] Event(#[from] Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] PgInterval(#[from] crate::util::PgIntervalDecodeError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
@@ -706,7 +715,7 @@ pub(crate) enum TeamsError {
 pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<TeamsError>> {
     let mut transaction = pool.begin().await.map_err(TeamsError::Sql)?;
     let data = Data::new(&mut transaction, series, event).await.map_err(TeamsError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, me.as_ref(), Tab::Teams).await.map_err(TeamsError::Sql)?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Teams).await.map_err(TeamsError::Event)?;
     let mut signups = Vec::default();
     let has_qualifier = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier') AS "exists!""#, series as _, event).fetch_one(&mut transaction).await.map_err(TeamsError::Sql)?;
     let show_qualifier_times =
@@ -968,9 +977,9 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 }
                             }
                             td {
-                                a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?);
+                                a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?).await?;
                                 @for room in race.rooms() {
-                                    a(class = "favicon", href = room.to_string()) : favicon(&room);
+                                    a(class = "favicon", href = room.to_string()) : favicon(&room).await?;
                                 }
                             }
                         }
@@ -1027,9 +1036,9 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 }
                             }
                             td {
-                                a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?);
+                                a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?).await?;
                                 @for room in race.rooms() {
-                                    a(class = "favicon", href = room.to_string()) : favicon(&room);
+                                    a(class = "favicon", href = room.to_string()) : favicon(&room).await?;
                                 }
                             }
                             @if let Some(ref seed) = race.seed {
@@ -1454,27 +1463,81 @@ pub(crate) async fn enter_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum FindTeamError {
     #[error(transparent)] Data(#[from] DataError),
+    #[error(transparent)] Event(#[from] Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("unknown user")]
     UnknownUser,
 }
 
-#[rocket::get("/event/<series>/<event>/find-team")]
-pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
-    let mut transaction = pool.begin().await.map_err(FindTeamError::Sql)?;
-    let data = Data::new(&mut transaction, series, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     Ok(match data.team_config() {
         TeamConfig::Solo => {
-            let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam).await.map_err(FindTeamError::Sql)?;
+            let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam).await.map_err(FindTeamError::Event)?;
             page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
                 : header;
                 : "This is a solo event.";
             }).await.map_err(FindTeamError::Page)?
         }
-        TeamConfig::CoOp => unimplemented!(), //TODO
-        TeamConfig::Pictionary => pic::find_team_form(transaction, me, uri, csrf, data, Context::default()).await?,
-        TeamConfig::Multiworld => mw::find_team_form(transaction, me, uri, csrf, data, Context::default()).await?,
+        TeamConfig::CoOp => ndos::coop_find_team_form(transaction, me, uri, csrf, data, context).await?,
+        TeamConfig::Pictionary => pic::find_team_form(transaction, me, uri, csrf, data, context).await?,
+        TeamConfig::Multiworld => mw::find_team_form(transaction, me, uri, csrf, data, context).await?,
+    })
+}
+
+#[rocket::get("/event/<series>/<event>/find-team")]
+pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
+    let mut transaction = pool.begin().await.map_err(FindTeamError::Sql)?;
+    let data = Data::new(&mut transaction, series, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    Ok(find_team_form(transaction, me, uri, csrf, data, Context::default()).await?)
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct FindTeamForm {
+    #[field(default = String::new())]
+    csrf: String,
+    #[field(default = String::new())]
+    availability: String,
+    #[field(default = String::new())]
+    notes: String,
+    role: Option<pic::RolePreference>,
+}
+
+#[rocket::post("/event/<series>/<event>/find-team", data = "<form>")]
+pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
+    let mut transaction = pool.begin().await.map_err(FindTeamError::Sql)?;
+    let data = Data::new(&mut transaction, series, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    if data.is_started(&mut transaction).await.map_err(FindTeamError::Sql)? {
+        form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
+    }
+    Ok(if let Some(ref value) = form.value {
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM looking_for_team WHERE
+            series = $1
+            AND event = $2
+            AND user_id = $3
+        ) AS "exists!""#, series as _, event, i64::from(me.id)).fetch_one(&mut transaction).await.map_err(FindTeamError::Sql)? {
+            form.context.push_error(form::Error::validation("You are already on the list."));
+        }
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+            id = team
+            AND series = $1
+            AND event = $2
+            AND member = $3
+            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+        ) AS "exists!""#, series as _, event, i64::from(me.id)).fetch_one(&mut transaction).await.map_err(FindTeamError::Sql)? {
+            form.context.push_error(form::Error::validation("You are already signed up for this event."));
+        }
+        if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(find_team_form(transaction, Some(me), uri, csrf, data, form.context).await?)
+        } else {
+            sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role, availability, notes) VALUES ($1, $2, $3, $4, $5, $6)", series as _, event, me.id as _, value.role.unwrap_or_default() as _, value.availability, value.notes).execute(&mut transaction).await.map_err(FindTeamError::Sql)?;
+            transaction.commit().await.map_err(FindTeamError::Sql)?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(find_team(series, event))))
+        }
+    } else {
+        RedirectOrContent::Content(find_team_form(transaction, Some(me), uri, csrf, data, form.context).await?)
     })
 }
 

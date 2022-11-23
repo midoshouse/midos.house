@@ -10,27 +10,17 @@ use {
     },
     itertools::Itertools as _,
     rocket::{
-        FromForm,
         FromFormField,
-        State,
         UriDisplayQuery,
         form::{
             self,
             Context,
-            Contextual,
-            Form,
         },
-        http::Status,
-        response::{
-            Redirect,
-            content::RawHtml,
-        },
+        response::content::RawHtml,
         uri,
     },
     rocket_csrf::CsrfToken,
     rocket_util::{
-        ContextualExt as _,
-        CsrfForm,
         Origin,
         ToHtml,
         html,
@@ -58,16 +48,12 @@ use {
         user::User,
         util::{
             Id,
-            RedirectOrContent,
-            StatusOrError,
             form_field,
             natjoin_html,
             render_form_error,
         },
     },
 };
-
-const SERIES: Series = Series::Pictionary;
 
 pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, InfoError> {
     let is_random_settings = event.starts_with("rs");
@@ -363,13 +349,14 @@ impl From<Role> for super::Role {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, FromFormField)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, FromFormField)]
 #[sqlx(type_name = "role_preference", rename_all = "snake_case")]
 pub(crate) enum RolePreference {
     #[field(value = "sheikah_only")]
     SheikahOnly,
     #[field(value = "sheikah_preferred")]
     SheikahPreferred,
+    #[default]
     #[field(value = "no_preference")]
     NoPreference,
     #[field(value = "gerudo_preferred")]
@@ -538,7 +525,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
                 }
             };
             Some(html! {
-                form(action = uri!(find_team_post(&*data.event)).to_string(), method = "post") {
+                form(action = uri!(super::find_team_post(data.series, &*data.event)).to_string(), method = "post") {
                     @for error in errors {
                         : render_form_error(error);
                     }
@@ -611,49 +598,4 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
             }
         }
     }).await?)
-}
-
-#[derive(FromForm, CsrfForm)]
-pub(crate) struct FindTeamForm {
-    #[field(default = String::new())]
-    csrf: String,
-    role: RolePreference,
-}
-
-#[rocket::post("/event/pic/<event>/find-team", data = "<form>")]
-pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
-    let mut transaction = pool.begin().await.map_err(FindTeamError::Sql)?;
-    let data = Data::new(&mut transaction, SERIES, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let mut form = form.into_inner();
-    form.verify(&csrf);
-    if data.is_started(&mut transaction).await.map_err(FindTeamError::Sql)? {
-        form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
-    }
-    Ok(if let Some(ref value) = form.value {
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM looking_for_team WHERE
-            series = 'pic'
-            AND event = $1
-            AND user_id = $2
-        ) AS "exists!""#, event, i64::from(me.id)).fetch_one(&mut transaction).await.map_err(FindTeamError::Sql)? {
-            form.context.push_error(form::Error::validation("You are already on the list."));
-        }
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
-            id = team
-            AND series = 'pic'
-            AND event = $1
-            AND member = $2
-            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        ) AS "exists!""#, event, i64::from(me.id)).fetch_one(&mut transaction).await.map_err(FindTeamError::Sql)? {
-            form.context.push_error(form::Error::validation("You are already signed up for this race."));
-        }
-        if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(find_team_form(transaction, Some(me), uri, csrf, data, form.context).await?)
-        } else {
-            sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role) VALUES ('pic', $1, $2, $3)", event, me.id as _, value.role as _).execute(&mut transaction).await.map_err(FindTeamError::Sql)?;
-            transaction.commit().await.map_err(FindTeamError::Sql)?;
-            RedirectOrContent::Redirect(Redirect::to(uri!(super::find_team(SERIES, event))))
-        }
-    } else {
-        RedirectOrContent::Content(find_team_form(transaction, Some(me), uri, csrf, data, form.context).await?)
-    })
 }

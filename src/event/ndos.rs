@@ -4,19 +4,41 @@ use {
         StreamExt as _,
         TryStreamExt as _,
     },
-    rocket::response::content::RawHtml,
-    rocket_util::html,
-    sqlx::PgPool,
+    itertools::Itertools as _,
+    rocket::{
+        form::Context,
+        response::content::RawHtml,
+        uri,
+    },
+    rocket_csrf::CsrfToken,
+    rocket_util::{
+        Origin,
+        html,
+    },
+    sqlx::{
+        PgPool,
+        Postgres,
+        Transaction,
+    },
     crate::{
+        auth,
         event::{
             Data,
+            FindTeamError,
             InfoError,
+            Series,
+            Tab,
             TeamConfig,
+        },
+        http::{
+            PageStyle,
+            page,
         },
         user::User,
         util::{
             Id,
             natjoin_html,
+            render_form_error,
         },
     },
 };
@@ -62,14 +84,17 @@ pub(super) async fn info(pool: &PgPool, data: &Data<'_>) -> Result<RawHtml<Strin
                 a(href = "https://wiki.ootrandomizer.com/index.php?title=Rules#Universal_Rules") : "Universal Rules";
                 : " and the ";
                 a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "Standard";
-                : " ruleset, with a few exceptions listed below:";
-            }
-            ul {
                 @if data.event == "6" {
-                    li : "Fire Arrow Entry is allowed";
+                    : " ruleset, with a few exceptions listed below:";
+                } else {
+                    : " ruleset, with the exception that streaming is not required.";
                 }
-                li : "DMC “pot push” is banned";
-                li : "Streaming is not required";
+            }
+            @if data.event == "6" {
+                ul {
+                    li : "Fire Arrow Entry is allowed";
+                    li : "Streaming is not required";
+                }
             }
             @if let TeamConfig::CoOp | TeamConfig::Multiworld = data.team_config() {
                 p {
@@ -134,4 +159,75 @@ pub(super) async fn info(pool: &PgPool, data: &Data<'_>) -> Result<RawHtml<Strin
             }
         }
     })
+}
+
+#[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
+pub(super) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+    let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam).await?;
+    let mut me_listed = false;
+    let mut looking_for_team = Vec::default();
+    for row in sqlx::query!(r#"SELECT user_id AS "user!: Id" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {
+        let user = User::from_id(&mut transaction, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
+        if me.as_ref().map_or(false, |me| user.id == me.id) { me_listed = true }
+        looking_for_team.push(user);
+    }
+    let form = if me.is_some() {
+        let errors = context.errors().collect_vec();
+        if me_listed {
+            None
+        } else {
+            let form_content = html! {
+                : csrf;
+                legend {
+                    : "Click this button to add yourself to the list below.";
+                }
+                fieldset {
+                    input(type = "submit", value = "Looking for Team");
+                }
+            };
+            Some(html! {
+                form(action = uri!(super::find_team_post(data.series, &*data.event)).to_string(), method = "post") {
+                    @for error in errors {
+                        : render_form_error(error);
+                    }
+                    : form_content;
+                }
+            })
+        }
+    } else {
+        Some(html! {
+            article {
+                p {
+                    a(href = uri!(auth::login(Some(uri!(super::find_team(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
+                    : " to add yourself to this list.";
+                }
+            }
+        })
+    };
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+        : header;
+        : form;
+        table {
+            thead {
+                tr {
+                    th : "User";
+                }
+            }
+            tbody {
+                @if looking_for_team.is_empty() {
+                    tr {
+                        td {
+                            i : "(no one currently looking for teammates)";
+                        }
+                    }
+                } else {
+                    @for user in looking_for_team {
+                        tr {
+                            td : user;
+                        }
+                    }
+                }
+            }
+        }
+    }).await?)
 }

@@ -1133,7 +1133,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
                 }
             };
             Some(html! {
-                form(action = uri!(find_team_post(&*data.event)).to_string(), method = "post") {
+                form(action = uri!(super::find_team_post(data.series, &*data.event)).to_string(), method = "post") {
                     @for error in errors {
                         : render_form_error(error);
                     }
@@ -1181,52 +1181,6 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
             }
         }
     }).await?)
-}
-
-#[derive(FromForm, CsrfForm)]
-pub(crate) struct FindTeamForm {
-    #[field(default = String::new())]
-    csrf: String,
-    availability: String,
-    notes: String,
-}
-
-#[rocket::post("/event/mw/<event>/find-team", data = "<form>")]
-pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
-    let mut transaction = pool.begin().await.map_err(FindTeamError::Sql)?;
-    let data = Data::new(&mut transaction, SERIES, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let mut form = form.into_inner();
-    form.verify(&csrf);
-    if data.is_started(&mut transaction).await.map_err(FindTeamError::Sql)? {
-        form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
-    }
-    Ok(if let Some(ref value) = form.value {
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM looking_for_team WHERE
-            series = 'mw'
-            AND event = $1
-            AND user_id = $2
-        ) AS "exists!""#, event, i64::from(me.id)).fetch_one(&mut transaction).await.map_err(FindTeamError::Sql)? {
-            form.context.push_error(form::Error::validation("You are already on the list."));
-        }
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
-            id = team
-            AND series = 'mw'
-            AND event = $1
-            AND member = $2
-            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        ) AS "exists!""#, event, i64::from(me.id)).fetch_one(&mut transaction).await.map_err(FindTeamError::Sql)? {
-            form.context.push_error(form::Error::validation("You are already signed up for this race."));
-        }
-        if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(find_team_form(transaction, Some(me), uri, csrf, data, form.context).await?)
-        } else {
-            sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role, availability, notes) VALUES ('mw', $1, $2, 'no_preference', $3, $4)", event, me.id as _, value.availability, value.notes).execute(&mut transaction).await.map_err(FindTeamError::Sql)?;
-            transaction.commit().await.map_err(FindTeamError::Sql)?;
-            RedirectOrContent::Redirect(Redirect::to(uri!(super::find_team(SERIES, event))))
-        }
-    } else {
-        RedirectOrContent::Content(find_team_form(transaction, Some(me), uri, csrf, data, form.context).await?)
-    })
 }
 
 pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> sqlx::Result<RawHtml<String>> {

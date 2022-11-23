@@ -16,10 +16,7 @@ use {
     itertools::Itertools as _,
     lazy_regex::regex_captures,
     rocket::response::content::RawHtml,
-    rocket_util::{
-        ToHtml,
-        html,
-    },
+    rocket_util::html,
     serde::{
         Deserialize,
         Deserializer,
@@ -128,6 +125,27 @@ pub(crate) enum HashIcon {
 }
 
 impl HashIcon {
+    pub(crate) async fn to_html(&self) -> Result<RawHtml<String>, git2::Error> {
+        let url_part = self.to_string().to_ascii_lowercase().replace(' ', "-");
+        Ok(match self {
+            Self::Bombchu |
+            Self::BossKey |
+            Self::Compass |
+            Self::DekuNut |
+            Self::DekuStick |
+            Self::HeartContainer |
+            Self::Map |
+            Self::MasterSword |
+            Self::SoldOut |
+            Self::StoneOfAgony => html! {
+                img(class = "hash-icon", alt = self.to_string(), src = static_url(&format!("hash-icon/{url_part}.png")).await?, srcset = static_url(&format!("hash-icon-500/{url_part}.png 10x")).await?);
+            },
+            _ => html! {
+                img(class = "hash-icon", alt = self.to_string(), src = static_url(&format!("hash-icon/{url_part}.png")).await?);
+            },
+        })
+    }
+
     pub(crate) fn to_racetime_emoji(&self) -> &'static str {
         match self {
             Self::Beans => "HashBeans",
@@ -167,29 +185,6 @@ impl HashIcon {
 }
 
 derive_display_from_serialize!(HashIcon);
-
-impl ToHtml for HashIcon {
-    fn to_html(&self) -> RawHtml<String> {
-        let url_part = self.to_string().to_ascii_lowercase().replace(' ', "-");
-        match self {
-            Self::Bombchu |
-            Self::BossKey |
-            Self::Compass |
-            Self::DekuNut |
-            Self::DekuStick |
-            Self::HeartContainer |
-            Self::Map |
-            Self::MasterSword |
-            Self::SoldOut |
-            Self::StoneOfAgony => html! {
-                img(class = "hash-icon", alt = self.to_string(), src = static_url(&format!("hash-icon/{url_part}.png")), srcset = static_url(&format!("hash-icon-500/{url_part}.png 10x")));
-            },
-            _ => html! {
-                img(class = "hash-icon", alt = self.to_string(), src = static_url(&format!("hash-icon/{url_part}.png")));
-            },
-        }
-    }
-}
 
 #[derive(Clone)]
 pub(crate) struct Data {
@@ -313,13 +308,13 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
         @if let Some(file_hash) = seed.file_hash {
             td(class = "hash") {
                 @for hash_icon in file_hash {
-                    : hash_icon;
+                    : hash_icon.to_html().await.map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
                 }
             }
         } else {
             td {
                 @for hash_icon in spoiler_contents.as_ref().expect("should be present since file_hash is None").file_hash {
-                    : hash_icon;
+                    : hash_icon.to_html().await.map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
                 }
             }
         }
