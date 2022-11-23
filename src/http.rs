@@ -83,26 +83,22 @@ pub(crate) async fn static_url(path: &str) -> Result<String, git2::Error> {
     let last_modified_commit = if let Some(commit_id) = cache.get(path) {
         *commit_id
     } else {
+        let repo_relative_path = Path::new("assets").join("static").join(path);
         let repo = Repository::open_from_env()?;
-        let mut revwalk = repo.revwalk()?;
-        revwalk.push_head()?;
-        let mut commit_id = repo.head()?.peel_to_commit()?.id();
-        'revwalk: for iter_commit_id in revwalk {
-            let iter_commit_id = iter_commit_id?;
-            let commit = repo.find_commit(commit_id)?;
-            if commit.parent_count() != 1 {
-                // initial commit or merge commit; mark the file as updated here to be safe
-                commit_id = iter_commit_id;
-                break
+        let mut iter_commit = repo.head()?.peel_to_commit()?;
+        let commit_id = loop {
+            let iter_commit_id = iter_commit.id();
+            if iter_commit.parent_count() != 1 {
+                // initial commit or merge commit; mark the file as updated here for simplicity's sake
+                break iter_commit_id
             }
-            let diff = repo.diff_tree_to_tree(Some(&commit.parent(0)?.tree()?), Some(&commit.tree()?), None)?;
-            for delta in diff.deltas() {
-                if delta.new_file().path() == Some(&Path::new("assets").join("static").join(path)) {
-                    commit_id = iter_commit_id;
-                    break 'revwalk
-                }
+            let parent = iter_commit.parent(0)?;
+            let diff = repo.diff_tree_to_tree(Some(&parent.tree()?), Some(&iter_commit.tree()?), Some(git2::DiffOptions::default().pathspec(&repo_relative_path)))?;
+            if diff.deltas().next().is_some() {
+                break iter_commit_id
             }
-        }
+            iter_commit = parent;
+        };
         cache.insert(path.to_owned(), commit_id);
         commit_id
     };
