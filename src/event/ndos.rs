@@ -37,6 +37,7 @@ use {
         user::User,
         util::{
             Id,
+            form_field,
             natjoin_html,
             render_form_error,
         },
@@ -120,42 +121,42 @@ pub(super) async fn info(pool: &PgPool, data: &Data<'_>) -> Result<RawHtml<Strin
                 }
                 @match &*data.event {
                     ("1" | "2" | "3" | "6" | "7" | "9") => : " preset.";
-                    "4" => {
-                        : " preset, with the following changes:";
-                        ul {
-                            li : "No dungeon boss shortcuts";
-                            li : "Spawn shuffled for both ages";
-                            li : "“Fix broken drops” off";
-                            li : "Minimal item pool";
-                            li : "Blue Fire Arrows off";
-                            li : "No ice traps";
-                            li : "One Bonk KO";
-                            li : "Standard S5 Tournament hint distribution";
-                        }
-                    }
-                    "5" => {
-                        : " preset, with the following changes:";
-                        ul {
-                            li : "All interior entrances shuffled";
-                            li : "Grotto entrances shuffled";
-                            li : "Dungeon entrances shuffled (including Ganon's Castle)";
-                            li : "Overworld entrances shuffled";
-                            li : "Mixed entrance pools (interiors, grottos, dungeons, and overworld)";
-                            li : "Gerudo Valley exit to Lake Hylia shuffled (full)";
-                            li : "Owl drops shuffled (full)";
-                            li : "Warp song destinations shuffled (full)";
-                            li : "Blue warps lead to the shuffled entrances of the dungeons they're in";
-                        }
-                    }
-                    "8" => {
-                        : " preset, with the following changes:";
-                        ul {
-                            li : "Dungeon entrances shuffled (except Ganon's Castle)";
-                            li : "Blue warps lead to the shuffled entrances of the dungeons they're in";
-                        }
-                    }
+                    ("4" | "5" | "8") => : " preset, with the following changes:";
                     _ => @unimplemented
                 }
+            }
+            @match &*data.event {
+                ("1" | "2" | "3" | "6" | "7" | "9") => {}
+                "4" => ul {
+                    li : "No dungeon boss shortcuts";
+                    li : "Spawn shuffled for both ages";
+                    li : "“Fix broken drops” off";
+                    li : "Minimal item pool";
+                    li : "Blue Fire Arrows off";
+                    li : "No ice traps";
+                    li : "One Bonk KO";
+                    li : "Standard S5 Tournament hint distribution";
+                }
+                "5" => {
+                    ul {
+                        li : "All interior entrances shuffled";
+                        li : "Grotto entrances shuffled";
+                        li : "Dungeon entrances shuffled (including Ganon's Castle)";
+                        li : "Overworld entrances shuffled";
+                        li : "Mixed entrance pools (interiors, grottos, dungeons, and overworld)";
+                        li : "Full spawn shuffle";
+                        li : "Gerudo Valley exit to Lake Hylia shuffled (full)";
+                        li : "Owl drops shuffled (full)";
+                        li : "Warp song destinations shuffled (full)";
+                        li : "Blue warps lead to the shuffled entrances of the dungeons they're in";
+                    }
+                    p : "“Full” one-ways can lead to additional entrances, such as dungeons, bosses, or grottos.";
+                }
+                "8" => ul {
+                    li : "Dungeon entrances shuffled (except Ganon's Castle)";
+                    li : "Blue warps lead to the shuffled entrances of the dungeons they're in";
+                }
+                _ => @unimplemented
             }
         }
     })
@@ -172,17 +173,34 @@ pub(super) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgre
         looking_for_team.push(user);
     }
     let form = if me.is_some() {
-        let errors = context.errors().collect_vec();
+        let mut errors = context.errors().collect_vec();
         if me_listed {
             None
         } else {
             let form_content = html! {
                 : csrf;
-                legend {
-                    : "Click this button to add yourself to the list below.";
-                }
-                fieldset {
-                    input(type = "submit", value = "Looking for Team");
+                @if data.is_single_race() {
+                    legend {
+                        : "Click this button to add yourself to the list below.";
+                    }
+                    fieldset {
+                        input(type = "submit", value = "Looking for Team");
+                    }
+                } else {
+                    legend {
+                        : "Fill out this form to add yourself to the list below.";
+                    }
+                    : form_field("availability", &mut errors, html! {
+                        label(for = "availability") : "Timezone/Availability/Commitment:";
+                        input(type = "text", name = "availability", value? = context.field_value("availability"));
+                    });
+                    : form_field("notes", &mut errors, html! {
+                        label(for = "notes") : "Any Other Notes?";
+                        input(type = "text", name = "notes", value? = context.field_value("notes"));
+                    });
+                    fieldset {
+                        input(type = "submit", value = "Submit");
+                    }
                 }
             };
             Some(html! {

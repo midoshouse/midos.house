@@ -1190,7 +1190,7 @@ async fn validate_team(me: &User, client: &reqwest::Client, context: &mut Contex
             None
         }
     } else {
-        context.push_error(form::Error::validation("A racetime.gg account is required to enter this tournament. Go to your profile and select “Connect a racetime.gg account”.")); //TODO direct link?
+        context.push_error(form::Error::validation("A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.")); //TODO direct link?
         None
     })
 }

@@ -834,7 +834,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
                     article {
                         p {
                             a(href = "https://racetime.gg/account/teams/create") : "Create a racetime.gg team";
-                            : " to enter this tournament.";
+                            : " to enter this event.";
                         }
                     }
                 }
@@ -874,7 +874,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
                 article {
                     p {
                         a(href = uri!(crate::auth::racetime_login(Some(uri!(super::enter(data.series, &*data.event, _, _))))).to_string()) : "Connect a racetime.gg account to your Mido's House account";
-                        : " to enter this tournament.";
+                        : " to enter this event.";
                     }
                 }
             }
@@ -885,7 +885,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
             article {
                 p {
                     a(href = uri!(auth::login(Some(uri!(super::enter(data.series, &*data.event, _, _))))).to_string()) : "Sign in or create a Mido's House account";
-                    : " to enter this tournament.";
+                    : " to enter this event.";
                 }
             }
         }
@@ -980,19 +980,28 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
         } else {
             let form_content = html! {
                 : csrf;
-                legend {
-                    : "Fill out this form to add yourself to the list below.";
-                }
-                : form_field("availability", &mut errors, html! {
-                    label(for = "availability") : "Timezone/Availability/Commitment:";
-                    input(type = "text", name = "availability", value? = context.field_value("availability"));
-                });
-                : form_field("notes", &mut errors, html! {
-                    label(for = "notes") : "Any Other Notes?";
-                    input(type = "text", name = "notes", value? = context.field_value("notes"));
-                });
-                fieldset {
-                    input(type = "submit", value = "Submit");
+                @if data.is_single_race() {
+                    legend {
+                        : "Click this button to add yourself to the list below.";
+                    }
+                    fieldset {
+                        input(type = "submit", value = "Looking for Team");
+                    }
+                } else {
+                    legend {
+                        : "Fill out this form to add yourself to the list below.";
+                    }
+                    : form_field("availability", &mut errors, html! {
+                        label(for = "availability") : "Timezone/Availability/Commitment:";
+                        input(type = "text", name = "availability", value? = context.field_value("availability"));
+                    });
+                    : form_field("notes", &mut errors, html! {
+                        label(for = "notes") : "Any Other Notes?";
+                        input(type = "text", name = "notes", value? = context.field_value("notes"));
+                    });
+                    fieldset {
+                        input(type = "submit", value = "Submit");
+                    }
                 }
             };
             Some(html! {
@@ -1021,14 +1030,16 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
             thead {
                 tr {
                     th : "User";
-                    th : "Timezone/Availability/Commitment";
-                    th : "Notes";
+                    @if !data.is_single_race() {
+                        th : "Timezone/Availability/Commitment";
+                        th : "Notes";
+                    }
                 }
             }
             tbody {
                 @if looking_for_team.is_empty() {
                     tr {
-                        td(colspan = "3") {
+                        td(colspan = if data.is_single_race() { "1" } else { "3" }) {
                             i : "(no one currently looking for teammates)";
                         }
                     }
@@ -1036,8 +1047,10 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
                     @for (user, availability, notes) in looking_for_team {
                         tr {
                             td : user;
-                            td : availability;
-                            td : notes;
+                            @if !data.is_single_race() {
+                                td : availability;
+                                td : notes;
+                            }
                         }
                     }
                 }
