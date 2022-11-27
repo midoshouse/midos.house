@@ -312,28 +312,30 @@ impl MwSeedQueue {
         }
     }
 
-    async fn get(&self, uri: impl IntoUrl, query: Option<&(impl Serialize + ?Sized)>) -> reqwest::Result<reqwest::Response> {
+    async fn get(&self, uri: impl IntoUrl + Clone, query: Option<&(impl Serialize + ?Sized)>) -> reqwest::Result<reqwest::Response> {
         let mut next_request = self.next_request.lock().await;
         sleep_until(*next_request).await;
-        let mut builder = self.http_client.get(uri);
+        let mut builder = self.http_client.get(uri.clone());
         if let Some(query) = query {
             builder = builder.query(query);
         }
+        println!("MwSeedQueue: GET {}", uri.into_url()?);
         let res = builder.send().await;
         *next_request = Instant::now() + Duration::from_millis(500);
         res
     }
 
-    async fn post(&self, uri: impl IntoUrl, query: Option<&(impl Serialize + ?Sized)>, json: Option<&(impl Serialize + ?Sized)>) -> reqwest::Result<reqwest::Response> {
+    async fn post(&self, uri: impl IntoUrl + Clone, query: Option<&(impl Serialize + ?Sized)>, json: Option<&(impl Serialize + ?Sized)>) -> reqwest::Result<reqwest::Response> {
         let mut next_request = self.next_request.lock().await;
         sleep_until(*next_request).await;
-        let mut builder = self.http_client.post(uri);
+        let mut builder = self.http_client.post(uri.clone());
         if let Some(query) = query {
             builder = builder.query(query);
         }
         if let Some(json) = json {
             builder = builder.json(json);
         }
+        println!("MwSeedQueue: POST {}", uri.into_url()?);
         let res = builder.send().await;
         *next_request = Instant::now() + Duration::from_millis(500);
         res
