@@ -62,6 +62,7 @@ use {
         select,
         sync::{
             Mutex,
+            Notify,
             OwnedRwLockWriteGuard,
             RwLock,
             Semaphore,
@@ -120,6 +121,13 @@ const KNOWN_GOOD_WEB_VERSIONS: [Version; 2] = [
 
 const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
 
+#[derive(Default)]
+pub(crate) struct CleanShutdown {
+    pub(crate) requested: bool,
+    pub(crate) num_rooms: usize,
+    pub(crate) notifier: Arc<Notify>,
+}
+
 struct GlobalState {
     /// Locked while event rooms are being created. Wait with handling new rooms while it's held.
     new_room_lock: Mutex<()>,
@@ -129,14 +137,15 @@ struct GlobalState {
     startgg_token: String,
     mw_seed_queue: MwSeedQueue,
     discord_ctx: RwFuture<DiscordCtx>,
+    clean_shutdown: Arc<Mutex<CleanShutdown>>,
 }
 
 impl GlobalState {
-    fn new(db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>) -> Self {
+    fn new(db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Self {
         Self {
             new_room_lock: Mutex::default(),
             mw_seed_queue: MwSeedQueue::new(http_client.clone(), ootr_api_key),
-            host, db_pool, http_client, startgg_token, discord_ctx,
+            host, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown,
         }
     }
 
@@ -248,7 +257,7 @@ enum SeedRollUpdate {
 }
 
 impl SeedRollUpdate {
-    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext, state: &Arc<RwLock<RaceState>>, startgg_set: Option<&str>, settings: mw::S3Settings) -> Result<(), Error> {
+    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &Arc<RwLock<RaceState>>, startgg_set: Option<&str>, settings: mw::S3Settings) -> Result<(), Error> {
         match self {
             Self::Queued(0) => ctx.send_message("I'm already rolling other seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
             Self::Queued(1) => ctx.send_message("I'm already rolling other seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
@@ -469,7 +478,7 @@ impl MwSeedQueue {
     }
 }
 
-async fn send_presets(ctx: &RaceContext) -> Result<(), Error> {
+async fn send_presets(ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
     ctx.send_message("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
     ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
     ctx.send_message("!seed draft: Pick the settings here in the chat. I don't enforce that the two teams have to be represented by different people.").await?;
@@ -515,7 +524,7 @@ struct Handler {
 impl Handler {
     fn is_official(&self) -> bool { self.official_data.is_some() }
 
-    async fn send_settings(&self, ctx: &RaceContext) -> Result<(), Error> {
+    async fn send_settings(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         let available_settings = {
             let state = self.race_state.read().await;
             if let RaceState::Draft(ref draft) = *state {
@@ -539,7 +548,7 @@ impl Handler {
         Ok(())
     }
 
-    async fn advance_draft(&self, ctx: &RaceContext) -> Result<(), Error> {
+    async fn advance_draft(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         let state = self.race_state.clone().write_owned().await;
         if let RaceState::Draft(ref draft) = *state {
             match draft.next_step() {
@@ -560,7 +569,7 @@ impl Handler {
         Ok(())
     }
 
-    async fn roll_seed(&self, ctx: &RaceContext, mut state: OwnedRwLockWriteGuard<RaceState>, settings: mw::S3Settings) {
+    async fn roll_seed(&self, ctx: &RaceContext<GlobalState>, mut state: OwnedRwLockWriteGuard<RaceState>, settings: mw::S3Settings) {
         *state = RaceState::Rolling;
         drop(state);
         let db_pool = self.global_state.db_pool.clone();
@@ -597,19 +606,34 @@ impl Handler {
 
 #[async_trait]
 impl RaceHandler<GlobalState> for Handler {
-    fn should_handle(race_data: &RaceData) -> Result<bool, Error> {
+    async fn should_handle(race_data: &RaceData, global_state: Arc<GlobalState>) -> Result<bool, Error> {
+        let mut clean_shutdown = global_state.clean_shutdown.lock().await;
         Ok(
             race_data.goal.name == "3rd Multiworld Tournament" //TODO don't hardcode (use a list shared with RandoBot?)
             && race_data.goal.custom
             && !matches!(race_data.status.value, RaceStatusValue::Finished | RaceStatusValue::Cancelled)
+            && if !clean_shutdown.requested || clean_shutdown.num_rooms > 0 { clean_shutdown.num_rooms += 1; true } else { false }
         )
     }
 
-    async fn new(ctx: &RaceContext, global_state: Arc<GlobalState>) -> Result<Self, Error> {
+    async fn task(global_state: Arc<GlobalState>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
+        tokio::spawn(async move {
+            let res = join_handle.await;
+            let mut clean_shutdown = global_state.clean_shutdown.lock().await;
+            clean_shutdown.num_rooms -= 1;
+            if clean_shutdown.requested && clean_shutdown.num_rooms == 0 {
+                clean_shutdown.notifier.notify_waiters();
+            }
+            res.unwrap()
+        });
+        Ok(())
+    }
+
+    async fn new(ctx: &RaceContext<GlobalState>) -> Result<Self, Error> {
         let data = ctx.data().await;
-        let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
-        let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
-        let (official_data, race_state, high_seed_name, low_seed_name) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &global_state.http_client, &global_state.startgg_token, format!("https://{}{}", global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
+        let new_room_lock = ctx.global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
+        let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
+        let (official_data, race_state, high_seed_name, low_seed_name) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
             let mut entrants = Vec::default();
             let start = cal_event.start().expect("handling room for official race without start time");
             for team in cal_event.active_teams() {
@@ -672,9 +696,10 @@ impl RaceHandler<GlobalState> for Handler {
         drop(new_room_lock);
         let is_official = official_data.is_some();
         let this = Self {
+            global_state: ctx.global_state.clone(),
             race_state: Arc::new(RwLock::new(race_state)),
             fpa_enabled: is_official,
-            global_state, official_data, high_seed_name, low_seed_name,
+            official_data, high_seed_name, low_seed_name,
         };
         if is_official {
             this.advance_draft(ctx).await?;
@@ -682,7 +707,7 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(this)
     }
 
-    async fn command(&mut self, ctx: &RaceContext, cmd_name: String, args: Vec<String>, _is_moderator: bool, _is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
+    async fn command(&mut self, ctx: &RaceContext<GlobalState>, cmd_name: String, args: Vec<String>, _is_moderator: bool, _is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match &*cmd_name.to_ascii_lowercase() {
             "ban" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
@@ -955,7 +980,7 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(())
     }
 
-    async fn race_data(&mut self, ctx: &RaceContext, _old_race_data: RaceData) -> Result<(), Error> {
+    async fn race_data(&mut self, ctx: &RaceContext<GlobalState>, _old_race_data: RaceData) -> Result<(), Error> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct SeedDetailsResponse {
@@ -1069,7 +1094,7 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(())
     }
 
-    async fn error(&mut self, _ctx: &RaceContext, mut errors: Vec<String>) -> Result<(), Error> {
+    async fn error(&mut self, _ctx: &RaceContext<GlobalState>, mut errors: Vec<String>) -> Result<(), Error> {
         errors.retain(|error| !error.ends_with(" is not allowed to join this race.")); // failing to invite a user should not crash the race handler
         if errors.is_empty() {
             Ok(())
@@ -1173,9 +1198,9 @@ async fn handle_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
     }
 }
 
-pub(crate) async fn main(db_pool: PgPool, http_client: reqwest::Client, discord_ctx: RwFuture<DiscordCtx>, ootr_api_key: String, env: Environment, config: Config, shutdown: rocket::Shutdown) -> Result<(), Error> {
+pub(crate) async fn main(db_pool: PgPool, http_client: reqwest::Client, discord_ctx: RwFuture<DiscordCtx>, ootr_api_key: String, env: Environment, config: Config, shutdown: rocket::Shutdown, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Result<(), Error> {
     let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
-    let global_state = Arc::new(GlobalState::new(db_pool.clone(), http_client.clone(), ootr_api_key.clone(), startgg_token.to_owned(), env.racetime_host(), discord_ctx));
+    let global_state = Arc::new(GlobalState::new(db_pool.clone(), http_client.clone(), ootr_api_key.clone(), startgg_token.to_owned(), env.racetime_host(), discord_ctx, clean_shutdown));
     let ((), ()) = tokio::try_join!(
         create_rooms(global_state.clone(), env, config.clone(), shutdown.clone()),
         handle_rooms(global_state, env, config, shutdown),
