@@ -76,6 +76,7 @@ use {
 };
 
 /// Cache busting for static resources by including the git commit hash when the file was last modified in the URL
+//TODO determine at compile time to reduce load times of initial requests after server restarts
 pub(crate) async fn static_url(path: &str) -> Result<String, git2::Error> {
     static CACHE: Lazy<Mutex<HashMap<String, git2::Oid>>> = Lazy::new(Mutex::default);
 
@@ -422,6 +423,9 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         archive,
         new_event,
         robots_txt,
+        api::graphql_request,
+        api::graphql_query,
+        api::graphql_playground,
         auth::racetime_callback,
         auth::discord_callback,
         auth::login,
@@ -492,5 +496,6 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
     .manage(pool)
     .manage(discord_ctx)
     .manage(http_client)
+    .manage(async_graphql::Schema::build(api::Query, async_graphql::EmptyMutation, async_graphql::EmptySubscription).finish())
     .ignite().await?)
 }

@@ -1,6 +1,8 @@
 #![deny(rust_2018_idioms, unused, unused_crate_dependencies, unused_import_braces, unused_qualifications, warnings)]
 #![forbid(unsafe_code)]
 
+#![recursion_limit = "512"]
+
 use {
     std::{
         env,
@@ -21,6 +23,7 @@ use {
 };
 #[cfg(not(unix))] use futures::future;
 
+mod api;
 mod auth;
 mod cal;
 mod config;

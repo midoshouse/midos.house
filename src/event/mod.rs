@@ -116,7 +116,7 @@ use {
 };
 
 pub(crate) mod mw;
-mod ndos;
+pub(crate) mod ndos;
 pub(crate) mod pic;
 mod rsl;
 mod s;

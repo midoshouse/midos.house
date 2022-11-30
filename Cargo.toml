@@ -9,6 +9,8 @@ strip = true
 
 [dependencies]
 anyhow = "1"
+async-graphql = "5"
+async-graphql-rocket = "5"
 async-trait = "0.1"
 base64 = "0.13"
 chrono-tz = "0.8"
