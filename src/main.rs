@@ -97,9 +97,13 @@ async fn main(Args { env, subcommand }: Args) -> Result<(), Error> {
     if let Some(subcommand) = subcommand {
         match subcommand {
             #[cfg(unix)] Subcommand::PrepareStop => {
+                println!("preparing to stop Mido's House: connecting UNIX socket");
                 let mut sock = UnixStream::connect(unix_socket::PATH).await?;
+                println!("preparing to stop Mido's House: sending command");
                 unix_socket::ClientMessage::PrepareStop.write(&mut sock).await?;
-                u8::read(&mut sock).await?; // wait for reply to indicate the operation was successful
+                println!("preparing to stop Mido's House: waiting for reply");
+                u8::read(&mut sock).await?;
+                println!("preparing to stop Mido's House: done");
             }
         }
     } else {
