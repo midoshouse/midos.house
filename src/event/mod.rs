@@ -727,7 +727,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
             OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
         )
-        AND kind = 'qualifier'
+        AND (kind = 'qualifier' OR kind IS NULL)
     "#, series as _, event, me.as_ref().map(|me| i64::from(me.id))).fetch_all(&mut transaction).await.map_err(TeamsError::Sql)?;
     let roles = data.team_config().roles();
     for team in teams {
@@ -736,7 +736,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             let row = sqlx::query!(r#"
                 SELECT member AS "id: Id", status AS "status: SignupStatus", time, vod
                 FROM team_members LEFT OUTER JOIN async_players ON (member = player)
-                WHERE team = $1 AND role = $2 AND kind = 'qualifier'
+                WHERE team = $1 AND role = $2 AND (kind = 'qualifier' OR kind IS NULL)
             "#, i64::from(team.id), role as _).fetch_one(&mut transaction).await.map_err(TeamsError::Sql)?;
             let is_confirmed = row.status.is_confirmed();
             let user = User::from_id(&mut transaction, row.id).await.map_err(TeamsError::Sql)?.ok_or(TeamsError::NonexistentUser)?;

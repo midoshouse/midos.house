@@ -67,6 +67,8 @@ impl Environment {
 struct Args {
     #[clap(long, value_enum, default_value_t)]
     env: Environment,
+    #[clap(long)]
+    port: Option<u16>,
     #[clap(subcommand)]
     subcommand: Option<Subcommand>,
 }
@@ -93,7 +95,7 @@ enum Error {
 }
 
 #[wheel::main(rocket, debug)]
-async fn main(Args { env, subcommand }: Args) -> Result<(), Error> {
+async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
     if let Some(subcommand) = subcommand {
         match subcommand {
             #[cfg(unix)] Subcommand::PrepareStop => {
@@ -118,7 +120,7 @@ async fn main(Args { env, subcommand }: Args) -> Result<(), Error> {
         let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
         let discord_builder = serenity_utils::builder(discord_config.client_id, discord_config.bot_token.clone()).await?;
         let db_pool = PgPool::connect_with(PgConnectOptions::default().username("mido").database(if env.is_dev() { "fados_house" } else { "midos_house" }).application_name("midos-house")).await?;
-        let rocket = http::rocket(db_pool.clone(), discord_builder.ctx_fut.clone(), http_client.clone(), config.clone(), env).await?;
+        let rocket = http::rocket(db_pool.clone(), discord_builder.ctx_fut.clone(), http_client.clone(), config.clone(), env, port.unwrap_or_else(|| if env.is_dev() { 24814 } else { 24812 })).await?;
         let discord_builder = discord_bot::configure_builder(discord_builder, db_pool.clone(), http_client.clone(), config.clone(), env, rocket.shutdown());
         let clean_shutdown = Arc::default();
         #[cfg(unix)] let unix_listener = unix_socket::listen(rocket.shutdown(), Arc::clone(&clean_shutdown));
