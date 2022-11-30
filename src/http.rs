@@ -2,9 +2,7 @@ use {
     std::{
         collections::HashMap,
         io,
-        path::Path,
     },
-    git2::Repository,
     itertools::Itertools as _,
     once_cell::sync::Lazy,
     rand::prelude::*,
@@ -51,10 +49,7 @@ use {
         Postgres,
         Transaction,
     },
-    tokio::{
-        process::Command,
-        sync::Mutex,
-    },
+    tokio::process::Command,
     crate::{
         *,
         config::Config,
@@ -75,35 +70,12 @@ use {
     },
 };
 
-/// Cache busting for static resources by including the git commit hash when the file was last modified in the URL
-//TODO determine at compile time to reduce load times of initial requests after server restarts
-pub(crate) async fn static_url(path: &str) -> Result<String, git2::Error> {
-    static CACHE: Lazy<Mutex<HashMap<String, git2::Oid>>> = Lazy::new(Mutex::default);
+include!(concat!(env!("OUT_DIR"), "/static_files.rs"));
 
-    let mut cache = CACHE.lock().await;
-    let last_modified_commit = if let Some(commit_id) = cache.get(path) {
-        *commit_id
-    } else {
-        let repo_relative_path = Path::new("assets").join("static").join(path);
-        let repo = Repository::open_from_env()?;
-        let mut iter_commit = repo.head()?.peel_to_commit()?;
-        let commit_id = loop {
-            let iter_commit_id = iter_commit.id();
-            if iter_commit.parent_count() != 1 {
-                // initial commit or merge commit; mark the file as updated here for simplicity's sake
-                break iter_commit_id
-            }
-            let parent = iter_commit.parent(0)?;
-            let diff = repo.diff_tree_to_tree(Some(&parent.tree()?), Some(&iter_commit.tree()?), Some(git2::DiffOptions::default().pathspec(&repo_relative_path)))?;
-            if diff.deltas().next().is_some() {
-                break iter_commit_id
-            }
-            iter_commit = parent;
-        };
-        cache.insert(path.to_owned(), commit_id);
-        commit_id
-    };
-    Ok(format!("/static/{path}?v={last_modified_commit}"))
+/// Cache busting for static resources by including the git commit hash when the file was last modified in the URL
+pub(crate) fn static_url(path: &str) -> String {
+    let last_modified_commit = CACHE.get(path).expect("static file from last modification cache");
+    format!("/static/{path}?v={last_modified_commit}")
 }
 
 pub(crate) enum PageKind {
@@ -131,7 +103,6 @@ impl Default for PageStyle {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum PageError {
-    #[error(transparent)] Git(#[from] git2::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("missing user data for Fenhl")]
     FenhlUserData,
@@ -164,8 +135,8 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                 title : title;
                 meta(name = "viewport", content = "width=device-width, initial-scale=1, shrink-to-fit=no");
                 link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(style.chests.textures(), Suffix(1024, "png"))).to_string());
-                link(rel = "stylesheet", href = static_url("common.css").await?);
-                script(defer, src = static_url("common.js").await?);
+                link(rel = "stylesheet", href = static_url("common.css"));
+                script(defer, src = static_url("common.js"));
             }
             body(class = matches!(style.kind, PageKind::Banner).then(|| "fullscreen")) {
                 div {
@@ -173,7 +144,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                         a(class = "nav", href? = (!matches!(style.kind, PageKind::Index)).then(|| uri!(index).to_string())) {
                             div(class = "logo") {
                                 @for chest in style.chests.0 {
-                                    img(class = format!("chest chest-{}", char::from(chest.texture)), src = static_url(&format!("chest/{}512.png", char::from(chest.texture))).await?);
+                                    img(class = format!("chest chest-{}", char::from(chest.texture)), src = static_url(&format!("chest/{}512.png", char::from(chest.texture))));
                                 }
                             }
                             h1 : "Mido's House";

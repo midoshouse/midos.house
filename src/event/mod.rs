@@ -536,7 +536,7 @@ impl<'a> Data<'a> {
                         span(class = "button selected") : teams_label;
                     } else if let Some(ref teams_url) = self.teams_url {
                         a(class = "button", href = teams_url.to_string()) {
-                            : favicon(teams_url).await?;
+                            : favicon(teams_url);
                             : teams_label;
                         }
                     } else {
@@ -561,7 +561,7 @@ impl<'a> Data<'a> {
                         span(class = "button selected") : "Enter";
                     } else if let Some(ref enter_url) = self.enter_url {
                         a(class = "button", href = enter_url.to_string()) {
-                            : favicon(enter_url).await?;
+                            : favicon(enter_url);
                             : "Enter";
                         }
                     } else {
@@ -578,13 +578,13 @@ impl<'a> Data<'a> {
                 //a(class = "button") : "Volunteer"; //TODO
                 @if let Some(ref video_url) = self.video_url {
                     a(class = "button", href = video_url.to_string()) {
-                        : favicon(video_url).await?;
+                        : favicon(video_url);
                         : "Watch";
                     }
                 }
                 @if let Some(ref url) = self.url {
                     a(class = "button", href = url.to_string()) {
-                        : favicon(url).await?;
+                        : favicon(url);
                         @match url.host_str() {
                             Some("racetime.gg") => : "Race Room";
                             Some("challonge.com" | "www.challonge.com" | "start.gg" | "www.start.gg") => : "Brackets";
@@ -619,7 +619,6 @@ pub(crate) enum Error {
     #[error(transparent)] Calendar(#[from] cal::Error),
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Discord(#[from] serenity::Error),
-    #[error(transparent)] Git(#[from] git2::Error),
     #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -643,12 +642,6 @@ impl From<DataError> for StatusOrError<Error> {
 impl From<serenity::Error> for StatusOrError<Error> {
     fn from(e: serenity::Error) -> Self {
         Self::Err(Error::Discord(e))
-    }
-}
-
-impl From<git2::Error> for StatusOrError<Error> {
-    fn from(e: git2::Error) -> Self {
-        Self::Err(Error::Git(e))
     }
 }
 
@@ -982,9 +975,9 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 }
                             }
                             td {
-                                a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?).await?;
+                                a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?);
                                 @for room in race.rooms() {
-                                    a(class = "favicon", href = room.to_string()) : favicon(&room).await?;
+                                    a(class = "favicon", href = room.to_string()) : favicon(&room);
                                 }
                             }
                         }
@@ -1041,9 +1034,9 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 }
                             }
                             td {
-                                a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?).await?;
+                                a(class = "favicon", href = race.startgg_set_url()?.to_string()) : favicon(&race.startgg_set_url()?);
                                 @for room in race.rooms() {
-                                    a(class = "favicon", href = room.to_string()) : favicon(&room).await?;
+                                    a(class = "favicon", href = room.to_string()) : favicon(&room);
                                 }
                             }
                             @if let Some(ref seed) = race.seed {
