@@ -32,8 +32,9 @@ rocket = "0.5.0-rc.2"
 rocket_oauth2 = "0.5.0-rc.1"
 serde_json = "1"
 serde_plain = "1"
+#sheets = "0.5" # can't upgrade to this due to https://github.com/dekellum/hyperx/issues/39
 thiserror = "1"
-typemap_rev = "0.2"
+typemap_rev = "0.3"
 yup-oauth2 = "5" # dependency of `sheets`
 
 [dependencies.chrono]
@@ -120,7 +121,7 @@ branch = "main"
 features = ["reqwest", "rocket-beta", "serde", "serde_json"]
 
 [target.'cfg(unix)'.dependencies]
-async-proto = "0.15"
+async-proto = "0.16"
 xdg = "2"
 
 [target.'cfg(windows)'.dependencies]
