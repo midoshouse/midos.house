@@ -65,6 +65,7 @@ use {
     crate::{
         auth,
         event::{
+            AsyncKind,
             Data,
             Error,
             FindTeamError,
@@ -1214,24 +1215,45 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                 };
                 html! {
                     div(class = "info") {
-                        p : "Play the qualifier async to qualify for the tournament.";
+                        @match async_kind {
+                            AsyncKind::Qualifier => p : "Play the qualifier async to qualify for the tournament.";
+                            (AsyncKind::Tiebreaker1 | AsyncKind::Tiebreaker2) => p : "Play the tiebreaker async to qualify for the bracket stage of the tournament.";
+                        }
                         p : "Rules:";
                         ol {
-                            li : "In order to play in the tournament, your team must make a reasonable attempt at completing this seed. In the event of a forfeit, you can still participate, but will be considered the bottom seed for settings draft purposes.";
-                            li {
-                                @if let Some(base_start) = data.base_start {
-                                    : "The time must be submitted by ";
-                                    : format_datetime(base_start, DateTimeFormat { long: true, running_text: true });
-                                    : ". In the event that an odd number of teams is qualified at the time of the deadline, one additional team may qualify within 24 hours.";
-                                } else {
-                                    : "The time must be submitted by the starting time of the tournament, which is yet to be announced.";
+                            @match async_kind {
+                                AsyncKind::Qualifier => li : "In order to play in the tournament, your team must make a reasonable attempt at completing this seed. In the event of a forfeit, you can still participate, but will be considered the bottom seed for settings draft purposes.";
+                                AsyncKind::Tiebreaker1 => li : "In order to play in the top 8 bracket, your team must make a reasonable attempt at completing this seed. In the event of a forfeit, you can still participate, but will be placed at the bottom of your Swiss point group for matchup and settings draft purposes.";
+                                AsyncKind::Tiebreaker2 => li : "In order to play in the top 8 bracket, your team must race the other teams of your Swiss point group on this seed.";
+                            }
+                            @if let AsyncKind::Qualifier = async_kind {
+                                li {
+                                    @if let Some(base_start) = data.base_start {
+                                        : "The time must be submitted by ";
+                                        : format_datetime(base_start, DateTimeFormat { long: true, running_text: true });
+                                        : ". In the event that an odd number of teams is qualified at the time of the deadline, one additional team may qualify within 24 hours.";
+                                    } else {
+                                        : "The time must be submitted by the starting time of the tournament, which is yet to be announced.";
+                                    }
                                 }
+                            } else {
+                                //TODO give deadline of tiebreaker async
                             }
                             li : "You must start the seed within 30 minutes of obtaining it and submit your time within 30 minutes of the last finish. Any additional time taken will be added to your final time. If anything prevents you from obtaining the seed/submitting your time, please DM an admin (or ping the Discord role) to get it sorted out.";
-                            li : "While required for the tournament, the results from the qualifier seed will only determine which team chooses who goes first in the settings draft. Swiss pairings will be seeded randomly.";
-                            li : "While you are not strictly required to stream, you must have video proof of your run. Feel free to simply record your run and upload it to YouTube and provide a link. If you do stream or make your upload public, please make sure it is clearly marked so people can avoid spoilers. If you're a big streamer, be extra sure to note what is happening, as several of your viewers are likely going to want to participate as well.";
+                            @if let AsyncKind::Qualifier = async_kind {
+                                li : "While required for the tournament, the results from the qualifier seed will only determine which team chooses who goes first in the settings draft. Swiss pairings will be seeded randomly.";
+                                li : "While you are not strictly required to stream, you must have video proof of your run. Feel free to simply record your run and upload it to YouTube and provide a link. If you do stream or make your upload public, please make sure it is clearly marked so people can avoid spoilers. If you're a big streamer, be extra sure to note what is happening, as several of your viewers are likely going to want to participate as well.";
+                            } else {
+                                li : "The results from the qualifier seed will determine your seeding in the bracket, as well as which team chooses who goes first in the settings draft for the first race of each match.";
+                                li : "You must have video proof of your run. Streaming is allowed but discouraged. Feel free to simply record your run and upload it to YouTube and provide a link. If you do stream or make your upload public, please make sure is is clearly marked so people can avoid spoilers.";
+                            }
                             li : "Do not spoil yourself on this seed by watching another playthrough. If you do stream, you are responsible for what your chat says, so either do not read chat, set it to emote only, or take the risk at your own discretion. If you do get spoiled, please report it to the admins, we will try to work out something equitable.";
-                            li : "You must use the world numbers with which you entered the tournament for this seed. Once you request the seed, the world numbers you selected are the world numbers you play with for the rest of the tournament. If you wish to change your player order, do not request the qualifier and contact an admin."; //TODO allow changing player order in options below
+                            li {
+                                : "You must use the world numbers with which you entered the tournament for this seed.";
+                                @if let AsyncKind::Qualifier = async_kind {
+                                    : " Once you request the seed, the world numbers you selected are the world numbers you play with for the rest of the tournament. If you wish to change your player order, do not request the qualifier and contact an admin."; //TODO allow changing player order in options below
+                                }
+                            }
                             li {
                                 : "This should be run like an actual race. In the event of a technical issue, teams are allowed to invoke the ";
                                 a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
