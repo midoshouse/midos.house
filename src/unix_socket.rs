@@ -37,14 +37,18 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                     loop {
                         match ClientMessage::read(&mut sock).await {
                             Ok(ClientMessage::PrepareStop) => {
+                                println!("preparing to stop Mido's House: acquiring clean shutdown mutex");
                                 let mut clean_shutdown = clean_shutdown.lock().await;
                                 clean_shutdown.requested = true;
                                 if clean_shutdown.num_rooms > 0 {
+                                    println!("preparing to stop Mido's House: waiting for {} rooms to close", clean_shutdown.num_rooms);
                                     let notifier = Arc::clone(&clean_shutdown.notifier);
                                     drop(clean_shutdown);
                                     notifier.notified().await;
                                 }
+                                println!("preparing to stop Mido's House: sending reply");
                                 0u8.write(&mut sock).await.expect("error writing to UNIX socket");
+                                println!("preparing to stop Mido's House: done");
                                 break
                             }
                             Err(ReadError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => break,
