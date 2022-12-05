@@ -646,13 +646,13 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                     // source: https://docs.google.com/document/d/1fyNO82G2D0Z7J9wobxEbjDjGnomTaIRdKgETGV_ufmc/edit
                     (Utc.with_ymd_and_hms(2022, 11, 19, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://twitch.tv/videos/1657562512")), //TODO permanent highlight/YouTube upload //TODO seed info (https://racetime.gg/ootr/neutral-bongobongo-4042)
                     (Utc.with_ymd_and_hms(2022, 11, 20, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://twitch.tv/videos/1658095931")), //TODO permanent highlight/YouTube upload //TODO seed info (https://racetime.gg/ootr/trusty-volvagia-2022)
-                    (Utc.with_ymd_and_hms(2022, 11, 23, 3, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
-                    (Utc.with_ymd_and_hms(2022, 11, 26, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), None),
-                    (Utc.with_ymd_and_hms(2022, 11, 27, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), None),
-                    (Utc.with_ymd_and_hms(2022, 11, 29, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://twitch.tv/thesilvergauntlets")),
-                    (Utc.with_ymd_and_hms(2022, 12, 2, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
-                    (Utc.with_ymd_and_hms(2022, 12, 3, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), None),
-                    (Utc.with_ymd_and_hms(2022, 12, 4, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), None),
+                    (Utc.with_ymd_and_hms(2022, 11, 23, 3, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://www.twitch.tv/videos/1660399051")), //TODO permanent highlight/YouTube upload //TODO seed info
+                    (Utc.with_ymd_and_hms(2022, 11, 26, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://www.twitch.tv/videos/1663582442")), //TODO permanent highlight/YouTube upload //TODO seed info
+                    (Utc.with_ymd_and_hms(2022, 11, 27, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://www.twitch.tv/videos/1664085065")), //TODO permanent highlight/YouTube upload //TODO seed info
+                    (Utc.with_ymd_and_hms(2022, 11, 29, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://twitch.tv/videos/1666092237")), //TODO seed info
+                    (Utc.with_ymd_and_hms(2022, 12, 2, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://www.twitch.tv/videos/1667839721")), //TODO permanent highlight/YouTube upload //TODO seed info
+                    (Utc.with_ymd_and_hms(2022, 12, 3, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://www.twitch.tv/videos/1669607104")), //TODO permanent highlight/YouTube upload //TODO seed info
+                    (Utc.with_ymd_and_hms(2022, 12, 4, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://www.twitch.tv/videos/1670131046")), //TODO permanent highlight/YouTube upload //TODO seed info
                     (Utc.with_ymd_and_hms(2022, 12, 6, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
                     (Utc.with_ymd_and_hms(2022, 12, 8, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
                     (Utc.with_ymd_and_hms(2022, 12, 10, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), None),

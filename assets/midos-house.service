@@ -1,5 +1,6 @@
 [Unit]
 Description=Web server for midos.house
+Documentation=https://github.com/midoshouse/midos.house
 After=network-online.target
 Wants=network-online.target
 
