@@ -2116,6 +2116,12 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                         message.push(' ');
                         message.push_safe(&value.vod3);
                     }
+                    if !value.fpa.is_empty() {
+                        message.push_line("");
+                        message.push_line("FPA call:");
+                        message.quote_rest();
+                        message.push_safe(&value.fpa);
+                    }
                     ChannelId(discord_channel).send_message(&*discord_ctx.read().await, |m| m
                         .content(message)
                         .flags(MessageFlags::SUPPRESS_EMBEDS)
