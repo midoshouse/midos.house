@@ -126,7 +126,7 @@ impl Notification {
                     div(class = "button-row") {
                         form(action = uri!(dismiss(id)).to_string(), method = "post") {
                             : csrf;
-                            input(type = "submit", value = "Dismiss");
+                            input(type = "submit", value = "Dismiss Notification");
                         }
                     }
                 }
