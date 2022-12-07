@@ -15,7 +15,7 @@ with open('/etc/xdg/midos-house.json') as config_f:
 
 conn = psycopg.connect('dbname=midos_house user=mido')
 
-def b(seed_id, room=None, *, startgg=None, async_room1=None, async_room2=None):
+def b(seed_id, room=None, *, startgg=None, async_room1=None, async_room2=None, unlock=True):
     patch_resp = requests.get('https://ootrandomizer.com/patch/get', params={'id': seed_id})
     patch_resp.raise_for_status()
     file_stem = re.fullmatch('attachment; filename=(.*)\\.zpfz?', patch_resp.headers['Content-Disposition']).group(1)
@@ -28,14 +28,18 @@ def b(seed_id, room=None, *, startgg=None, async_room1=None, async_room2=None):
         creation_timestamp = f"{datetime.datetime.strptime(input('creation timestamp: ').strip(), '%m/%d/%Y, %I:%M:%S %p UTC'):%Y-%m-%dT%H:%M:%SZ}"
         file_hash = json.loads(input('file hash: '))
     else:
-        if api_resp.json()['spoilerLog'] is None:
+        if api_resp.json()['spoilerLog'] is None and unlock:
             requests.post('https://ootrandomizer.com/api/v2/seed/unlock', params={'key': config['ootrApiKey'], 'id': seed_id}).raise_for_status()
             api_resp = requests.get('https://ootrandomizer.com/api/v2/seed/details', params={'id': seed_id, 'key': config['ootrApiKey']})
             api_resp.raise_for_status()
-        with open(SEEDS_DIR / f'{file_stem}_Spoiler.json', 'w') as spoiler_f:
-            spoiler_f.write(api_resp.json()['spoilerLog'])
         creation_timestamp = api_resp.json()['creationTimestamp']
-        file_hash = json.loads(api_resp.json()['spoilerLog'])['file_hash']
+        if api_resp.json()['spoilerLog'] is None:
+            file_hash = None
+        else:
+            with open(SEEDS_DIR / f'{file_stem}_Spoiler.json', 'w') as spoiler_f:
+                spoiler_f.write(api_resp.json()['spoilerLog'])
+            file_hash = json.loads(api_resp.json()['spoilerLog'])['file_hash']
+
     with conn.cursor() as cur:
         try:
             if room is not None:
