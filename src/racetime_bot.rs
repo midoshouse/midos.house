@@ -332,9 +332,9 @@ impl GlobalState {
 async fn roll_seed_locally(version: RandoVersion, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
     settings.insert(format!("create_patch_file"), json!(true));
     settings.insert(format!("create_compressed_rom"), json!(false));
-    for _ in 0..3 {
+    for _ in 0..5 {
         #[cfg(unix)] let rando_path = version.dir().ok_or(RollError::RandoPath)?;
-        #[cfg(windows)] let rando_path = UserDirs::new().ok_or(RollError::RandoPath)?.home_dir().join("git").join("github.com").join(version.branch.github_username()).join("OoT-Randomizer").join("tag").join(version.base.to_string()); //TODO adjust for tag systems on other branches
+        #[cfg(windows)] let rando_path = UserDirs::new().ok_or(RollError::RandoPath)?.home_dir().join("git").join("github.com").join(version.branch.github_username()).join("OoT-Randomizer").join("tag").join(version.base.to_string()); //TODO adjust for tag systems on branches other than Dev
         let mut rando_process = Command::new(PYTHON).arg("OoTRandomizer.py").arg("--no_log").arg("--settings=-").current_dir(rando_path).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
         rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await?;
         let output = rando_process.wait_with_output().await?;
@@ -473,7 +473,7 @@ impl OotrApiClient {
         if let Some(query) = query {
             builder = builder.query(query);
         }
-        println!("MwSeedQueue: GET {}", uri.into_url()?);
+        println!("OotrApiClient: GET {}", uri.into_url()?);
         let res = builder.send().await;
         *next_request = Instant::now() + Duration::from_millis(500);
         res
@@ -489,7 +489,7 @@ impl OotrApiClient {
         if let Some(json) = json {
             builder = builder.json(json);
         }
-        println!("MwSeedQueue: POST {}", uri.into_url()?);
+        println!("OotrApiClient: POST {}", uri.into_url()?);
         let res = builder.send().await;
         *next_request = Instant::now() + Duration::from_millis(500);
         res
@@ -739,7 +739,7 @@ impl RaceHandler<GlobalState> for Handler {
         let mut clean_shutdown = global_state.clean_shutdown.lock().await;
         Ok(
             race_data.goal.custom
-            && race_data.goal.name.parse::<Goal>().is_ok() //TODO share list with RandoBot
+            && race_data.goal.name.parse::<Goal>().is_ok()
             && !matches!(race_data.status.value, RaceStatusValue::Finished | RaceStatusValue::Cancelled)
             && if !clean_shutdown.requested || clean_shutdown.num_rooms > 0 { clean_shutdown.num_rooms += 1; true } else { false }
         )
@@ -845,7 +845,7 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(this)
     }
 
-    async fn command(&mut self, ctx: &RaceContext<GlobalState>, cmd_name: String, args: Vec<String>, _is_moderator: bool, _is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
+    async fn command(&mut self, ctx: &RaceContext<GlobalState>, cmd_name: String, args: Vec<String>, _is_moderator: bool, is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
         let goal = self.goal(ctx).await;
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match &*cmd_name.to_ascii_lowercase() {
@@ -1003,6 +1003,8 @@ impl RaceHandler<GlobalState> for Handler {
                 [ref arg] => match &arg[..] {
                     "on" => if self.is_official() {
                         ctx.send_message("Fair play agreement is always active in official races.").await?;
+                    } else if !is_monitor { //TODO also allow TOs without having to !monitor first
+                        ctx.send_message(&format!("Sorry {reply_to}, only race monitors can do that.")).await?;
                     } else if self.fpa_enabled {
                         ctx.send_message("Fair play agreement is already activated.").await?;
                     } else {
@@ -1011,6 +1013,8 @@ impl RaceHandler<GlobalState> for Handler {
                     },
                     "off" => if self.is_official() {
                         ctx.send_message(&format!("Sorry {reply_to}, but FPA can't be deactivated for official races.")).await?;
+                    } else if !is_monitor { //TODO also allow TOs without having to !monitor first
+                        ctx.send_message(&format!("Sorry {reply_to}, only race monitors can do that.")).await?;
                     } else if self.fpa_enabled {
                         self.fpa_enabled = false;
                         ctx.send_message("Fair play agreement is now deactivated.").await?;
@@ -1021,6 +1025,7 @@ impl RaceHandler<GlobalState> for Handler {
                 },
                 [_, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
             },
+            //TODO !monitor command to allow tournament organizers to become race monitors
             "presets" => goal.send_presets(ctx).await?,
             "second" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.race_state.write().await;
