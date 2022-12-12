@@ -25,7 +25,7 @@ pub(crate) struct Query;
 
 #[Object] impl Query {
     async fn goal_names(&self) -> Vec<&'static str> {
-        all::<racetime_bot::Goal>().map(|goal| goal.as_str()).collect()
+        all::<racetime_bot::Goal>().filter(|goal| goal.is_custom()).map(|goal| goal.as_str()).collect()
     }
 }
 

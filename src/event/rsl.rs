@@ -1,4 +1,6 @@
 use {
+    std::str::FromStr,
+    enum_iterator::Sequence,
     rocket::response::content::RawHtml,
     rocket_util::{
         Origin,
@@ -21,6 +23,57 @@ use {
         user::User,
     },
 };
+
+#[derive(Clone, Copy, Sequence, sqlx::Type)]
+#[sqlx(type_name = "rsl_preset", rename_all = "lowercase")]
+pub(crate) enum Preset {
+    League,
+    Beginner,
+    Intermediate,
+    Ddr,
+    CoOp,
+    Multiworld,
+}
+
+impl Preset {
+    pub(crate) fn name(&self) -> &'static str {
+        match self {
+            Self::League => "league",
+            Self::Beginner => "beginner",
+            Self::Intermediate => "intermediate",
+            Self::Ddr => "ddr",
+            Self::CoOp => "coop",
+            Self::Multiworld => "multiworld",
+        }
+    }
+
+    pub(crate) fn race_info(&self) -> &'static str {
+        match self {
+            Self::League => "Random Settings League",
+            Self::Beginner => "Random Settings for Beginners",
+            Self::Intermediate => "Intermediate Random Settings",
+            Self::Ddr => "Random Settings DDR",
+            Self::CoOp => "Random Settings Co-Op",
+            Self::Multiworld => "Random Settings Multiworld",
+        }
+    }
+}
+
+impl FromStr for Preset {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, ()> {
+        Ok(match &*s.to_ascii_lowercase() {
+            "league" | "rsl" | "solo" | "advanced" => Self::League,
+            "beginner" => Self::Beginner,
+            "intermediate" => Self::Intermediate,
+            "ddr" => Self::Ddr,
+            "coop" | "co-op" => Self::CoOp,
+            "multiworld" | "mw" => Self::Multiworld,
+            _ => return Err(()),
+        })
+    }
+}
 
 pub(super) fn info(event: &str) -> RawHtml<String> {
     match event {

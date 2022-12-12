@@ -98,6 +98,7 @@ use {
         user::User,
         util::{
             DateTimeFormat,
+            DurationUnit,
             EmptyForm,
             Id,
             IdTable,
@@ -118,7 +119,7 @@ use {
 pub(crate) mod mw;
 pub(crate) mod ndos;
 pub(crate) mod pic;
-mod rsl;
+pub(crate) mod rsl;
 mod s;
 
 #[derive(Debug, Clone, Copy, sqlx::Type)]
@@ -2011,7 +2012,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         };
         let time1 = if value.time1.is_empty() {
             None
-        } else if let Some(time) = parse_duration(&value.time1) {
+        } else if let Some(time) = parse_duration(&value.time1, DurationUnit::Hours) {
             Some(time)
         } else {
             form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("time1"));
@@ -2019,7 +2020,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         };
         let time2 = if value.time2.is_empty() {
             None
-        } else if let Some(time) = parse_duration(&value.time2) {
+        } else if let Some(time) = parse_duration(&value.time2, DurationUnit::Hours) {
             Some(time)
         } else {
             form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("time2"));
@@ -2027,7 +2028,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         };
         let time3 = if value.time3.is_empty() {
             None
-        } else if let Some(time) = parse_duration(&value.time3) {
+        } else if let Some(time) = parse_duration(&value.time3, DurationUnit::Hours) {
             Some(time)
         } else {
             form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("time3"));

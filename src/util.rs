@@ -346,6 +346,9 @@ pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
         Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("spreadsheets") => html! {
             img(class = "favicon", alt = "external link (docs.google.com/spreadsheets)", src = "https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico");
         },
+        Some("ootrandomizer.com") => html! {
+            img(class = "favicon", alt = "external link (ootrandomizer.com)", src = "https://ootrandomizer.com/img/favicon.ico");
+        },
         Some("youtube.com" | "www.youtube.com") => html! {
             img(class = "favicon", alt = "external link (youtube.com)", srcset = "https://www.youtube.com/s/desktop/435d54f2/img/favicon.ico 16w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_32x32.png 32w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_48x48.png 48w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_96x96.png 96w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_144x144.png 144w");
         },
@@ -367,20 +370,73 @@ pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
     }
 }
 
-pub(crate) fn parse_duration(s: &str) -> Option<Duration> {
-    if let Some((_, hours, minutes, seconds)) = regex_captures!("^ *(?:([0-9]+) *h)? *(?:([0-9]+) *m(?:in)?)? *(?:([0-9]+) *s(?:ec)?)? *$"i, s) {
-        let hours = if hours.is_empty() { 0 } else { hours.parse().ok()? };
-        let minutes = if minutes.is_empty() { 0 } else { minutes.parse().ok()? };
-        let seconds = if seconds.is_empty() { 0 } else { seconds.parse().ok()? };
-        Some(Duration::from_secs((60 * hours + minutes) * 60 + seconds))
-    } else if let Some((_, hours, minutes, seconds)) = regex_captures!("^ *([0-9]+) *: *([0-9]+) *: *([0-9]+) *$", s) {
-        let hours = if hours.is_empty() { 0 } else { hours.parse().ok()? };
-        let minutes = if minutes.is_empty() { 0 } else { minutes.parse().ok()? };
-        let seconds = if seconds.is_empty() { 0 } else { seconds.parse().ok()? };
-        Some(Duration::from_secs((60 * hours + minutes) * 60 + seconds))
-    } else {
-        None
+#[derive(Clone, Copy)]
+pub(crate) enum DurationUnit {
+    Hours,
+    Minutes,
+    Seconds,
+}
+
+impl DurationUnit {
+    fn with_magnitude(&self, magnitude: u64) -> Duration {
+        Duration::from_secs(match self {
+            Self::Hours => 60 * 60 * magnitude,
+            Self::Minutes => 60 * magnitude,
+            Self::Seconds => magnitude,
+        })
     }
+}
+
+pub(crate) fn parse_duration(mut s: &str, default_unit: DurationUnit) -> Option<Duration> {
+    let mut duration = Duration::default();
+    let mut default_unit = Some(default_unit);
+    let mut last_magnitude = None;
+    loop {
+        match s.chars().next() {
+            None => break,
+            Some(' ') => s = &s[1..],
+            Some('0'..='9') => {
+                let (_, magnitude, rest) = regex_captures!("^([0-9]+)(.*)$", s)?;
+                if last_magnitude.replace(magnitude.parse().ok()?).is_some() {
+                    return None // multiple whitespace-separated numbers
+                }
+                s = rest;
+            }
+            Some(':') => {
+                let magnitude = last_magnitude.take()?;
+                duration += default_unit?.with_magnitude(magnitude);
+                default_unit = match default_unit? {
+                    DurationUnit::Hours => Some(DurationUnit::Minutes),
+                    DurationUnit::Minutes => Some(DurationUnit::Seconds),
+                    DurationUnit::Seconds => None,
+                };
+                s = &s[1..];
+            }
+            Some('H' | 'h') => {
+                let magnitude = last_magnitude.take()?;
+                duration += Duration::from_secs(60 * 60 * magnitude);
+                default_unit = Some(DurationUnit::Minutes);
+                (_, s) = regex_captures!("^h(?:(?:ou)?r)?s?(.*)$"i, s)?;
+            }
+            Some('M' | 'm') => {
+                let magnitude = last_magnitude.take()?;
+                duration += Duration::from_secs(60 * magnitude);
+                default_unit = Some(DurationUnit::Seconds);
+                (_, s) = regex_captures!("^m(?:n|in(?:ute)?)?s?(.*)$"i, s)?;
+            }
+            Some('S' | 's') => {
+                let magnitude = last_magnitude.take()?;
+                duration += Duration::from_secs(magnitude);
+                default_unit = None;
+                (_, s) = regex_captures!("^s(?:ec(?:ond)?)?s?(.*)$"i, s)?;
+            }
+            _ => return None,
+        }
+    }
+    if let Some(magnitude) = last_magnitude {
+        duration += default_unit?.with_magnitude(magnitude);
+    }
+    Some(duration)
 }
 
 pub(crate) fn format_duration(duration: Duration, running_text: bool) -> String {

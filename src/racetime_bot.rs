@@ -4,6 +4,7 @@ use {
         collections::HashMap,
         fmt,
         io::prelude::*,
+        marker::PhantomData,
         path::{
             Path,
             PathBuf,
@@ -19,7 +20,15 @@ use {
         Sequence,
         all,
     },
-    futures::stream::TryStreamExt as _,
+    futures::{
+        future::FutureExt as _,
+        stream::TryStreamExt as _,
+    },
+    git2::{
+        BranchType,
+        Repository,
+        ResetType,
+    },
     itertools::Itertools as _,
     lazy_regex::regex_captures,
     racetime::{
@@ -63,7 +72,9 @@ use {
         },
         io::{
             self,
+            AsyncBufReadExt as _,
             AsyncWriteExt as _,
+            BufReader,
         },
         process::Command,
         select,
@@ -84,20 +95,27 @@ use {
     },
     tokio_util::io::StreamReader,
     url::Url,
-    wheel::traits::ReqwestResponseExt as _,
+    wheel::traits::{
+        IoResultExt as _,
+        ReqwestResponseExt as _,
+    },
     crate::{
         Environment,
         cal::{
             self,
             Race,
         },
-        config::Config,
+        config::{
+            Config,
+            ConfigRaceTime,
+        },
         discord_bot::Draft,
         event::{
             self,
             Series,
             mw,
             ndos,
+            rsl,
         },
         seed::{
             self,
@@ -106,9 +124,11 @@ use {
         },
         team::Team,
         util::{
+            DurationUnit,
             MessageBuilderExt as _,
             format_duration,
             io_error_from_reqwest,
+            parse_duration,
         },
     },
 };
@@ -121,9 +141,10 @@ use {
 const CATEGORY: &str = "ootr";
 
 /// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
-const KNOWN_GOOD_WEB_VERSIONS: [RandoVersion; 3] = [
+const KNOWN_GOOD_WEB_VERSIONS: [RandoVersion; 4] = [
     RandoVersion::dev(6, 2, 181),
     RandoVersion::dev(6, 2, 205),
+    RandoVersion::branch(RandoBranch::DevR, 6, 2, 238, 1),
     RandoVersion::branch(RandoBranch::DevFenhl, 6, 9, 14, 2),
 ];
 
@@ -133,6 +154,7 @@ const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
 enum RandoBranch {
     Dev,
     DevFenhl,
+    DevR,
 }
 
 impl RandoBranch {
@@ -140,18 +162,36 @@ impl RandoBranch {
         match self {
             Self::Dev => "TestRunnerSRL",
             Self::DevFenhl => "fenhl",
+            Self::DevR => "Roman971",
         }
     }
 
-    fn web_name(&self) -> &'static str {
+    fn web_name_known_settings(&self) -> &'static str {
         match self {
             Self::Dev => "dev",
             Self::DevFenhl => "devFenhl",
+            Self::DevR => "devR",
+        }
+    }
+
+    fn web_name_random_settings(&self) -> Option<&'static str> {
+        match self {
+            Self::Dev => None,
+            Self::DevFenhl => Some("devFenhlRSL"),
+            Self::DevR => Some("devRSL"),
+        }
+    }
+
+    fn web_name(&self, random_settings: bool) -> Option<&'static str> {
+        if random_settings {
+            self.web_name_random_settings()
+        } else {
+            Some(self.web_name_known_settings())
         }
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct RandoVersion {
     branch: RandoBranch,
     base: Version,
@@ -178,10 +218,47 @@ impl RandoVersion {
     #[cfg(unix)] fn dir(&self) -> Option<PathBuf> {
         BaseDirectories::new().ok()?.find_data_file(Path::new("midos-house").join(format!(
             "rando-{}-{}{}",
-            self.branch.web_name(),
+            self.branch.web_name_known_settings(),
             self.base,
             if let Some(supplementary) = self.supplementary { format!("-{supplementary}") } else { String::default() },
         )))
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+enum RandoVersionParseError {
+    #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
+    #[error("incorrect randomizer base version format")]
+    Base,
+    #[error("unknown branch in randomizer version")]
+    Branch,
+    #[error("empty randomizer version or multiple spaces")]
+    Words,
+}
+
+impl FromStr for RandoVersion {
+    type Err = RandoVersionParseError;
+
+    fn from_str(s: &str) -> Result<Self, RandoVersionParseError> {
+        match &*s.split_ascii_whitespace().collect_vec() {
+            [base] => {
+                let (_, major, minor, patch) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+)$", base).ok_or(RandoVersionParseError::Base)?;
+                Ok(Self::dev(major.parse()?, minor.parse()?, patch.parse()?))
+            }
+            [base, extra] => {
+                let (_, major, minor, patch) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+)$", base).ok_or(RandoVersionParseError::Base)?;
+                if *extra == "f.LUM" {
+                    Ok(Self::dev(major.parse()?, minor.parse()?, patch.parse()?))
+                } else if let Some((_, supplementary)) = regex_captures!("^Fenhl-([0-9]+)$", extra) {
+                    Ok(Self::branch(RandoBranch::DevFenhl, major.parse()?, minor.parse()?, patch.parse()?, supplementary.parse()?))
+                } else if let Some((_, supplementary)) = regex_captures!("^R-([0-9]+)$", extra) {
+                    Ok(Self::branch(RandoBranch::DevR, major.parse()?, minor.parse()?, patch.parse()?, supplementary.parse()?))
+                } else {
+                    Err(RandoVersionParseError::Branch)
+                }
+            }
+            _ => Err(RandoVersionParseError::Words),
+        }
     }
 }
 
@@ -189,6 +266,7 @@ impl RandoVersion {
 pub(crate) enum Goal {
     MultiworldS3,
     NineDaysOfSaws,
+    Rsl,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -196,10 +274,19 @@ pub(crate) enum Goal {
 pub(crate) struct GoalFromStrError;
 
 impl Goal {
+    pub(crate) fn is_custom(&self) -> bool {
+        match self {
+            Self::MultiworldS3 => true,
+            Self::NineDaysOfSaws => true,
+            Self::Rsl => false,
+        }
+    }
+
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::MultiworldS3 => "3rd Multiworld Tournament",
             Self::NineDaysOfSaws => "9 Days of SAWS",
+            Self::Rsl => "Random settings league",
         }
     }
 
@@ -207,6 +294,7 @@ impl Goal {
         match self {
             Self::MultiworldS3 => RandoVersion::dev(6, 2, 205),
             Self::NineDaysOfSaws => RandoVersion::branch(RandoBranch::DevFenhl, 6, 9, 14, 2),
+            Self::Rsl => panic!("randomizer version for RSL must be parsed from RSL script"),
         }
     }
 
@@ -229,6 +317,20 @@ impl Goal {
                 ctx.send_message("!seed day8: S6 + dungeon ER").await?;
                 ctx.send_message("!seed day9: S6").await?;
             }
+            Self::Rsl => for preset in all::<rsl::Preset>() {
+                ctx.send_message(&format!("!seed{}: {}", match preset {
+                    rsl::Preset::League => String::default(),
+                    rsl::Preset::Multiworld => format!(" {} <worldcount>", preset.name()),
+                    _ => format!(" {}", preset.name()),
+                }, match preset {
+                    rsl::Preset::League => "official Random Settings League weights",
+                    rsl::Preset::Beginner => "random settings for beginners, see https://ootr.fenhl.net/static/rsl-beginner-weights.html for details",
+                    rsl::Preset::Intermediate => "a step between Beginner and League",
+                    rsl::Preset::Ddr => "League but always normal damage and with cutscenes useful for tricks in the DDR ruleset",
+                    rsl::Preset::CoOp => "weights tuned for co-op play",
+                    rsl::Preset::Multiworld => "weights tuned for multiworld",
+                })).await?;
+            },
         }
         Ok(())
     }
@@ -273,7 +375,7 @@ impl GlobalState {
     fn roll_seed(self: Arc<Self>, version: RandoVersion, settings: serde_json::Map<String, Json>) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
-            let can_roll_on_web = match self.ootr_api_client.can_roll_on_web(&version, &settings).await {
+            let can_roll_on_web = match self.ootr_api_client.can_roll_on_web(&version, settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds")), false).await {
                 Ok(can_roll_on_web) => can_roll_on_web,
                 Err(e) => {
                     update_tx.send(SeedRollUpdate::Error(e)).await?;
@@ -311,15 +413,15 @@ impl GlobalState {
                 None
             };
             if can_roll_on_web {
-                match self.ootr_api_client.roll_seed_web(update_tx.clone(), version, settings).await {
-                    Ok((seed_id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::DoneWeb { seed_id, gen_time, file_hash, file_stem }).await?,
+                match self.ootr_api_client.roll_seed_web(update_tx.clone(), version, false, settings).await {
+                    Ok((seed_id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::DoneWeb { rsl_preset: None, seed_id, gen_time, file_hash, file_stem }).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
                 drop(mw_permit);
             } else {
                 update_tx.send(SeedRollUpdate::Started).await?;
                 match roll_seed_locally(version, settings).await {
-                    Ok((patch_filename, spoiler_log_path)) => update_tx.send(SeedRollUpdate::DoneLocal(patch_filename, spoiler_log_path)).await?,
+                    Ok((patch_filename, spoiler_log_path)) => update_tx.send(SeedRollUpdate::DoneLocal { rsl_preset: None, patch_filename, spoiler_log_path }).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
             }
@@ -327,18 +429,138 @@ impl GlobalState {
         });
         update_rx
     }
+
+    fn roll_rsl_seed(self: Arc<Self>, preset: rsl::Preset, world_count: u8) -> mpsc::Receiver<SeedRollUpdate> {
+        let (update_tx, update_rx) = mpsc::channel(128);
+        let update_tx2 = update_tx.clone();
+        tokio::spawn(async move {
+            #[cfg(unix)] let rsl_script_path = BaseDirectories::new()?.find_data_file("fenhl/rslbot/plando-random-settings").ok_or(RollError::RandoPath)?;
+            #[cfg(windows)] let rsl_script_path = Path::new("C:/Users/fenhl/git/github.com/matthewkirby/plando-random-settings/main").to_owned();
+            // update the RSL script
+            {
+                let repo = Repository::open(&rsl_script_path)?;
+                let mut origin = repo.find_remote("origin")?;
+                origin.fetch(&["master"], None, None)?;
+                repo.reset(&repo.find_branch("origin/master", BranchType::Remote)?.into_reference().peel_to_commit()?.into_object(), ResetType::Hard, None)?;
+            }
+            // check required randomizer version
+            let local_version_file = BufReader::new(File::open(rsl_script_path.join("rslversion.py")).await?);
+            let mut lines = local_version_file.lines();
+            let version = loop {
+                let line = lines.next_line().await?.ok_or(RollError::RslVersion)?;
+                if let Some((_, local_version)) = regex_captures!("^randomizer_version = '(.+)'$", &line) {
+                    break local_version.parse()?
+                }
+            };
+            let can_roll_on_web = self.ootr_api_client.can_roll_on_web(&version, world_count, true).await?;
+            // run the RSL script
+            let _ = update_tx.send(SeedRollUpdate::Started).await;
+            let outer_tries = if can_roll_on_web { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script
+            for _ in 0..outer_tries {
+                let mut rsl_cmd = Command::new(PYTHON);
+                rsl_cmd.arg("RandomSettingsGenerator.py");
+                rsl_cmd.arg("--no_log_errors");
+                if !matches!(preset, rsl::Preset::League) {
+                    rsl_cmd.arg(format!("--override={}_override.json", preset.name()));
+                }
+                if world_count > 1 {
+                    rsl_cmd.arg(format!("--worldcount={world_count}"));
+                }
+                if can_roll_on_web {
+                    rsl_cmd.arg("--no_seed");
+                }
+                let output = rsl_cmd.current_dir(&rsl_script_path).output().await.at_command("RandomSettingsGenerator.py")?;
+                match output.status.code() {
+                    Some(0) => {}
+                    Some(2) => return Err(RollError::Retries),
+                    _ => return Err(RollError::Wheel(wheel::Error::CommandExit { name: Cow::Borrowed("RandomSettingsGenerator.py"), output })),
+                }
+                if can_roll_on_web {
+                    #[derive(Deserialize)]
+                    struct Plando {
+                        settings: serde_json::Map<String, Json>,
+                    }
+
+                    let plando_filename = BufRead::lines(&*output.stdout)
+                        .filter_map_ok(|line| Some(regex_captures!("^Plando File: (.+)$", &line)?.1.to_owned()))
+                        .next().ok_or(RollError::RslScriptOutput)??;
+                    let plando_path = rsl_script_path.join("data").join(plando_filename);
+                    let plando_file = fs::read_to_string(&plando_path).await?;
+                    let settings = serde_json::from_str::<Plando>(&plando_file)?.settings;
+                    fs::remove_file(plando_path).await?;
+                    let mw_permit = if world_count > 1 {
+                        Some(match self.ootr_api_client.mw_seed_rollers.try_acquire() {
+                            Ok(permit) => permit,
+                            Err(TryAcquireError::Closed) => unreachable!(),
+                            Err(TryAcquireError::NoPermits) => {
+                                let (mut pos, mut pos_rx) = {
+                                    let mut waiting = self.ootr_api_client.waiting.lock().await;
+                                    let pos = waiting.len();
+                                    let (pos_tx, pos_rx) = mpsc::unbounded_channel();
+                                    waiting.push(pos_tx);
+                                    (pos, pos_rx)
+                                };
+                                let _ = update_tx.send(SeedRollUpdate::Queued(pos)).await;
+                                while pos > 0 {
+                                    let () = pos_rx.recv().await.expect("queue position notifier closed");
+                                    pos -= 1;
+                                    let _ = update_tx.send(SeedRollUpdate::MovedForward(pos)).await;
+                                }
+                                let mut waiting = self.ootr_api_client.waiting.lock().await;
+                                let permit = self.ootr_api_client.mw_seed_rollers.acquire().await.expect("seed queue semaphore closed");
+                                waiting.remove(0);
+                                for tx in &*waiting {
+                                    let _ = tx.send(());
+                                }
+                                permit
+                            }
+                        })
+                    } else {
+                        None
+                    };
+                    let (seed_id, gen_time, file_hash, file_stem) = self.ootr_api_client.roll_seed_web(update_tx.clone(), version.clone(), true, settings).await?;
+                    drop(mw_permit);
+                    let _ = update_tx.send(SeedRollUpdate::DoneWeb { rsl_preset: Some(preset), seed_id, gen_time, file_hash, file_stem }).await;
+                } else {
+                    let patch_filename = BufRead::lines(&*output.stdout)
+                        .filter_map_ok(|line| Some(regex_captures!("^Creating Patch File: (.+)$", &line)?.1.to_owned()))
+                        .next().ok_or(RollError::RslScriptOutput)??;
+                    let patch_path = rsl_script_path.join("patches").join(&patch_filename);
+                    let spoiler_log_filename = BufRead::lines(&*output.stdout)
+                        .filter_map_ok(|line| Some(regex_captures!("^Created spoiler log at: (.+)$", &line)?.1.to_owned()))
+                        .next().ok_or(RollError::RslScriptOutput)??;
+                    let spoiler_log_path = rsl_script_path.join("patches").join(spoiler_log_filename);
+                    let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(RollError::RslScriptOutput)?;
+                    for extra_output_filename in [format!("{file_stem}_Cosmetics.json"), format!("{file_stem}_Distribution.json")] {
+                        fs::remove_file(rsl_script_path.join("patches").join(extra_output_filename)).await.missing_ok()?;
+                    }
+                    fs::rename(patch_path, Path::new(seed::DIR).join(&patch_filename)).await?;
+                    let _ = update_tx.send(SeedRollUpdate::DoneLocal { rsl_preset: Some(preset), patch_filename, spoiler_log_path }).await;
+                    return Ok(())
+                }
+            }
+            let _ = update_tx.send(SeedRollUpdate::Error(RollError::Retries)).await;
+            Ok(())
+        }.then(|res| async move {
+            match res {
+                Ok(()) => {}
+                Err(e) => { let _ = update_tx2.send(SeedRollUpdate::Error(e)).await; }
+            }
+        }));
+        update_rx
+    }
 }
 
 async fn roll_seed_locally(version: RandoVersion, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
     settings.insert(format!("create_patch_file"), json!(true));
     settings.insert(format!("create_compressed_rom"), json!(false));
-    for _ in 0..5 {
+    for _ in 0..3 {
         #[cfg(unix)] let rando_path = version.dir().ok_or(RollError::RandoPath)?;
         #[cfg(windows)] let rando_path = UserDirs::new().ok_or(RollError::RandoPath)?.home_dir().join("git").join("github.com").join(version.branch.github_username()).join("OoT-Randomizer").join("tag").join(version.base.to_string()); //TODO adjust for tag systems on branches other than Dev
         let mut rando_process = Command::new(PYTHON).arg("OoTRandomizer.py").arg("--no_log").arg("--settings=-").current_dir(rando_path).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
         rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await?;
         let output = rando_process.wait_with_output().await?;
-        let stderr = if output.status.success() { output.stderr.lines().try_collect::<_, Vec<_>, _>()? } else { continue };
+        let stderr = if output.status.success() { BufRead::lines(&*output.stderr).try_collect::<_, Vec<_>, _>()? } else { continue };
         let patch_path = Path::new(stderr.iter().rev().filter_map(|line| line.strip_prefix("Created patch file archive at: ")).next().ok_or(RollError::PatchPath)?);
         let spoiler_log_path = Path::new(stderr.iter().rev().filter_map(|line| line.strip_prefix("Created spoiler log at: ")).next().ok_or(RollError::SpoilerLogPath)?);
         let patch_filename = patch_path.file_name().expect("patch file path with no file name");
@@ -353,9 +575,11 @@ async fn roll_seed_locally(version: RandoVersion, mut settings: serde_json::Map<
 
 #[derive(Debug, thiserror::Error)]
 enum RollError {
+    #[error(transparent)] Git(#[from] git2::Error),
     #[error(transparent)] Header(#[from] reqwest::header::ToStrError),
     #[error(transparent)] Io(#[from] std::io::Error),
     #[error(transparent)] Json(#[from] serde_json::Error),
+    #[error(transparent)] RandoVersion(#[from] RandoVersionParseError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[cfg(unix)] #[error(transparent)] Xdg(#[from] xdg::BaseDirectoriesError),
@@ -365,8 +589,14 @@ enum RollError {
     PatchPath,
     #[error("randomizer version not found")]
     RandoPath,
+    #[error("attempted to roll a random settings seed on web, but this branch isn't available with hidden settings on web")]
+    RandomSettingsWeb,
     #[error("max retries exceeded")]
     Retries,
+    #[error("failed to parse random settings script output")]
+    RslScriptOutput,
+    #[error("failed to parse randomizer version from RSL script")]
+    RslVersion,
     #[error("randomizer did not report spoiler log location")]
     SpoilerLogPath,
     #[error("seed status API endpoint returned unknown value {0}")]
@@ -389,9 +619,14 @@ enum SeedRollUpdate {
     /// We've cleared the queue and are now being rolled.
     Started,
     /// The seed has been rolled locally, includes the patch filename.
-    DoneLocal(String, PathBuf),
+    DoneLocal {
+        rsl_preset: Option<rsl::Preset>,
+        patch_filename: String,
+        spoiler_log_path: PathBuf,
+    },
     /// The seed has been rolled on ootrandomizer.com, includes the seed ID.
     DoneWeb {
+        rsl_preset: Option<rsl::Preset>,
         seed_id: u64,
         gen_time: DateTime<Utc>,
         file_hash: [HashIcon; 5],
@@ -412,30 +647,47 @@ impl SeedRollUpdate {
             Self::MovedForward(pos) => ctx.send_message(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
             Self::WaitRateLimit(until) => ctx.send_message(&format!("Your seed will be rolled in {}.", format_duration(until - Instant::now(), true))).await?,
             Self::Started => ctx.send_message(&format!("Rolling {description}…")).await?,
-            Self::DoneLocal(patch_filename, spoiler_log_path) => {
+            Self::DoneLocal { rsl_preset, patch_filename, spoiler_log_path } => {
                 let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename").to_owned();
-                let file_hash = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_log_path).await?)?.file_hash;
+                let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(Error::Custom(Box::new(RollError::PatchPath)))?;
+                let file_hash @ [hash1, hash2, hash3, hash4, hash5] = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_log_path).await?)?.file_hash;
                 if let Some(startgg_set) = startgg_set {
-                    let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(Error::Custom(Box::new(RollError::PatchPath)))?;
-                    let [hash1, hash2, hash3, hash4, hash5] = file_hash;
-                    sqlx::query!("UPDATE races SET file_stem = $1, hash1 = $2, hash2 = $3, hash3 = $4, hash4 = $5, hash5 = $6 WHERE startgg_set = $7", file_stem, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, startgg_set).execute(db_pool).await.to_racetime()?;
+                    sqlx::query!(
+                        "UPDATE races SET file_stem = $1, hash1 = $2, hash2 = $3, hash3 = $4, hash4 = $5, hash5 = $6 WHERE startgg_set = $7",
+                        file_stem, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, startgg_set,
+                    ).execute(db_pool).await.to_racetime()?;
+                }
+                if let Some(preset) = rsl_preset {
+                    sqlx::query!(
+                        "INSERT INTO rsl_seeds (room, file_stem, preset, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                        format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), &file_stem, preset as _, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
+                    ).execute(db_pool).await.to_racetime()?;
                 }
                 *state.write().await = RaceState::RolledLocally(spoiler_log_path);
                 let seed_url = format!("https://midos.house/seed/{patch_filename}");
                 ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
                 ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{spoiler_filename}")).await?;
-                ctx.set_bot_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash))).await?;
+                ctx.set_bot_raceinfo(&format!("{}{}\n{seed_url}", if let Some(preset) = rsl_preset { format!("{}\n", preset.race_info()) } else { String::default() }, format_hash(file_hash))).await?;
             }
-            Self::DoneWeb { seed_id, gen_time, file_hash, file_stem } => {
+            Self::DoneWeb { rsl_preset, seed_id, gen_time, file_hash, file_stem } => {
+                let [hash1, hash2, hash3, hash4, hash5] = file_hash;
                 if let Some(startgg_set) = startgg_set {
-                    let [hash1, hash2, hash3, hash4, hash5] = file_hash;
-                    sqlx::query!("UPDATE races SET web_id = $1, web_gen_time = $2, file_stem = $3, hash1 = $4, hash2 = $5, hash3 = $6, hash4 = $7, hash5 = $8 WHERE startgg_set = $9", seed_id as i64, gen_time, &file_stem, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, startgg_set).execute(db_pool).await.to_racetime()?;
+                    sqlx::query!(
+                        "UPDATE races SET web_id = $1, web_gen_time = $2, file_stem = $3, hash1 = $4, hash2 = $5, hash3 = $6, hash4 = $7, hash5 = $8 WHERE startgg_set = $9",
+                        seed_id as i64, gen_time, &file_stem, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, startgg_set,
+                    ).execute(db_pool).await.to_racetime()?;
+                }
+                if let Some(preset) = rsl_preset {
+                    sqlx::query!(
+                        "INSERT INTO rsl_seeds (room, file_stem, preset, web_id, web_gen_time, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+                        format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), &file_stem, preset as _, seed_id as i64, gen_time, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
+                    ).execute(db_pool).await.to_racetime()?;
                 }
                 *state.write().await = RaceState::RolledWeb { seed_id, file_stem };
                 let seed_url = format!("https://ootrandomizer.com/seed/get?id={seed_id}");
                 ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
                 ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
-                ctx.set_bot_raceinfo(&format!("{}\n{seed_url}", format_hash(file_hash))).await?;
+                ctx.set_bot_raceinfo(&format!("{}{}\n{seed_url}", if let Some(preset) = rsl_preset { format!("{}\n", preset.race_info()) } else { String::default() }, format_hash(file_hash))).await?;
             }
             Self::Error(msg) => {
                 eprintln!("seed roll error: {msg:?}");
@@ -495,30 +747,32 @@ impl OotrApiClient {
         res
     }
 
-    async fn get_version(&self, branch: RandoBranch) -> Result<Version, RollError> {
+    async fn get_version(&self, branch: RandoBranch, random_settings: bool) -> Result<Version, RollError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct VersionResponse {
             currently_active_version: Version,
         }
 
-        Ok(self.get("https://ootrandomizer.com/api/version", Some(&[("key", &*self.api_key), ("branch", branch.web_name())])).await?
+        Ok(self.get("https://ootrandomizer.com/api/version", Some(&[("key", &*self.api_key), ("branch", branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?)])).await?
             .detailed_error_for_status().await?
             .json_with_text_in_error::<VersionResponse>().await?
             .currently_active_version)
     }
 
-    async fn can_roll_on_web(&self, version: &RandoVersion, settings: &serde_json::Map<String, Json>) -> Result<bool, RollError> {
-        if settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 3 { return Ok(false) }
+    async fn can_roll_on_web(&self, version: &RandoVersion, world_count: u8, random_settings: bool) -> Result<bool, RollError> {
+        if world_count > 3 { return Ok(false) }
+        if random_settings && version.branch.web_name_random_settings().is_none() { return Ok(false) }
         // check if randomizer version is available on web
         if !KNOWN_GOOD_WEB_VERSIONS.contains(&version) {
-            if version.supplementary.is_some() {
-                // the version API endpoint does not return the supplementary version number, so we can't be sure we have the right version unless it was manually checked and added to KNOWN_GOOD_WEB_VERSIONS
+            if !random_settings && version.supplementary.is_some() {
+                // The version API endpoint does not return the supplementary version number, so we can't be sure we have the right version unless it was manually checked and added to KNOWN_GOOD_WEB_VERSIONS.
+                // For RSL, we assume the supplementary version number is correct since we dynamically get the version from the RSL script.
                 return Ok(false)
             }
-            if let Ok(latest_web_version) = self.get_version(version.branch).await {
+            if let Ok(latest_web_version) = self.get_version(version.branch, random_settings).await {
                 if latest_web_version != version.base { // there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
-                    println!("web version mismatch on {} branch: we need {} but latest is {latest_web_version}", version.branch.web_name(), version.base);
+                    println!("web version mismatch on {} branch: we need {} but latest is {latest_web_version}", version.branch.web_name(random_settings).expect("checked above"), version.base);
                     return Ok(false)
                 }
             } else {
@@ -529,7 +783,7 @@ impl OotrApiClient {
         Ok(true)
     }
 
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, version: RandoVersion, settings: serde_json::Map<String, Json>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
+    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, version: RandoVersion, random_settings: bool, settings: serde_json::Map<String, Json>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
         #[serde_as]
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -569,8 +823,10 @@ impl OotrApiClient {
             } else {
                 None
             };
-            update_tx.send(SeedRollUpdate::Started).await?;
-            let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[("key", &*self.api_key), ("version", &*format!("{}_{}", version.branch.web_name(), version.base)), ("locked", "1")]), Some(&settings)).await?
+            if !random_settings {
+                update_tx.send(SeedRollUpdate::Started).await?;
+            }
+            let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[("key", &*self.api_key), ("version", &*format!("{}_{}", version.branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?, version.base)), ("locked", "1")]), Some(&settings)).await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error().await?;
             if let Some(mut next_seed) = next_seed {
@@ -615,6 +871,30 @@ fn format_hash(file_hash: [HashIcon; 5]) -> impl fmt::Display {
     file_hash.into_iter().map(|icon| icon.to_racetime_emoji()).format(" ")
 }
 
+#[derive(Clone, Copy)]
+struct Breaks {
+    duration: Duration,
+    interval: Duration,
+}
+
+impl FromStr for Breaks {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (_, duration, interval) = regex_captures!("^(.+) every (.+)$", s).ok_or(())?;
+        Ok(Self {
+            duration: parse_duration(duration, DurationUnit::Minutes).ok_or(())?,
+            interval: parse_duration(interval, DurationUnit::Hours).ok_or(())?,
+        })
+    }
+}
+
+impl fmt::Display for Breaks {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} every {}", format_duration(self.duration, true), format_duration(self.interval, true))
+    }
+}
+
 #[derive(Default)]
 enum RaceState {
     #[default]
@@ -637,16 +917,42 @@ struct OfficialRaceData {
     fpa_invoked: bool,
 }
 
-struct Handler {
-    global_state: Arc<GlobalState>,
+trait Bot: Send + Sync + 'static {
+    fn should_handle_goal(goal: &racetime::model::Goal) -> bool;
+}
+
+enum Mido {}
+
+impl Bot for Mido {
+    fn should_handle_goal(racetime_goal: &racetime::model::Goal) -> bool {
+        let Ok(bot_goal) = racetime_goal.name.parse::<Goal>() else { return false };
+        racetime_goal.custom == bot_goal.is_custom() && !matches!(bot_goal, Goal::Rsl)
+    }
+}
+
+enum RslBot {}
+
+impl Bot for RslBot {
+    fn should_handle_goal(racetime_goal: &racetime::model::Goal) -> bool {
+        let Ok(bot_goal) = racetime_goal.name.parse::<Goal>() else { return false };
+        racetime_goal.custom == bot_goal.is_custom() && matches!(bot_goal, Goal::Rsl)
+    }
+}
+
+struct Handler<B: Bot> {
+    _phantom: PhantomData<B>,
     official_data: Option<OfficialRaceData>,
     high_seed_name: String,
     low_seed_name: String,
+    breaks: Option<Breaks>,
+    break_notifications: Option<tokio::task::JoinHandle<Result<(), Error>>>,
+    start_saved: bool,
     fpa_enabled: bool,
+    locked: bool,
     race_state: Arc<RwLock<RaceState>>,
 }
 
-impl Handler {
+impl<B: Bot> Handler<B> {
     fn is_official(&self) -> bool { self.official_data.is_some() }
 
     async fn goal(&self, ctx: &RaceContext<GlobalState>) -> Goal {
@@ -690,7 +996,7 @@ impl Handler {
                     3 => format!("{}, pick the final setting. You can also use “!skip” if you want to leave the settings as they are.", team.choose(&self.high_seed_name, &self.low_seed_name)),
                     _ => unreachable!(),
                 }).await?,
-                mw::DraftStep::Done(settings) => self.roll_seed(ctx, state, self.goal(ctx).await.rando_version(), settings.resolve(), format!("a seed with {settings}")).await,
+                mw::DraftStep::Done(settings) => self.roll_seed(ctx, state, self.goal(ctx).await.rando_version(), settings.resolve(), format!("a seed with {settings}")),
             }
         } else {
             unreachable!()
@@ -698,13 +1004,12 @@ impl Handler {
         Ok(())
     }
 
-    async fn roll_seed(&self, ctx: &RaceContext<GlobalState>, mut state: OwnedRwLockWriteGuard<RaceState>, version: RandoVersion, settings: serde_json::Map<String, Json>, description: String) {
+    fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, mut state: OwnedRwLockWriteGuard<RaceState>, mut updates: mpsc::Receiver<SeedRollUpdate>, description: String) {
         *state = RaceState::Rolling;
         drop(state);
-        let db_pool = self.global_state.db_pool.clone();
+        let db_pool = ctx.global_state.db_pool.clone();
         let ctx = ctx.clone();
         let state = Arc::clone(&self.race_state);
-        let mut updates = Arc::clone(&self.global_state).roll_seed(version, settings);
         let startgg_set = self.official_data.as_ref().map(|official_data| official_data.startgg_set.clone());
         let mut official_start = self.official_data.as_ref().map(|official_data| official_data.start);
         tokio::spawn(async move {
@@ -731,15 +1036,29 @@ impl Handler {
             }
         });
     }
+
+    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: RandoVersion, settings: serde_json::Map<String, Json>, description: String) {
+        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_seed(version, settings), description);
+    }
+
+    fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: rsl::Preset, world_count: u8) {
+        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count), match preset {
+            rsl::Preset::League => format!("a Random Settings League seed"),
+            rsl::Preset::Beginner => format!("a random settings Beginner seed"),
+            rsl::Preset::Intermediate => format!("a random settings Intermediate seed"),
+            rsl::Preset::Ddr => format!("a random settings DDR seed"),
+            rsl::Preset::CoOp => format!("a random settings co-op seed"),
+            rsl::Preset::Multiworld => format!("a random settings multiworld seed for {world_count} players"),
+        });
+    }
 }
 
 #[async_trait]
-impl RaceHandler<GlobalState> for Handler {
+impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
     async fn should_handle(race_data: &RaceData, global_state: Arc<GlobalState>) -> Result<bool, Error> {
         let mut clean_shutdown = global_state.clean_shutdown.lock().await;
         Ok(
-            race_data.goal.custom
-            && race_data.goal.name.parse::<Goal>().is_ok()
+            B::should_handle_goal(&race_data.goal)
             && !matches!(race_data.status.value, RaceStatusValue::Finished | RaceStatusValue::Cancelled)
             && if !clean_shutdown.requested || clean_shutdown.num_rooms > 0 { clean_shutdown.num_rooms += 1; true } else { false }
         )
@@ -813,14 +1132,44 @@ impl RaceHandler<GlobalState> for Handler {
                 low_seed_name,
             )
         } else {
-            match goal {
-                Goal::MultiworldS3 => {
-                    ctx.send_message("Welcome! This is a practice room for the 3rd Multiworld Tournament. Learn more about the tournament at https://midos.house/event/mw/3").await?;
-                    ctx.send_message("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials 2 wincon scrubs). For more info about these options, use “!presets”").await?;
+            let mut race_state = RaceState::Init;
+            if let Some(ref info_bot) = data.info_bot {
+                for section in info_bot.split(" | ") {
+                    if let Some((_, file_stem)) = regex_captures!(r"^Seed: https://midos\.house/seed/(.+)\.zpfz?$", section) {
+                        race_state = RaceState::RolledLocally(file_stem.into());
+                        break
+                    } else if let Some((_, seed_id)) = regex_captures!(r"^Seed: https://ootrandomizer\.com/seed/get?id=([0-9]+)$", section) {
+                        let patch_response = ctx.global_state.ootr_api_client.get("https://ootrandomizer.com/api/v2/seed/patch", Some(&[("key", &*ctx.global_state.ootr_api_client.api_key), ("id", seed_id)])).await?
+                            .detailed_error_for_status().await.to_racetime()?;
+                        let (_, file_stem) = regex_captures!(r"^attachment; filename=(.+)\.zpfz?$", patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION).ok_or(RollError::PatchPath).to_racetime()?.to_str()?).ok_or(RollError::PatchPath).to_racetime()?;
+                        race_state = RaceState::RolledWeb {
+                            seed_id: seed_id.parse().to_racetime()?,
+                            file_stem: file_stem.to_owned(),
+                        };
+                        break
+                    }
                 }
-                Goal::NineDaysOfSaws => {
-                    ctx.send_message("Welcome! This is a practice room for 9 Days of SAWS. Learn more about the event at https://docs.google.com/document/d/1xELThZtIctwN-vYtYhUqtd88JigNzabk8OZHANa0gqY/edit").await?;
-                    ctx.send_message("You can roll a seed using “!seed day1”, “!seed day2”, etc. For more info about these options, use “!presets”").await?;
+            }
+            if let RaceStatusValue::Pending | RaceStatusValue::InProgress = data.status.value {
+                ctx.send_message("@entrants I just restarted and it looks like the race is already in progress. If the !breaks command was used, break notifications may be broken now. Sorry about that.").await?;
+            } else {
+                match race_state {
+                    RaceState::Init => match goal {
+                        Goal::MultiworldS3 => {
+                            ctx.send_message("Welcome! This is a practice room for the 3rd Multiworld Tournament. Learn more about the tournament at https://midos.house/event/mw/3").await?;
+                            ctx.send_message("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials 2 wincon scrubs). For more info about these options, use !presets").await?;
+                        }
+                        Goal::NineDaysOfSaws => {
+                            ctx.send_message("Welcome! This is a practice room for 9 Days of SAWS. Learn more about the event at https://docs.google.com/document/d/1xELThZtIctwN-vYtYhUqtd88JigNzabk8OZHANa0gqY/edit").await?;
+                            ctx.send_message("You can roll a seed using “!seed day1”, “!seed day2”, etc. For more info about these options, use !presets").await?;
+                        }
+                        Goal::Rsl => {
+                            ctx.send_message("Welcome to the OoTR Random Settings League! Create a seed with !seed <preset>").await?;
+                            ctx.send_message("If no preset is selected, default RSL settings will be used. For a list of presets, use !presets").await?;
+                        }
+                    },
+                    RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } => ctx.send_message("@entrants I just restarted. You may have to reconfigure !breaks and !fpa. Sorry about that.").await?,
+                    RaceState::Draft(_) | RaceState::Rolling | RaceState::SpoilerSent => unreachable!(),
                 }
             }
             (
@@ -834,9 +1183,13 @@ impl RaceHandler<GlobalState> for Handler {
         drop(new_room_lock);
         let is_official = official_data.is_some();
         let this = Self {
-            global_state: ctx.global_state.clone(),
-            race_state: Arc::new(RwLock::new(race_state)),
+            _phantom: PhantomData,
+            breaks: None, //TODO default breaks for restreamed matches?
+            break_notifications: None,
+            start_saved: false,
             fpa_enabled: is_official,
+            locked: false,
+            race_state: Arc::new(RwLock::new(race_state)),
             official_data, high_seed_name, low_seed_name,
         };
         if is_official {
@@ -854,7 +1207,7 @@ impl RaceHandler<GlobalState> for Handler {
                 match *state {
                     RaceState::Init => match goal {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                        Goal::NineDaysOfSaws | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_none() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
@@ -899,12 +1252,39 @@ impl RaceHandler<GlobalState> for Handler {
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
+            "breaks" => match args[..] {
+                [] => if let Some(breaks) = self.breaks {
+                    ctx.send_message(&format!("Breaks are currently set to {breaks}. Disable with !breaks off")).await?;
+                } else {
+                    ctx.send_message("Breaks are currently disabled. Example command to enable: !breaks 5m every 2h30").await?;
+                },
+                [ref arg] if arg == "off" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
+                    self.breaks = None;
+                    ctx.send_message("Breaks are now disabled.").await?;
+                } else {
+                    ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
+                },
+                _ => if let Ok(breaks) = args.join(" ").parse::<Breaks>() {
+                    if breaks.duration < Duration::from_secs(60) {
+                        ctx.send_message(&format!("Sorry {reply_to}, minimum break time (if enabled at all) is 1 minute. You can disable breaks entirely with !breaks off")).await?;
+                    } else if breaks.interval < breaks.duration + Duration::from_secs(5 * 60) {
+                        ctx.send_message(&format!("Sorry {reply_to}, there must be a minimum of 5 minutes between breaks since I notify runners 5 minutes in advance.")).await?;
+                    } else if breaks.duration + breaks.interval >= Duration::from_secs(24 * 60 * 60) {
+                        ctx.send_message(&format!("Sorry {reply_to}, race rooms are automatically closed after 24 hours so these breaks wouldn\'t work.")).await?;
+                    } else {
+                        self.breaks = Some(breaks);
+                        ctx.send_message(&format!("Breaks set to {breaks}.")).await?;
+                    }
+                } else {
+                    ctx.send_message(&format!("'Sorry {reply_to}, I don't recognise that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off")).await?;
+                },
+            },
             "draft" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.race_state.write().await;
                 match *state {
                     RaceState::Init => match goal {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                        Goal::NineDaysOfSaws | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_none() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
@@ -972,7 +1352,7 @@ impl RaceHandler<GlobalState> for Handler {
                 match *state {
                     RaceState::Init => match goal {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                        Goal::NineDaysOfSaws | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_some() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick has already been chosen.")).await?;
@@ -993,14 +1373,21 @@ impl RaceHandler<GlobalState> for Handler {
                     } else {
                         if let Some(OfficialRaceData { ref mut fpa_invoked, .. }) = self.official_data {
                             *fpa_invoked = true;
+                            //TODO different message for restreamed races
+                            let player_team = match goal {
+                                Goal::MultiworldS3 => "team",
+                                Goal::NineDaysOfSaws => "player/team",
+                                Goal::Rsl => "player",
+                            };
+                            ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. The {player_team} that did not call FPA can continue playing; the race will be retimed once completed.")).await?;
+                        } else {
+                            ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}.")).await?;
                         }
-                        //TODO different message for restreamed races
-                        ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. The team that did not call FPA can continue playing; the race will be retimed once completed.")).await?;
                     }
                 } else {
                     ctx.send_message("Fair play agreement is not active. Race monitors may enable FPA for this race with !fpa on").await?;
                 },
-                [ref arg] => match &arg[..] {
+                [ref arg] => match &*arg.to_ascii_lowercase() {
                     "on" => if self.is_official() {
                         ctx.send_message("Fair play agreement is always active in official races.").await?;
                     } else if !is_monitor { //TODO also allow TOs without having to !monitor first
@@ -1025,6 +1412,12 @@ impl RaceHandler<GlobalState> for Handler {
                 },
                 [_, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
             },
+            "lock" => if is_monitor { //TODO also allow TOs without having to !monitor first
+                self.locked = true;
+                ctx.send_message("Lock initiated. I will now only roll seeds for race monitors.").await?;
+            } else {
+                ctx.send_message(&format!("Sorry {reply_to}, only race monitors can do that.")).await?;
+            },
             //TODO !monitor command to allow tournament organizers to become race monitors
             "presets" => goal.send_presets(ctx).await?,
             "second" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
@@ -1032,7 +1425,7 @@ impl RaceHandler<GlobalState> for Handler {
                 match *state {
                     RaceState::Init => match goal {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                        Goal::NineDaysOfSaws | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_some() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick has already been chosen.")).await?;
@@ -1049,164 +1442,217 @@ impl RaceHandler<GlobalState> for Handler {
             "seed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.race_state.clone().write_owned().await;
                 match *state {
-                    RaceState::Init => match goal {
-                        Goal::MultiworldS3 => match args[..] {
-                            [] => {
-                                ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
-                                goal.send_presets(ctx).await?;
-                            }
-                            [ref arg] if arg == "base" => self.roll_seed(ctx, state, goal.rando_version(), mw::S3Settings::default().resolve(), format!("a seed with {}", mw::S3Settings::default())).await,
-                            [ref arg] if arg == "random" => {
-                                let settings = mw::S3Settings::random(&mut thread_rng());
-                                self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), format!("a seed with {settings}")).await;
-                            }
-                            [ref arg] if arg == "draft" => {
-                                *state = RaceState::Draft(mw::S3Draft::default());
-                                drop(state);
-                                self.advance_draft(ctx).await?;
-                            }
-                            [ref arg] if arg.parse::<mw::S3Setting>().is_ok() => {
-                                drop(state);
-                                ctx.send_message(&format!("Sorry {reply_to}, you need to pair each setting with a value.")).await?;
-                                self.send_settings(ctx).await?;
-                            }
-                            [_] => {
-                                ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
-                                goal.send_presets(ctx).await?;
-                            }
-                            ref args => {
-                                let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
-                                let mut settings = mw::S3Settings::default();
-                                let mut tuples = args.into_iter().tuples();
-                                for (setting, value) in &mut tuples {
-                                    if let Ok(setting) = setting.parse() {
-                                        match setting {
-                                            mw::S3Setting::Wincon => if let Some(value) = all::<mw::Wincon>().find(|option| option.arg() == value) { settings.wincon = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Wincon>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                            mw::S3Setting::Dungeons => if let Some(value) = all::<mw::Dungeons>().find(|option| option.arg() == value) { settings.dungeons = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Dungeons>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                            mw::S3Setting::Er => if let Some(value) = all::<mw::Er>().find(|option| option.arg() == value) { settings.er = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Er>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                            mw::S3Setting::Trials => if let Some(value) = all::<mw::Trials>().find(|option| option.arg() == value) { settings.trials = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Trials>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                            mw::S3Setting::Shops => if let Some(value) = all::<mw::Shops>().find(|option| option.arg() == value) { settings.shops = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Shops>().map(|option| option.arg()).join(" or "),)).await?; return Ok(()) },
-                                            mw::S3Setting::Scrubs => if let Some(value) = all::<mw::Scrubs>().find(|option| option.arg() == value) { settings.scrubs = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Scrubs>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                            mw::S3Setting::Fountain => if let Some(value) = all::<mw::Fountain>().find(|option| option.arg() == value) { settings.fountain = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Fountain>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                            mw::S3Setting::Spawn => if let Some(value) = all::<mw::Spawn>().find(|option| option.arg() == value) { settings.spawn = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Spawn>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                        }
-                                    } else {
-                                        drop(state);
-                                        ctx.send_message(&format!("Sorry {reply_to}, I don't recognize one of those settings. Use one of the following:")).await?;
-                                        self.send_settings(ctx).await?;
-                                        return Ok(())
-                                    }
+                    RaceState::Init => if self.locked && !is_monitor { //TODO also allow TOs without having to !monitor first
+                        ctx.send_message(&format!("Sorry {reply_to}, seed rolling is locked. Only race monitors may roll a seed for this race.")).await?;
+                    } else {
+                        match goal {
+                            Goal::MultiworldS3 => match args[..] {
+                                [] => {
+                                    ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
+                                    goal.send_presets(ctx).await?;
                                 }
-                                if tuples.into_buffer().next().is_some() {
+                                [ref arg] if arg == "base" => self.roll_seed(ctx, state, goal.rando_version(), mw::S3Settings::default().resolve(), format!("a seed with {}", mw::S3Settings::default())),
+                                [ref arg] if arg == "random" => {
+                                    let settings = mw::S3Settings::random(&mut thread_rng());
+                                    self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), format!("a seed with {settings}"));
+                                }
+                                [ref arg] if arg == "draft" => {
+                                    *state = RaceState::Draft(mw::S3Draft::default());
+                                    drop(state);
+                                    self.advance_draft(ctx).await?;
+                                }
+                                [ref arg] if arg.parse::<mw::S3Setting>().is_ok() => {
                                     drop(state);
                                     ctx.send_message(&format!("Sorry {reply_to}, you need to pair each setting with a value.")).await?;
                                     self.send_settings(ctx).await?;
+                                }
+                                [_] => {
+                                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                    goal.send_presets(ctx).await?;
+                                }
+                                ref args => {
+                                    let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
+                                    let mut settings = mw::S3Settings::default();
+                                    let mut tuples = args.into_iter().tuples();
+                                    for (setting, value) in &mut tuples {
+                                        if let Ok(setting) = setting.parse() {
+                                            match setting {
+                                                mw::S3Setting::Wincon => if let Some(value) = all::<mw::Wincon>().find(|option| option.arg() == value) { settings.wincon = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Wincon>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
+                                                mw::S3Setting::Dungeons => if let Some(value) = all::<mw::Dungeons>().find(|option| option.arg() == value) { settings.dungeons = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Dungeons>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
+                                                mw::S3Setting::Er => if let Some(value) = all::<mw::Er>().find(|option| option.arg() == value) { settings.er = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Er>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
+                                                mw::S3Setting::Trials => if let Some(value) = all::<mw::Trials>().find(|option| option.arg() == value) { settings.trials = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Trials>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
+                                                mw::S3Setting::Shops => if let Some(value) = all::<mw::Shops>().find(|option| option.arg() == value) { settings.shops = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Shops>().map(|option| option.arg()).join(" or "),)).await?; return Ok(()) },
+                                                mw::S3Setting::Scrubs => if let Some(value) = all::<mw::Scrubs>().find(|option| option.arg() == value) { settings.scrubs = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Scrubs>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
+                                                mw::S3Setting::Fountain => if let Some(value) = all::<mw::Fountain>().find(|option| option.arg() == value) { settings.fountain = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Fountain>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
+                                                mw::S3Setting::Spawn => if let Some(value) = all::<mw::Spawn>().find(|option| option.arg() == value) { settings.spawn = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Spawn>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
+                                            }
+                                        } else {
+                                            drop(state);
+                                            ctx.send_message(&format!("Sorry {reply_to}, I don't recognize one of those settings. Use one of the following:")).await?;
+                                            self.send_settings(ctx).await?;
+                                            return Ok(())
+                                        }
+                                    }
+                                    if tuples.into_buffer().next().is_some() {
+                                        drop(state);
+                                        ctx.send_message(&format!("Sorry {reply_to}, you need to pair each setting with a value.")).await?;
+                                        self.send_settings(ctx).await?;
+                                    } else {
+                                        self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), format!("a seed with {settings}"));
+                                    }
+                                }
+                            },
+                            Goal::NineDaysOfSaws => match args[..] {
+                                [] => {
+                                    ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
+                                    goal.send_presets(ctx).await?;
+                                }
+                                [ref arg] => if let Some((description, mut settings)) = match &**arg {
+                                    "day1" | "day9" => Some(("SAWS (S6)", ndos::s6_preset())),
+                                    "day2" | "day7" => Some(("SAWS (Beginner)", ndos::beginner_preset())),
+                                    "day3" => Some(("SAWS (Advanced)", ndos::advanced_preset())),
+                                    "day4" => Some(("SAWS (S5) + one bonk KO", {
+                                        let mut settings = ndos::s6_preset();
+                                        settings.insert(format!("dungeon_shortcuts_choice"), json!("off"));
+                                        settings.insert(format!("shuffle_child_spawn"), json!("balanced"));
+                                        settings.insert(format!("fix_broken_drops"), json!(false));
+                                        settings.insert(format!("item_pool_value"), json!("minimal"));
+                                        settings.insert(format!("blue_fire_arrows"), json!(false));
+                                        settings.insert(format!("junk_ice_traps"), json!("off"));
+                                        settings.insert(format!("deadly_bonks"), json!("ohko"));
+                                        settings.insert(format!("hint_dist_user"), json!({
+                                            "name":                  "tournament",
+                                            "gui_name":              "Tournament",
+                                            "description":           "Hint Distribution for the S5 Tournament. 5 Goal Hints, 3 Barren Hints, 5 Sometimes hints, 7 Always hints (including skull mask).",
+                                            "add_locations":         [
+                                                { "location": "Deku Theater Skull Mask", "types": ["always"] },
+                                            ],
+                                            "remove_locations":      [
+                                                {"location": "Ganons Castle Shadow Trial Golden Gauntlets Chest", "types": ["sometimes"] },
+                                            ],
+                                            "add_items":             [],
+                                            "remove_items":          [
+                                                { "item": "Zeldas Lullaby", "types": ["goal"] },
+                                            ],
+                                            "dungeons_woth_limit":   2,
+                                            "dungeons_barren_limit": 1,
+                                            "named_items_required":  true,
+                                            "vague_named_items":     false,
+                                            "use_default_goals":     true,
+                                            "distribution":          {
+                                                "trial":           {"order": 1, "weight": 0.0, "fixed":   0, "copies": 2},
+                                                "entrance_always": {"order": 2, "weight": 0.0, "fixed":   0, "copies": 2},
+                                                "always":          {"order": 3, "weight": 0.0, "fixed":   0, "copies": 2},
+                                                "goal":            {"order": 4, "weight": 0.0, "fixed":   5, "copies": 2},
+                                                "barren":          {"order": 5, "weight": 0.0, "fixed":   3, "copies": 2},
+                                                "entrance":        {"order": 6, "weight": 0.0, "fixed":   4, "copies": 2},
+                                                "sometimes":       {"order": 7, "weight": 0.0, "fixed": 100, "copies": 2},
+                                                "random":          {"order": 8, "weight": 9.0, "fixed":   0, "copies": 2},
+                                                "item":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
+                                                "song":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
+                                                "overworld":       {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
+                                                "dungeon":         {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
+                                                "junk":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
+                                                "named-item":      {"order": 9, "weight": 0.0, "fixed":   0, "copies": 2},
+                                                "woth":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
+                                                "dual_always":     {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                                                "dual":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                                            },
+                                        }));
+                                        settings
+                                    })),
+                                    "day5" => Some(("SAWS (Beginner) + mixed pools", {
+                                        let mut settings = ndos::beginner_preset();
+                                        settings.insert(format!("shuffle_interior_entrances"), json!("all"));
+                                        settings.insert(format!("shuffle_grotto_entrances"), json!(true));
+                                        settings.insert(format!("shuffle_dungeon_entrances"), json!("all"));
+                                        settings.insert(format!("shuffle_overworld_entrances"), json!(true));
+                                        settings.insert(format!("mix_entrance_pools"), json!([
+                                            "Interior",
+                                            "GrottoGrave",
+                                            "Dungeon",
+                                            "Overworld",
+                                        ]));
+                                        settings.insert(format!("shuffle_child_spawn"), json!("full"));
+                                        settings.insert(format!("shuffle_adult_spawn"), json!("full"));
+                                        settings.insert(format!("shuffle_gerudo_valley_river_exit"), json!("full"));
+                                        settings.insert(format!("owl_drops"), json!("full"));
+                                        settings.insert(format!("warp_songs"), json!("full"));
+                                        settings.insert(format!("blue_warps"), json!("dungeon"));
+                                        settings
+                                    })),
+                                    "day6" => Some(("SAWS (Beginner) 3-player multiworld", {
+                                        let mut settings = ndos::beginner_preset();
+                                        settings.insert(format!("world_count"), json!(3));
+                                        settings
+                                    })),
+                                    "day8" => Some(("SAWS (S6) + dungeon ER", {
+                                        let mut settings = ndos::s6_preset();
+                                        settings.insert(format!("shuffle_dungeon_entrances"), json!("simple"));
+                                        settings.insert(format!("blue_warps"), json!("dungeon"));
+                                        settings
+                                    })),
+                                    _ => None,
+                                } {
+                                    settings.insert(format!("user_message"), json!(format!("9 Days of SAWS: day {}", &arg[3..])));
+                                    self.roll_seed(ctx, state, goal.rando_version(), settings, format!("a {description} seed"));
                                 } else {
-                                    self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), format!("a seed with {settings}")).await;
+                                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                    goal.send_presets(ctx).await?;
+                                },
+                                [_, _, ..] => {
+                                    ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
+                                    goal.send_presets(ctx).await?;
                                 }
                             }
-                        },
-                        Goal::NineDaysOfSaws => match args[..] {
-                            [] => {
-                                ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
-                                goal.send_presets(ctx).await?;
-                            }
-                            [ref arg] => if let Some((description, mut settings)) = match &**arg {
-                                "day1" | "day9" => Some(("SAWS (S6)", ndos::s6_preset())),
-                                "day2" | "day7" => Some(("SAWS (Beginner)", ndos::beginner_preset())),
-                                "day3" => Some(("SAWS (Advanced)", ndos::advanced_preset())),
-                                "day4" => Some(("SAWS (S5) + one bonk KO", {
-                                    let mut settings = ndos::s6_preset();
-                                    settings.insert(format!("dungeon_shortcuts_choice"), json!("off"));
-                                    settings.insert(format!("shuffle_child_spawn"), json!("balanced"));
-                                    settings.insert(format!("fix_broken_drops"), json!(false));
-                                    settings.insert(format!("item_pool_value"), json!("minimal"));
-                                    settings.insert(format!("blue_fire_arrows"), json!(false));
-                                    settings.insert(format!("junk_ice_traps"), json!("off"));
-                                    settings.insert(format!("deadly_bonks"), json!("ohko"));
-                                    settings.insert(format!("hint_dist_user"), json!({
-                                        "name":                  "tournament",
-                                        "gui_name":              "Tournament",
-                                        "description":           "Hint Distribution for the S5 Tournament. 5 Goal Hints, 3 Barren Hints, 5 Sometimes hints, 7 Always hints (including skull mask).",
-                                        "add_locations":         [
-                                            { "location": "Deku Theater Skull Mask", "types": ["always"] },
-                                        ],
-                                        "remove_locations":      [
-                                            {"location": "Ganons Castle Shadow Trial Golden Gauntlets Chest", "types": ["sometimes"] },
-                                        ],
-                                        "add_items":             [],
-                                        "remove_items":          [
-                                            { "item": "Zeldas Lullaby", "types": ["goal"] },
-                                        ],
-                                        "dungeons_woth_limit":   2,
-                                        "dungeons_barren_limit": 1,
-                                        "named_items_required":  true,
-                                        "vague_named_items":     false,
-                                        "use_default_goals":     true,
-                                        "distribution":          {
-                                            "trial":           {"order": 1, "weight": 0.0, "fixed":   0, "copies": 2},
-                                            "entrance_always": {"order": 2, "weight": 0.0, "fixed":   0, "copies": 2},
-                                            "always":          {"order": 3, "weight": 0.0, "fixed":   0, "copies": 2},
-                                            "goal":            {"order": 4, "weight": 0.0, "fixed":   5, "copies": 2},
-                                            "barren":          {"order": 5, "weight": 0.0, "fixed":   3, "copies": 2},
-                                            "entrance":        {"order": 6, "weight": 0.0, "fixed":   4, "copies": 2},
-                                            "sometimes":       {"order": 7, "weight": 0.0, "fixed": 100, "copies": 2},
-                                            "random":          {"order": 8, "weight": 9.0, "fixed":   0, "copies": 2},
-                                            "item":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                            "song":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                            "overworld":       {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                            "dungeon":         {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                            "junk":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                            "named-item":      {"order": 9, "weight": 0.0, "fixed":   0, "copies": 2},
-                                            "woth":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                            "dual_always":     {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                                            "dual":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                                        },
-                                    }));
-                                    settings
-                                })),
-                                "day5" => Some(("SAWS (Beginner) + mixed pools", {
-                                    let mut settings = ndos::beginner_preset();
-                                    settings.insert(format!("shuffle_interior_entrances"), json!("all"));
-                                    settings.insert(format!("shuffle_grotto_entrances"), json!(true));
-                                    settings.insert(format!("shuffle_dungeon_entrances"), json!("all"));
-                                    settings.insert(format!("shuffle_overworld_entrances"), json!(true));
-                                    settings.insert(format!("mix_entrance_pools"), json!([
-                                        "Interior",
-                                        "GrottoGrave",
-                                        "Dungeon",
-                                        "Overworld",
-                                    ]));
-                                    settings.insert(format!("shuffle_child_spawn"), json!("full"));
-                                    settings.insert(format!("shuffle_adult_spawn"), json!("full"));
-                                    settings.insert(format!("shuffle_gerudo_valley_river_exit"), json!("full"));
-                                    settings.insert(format!("owl_drops"), json!("full"));
-                                    settings.insert(format!("warp_songs"), json!("full"));
-                                    settings.insert(format!("blue_warps"), json!("dungeon"));
-                                    settings
-                                })),
-                                "day6" => Some(("SAWS (Beginner) 3-player multiworld", {
-                                    let mut settings = ndos::beginner_preset();
-                                    settings.insert(format!("world_count"), json!(3));
-                                    settings
-                                })),
-                                "day8" => Some(("SAWS (S6) + dungeon ER", {
-                                    let mut settings = ndos::s6_preset();
-                                    settings.insert(format!("shuffle_dungeon_entrances"), json!("simple"));
-                                    settings.insert(format!("blue_warps"), json!("dungeon"));
-                                    settings
-                                })),
-                                _ => None,
-                            } {
-                                settings.insert(format!("user_message"), json!(format!("9 Days of SAWS: day {}", &arg[3..])));
-                                self.roll_seed(ctx, state, goal.rando_version(), settings, format!("a {description} seed")).await;
-                            } else {
-                                ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
-                                goal.send_presets(ctx).await?;
-                            },
-                            [_, _, ..] => {
-                                ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
-                                goal.send_presets(ctx).await?;
+                            Goal::Rsl => {
+                                let (preset, world_count) = match args[..] {
+                                    [] => (rsl::Preset::League, 1),
+                                    [ref preset] => if let Ok(preset) = preset.parse() {
+                                        if let rsl::Preset::Multiworld = preset {
+                                            ctx.send_message("Missing world count (e.g. “!seed multiworld 2” for 2 worlds)").await?;
+                                            return Ok(())
+                                        } else {
+                                            (preset, 1)
+                                        }
+                                    } else {
+                                        ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                        goal.send_presets(ctx).await?;
+                                        return Ok(())
+                                    },
+                                    [ref preset, ref world_count] => if let Ok(preset) = preset.parse() {
+                                        if let rsl::Preset::Multiworld = preset {
+                                            if let Ok(world_count) = world_count.parse() {
+                                                if world_count < 2 {
+                                                    ctx.send_message(&format!("Sorry {reply_to}, the world count must be a number between 2 and 15.")).await?;
+                                                    return Ok(())
+                                                } else if world_count > 15 {
+                                                    ctx.send_message(&format!("Sorry {reply_to}, I can currently only roll seeds with up to 15 worlds. Please download the RSL script from https://github.com/matthewkirby/plando-random-settings to roll seeds for more than 15 players.")).await?;
+                                                    return Ok(())
+                                                } else {
+                                                    (preset, world_count)
+                                                }
+                                            } else {
+                                                ctx.send_message(&format!("Sorry {reply_to}, the world count must be a number between 2 and 255.")).await?;
+                                                return Ok(())
+                                            }
+                                        } else {
+                                            ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
+                                            goal.send_presets(ctx).await?;
+                                            return Ok(())
+                                        }
+                                    } else {
+                                        ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                        goal.send_presets(ctx).await?;
+                                        return Ok(())
+                                    },
+                                    [_, _, _, ..] => {
+                                        ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
+                                        goal.send_presets(ctx).await?;
+                                        return Ok(())
+                                    }
+                                };
+                                self.roll_rsl_seed(ctx, state, preset, world_count);
                             }
                         }
                     },
@@ -1223,7 +1669,7 @@ impl RaceHandler<GlobalState> for Handler {
                 match *state {
                     RaceState::Init => match goal {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                        Goal::NineDaysOfSaws | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_none() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
@@ -1238,6 +1684,13 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
+            },
+            //TODO !spoilerseed?
+            "unlock" => if is_monitor { //TODO also allow TOs without having to !monitor first
+                self.locked = false;
+                ctx.send_message("Lock released. Anyone may now roll a seed.").await?;
+            } else {
+                ctx.send_message(&format!("Sorry {reply_to}, only race monitors can do that.")).await?;
             },
             _ => ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that command.")).await?, //TODO “did you mean”? list of available commands with !help?
         }
@@ -1259,101 +1712,139 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             }
         }
-        if let RaceStatusValue::Finished = data.status.value {
-            //TODO also make sure this isn't the first half of an async
-            let mut state = self.race_state.write().await;
-            match *state {
-                RaceState::RolledLocally(ref spoiler_log_path) => {
-                    let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name");
-                    fs::rename(spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await?;
-                }
-                RaceState::RolledWeb { seed_id, ref file_stem } => {
-                    let spoiler_filename = format!("{file_stem}_Spoiler.json");
-                    self.global_state.ootr_api_client.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &self.global_state.ootr_api_client.api_key), ("id", &seed_id.to_string())]), None::<&()>).await?
-                        .detailed_error_for_status().await.to_racetime()?;
-                    let spoiler_log = self.global_state.ootr_api_client.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &self.global_state.ootr_api_client.api_key), ("id", &seed_id.to_string())])).await?
-                        .detailed_error_for_status().await.to_racetime()?
-                        .json_with_text_in_error::<SeedDetailsResponse>().await.to_racetime()?
-                        .spoiler_log;
-                    fs::write(Path::new(seed::DIR).join(spoiler_filename), &spoiler_log).await?;
-                }
-                RaceState::SpoilerSent => return Ok(()),
-                _ => {}
+        if !self.start_saved {
+            if let (Goal::Rsl, Some(start)) = (self.goal(ctx).await, data.started_at) {
+                sqlx::query!("UPDATE rsl_seeds SET start = $1 WHERE room = $2", start, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
+                self.start_saved = true;
             }
-            *state = RaceState::SpoilerSent;
-            drop(state);
-            if let Some(OfficialRaceData { ref event, fpa_invoked, .. }) = self.official_data {
-                if let Some(discord_guild) = event.discord_guild {
-                    let mut transaction = self.global_state.db_pool.begin().await.to_racetime()?;
-                    if fpa_invoked {
-                        if let Some(organizer_channel) = event.discord_organizer_channel {
-                            organizer_channel.say(&*self.global_state.discord_ctx.read().await, MessageBuilder::default()
-                                //TODO mention organizer role
-                                .push("race finished with FPA call: <https://")
-                                .push(self.global_state.host)
-                                .push(&ctx.data().await.url)
-                                .push('>')
-                            ).await.to_racetime()?;
+        }
+        match data.status.value {
+            RaceStatusValue::InProgress => if let Some(breaks) = self.breaks {
+                self.break_notifications.get_or_insert_with(|| {
+                    let ctx = ctx.clone();
+                    tokio::spawn(async move {
+                        sleep(breaks.interval - Duration::from_secs(5 * 60)).await;
+                        while Self::should_handle(&*ctx.data().await, ctx.global_state.clone()).await? {
+                            let (_, ()) = tokio::join!(
+                                ctx.send_message("@entrants Reminder: Next break in 5 minutes."),
+                                sleep(Duration::from_secs(5 * 60)),
+                            );
+                            if !Self::should_handle(&*ctx.data().await, ctx.global_state.clone()).await? { break }
+                            let msg = format!("@entrants Break time! Please pause for {}.", format_duration(breaks.duration, true));
+                            let (_, ()) = tokio::join!(
+                                ctx.send_message(&msg),
+                                sleep(breaks.duration),
+                            );
+                            if !Self::should_handle(&*ctx.data().await, ctx.global_state.clone()).await? { break }
+                            let (_, ()) = tokio::join!(
+                                ctx.send_message("@entrants Break ended. You may resume playing."),
+                                sleep(breaks.interval - breaks.duration - Duration::from_secs(5 * 60)),
+                            );
                         }
-                    } else {
-                        if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
-                            let mut team_times = HashMap::<_, Vec<_>>::default();
-                            for entrant in &data.entrants {
-                                if let Some(ref team) = entrant.team {
-                                    team_times.entry(&team.slug).or_default().push(entrant.finish_time.map(|time| time.to_std().expect("negative finish time")));
-                                } else {
-                                    unimplemented!() //TODO handle solo races
-                                }
-                            }
-                            let mut team_averages = team_times.into_iter()
-                                .map(|(team_slug, times)| (team_slug, times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many teams"))))
-                                .collect_vec();
-                            team_averages.sort_by_key(|(_, average)| (average.is_none(), *average)); // sort DNF last
-                            if let [(winner, winning_time), (loser, losing_time)] = *team_averages {
-                                if winning_time == losing_time {
-                                    let team1 = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                    let team2 = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                    let mut builder = MessageBuilder::default();
-                                    builder.mention_team(&mut transaction, discord_guild, &team1).await.to_racetime()?;
-                                    builder.push(" and ");
-                                    builder.mention_team(&mut transaction, discord_guild, &team2).await.to_racetime()?;
-                                    if let Some(finish_time) = winning_time {
-                                        builder.push(" tie their race with a time of ");
-                                        builder.push(format_duration(finish_time, true));
-                                    } else {
-                                        builder.push(" both did not finish");
-                                    }
-                                    results_channel.say(&*self.global_state.discord_ctx.read().await, builder
-                                        .push(" <https://")
-                                        .push(self.global_state.host)
-                                        .push(&ctx.data().await.url)
-                                        .push('>')
-                                    ).await.to_racetime()?;
-                                } else {
-                                    let winner = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                    let loser = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                    results_channel.say(&*self.global_state.discord_ctx.read().await, MessageBuilder::default()
-                                        .mention_team(&mut transaction, discord_guild, &winner).await.to_racetime()?
-                                        .push(" (")
-                                        .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(format_duration(time, false))))
-                                        .push(if winner.name_is_plural() { ") defeat " } else { ") defeats " })
-                                        .mention_team(&mut transaction, discord_guild, &loser).await.to_racetime()?
-                                        .push(" (")
-                                        .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(format_duration(time, false))))
-                                        .push(") <https://")
-                                        .push(self.global_state.host)
-                                        .push(&ctx.data().await.url)
-                                        .push('>')
-                                    ).await.to_racetime()?;
-                                }
-                            } else {
-                                unimplemented!() //TODO handle races with more than 2 teams
-                            }
-                        }
+                        Ok(())
+                    })
+                });
+            },
+            RaceStatusValue::Finished => {
+                //TODO also make sure this isn't the first half of an async
+                let mut state = self.race_state.write().await;
+                match *state {
+                    RaceState::RolledLocally(ref spoiler_log_path) => {
+                        let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name");
+                        fs::rename(spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await?;
                     }
-                    transaction.commit().await.to_racetime()?;
+                    RaceState::RolledWeb { seed_id, ref file_stem } => {
+                        let spoiler_filename = format!("{file_stem}_Spoiler.json");
+                        ctx.global_state.ootr_api_client.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &seed_id.to_string())]), None::<&()>).await?
+                            .detailed_error_for_status().await.to_racetime()?;
+                        let spoiler_log = ctx.global_state.ootr_api_client.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &seed_id.to_string())])).await?
+                            .detailed_error_for_status().await.to_racetime()?
+                            .json_with_text_in_error::<SeedDetailsResponse>().await.to_racetime()?
+                            .spoiler_log;
+                        fs::write(Path::new(seed::DIR).join(spoiler_filename), &spoiler_log).await?;
+                    }
+                    RaceState::SpoilerSent => return Ok(()),
+                    _ => {}
+                }
+                *state = RaceState::SpoilerSent;
+                drop(state);
+                if let Some(OfficialRaceData { ref event, fpa_invoked, .. }) = self.official_data {
+                    if let Some(discord_guild) = event.discord_guild {
+                        let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
+                        if fpa_invoked {
+                            if let Some(organizer_channel) = event.discord_organizer_channel {
+                                organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
+                                    //TODO mention organizer role
+                                    .push("race finished with FPA call: <https://")
+                                    .push(ctx.global_state.host)
+                                    .push(&ctx.data().await.url)
+                                    .push('>')
+                                ).await.to_racetime()?;
+                            }
+                        } else {
+                            if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
+                                let mut team_times = HashMap::<_, Vec<_>>::default();
+                                for entrant in &data.entrants {
+                                    if let Some(ref team) = entrant.team {
+                                        team_times.entry(&team.slug).or_default().push(entrant.finish_time.map(|time| time.to_std().expect("negative finish time")));
+                                    } else {
+                                        unimplemented!() //TODO handle solo races
+                                    }
+                                }
+                                let mut team_averages = team_times.into_iter()
+                                    .map(|(team_slug, times)| (team_slug, times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many teams"))))
+                                    .collect_vec();
+                                team_averages.sort_by_key(|(_, average)| (average.is_none(), *average)); // sort DNF last
+                                if let [(winner, winning_time), (loser, losing_time)] = *team_averages {
+                                    if winning_time == losing_time {
+                                        let team1 = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                        let team2 = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                        let mut builder = MessageBuilder::default();
+                                        builder.mention_team(&mut transaction, discord_guild, &team1).await.to_racetime()?;
+                                        builder.push(" and ");
+                                        builder.mention_team(&mut transaction, discord_guild, &team2).await.to_racetime()?;
+                                        if let Some(finish_time) = winning_time {
+                                            builder.push(" tie their race with a time of ");
+                                            builder.push(format_duration(finish_time, true));
+                                        } else {
+                                            builder.push(" both did not finish");
+                                        }
+                                        results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder
+                                            .push(" <https://")
+                                            .push(ctx.global_state.host)
+                                            .push(&ctx.data().await.url)
+                                            .push('>')
+                                        ).await.to_racetime()?;
+                                    } else {
+                                        let winner = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                        let loser = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                        results_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
+                                            .mention_team(&mut transaction, discord_guild, &winner).await.to_racetime()?
+                                            .push(" (")
+                                            .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(format_duration(time, false))))
+                                            .push(if winner.name_is_plural() { ") defeat " } else { ") defeats " })
+                                            .mention_team(&mut transaction, discord_guild, &loser).await.to_racetime()?
+                                            .push(" (")
+                                            .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(format_duration(time, false))))
+                                            .push(") <https://")
+                                            .push(ctx.global_state.host)
+                                            .push(&ctx.data().await.url)
+                                            .push('>')
+                                        ).await.to_racetime()?;
+                                    }
+                                } else {
+                                    unimplemented!() //TODO handle races with more than 2 teams
+                                }
+                            }
+                        }
+                        transaction.commit().await.to_racetime()?;
+                    }
                 }
             }
+            RaceStatusValue::Cancelled => if let Goal::Rsl = self.goal(ctx).await {
+                sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", ctx.global_state.host, ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
+            },
+            _ => {}
         }
         Ok(())
     }
@@ -1436,14 +1927,13 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
     Ok(())
 }
 
-async fn handle_rooms(global_state: Arc<GlobalState>, env: Environment, config: Config, shutdown: rocket::Shutdown) -> Result<(), Error> {
-    let racetime_config = if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production };
+async fn handle_rooms<B: Bot>(global_state: Arc<GlobalState>, env: Environment, racetime_config: &ConfigRaceTime, shutdown: rocket::Shutdown) -> Result<(), Error> {
     let mut last_crash = Instant::now();
     let mut wait_time = Duration::from_secs(1);
     loop {
         match racetime::Bot::new_with_host(env.racetime_host(), CATEGORY, &racetime_config.client_id, &racetime_config.client_secret, global_state.clone()).await {
             Ok(bot) => {
-                let () = bot.run_until::<Handler, _, _>(shutdown).await?;
+                let () = bot.run_until::<Handler<B>, _, _>(shutdown).await?;
                 break Ok(())
             }
             Err(Error::Reqwest(e)) if e.status().map_or(false, |status| status.is_server_error()) => {
@@ -1465,9 +1955,10 @@ async fn handle_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
 pub(crate) async fn main(db_pool: PgPool, http_client: reqwest::Client, discord_ctx: RwFuture<DiscordCtx>, ootr_api_key: String, env: Environment, config: Config, shutdown: rocket::Shutdown, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Result<(), Error> {
     let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
     let global_state = Arc::new(GlobalState::new(db_pool.clone(), http_client.clone(), ootr_api_key.clone(), startgg_token.to_owned(), env.racetime_host(), discord_ctx, clean_shutdown));
-    let ((), ()) = tokio::try_join!(
+    let ((), (), ()) = tokio::try_join!(
         create_rooms(global_state.clone(), env, config.clone(), shutdown.clone()),
-        handle_rooms(global_state, env, config, shutdown),
+        handle_rooms::<Mido>(global_state.clone(), env, if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }, shutdown.clone()),
+        handle_rooms::<RslBot>(global_state, env, &config.racetime_bot_rsl, shutdown),
     )?;
     Ok(())
 }
