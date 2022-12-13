@@ -1918,9 +1918,6 @@ pub(crate) async fn request_async(pool: &State<PgPool>, discord_ctx: &State<RwFu
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
-    if data.is_started(&mut transaction).await? {
-        form.context.push_error(form::Error::validation("You can no longer request the qualifier async since the event has already started."));
-    }
     Ok(if let Some(ref value) = form.value {
         let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams, team_members WHERE
             id = team
