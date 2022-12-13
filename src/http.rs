@@ -366,11 +366,14 @@ impl Fairing for SeedDownloadFairing {
             } else if path.ends_with(".json") {
                 res.set_header(Header::new(CONTENT_DISPOSITION.as_str(), "inline"));
                 if let Ok(body) = res.body_mut().to_string().await {
-                    if let Ok(log) = serde_json::from_str::<SpoilerLog>(&body) {
-                        let textures = ChestAppearances::from(log).textures();
-                        res.adjoin_header(Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(textures, Suffix(1024, "png"))))));
-                    } else {
-                        //TODO notify about JSON parse failure
+                    match serde_json::from_str::<SpoilerLog>(&body) {
+                        Ok(log) => {
+                            let textures = ChestAppearances::from(log).textures();
+                            res.adjoin_header(Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(textures, Suffix(1024, "png"))))));
+                        }
+                        Err(e) => {
+                            eprintln!("failed to add favicon to {path}: {e} ({e:?})");
+                        }
                     }
                     res.set_sized_body(body.len(), io::Cursor::new(body))
                 } else {
