@@ -1083,7 +1083,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             if clean_shutdown.requested && clean_shutdown.num_rooms == 0 {
                 clean_shutdown.notifier.notify_waiters();
             }
-            res.unwrap()
+            let () = res.unwrap();
         });
         Ok(())
     }
