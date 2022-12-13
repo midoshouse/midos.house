@@ -99,6 +99,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
     if let Some(subcommand) = subcommand {
         match subcommand {
             #[cfg(unix)] Subcommand::PrepareStop => {
+                //TODO detect if already stopped
                 println!("preparing to stop Mido's House: connecting UNIX socket");
                 let mut sock = UnixStream::connect(unix_socket::PATH).await?;
                 println!("preparing to stop Mido's House: sending command");

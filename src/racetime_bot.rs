@@ -945,7 +945,7 @@ struct Handler<B: Bot> {
     high_seed_name: String,
     low_seed_name: String,
     breaks: Option<Breaks>,
-    break_notifications: Option<tokio::task::JoinHandle<Result<(), Error>>>,
+    break_notifications: Option<tokio::task::JoinHandle<()>>,
     start_saved: bool,
     fpa_enabled: bool,
     locked: bool,
@@ -953,6 +953,18 @@ struct Handler<B: Bot> {
 }
 
 impl<B: Bot> Handler<B> {
+    async fn should_handle_inner(race_data: &RaceData, global_state: Arc<GlobalState>, increment_num_rooms: bool) -> bool {
+        let mut clean_shutdown = global_state.clean_shutdown.lock().await;
+        B::should_handle_goal(&race_data.goal)
+        && !matches!(race_data.status.value, RaceStatusValue::Finished | RaceStatusValue::Cancelled)
+        && if !clean_shutdown.requested || clean_shutdown.num_rooms > 0 {
+            if increment_num_rooms { clean_shutdown.num_rooms += 1 }
+            true
+        } else {
+            false
+        }
+    }
+
     fn is_official(&self) -> bool { self.official_data.is_some() }
 
     async fn goal(&self, ctx: &RaceContext<GlobalState>) -> Goal {
@@ -1056,12 +1068,11 @@ impl<B: Bot> Handler<B> {
 #[async_trait]
 impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
     async fn should_handle(race_data: &RaceData, global_state: Arc<GlobalState>) -> Result<bool, Error> {
-        let mut clean_shutdown = global_state.clean_shutdown.lock().await;
-        Ok(
-            B::should_handle_goal(&race_data.goal)
-            && !matches!(race_data.status.value, RaceStatusValue::Finished | RaceStatusValue::Cancelled)
-            && if !clean_shutdown.requested || clean_shutdown.num_rooms > 0 { clean_shutdown.num_rooms += 1; true } else { false }
-        )
+        Ok(Self::should_handle_inner(race_data, global_state, true).await)
+    }
+
+    async fn should_stop(&mut self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
+        Ok(!Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await)
     }
 
     async fn task(global_state: Arc<GlobalState>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
@@ -1724,24 +1735,23 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                     let ctx = ctx.clone();
                     tokio::spawn(async move {
                         sleep(breaks.interval - Duration::from_secs(5 * 60)).await;
-                        while Self::should_handle(&*ctx.data().await, ctx.global_state.clone()).await? {
+                        while Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await {
                             let (_, ()) = tokio::join!(
                                 ctx.send_message("@entrants Reminder: Next break in 5 minutes."),
                                 sleep(Duration::from_secs(5 * 60)),
                             );
-                            if !Self::should_handle(&*ctx.data().await, ctx.global_state.clone()).await? { break }
+                            if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
                             let msg = format!("@entrants Break time! Please pause for {}.", format_duration(breaks.duration, true));
                             let (_, ()) = tokio::join!(
                                 ctx.send_message(&msg),
                                 sleep(breaks.duration),
                             );
-                            if !Self::should_handle(&*ctx.data().await, ctx.global_state.clone()).await? { break }
+                            if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
                             let (_, ()) = tokio::join!(
                                 ctx.send_message("@entrants Break ended. You may resume playing."),
                                 sleep(breaks.interval - breaks.duration - Duration::from_secs(5 * 60)),
                             );
                         }
-                        Ok(())
                     })
                 });
             },
