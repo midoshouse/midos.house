@@ -637,7 +637,7 @@ enum SeedRollUpdate {
 }
 
 impl SeedRollUpdate {
-    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &Arc<RwLock<RaceState>>, startgg_set: Option<&str>, description: &str) -> Result<(), Error> {
+    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &Arc<RwLock<RaceState>>, startgg_game: Option<&(String, Option<i16>)>, description: &str) -> Result<(), Error> {
         match self {
             Self::Queued(0) => ctx.send_message("I'm already rolling other multiworld seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
             Self::Queued(1) => ctx.send_message("I'm already rolling other multiworld seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
@@ -651,10 +651,10 @@ impl SeedRollUpdate {
                 let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename").to_owned();
                 let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(Error::Custom(Box::new(RollError::PatchPath)))?;
                 let file_hash @ [hash1, hash2, hash3, hash4, hash5] = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_log_path).await?)?.file_hash;
-                if let Some(startgg_set) = startgg_set {
+                if let Some((startgg_set, game)) = startgg_game {
                     sqlx::query!(
-                        "UPDATE races SET file_stem = $1, hash1 = $2, hash2 = $3, hash3 = $4, hash4 = $5, hash5 = $6 WHERE startgg_set = $7",
-                        file_stem, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, startgg_set,
+                        "UPDATE races SET file_stem = $1, hash1 = $2, hash2 = $3, hash3 = $4, hash4 = $5, hash5 = $6 WHERE startgg_set = $7 AND game IS NOT DISTINCT FROM $8",
+                        file_stem, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, startgg_set, *game,
                     ).execute(db_pool).await.to_racetime()?;
                 }
                 if let Some(preset) = rsl_preset {
@@ -671,10 +671,10 @@ impl SeedRollUpdate {
             }
             Self::DoneWeb { rsl_preset, seed_id, gen_time, file_hash, file_stem } => {
                 let [hash1, hash2, hash3, hash4, hash5] = file_hash;
-                if let Some(startgg_set) = startgg_set {
+                if let Some((startgg_set, game)) = startgg_game {
                     sqlx::query!(
-                        "UPDATE races SET web_id = $1, web_gen_time = $2, file_stem = $3, hash1 = $4, hash2 = $5, hash3 = $6, hash4 = $7, hash5 = $8 WHERE startgg_set = $9",
-                        seed_id as i64, gen_time, &file_stem, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, startgg_set,
+                        "UPDATE races SET web_id = $1, web_gen_time = $2, file_stem = $3, hash1 = $4, hash2 = $5, hash3 = $6, hash4 = $7, hash5 = $8 WHERE startgg_set = $9 AND game IS NOT DISTINCT FROM $10",
+                        seed_id as i64, gen_time, &file_stem, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, startgg_set, *game,
                     ).execute(db_pool).await.to_racetime()?;
                 }
                 if let Some(preset) = rsl_preset {
@@ -912,6 +912,7 @@ enum RaceState {
 struct OfficialRaceData {
     event: event::Data<'static>,
     startgg_set: String,
+    game: Option<i16>,
     entrants: Vec<String>,
     start: DateTime<Utc>,
     fpa_invoked: bool,
@@ -1022,7 +1023,7 @@ impl<B: Bot> Handler<B> {
         let db_pool = ctx.global_state.db_pool.clone();
         let ctx = ctx.clone();
         let state = Arc::clone(&self.race_state);
-        let startgg_set = self.official_data.as_ref().map(|official_data| official_data.startgg_set.clone());
+        let startgg_game = self.official_data.as_ref().map(|official_data| (official_data.startgg_set.clone(), official_data.game));
         let mut official_start = self.official_data.as_ref().map(|official_data| official_data.start);
         tokio::spawn(async move {
             let mut seed_state = None::<SeedRollUpdate>;
@@ -1032,7 +1033,7 @@ impl<B: Bot> Handler<B> {
                         () = sleep((start - chrono::Duration::minutes(15) - Utc::now()).to_std().expect("official race room opened after seed roll deadline")) => {
                             official_start = None;
                             if let Some(update) = seed_state.take() {
-                                update.handle(&db_pool, &ctx, &state, startgg_set.as_deref(), &description).await?;
+                                update.handle(&db_pool, &ctx, &state, startgg_game.as_ref(), &description).await?;
                             } else {
                                 panic!("no seed rolling progress after 15 minutes")
                             }
@@ -1041,7 +1042,7 @@ impl<B: Bot> Handler<B> {
                     }
                 } else {
                     while let Some(update) = updates.recv().await {
-                        update.handle(&db_pool, &ctx, &state, startgg_set.as_deref(), &description).await?;
+                        update.handle(&db_pool, &ctx, &state, startgg_game.as_ref(), &description).await?;
                     }
                     return Ok::<_, Error>(())
                 }
@@ -1135,6 +1136,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             (
                 Some(OfficialRaceData {
                     startgg_set: cal_event.race.startgg_set.clone(),
+                    game: cal_event.race.game,
                     fpa_invoked: false,
                     event, entrants, start,
                 }),
@@ -1876,8 +1878,8 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
             () = &mut shutdown => break,
             _ = sleep(Duration::from_secs(60)) => {
                 let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
-                for row in sqlx::query!(r#"SELECT series AS "series: Series", event, startgg_set FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut transaction).await.to_racetime()? { //TODO get permission to create private rooms, then also use for asyncs
-                    let race = Race::from_startgg(&mut transaction, &global_state.http_client, &global_state.startgg_token, row.startgg_set).await.to_racetime()?;
+                for row in sqlx::query!(r#"SELECT series AS "series: Series", event, startgg_set, game FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut transaction).await.to_racetime()? { //TODO get permission to create private rooms, then also use for asyncs
+                    let race = Race::from_startgg(&mut transaction, &global_state.http_client, &global_state.startgg_token, row.startgg_set, row.game).await.to_racetime()?;
                     match racetime::authorize_with_host(global_state.host, &racetime_config.client_id, &racetime_config.client_secret, &global_state.http_client).await {
                         Ok((access_token, _)) => {
                             let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
@@ -1903,7 +1905,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                                 chat_message_delay: 0,
                             }.start_with_host(global_state.host, &access_token, &global_state.http_client, CATEGORY).await?;
                             let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", global_state.host))?;
-                            sqlx::query!("UPDATE races SET room = $1 WHERE startgg_set = $2", room_url.to_string(), race.startgg_set).execute(&mut transaction).await.to_racetime()?;
+                            sqlx::query!("UPDATE races SET room = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", room_url.to_string(), race.startgg_set, race.game).execute(&mut transaction).await.to_racetime()?;
                             transaction.commit().await.to_racetime()?;
                             drop(new_room_lock);
                             transaction = global_state.db_pool.begin().await.to_racetime()?;

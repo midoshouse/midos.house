@@ -160,6 +160,7 @@ pub(crate) struct Race {
     event: String,
     pub(crate) startgg_event: String,
     pub(crate) startgg_set: String,
+    pub(crate) game: Option<i16>,
     pub(crate) team1: Team,
     pub(crate) team2: Team,
     pub(crate) phase: String,
@@ -170,7 +171,7 @@ pub(crate) struct Race {
 }
 
 impl Race {
-    pub(crate) async fn from_startgg(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, startgg_set: String) -> Result<Self, Error> {
+    pub(crate) async fn from_startgg(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, game: Option<i16>) -> Result<Self, Error> {
         let response_data = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) }).await?;
         if let startgg::set_query::ResponseData {
             set: Some(startgg::set_query::SetQuerySet {
@@ -209,7 +210,7 @@ impl Race {
                 hash3 AS "hash3: HashIcon",
                 hash4 AS "hash4: HashIcon",
                 hash5 AS "hash5: HashIcon"
-            FROM races WHERE startgg_set = $1"#, &startgg_set).fetch_one(&mut *transaction).await?;
+            FROM races WHERE startgg_set = $1 AND game IS NOT DISTINCT FROM $2"#, &startgg_set, game).fetch_one(&mut *transaction).await?;
             let (team1, team2) = if let (Some(team1), Some(team2)) = (row.team1, row.team2) {
                 (
                     Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?,
@@ -221,8 +222,8 @@ impl Race {
             ] = **slots {
                 let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?;
                 let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
-                sqlx::query!("UPDATE races SET team1 = $1 WHERE startgg_set = $2", team1.id as _, &startgg_set).execute(&mut *transaction).await?;
-                sqlx::query!("UPDATE races SET team2 = $1 WHERE startgg_set = $2", team2.id as _, &startgg_set).execute(&mut *transaction).await?;
+                sqlx::query!("UPDATE races SET team1 = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", team1.id as _, &startgg_set, game).execute(&mut *transaction).await?;
+                sqlx::query!("UPDATE races SET team2 = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", team2.id as _, &startgg_set, game).execute(&mut *transaction).await?;
                 (team1, team2)
             } else {
                 return Err(Error::Teams { startgg_set, response_data })
@@ -239,7 +240,7 @@ impl Race {
                             .json_with_text_in_error::<RaceData>().await?
                             .ended_at;
                         if let Some(end) = end {
-                            sqlx::query!($query, end, &startgg_set).execute(&mut *transaction).await?;
+                            sqlx::query!($query, end, &startgg_set, game).execute(&mut *transaction).await?;
                         }
                         end
                     } else {
@@ -248,9 +249,9 @@ impl Race {
                 };
             }
 
-            update_end!(end_time, room, "UPDATE races SET end_time = $1 WHERE startgg_set = $2");
-            update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE startgg_set = $2");
-            update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE startgg_set = $2");
+            update_end!(end_time, room, "UPDATE races SET end_time = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3");
+            update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3");
+            update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3");
             Ok(Self {
                 series: row.series,
                 event: row.event,
@@ -276,7 +277,7 @@ impl Race {
                     },
                     file_stem: Cow::Owned(file_stem),
                 }),
-                startgg_set, team1, team2,
+                startgg_set, game, team1, team2,
             })
         } else {
             Err(Error::Teams { startgg_set, response_data })
@@ -286,8 +287,8 @@ impl Race {
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, series: Series, event: &str) -> Result<Vec<Self>, Error> {
         //TODO unify with add_event_races
         let mut races = Vec::default();
-        for startgg_set in sqlx::query_scalar!("SELECT startgg_set FROM races WHERE series = $1 AND event = $2", series as _, event).fetch_all(&mut *transaction).await? {
-            races.push(Self::from_startgg(&mut *transaction, http_client, startgg_token, startgg_set).await?);
+        for row in sqlx::query!("SELECT startgg_set, game FROM races WHERE series = $1 AND event = $2", series as _, event).fetch_all(&mut *transaction).await? {
+            races.push(Self::from_startgg(&mut *transaction, http_client, startgg_token, row.startgg_set, row.game).await?);
         }
         races.sort_unstable();
         Ok(races)
@@ -333,6 +334,7 @@ impl Ord for Race {
         self.schedule.cmp(&other.schedule)
             .then_with(|| self.startgg_event.cmp(&other.startgg_event))
             .then_with(|| self.startgg_set.cmp(&other.startgg_set))
+            .then_with(|| self.game.cmp(&other.game))
     }
 }
 
@@ -350,21 +352,21 @@ pub(crate) struct Event {
 
 impl Event {
     pub(crate) async fn from_room(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, room: Url) -> Result<Option<Self>, Error> {
-        if let Some(startgg_set) = sqlx::query_scalar!(r#"SELECT startgg_set FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, game FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
             return Ok(Some(Self {
-                race: Race::from_startgg(&mut *transaction, http_client, startgg_token, startgg_set).await?,
+                race: Race::from_startgg(&mut *transaction, http_client, startgg_token, row.startgg_set, row.game).await?,
                 kind: EventKind::Normal,
             }))
         }
-        if let Some(startgg_set) = sqlx::query_scalar!(r#"SELECT startgg_set FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, game FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
             return Ok(Some(Self {
-                race: Race::from_startgg(&mut *transaction, http_client, startgg_token, startgg_set).await?,
+                race: Race::from_startgg(&mut *transaction, http_client, startgg_token, row.startgg_set, row.game).await?,
                 kind: EventKind::Async1,
             }))
         }
-        if let Some(startgg_set) = sqlx::query_scalar!(r#"SELECT startgg_set FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, game FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
             return Ok(Some(Self {
-                race: Race::from_startgg(&mut *transaction, http_client, startgg_token, startgg_set).await?,
+                race: Race::from_startgg(&mut *transaction, http_client, startgg_token, row.startgg_set, row.game).await?,
                 kind: EventKind::Async2,
             }))
         }

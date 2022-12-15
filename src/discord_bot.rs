@@ -157,9 +157,9 @@ impl Draft {
     }
 }
 
-async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: &ApplicationCommandInteraction) -> Result<Option<(Transaction<'a, Postgres>, String, Vec<Team>, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
+async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: &ApplicationCommandInteraction) -> Result<Option<(Transaction<'a, Postgres>, String, Option<i16>, Vec<Team>, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
     let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
-    Ok(if let Some(row) = sqlx::query!(r#"SELECT startgg_set, room IS NOT NULL OR async_room1 IS NOT NULL OR async_room2 IS NOT NULL AS "has_room!" FROM races WHERE scheduling_thread = $1"#, i64::from(interaction.channel_id)).fetch_optional(&mut transaction).await? {
+    Ok(if let Some(row) = sqlx::query!(r#"SELECT startgg_set, game, room IS NOT NULL OR async_room1 IS NOT NULL OR async_room2 IS NOT NULL AS "has_room!" FROM races WHERE scheduling_thread = $1 ORDER BY game DESC"#, i64::from(interaction.channel_id)).fetch_optional(&mut transaction).await? {
         if row.has_room {
             interaction.create_interaction_response(ctx, |r| r
                 .interaction_response_data(|d| d
@@ -204,7 +204,7 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
             } else {
                 return Err(cal::Error::Teams { startgg_set: row.startgg_set, response_data }.into())
             }
-            Some((transaction, row.startgg_set, teams, team))
+            Some((transaction, row.startgg_set, row.game, teams, team))
         }
     } else {
         interaction.create_interaction_response(ctx, |r| r
@@ -248,6 +248,14 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     .name("high-seed")
                     .description("The team that decides which team starts the settings draft. If the teams are tied, flip a coin.")
                     .required(true)
+                )
+                .create_option(|o| o
+                    .kind(CommandOptionType::Integer)
+                    .name("game")
+                    .description("The game number within the match, if this is a best-of-n-races match.")
+                    .min_int_value(1)
+                    .max_int_value(255)
+                    .required(false)
                 )
             ).await?.id;
             let ban = guild.create_application_command(ctx, |c| c
@@ -471,21 +479,31 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 CommandDataOptionValue::Role(discord_role) => discord_role.id,
                                 _ => panic!("unexpected slash command option type"),
                             };
+                            let game = interaction.data.options.get(2).map(|option| match option.resolved.as_ref().expect("missing slash command option") {
+                                &CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
+                                _ => panic!("unexpected slash command option type"),
+                            });
                             if let Some(high_seed) = Team::from_discord(&mut transaction, high_seed).await? {
                                 sqlx::query!("INSERT INTO races
-                                    (startgg_set, series, event, scheduling_thread, draft_state) VALUES ($1, $2, $3, $4, $5)
-                                    ON CONFLICT (startgg_set) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread, draft_state = EXCLUDED.draft_state
-                                ", &startgg_set, event_row.series, event_row.event, i64::from(interaction.channel_id), Json(Draft {
+                                    (startgg_set, game, series, event, scheduling_thread, draft_state) VALUES ($1, $2, $3, $4, $5, $6)
+                                    ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread, draft_state = EXCLUDED.draft_state
+                                ", &startgg_set, game, event_row.series, event_row.event, i64::from(interaction.channel_id), Json(Draft {
                                     high_seed: high_seed.id,
                                     state: mw::S3Draft::default(),
                                 }) as _).execute(&mut transaction).await?;
                                 let guild_id = interaction.guild_id.expect("/ban called outside of a guild");
-                                let response_content = MessageBuilder::default()
-                                    .push("This thread is now assigned to set ")
+                                let mut response_content = MessageBuilder::default();
+                                response_content.push("This thread is now assigned to ");
+                                if let Some(game) = game {
+                                    response_content.push("game ");
+                                    response_content.push(game);
+                                    response_content.push(" of ");
+                                }
+                                let response_content = response_content.push("set ")
                                     .push_safe(startgg_set) //TODO linkify set page, use phase/round/identifier
                                     .push(". Use ")
                                     .mention_command(command_ids.schedule, "schedule")
-                                    .push_line(" to schedule as a regular race, or ping a tournament organizer to schedule as an async.")
+                                    .push_line(" to schedule as a regular race, or ping a tournament organizer to schedule as an async.") //TODO adjust message if asyncing is not allowed
                                     .mention_team(&mut transaction, guild_id, &high_seed).await?
                                     .push(": you have the higher seed. Choose whether you want to go ")
                                     .mention_command(command_ids.first, "first")
@@ -517,9 +535,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             ).await?;
                         }
                     } else if interaction.data.id == command_ids.ban {
-                        if let Some((mut transaction, startgg_set, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                        if let Some((mut transaction, startgg_set, game, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
                             if let Some(team) = team {
-                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1 AND game IS NOT DISTINCT FROM $2"#, startgg_set, game).fetch_one(&mut transaction).await? {
                                     if draft.state.went_first.is_none() {
                                         interaction.create_interaction_response(ctx, |r| r
                                             .interaction_response_data(|d| d
@@ -558,7 +576,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 mw::S3Setting::Fountain => draft.state.fountain = Some(mw::Fountain::default()),
                                                 mw::S3Setting::Spawn => draft.state.spawn = Some(mw::Spawn::default()),
                                             }
-                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
+                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", Json(&draft) as _, startgg_set, game).execute(&mut transaction).await?;
                                             let guild_id = interaction.guild_id.expect("/ban called outside of a guild");
                                             let response_content = MessageBuilder::default()
                                                 .mention_team(&mut transaction, guild_id, &team).await?
@@ -625,9 +643,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             }
                         }
                     } else if interaction.data.id == command_ids.draft {
-                        if let Some((mut transaction, startgg_set, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                        if let Some((mut transaction, startgg_set, game, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
                             if let Some(team) = team {
-                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1 AND game IS NOT DISTINCT FROM $2"#, startgg_set, game).fetch_one(&mut transaction).await? {
                                     if draft.state.went_first.is_none() {
                                         interaction.create_interaction_response(ctx, |r| r
                                             .interaction_response_data(|d| d
@@ -669,7 +687,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 mw::S3Setting::Fountain => { let value = all::<mw::Fountain>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.fountain = Some(value); value.to_string() }
                                                 mw::S3Setting::Spawn => { let value = all::<mw::Spawn>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.spawn = Some(value); value.to_string() }
                                             };
-                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
+                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", Json(&draft) as _, startgg_set, game).execute(&mut transaction).await?;
                                             let guild_id = interaction.guild_id.expect("/draft called outside of a guild");
                                             let response_content = MessageBuilder::default()
                                                 .mention_team(&mut transaction, guild_id, &team).await?
@@ -731,9 +749,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             }
                         }
                     } else if interaction.data.id == command_ids.first {
-                        if let Some((mut transaction, startgg_set, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                        if let Some((mut transaction, startgg_set, game, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
                             if let Some(team) = team {
-                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1 AND game IS NOT DISTINCT FROM $2"#, startgg_set, game).fetch_one(&mut transaction).await? {
                                     if draft.state.went_first.is_some() {
                                         interaction.create_interaction_response(ctx, |r| r
                                             .interaction_response_data(|d| d
@@ -744,7 +762,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         transaction.rollback().await?;
                                     } else if draft.is_active_team(team.id) {
                                         draft.state.went_first = Some(true);
-                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
+                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", Json(&draft) as _, startgg_set, game).execute(&mut transaction).await?;
                                         let guild_id = interaction.guild_id.expect("/first called outside of a guild");
                                         let response_content = MessageBuilder::default()
                                             .mention_team(&mut transaction, guild_id, &team).await?
@@ -788,8 +806,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             }
                         }
                     } else if interaction.data.id == command_ids.post_status {
-                        if let Some((mut transaction, startgg_set, teams, _)) = check_scheduling_thread_permissions(ctx, interaction).await? {
-                            if let Some(Json(draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                        if let Some((mut transaction, startgg_set, game, teams, _)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some(Json(draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1 AND game IS NOT DISTINCT FROM $2"#, startgg_set, game).fetch_one(&mut transaction).await? {
                                 let guild_id = interaction.guild_id.expect("/post-status called outside of a guild");
                                 let response_content = MessageBuilder::default()
                                     //TODO include scheduling status, both for regular races and for asyncs
@@ -865,7 +883,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             )
                         ).await?;
                     } else if interaction.data.id == command_ids.schedule {
-                        if let Some((mut transaction, startgg_set, _, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                        if let Some((mut transaction, startgg_set, game, _, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
                             if team.is_some() || interaction.member.as_ref().expect("/schedule called outside of a guild").permissions.expect("permissions should be included in interaction response").administrator() {
                                 let start = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
                                     CommandDataOptionValue::String(start) => start,
@@ -881,7 +899,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         ).await?;
                                         transaction.rollback().await?;
                                     } else {
-                                        sqlx::query!("UPDATE races SET start = $1 WHERE startgg_set = $2", start, startgg_set).execute(&mut transaction).await?;
+                                        sqlx::query!("UPDATE races SET start = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", start, startgg_set, game).execute(&mut transaction).await?;
                                         transaction.commit().await?;
                                         interaction.create_interaction_response(ctx, |r| r
                                             .interaction_response_data(|d| d
@@ -910,9 +928,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             }
                         }
                     } else if interaction.data.id == command_ids.second {
-                        if let Some((mut transaction, startgg_set, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                        if let Some((mut transaction, startgg_set, game, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
                             if let Some(team) = team {
-                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1 AND game IS NOT DISTINCT FROM $2"#, startgg_set, game).fetch_one(&mut transaction).await? {
                                     if draft.state.went_first.is_some() {
                                         interaction.create_interaction_response(ctx, |r| r
                                             .interaction_response_data(|d| d
@@ -923,7 +941,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         transaction.rollback().await?;
                                     } else if draft.is_active_team(team.id) {
                                         draft.state.went_first = Some(false);
-                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
+                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", Json(&draft) as _, startgg_set, game).execute(&mut transaction).await?;
                                         let guild_id = interaction.guild_id.expect("/second called outside of a guild");
                                         let response_content = MessageBuilder::default()
                                             .mention_team(&mut transaction, guild_id, &team).await?
@@ -967,9 +985,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             }
                         }
                     } else if interaction.data.id == command_ids.skip {
-                        if let Some((mut transaction, startgg_set, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                        if let Some((mut transaction, startgg_set, game, teams, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
                             if let Some(team) = team {
-                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                                if let Some(Json(mut draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1 AND game IS NOT DISTINCT FROM $2"#, startgg_set, game).fetch_one(&mut transaction).await? {
                                     if draft.state.went_first.is_none() {
                                         interaction.create_interaction_response(ctx, |r| r
                                             .interaction_response_data(|d| d
@@ -998,7 +1016,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             _ => unreachable!(),
                                         };
                                         draft.state.skipped_bans += 1;
-                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2", Json(&draft) as _, startgg_set).execute(&mut transaction).await?;
+                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", Json(&draft) as _, startgg_set, game).execute(&mut transaction).await?;
                                         let guild_id = interaction.guild_id.expect("/skip called outside of a guild");
                                         let response_content = MessageBuilder::default()
                                             .mention_team(&mut transaction, guild_id, &team).await?
@@ -1043,8 +1061,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             }
                         }
                     } else if interaction.data.id == command_ids.status {
-                        if let Some((mut transaction, startgg_set, teams, _)) = check_scheduling_thread_permissions(ctx, interaction).await? {
-                            if let Some(Json(draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1"#, startgg_set).fetch_one(&mut transaction).await? {
+                        if let Some((mut transaction, startgg_set, game, teams, _)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some(Json(draft)) = sqlx::query_scalar!(r#"SELECT draft_state AS "draft_state: Json<Draft>" FROM races WHERE startgg_set = $1 AND game IS NOT DISTINCT FROM $2"#, startgg_set, game).fetch_one(&mut transaction).await? {
                                 let guild_id = interaction.guild_id.expect("/status called outside of a guild");
                                 let response_content = MessageBuilder::default()
                                     //TODO include scheduling status, both for regular races and for asyncs
