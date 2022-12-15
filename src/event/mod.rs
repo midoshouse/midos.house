@@ -933,11 +933,15 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
         : header;
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
+            @let has_games = ongoing_and_upcoming_races.iter().any(|race| race.game.is_some());
             table {
                 thead {
                     tr {
                         th : "Start";
                         th : "Round";
+                        @if has_games {
+                            th : "Game";
+                        }
                         th(colspan = "2") : "Entrants";
                         th : "Links";
                     }
@@ -956,6 +960,13 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 : race.phase;
                                 : " ";
                                 : race.round;
+                            }
+                            @if has_games {
+                                td {
+                                    @if let Some(game) = race.game {
+                                        : game;
+                                    }
+                                }
                             }
                             td(class = "vs1") {
                                 : race.team1.to_html(false);
@@ -990,11 +1001,15 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
+            @let has_games = past_races.iter().any(|race| race.game.is_some());
             table {
                 thead {
                     tr {
                         th : "Start";
                         th : "Round";
+                        @if has_games {
+                            th : "Game";
+                        }
                         th(colspan = "2") : "Entrants";
                         th : "Links";
                         : seed::table_header_cells(true);
@@ -1015,6 +1030,13 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 : race.phase;
                                 : " ";
                                 : race.round;
+                            }
+                            @if has_games {
+                                td {
+                                    @if let Some(game) = race.game {
+                                        : game;
+                                    }
+                                }
                             }
                             td(class = "vs1") {
                                 : race.team1.to_html(false);
