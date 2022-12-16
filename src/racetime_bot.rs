@@ -125,6 +125,7 @@ use {
             SpoilerLog,
         },
         team::Team,
+        user::User,
         util::{
             DurationUnit,
             MessageBuilderExt as _,
@@ -974,6 +975,18 @@ impl<B: Bot> Handler<B> {
         ctx.data().await.goal.name.parse::<Goal>().expect("running race handler for unknown goal")
     }
 
+    async fn can_monitor(&self, ctx: &RaceContext<GlobalState>, is_monitor: bool, msg: &ChatMessage) -> sqlx::Result<bool> {
+        if is_monitor { return Ok(true) }
+        if let Some(OfficialRaceData { ref event, .. }) = self.official_data {
+            if let Some(UserData { ref id, .. }) = msg.user {
+                if let Some(user) = User::from_racetime(&ctx.global_state.db_pool, id).await? {
+                    return sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM organizers WHERE series = $1 AND event = $2 AND organizer = $3) AS "exists!""#, event.series as _, &event.event, i64::from(user.id)).fetch_one(&ctx.global_state.db_pool).await
+                }
+            }
+        }
+        Ok(false)
+    }
+
     async fn send_settings(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         let available_settings = {
             let state = self.race_state.read().await;
@@ -1405,7 +1418,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 [ref arg] => match &*arg.to_ascii_lowercase() {
                     "on" => if self.is_official() {
                         ctx.send_message("Fair play agreement is always active in official races.").await?;
-                    } else if !is_monitor { //TODO also allow TOs without having to !monitor first
+                    } else if !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                         ctx.send_message(&format!("Sorry {reply_to}, only race monitors can do that.")).await?;
                     } else if self.fpa_enabled {
                         ctx.send_message("Fair play agreement is already activated.").await?;
@@ -1415,7 +1428,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                     },
                     "off" => if self.is_official() {
                         ctx.send_message(&format!("Sorry {reply_to}, but FPA can't be deactivated for official races.")).await?;
-                    } else if !is_monitor { //TODO also allow TOs without having to !monitor first
+                    } else if !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                         ctx.send_message(&format!("Sorry {reply_to}, only race monitors can do that.")).await?;
                     } else if self.fpa_enabled {
                         self.fpa_enabled = false;
@@ -1427,7 +1440,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 },
                 [_, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
             },
-            "lock" => if is_monitor { //TODO also allow TOs without having to !monitor first
+            "lock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 self.locked = true;
                 ctx.send_message("Lock initiated. I will now only roll seeds for race monitors.").await?;
             } else {
@@ -1457,7 +1470,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             "seed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.race_state.clone().write_owned().await;
                 match *state {
-                    RaceState::Init => if self.locked && !is_monitor { //TODO also allow TOs without having to !monitor first
+                    RaceState::Init => if self.locked && !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                         ctx.send_message(&format!("Sorry {reply_to}, seed rolling is locked. Only race monitors may roll a seed for this race.")).await?;
                     } else {
                         match goal {
@@ -1701,7 +1714,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
             //TODO !spoilerseed?
-            "unlock" => if is_monitor { //TODO also allow TOs without having to !monitor first
+            "unlock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 self.locked = false;
                 ctx.send_message("Lock released. Anyone may now roll a seed.").await?;
             } else {
