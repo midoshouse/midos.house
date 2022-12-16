@@ -28,6 +28,7 @@ server {
     }
 
     error_page 502 /error/502.html;
+    error_page 504 /error/504.html;
 
     location /error/ {
         root /opt/git/github.com/midoshouse/midos.house/master/assets;
