@@ -1,10 +1,5 @@
 use {
     collect_mac::collect,
-    futures::stream::{
-        self,
-        StreamExt as _,
-        TryStreamExt as _,
-    },
     itertools::Itertools as _,
     rocket::{
         form::Context,
@@ -21,7 +16,6 @@ use {
         json,
     },
     sqlx::{
-        PgPool,
         Postgres,
         Transaction,
     },
@@ -49,13 +43,7 @@ use {
     },
 };
 
-pub(super) async fn info(pool: &PgPool, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
-    let organizers = stream::iter([
-        5246396495391975113, // Kofca
-    ])
-        .map(Id)
-        .then(|id| async move { User::from_id(pool, id).await?.ok_or(InfoError::OrganizerUserData) })
-        .try_collect::<Vec<_>>().await?;
+pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
     Ok(html! {
         article {
             p {
@@ -64,7 +52,7 @@ pub(super) async fn info(pool: &PgPool, data: &Data<'_>) -> Result<RawHtml<Strin
                 : " of the ";
                 a(href = "https://docs.google.com/document/d/1xELThZtIctwN-vYtYhUqtd88JigNzabk8OZHANa0gqY/edit") : "9 Days of SAWS";
                 : " event, organized by ";
-                : natjoin_html(organizers);
+                : natjoin_html(data.organizers(transaction).await?);
                 : ", will be a ";
                 a(href = "https://docs.google.com/document/d/1sbL6Zju943F5qyx4QbTLUsqZqOTMmvqKVbDwJl08SGc/edit") : "Standard Anti-Weekly Settings";
                 @match &*data.event {

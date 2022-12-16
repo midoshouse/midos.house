@@ -3,11 +3,7 @@ use {
         borrow::Cow,
         cmp::Ordering::*,
     },
-    futures::stream::{
-        self,
-        StreamExt as _,
-        TryStreamExt as _,
-    },
+    futures::stream,
     itertools::Itertools as _,
     rocket::{
         FromFormField,
@@ -26,7 +22,6 @@ use {
         html,
     },
     sqlx::{
-        PgPool,
         Postgres,
         Transaction,
     },
@@ -55,9 +50,9 @@ use {
     },
 };
 
-pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, InfoError> {
-    let is_random_settings = event.starts_with("rs");
-    let settings = match event {
+pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+    let is_random_settings = data.event.starts_with("rs");
+    let settings = match &*data.event {
         "5" => html! {
             ul {
                 li : "S5 base";
@@ -157,7 +152,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
         },
         _ => unimplemented!(),
     };
-    let sample_seeds = match event {
+    let sample_seeds = match &*data.event {
         "5" => Some(seed::table(stream::iter(vec![
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_F35CF_7F1NK3FEGY") },
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_F35CF_XULLQE310I") },
@@ -174,16 +169,6 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
         ]), true).await.map_err(InfoError::TableCells)?),
         _ => None,
     };
-    let organizers = stream::iter([
-        5961629664912637980, // Tjongejonge_
-        2689982510832487907, // ksinjah
-        14571800683221815449, // Fenhl
-        3722744861553903438, // melqwii
-        14099802746436324950, // TeaGrenadier
-    ])
-        .map(Id)
-        .then(|id| async move { User::from_id(pool, id).await?.ok_or(InfoError::OrganizerUserData) })
-        .try_collect::<Vec<_>>().await?;
     Ok(html! {
         article {
             h2 : "What is a Pictionary Spoiler Log Race?";
@@ -273,7 +258,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
                     : ", we've prepared some sample seeds:";
                 }
                 : sample_seeds;
-                @if event == "5" {
+                @if data.event == "5" {
                     p {
                         a(href = "https://ootr.fenhl.net/static/pictionary5-sample-seeds-batch2.zip") : "Download all";
                     }
@@ -295,7 +280,7 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
             h2 : "Further information";
             p {
                 : "The race is organized by ";
-                : natjoin_html(organizers);
+                : natjoin_html(data.organizers(transaction).await?);
                 : ". We will answer questions and inform about recent events on The Silver Gauntlets Discord in the #pictionary-spoiler-log channel (";
                 a(href = "https://discord.gg/m8z8ZqtN8H") : "invite link";
                 : " • ";

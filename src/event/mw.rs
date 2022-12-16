@@ -16,11 +16,7 @@ use {
             Future,
             FutureExt as _,
         },
-        stream::{
-            self,
-            StreamExt as _,
-            TryStreamExt as _,
-        },
+        stream,
     },
     itertools::Itertools as _,
     once_cell::sync::Lazy,
@@ -57,7 +53,6 @@ use {
         model::prelude::*,
     },
     sqlx::{
-        PgPool,
         Postgres,
         Transaction,
     },
@@ -455,284 +450,260 @@ impl fmt::Display for S3Settings {
     }
 }
 
-pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, InfoError> {
-    Ok(match event {
-        "2" => {
-            let organizers = stream::iter([
-                10663518306823692018, // Alaszun
-                12937129924130129092, // Hamsda
-            ])
-                .map(Id)
-                .then(|id| async move { User::from_id(pool, id).await?.ok_or(InfoError::OrganizerUserData) })
-                .try_collect::<Vec<_>>().await?;
-            html! {
-                article {
-                    p {
-                        : "This is an archive of the second Ocarina of Time randomizer multiworld tournament, organized by ";
-                        : natjoin_html(organizers);
-                        : ". Click the “teams” link above to see the results of the qualifier async.";
+pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+    Ok(match &*data.event {
+        "2" => html! {
+            article {
+                p {
+                    : "This is an archive of the second Ocarina of Time randomizer multiworld tournament, organized by ";
+                    : natjoin_html(data.organizers(transaction).await?);
+                    : ". Click the “teams” link above to see the results of the qualifier async.";
+                }
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = "https://docs.google.com/document/d/e/2PACX-1vS6vGCH8ZTA5bDCv3Z8meiUK4hMEfWN3vLttjNIOXbIAbRFNuGi-NzwJ68o31gVJgUigblLmW2tkZRu/pub") : "Tournament format, rules, and settings";
                     }
-                    h2 : "See also";
-                    ul {
-                        li {
-                            a(href = "https://docs.google.com/document/d/e/2PACX-1vS6vGCH8ZTA5bDCv3Z8meiUK4hMEfWN3vLttjNIOXbIAbRFNuGi-NzwJ68o31gVJgUigblLmW2tkZRu/pub") : "Tournament format, rules, and settings";
-                        }
-                        li {
-                            a(href = "https://challonge.com/OoTRMWSeason2Swiss") : "Swiss results";
-                        }
-                        li {
-                            a(href = "https://docs.google.com/spreadsheets/d/101zNpL1uvmIONb59kXYVyoa7YaHy8Y_OJv3M3vOKdBA/edit#gid=104642672") : "Tiebreaker scoresheet";
-                        }
-                        li {
-                            a(href = "https://challonge.com/OoTRMWSeason2Finals") : "Top 8 results";
-                        }
+                    li {
+                        a(href = "https://challonge.com/OoTRMWSeason2Swiss") : "Swiss results";
+                    }
+                    li {
+                        a(href = "https://docs.google.com/spreadsheets/d/101zNpL1uvmIONb59kXYVyoa7YaHy8Y_OJv3M3vOKdBA/edit#gid=104642672") : "Tiebreaker scoresheet";
+                    }
+                    li {
+                        a(href = "https://challonge.com/OoTRMWSeason2Finals") : "Top 8 results";
                     }
                 }
             }
-        }
-        "3" => {
-            let organizers = stream::iter([
-                11983715422555811980, // ACreativeUsername
-                10663518306823692018, // Alaszun
-                11587964556511372305, // Bliven
-                6374388881117205057, // felixoide4
-                14571800683221815449, // Fenhl
-                12937129924130129092, // Hamsda
-                2315005348393237449, // rockchalk
-                5305697930717211129, // tenacious_toad
-            ])
-                .map(Id)
-                .then(|id| async move { User::from_id(pool, id).await?.ok_or(InfoError::OrganizerUserData) })
-                .try_collect::<Vec<_>>().await?;
-            html! {
-                article {
-                    p {
-                        : "Hello and welcome to the official rules document for the Ocarina of Time Randomizer Multiworld Tournament Season 3, organized by ";
-                        : natjoin_html(organizers);
-                        : ".";
-                    }
-                    h2 : "Tournament Format";
-                    p : "All teams are required to play a single asynchronous seed with the default race settings to participate. The results of this seed will be used to seed the settings draft.";
-                    p {
-                        : "The tournament itself will begin with a randomly seeded series of ";
-                        a(href = "https://en.wikipedia.org/wiki/Swiss-system_tournament") : "Swiss";
-                        : " rounds. These will be played as best of 1. There will be 6 rounds, with each round lasting two weeks. In the event that teams do not schedule in time, tournament organizers will use their discretion to determine the correct outcome based on the failures to schedule. In unusual circumstances that affect the entire tournament base (such as a GDQ), a round can be extended at the discretion of tournament organizers.";
-                    }
-                    p : "After all Swiss rounds are done, plus an additional tiebreaker async, the top 8 teams will advance to a single elimination bracket to crown the champions. The bracket stage of the tournament will be played as best of 3.";
-                    h2 : "Match Format";
-                    p : "Each match will consist of a 3v3 Multiworld where both sides compete to see which team will have all three of its members beat the game with the lowest average time of finish:";
-                    ul {
-                        li : "In a Triforce Hunt seed, timing for an individual player ends on the first completely black frame after that player has obtained the last required piece. (Due to how Triforce Hunt works in multiworld, all players on a team will normally have the same finish time, but if a player savescums a Triforce piece they found, they can have a lower Triforce count than their teammates.)";
-                        li : "In all other seeds, timing for an individual player ends on the first frame of the cutscene that plays upon killing Ganon. Players are allowed to kill Ganon to stop their timer and then reset their game, allowing them to continue collecting items for their team if necessary.";
-                    }
-                    h2 : "Fair Play Agreement";
-                    p {
-                        : "By joining this tournament, teams must accept the terms of the ";
-                        a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement (FPA)";
-                        : ", a system that can be invoked in the event of technical issues. If playing on BizHawk, it is a strong, strong suggestion to make sure you enable backup saves as documented ";
-                        a(href = "https://wiki.ootrandomizer.com/index.php?title=Bizhawk#Enable_Save_Backup_In_Case_of_Crashes") : "here";
-                        : ".";
-                    }
-                    h2 : "Seed Settings";
-                    p {
-                        : "Starting with Swiss round 2, all tournament matches will be played on ";
-                        a(href = "https://ootrandomizer.com/generatorDev?version=dev_6.2.205") : "version 6.2.205";
-                        : " of the randomizer. (The qualifier async and Swiss round 1 were played on ";
-                        a(href = "https://ootrandomizer.com/generatorDev?version=dev_6.2.181") : "version 6.2.181";
-                        : ".)";
-                    }
-                    p : "The default settings for each race have the following differences to the S5 tournament preset:";
-                    ul {
-                        li : "Forest: Open";
-                        li : "Scrub Shuffle: On (Affordable)";
-                        li : "Shopsanity: 4 Items per Shop";
-                        li : "Starting Inventory: Ocarina, FW, Lens of Truth, Consumables, Rupees (no Deku Shield)";
-                        li : "Free Scarecrow's Song";
-                        li : "Starting Age: Adult";
-                        li : "Randomize Overworld Spawns: Off";
-                        li : "Excluded Locations: Kak 40/50 Gold Skulltula Reward";
-                        li : "Adult Trade Quest: Claim Check Only";
-                        li : "Enable Tricks: Dodongo's Cavern Scarecrow GS with Armos Statue";
-                        li : "Chest Appearance Matches Contents: Both Size and Texture";
-                        li : "Maps and Compasses Give Information: On";
-                    }
-                    p : "You can use the “Multiworld Tournament Season 3” preset to load these settings.";
-                    p : "However, in every race several of the settings may be modified by the teams. During Swiss, the team that placed higher in the qualifier async gets to pick who starts the procedure. For the first game of a top 8 match, this choice is made by the team with the higher seed in the bracket, and for subsequent games of a match, by the team that lost the previous game. Ties are broken by coin flip. The draft itself follows this pattern:";
-                    ul {
-                        li(class = "sheikah") : "Ban";
-                        li(class = "gerudo") : "Ban";
-                        li(class = "sheikah") : "Pick";
-                        li(class = "gerudo") : "2x Pick";
-                        li(class = "sheikah") : "Pick";
-                    }
-                    p {
-                        : "A ";
-                        em : "ban";
-                        : " allows a team to lock in a setting of their choice to the default. A ";
-                        em : "pick";
-                        : " will function just like last season, allowing a team to change a setting or lock it to the default as well. This drafting procedure takes place in the scheduling thread for the match and must be completed at least 30 minutes before the scheduled starting time so the seed can be rolled.";
-                    }
-                    p {
-                        : "The settings that can be modified and their respective options (";
-                        strong : "first";
-                        : " being the default) are, roughly ordered by impact on how drastically seeds and their length can change:";
-                    }
-                    ul {
-                        li {
-                            : "Win Condition:";
-                            ul {
-                                li {
-                                    strong : "6 Medallion Rainbow Bridge + Remove Ganon’s Boss Key";
-                                }
-                                li : "3 Stone Rainbow Bridge + Vanilla LACS Ganon’s Boss Key";
-                                li : "Triforce Hunt with 25/30 Triforce pieces per world + 4 Reward Rainbow Bridge";
-                            }
-                        }
-                        li {
-                            : "Dungeons:";
-                            ul {
-                                li {
-                                    strong : "Small Keys and Boss Keys shuffled inside their own dungeons";
-                                }
-                                li : "Small Keys and Boss Keys in their vanilla chests + dungeon Tokensanity";
-                                li : "Boss Keys in their vanilla chests + Small Keys anywhere + Keyrings on";
-                            }
-                        }
-                        li {
-                            : "Shuffle Dungeon Entrances:";
-                            ul {
-                                li {
-                                    strong : "Off";
-                                }
-                                li : "On";
-                            }
-                        }
-                        li {
-                            : "Ganon's Trials:";
-                            ul {
-                                li {
-                                    strong : "0";
-                                }
-                                li : "2";
-                            }
-                        }
-                        li {
-                            : "Shopsanity:";
-                            ul {
-                                li {
-                                    strong : "4 Items per Shop + Random Prices";
-                                }
-                                li : "Off";
-                            }
-                        }
-                        li {
-                            : "Scrub Shuffle:";
-                            ul {
-                                li {
-                                    strong : "On (Affordable)";
-                                }
-                                li : "Off";
-                            }
-                        }
-                        li {
-                            : "Zora's Fountain:";
-                            ul {
-                                li {
-                                    strong : "Default Behavior (Closed)";
-                                }
-                                li : "Always Open";
-                            }
-                        }
-                        li {
-                            : "Starting Age/Randomize Overworld Spawns:";
-                            ul {
-                                li {
-                                    strong : "Adult/Off";
-                                }
-                                li : "Random/On";
-                            }
-                        }
-                    }
-                    h2 : "Hint Distribution";
-                    p : "Because of the somewhat unique settings of multiworld, there will be a custom hint distribution for this tournament. With 40 hint stones, the hint distribution will be as follows, with each hint having one duplicated hint:";
-                    ul {
-                        li {
-                            : "7 Goal/Path hints:";
-                            ul {
-                                li : "No dungeon limit";
-                                li : "Zelda's Lullaby is never directly hinted";
-                            }
-                        }
-                        li : "0 Foolish hints";
-                        li {
-                            : "5-8 “Always” Hints (Settings Dependent):";
-                            ul {
-                                li : "2 active Trials (if enabled)";
-                                li : "Song from Ocarina of Time";
-                                li : "Sheik in Kakariko";
-                                li : "Deku Theater Skull Mask";
-                                li : "Kak 30 Gold Skulltula Reward";
-                                li : "ZR Frogs Ocarina Game";
-                                li : "DMC Deku Scrub (if Scrubsanity enabled)";
-                            }
-                        }
-                    }
-                    p : "The remainder of the hints will be filled out with selections from the “Sometimes” hint pool for a total of 20 paired hints. The following additional locations are Sometimes hints (if dungeon Tokensanity is enabled):";
-                    ul {
-                        li : "Deku Tree GS Basement Back Room";
-                        li : "Water Temple GS River";
-                        li : "Spirit Temple GS Hall After Sun Block Room";
-                    }
-                    p : "Always and Sometimes hint are upgraded to Dual hints where available.";
-                    p : "The following Sometimes hints have been removed:";
-                    ul {
-                        li : "Sheik in Crater";
-                        li : "Song from Royal Familys Tomb";
-                        li : "Sheik in Forest";
-                        li : "Sheik at Temple";
-                        li : "Sheik at Colossus";
-                        li : "LH Sun";
-                        li : "GC Maze Left Chest";
-                        li : "GV Chest";
-                        li : "Graveyard Royal Familys Tomb Chest";
-                        li : "GC Pot Freestanding PoH";
-                        li : "LH Lab Dive";
-                        li : "Fire Temple Megaton Hammer Chest";
-                        li : "Fire Temple Scarecrow Chest";
-                        li : "Water Temple Boss Key Chest";
-                        li : "Water Temple GS Behind Gate";
-                        li : "Gerudo Training Ground Maze Path Final Chest";
-                        li : "Spirit Temple Silver Gauntlets Chest";
-                        li : "Spirit Temple Mirror Shield Chest";
-                        li : "Shadow Temple Freestanding Key";
-                        li : "Ganons Castle Shadow Trial Golden Gauntlets Chest";
-                    }
-                    h2 : "Rules";
-                    p {
-                        : "This tournament will take place under the ";
-                        a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "Standard";
-                        : " racing ruleset, with some slight modifications:";
-                    }
-                    ul {
-                        li : "Fire Arrow Entry is allowed";
-                        li : "Playing Treasure Chest Game without magic and lens is banned";
-                        li : "DMC “pot push” is banned";
-                        li : "All custom models are banned";
-                    }
-                    h2 : "Multiworld Plugins";
-                    p {
-                        : "There are two plugins that can be used for the item sharing: ";
-                        a(href = "https://github.com/TestRunnerSRL/bizhawk-co-op#readme") : "bizhawk-co-op";
-                        : " (also known as Multiworld 1.0) and ";
-                        a(href = "https://github.com/midoshouse/ootr-multiworld#readme") : "Mido's House Multiworld";
-                        : ". While we recommend using the Mido's House plugin since it supports Project64 in addition to BizHawk and is easier to use (see ";
-                        a(href = "https://github.com/midoshouse/ootr-multiworld#feature-comparison") : "feature comparison";
-                        : "), both plugins are legal in this tournament.";
-                    }
-                    p : "We were hopeful to host this season of the tournament on Multiworld 2.0, but there have been further delays with its release. In the event that it does release during this tournament, the plan is to allow Multiworld 2.0 to be used after being cleared by the tournament staff. However, be aware that by using this your team accepts the risks with using it and must abide by the standard FPA rules.";
+        },
+        "3" => html! {
+            article {
+                p {
+                    : "Hello and welcome to the official rules document for the Ocarina of Time Randomizer Multiworld Tournament Season 3, organized by ";
+                    : natjoin_html(data.organizers(transaction).await?);
+                    : ".";
                 }
+                h2 : "Tournament Format";
+                p : "All teams are required to play a single asynchronous seed with the default race settings to participate. The results of this seed will be used to seed the settings draft.";
+                p {
+                    : "The tournament itself will begin with a randomly seeded series of ";
+                    a(href = "https://en.wikipedia.org/wiki/Swiss-system_tournament") : "Swiss";
+                    : " rounds. These will be played as best of 1. There will be 6 rounds, with each round lasting two weeks. In the event that teams do not schedule in time, tournament organizers will use their discretion to determine the correct outcome based on the failures to schedule. In unusual circumstances that affect the entire tournament base (such as a GDQ), a round can be extended at the discretion of tournament organizers.";
+                }
+                p : "After all Swiss rounds are done, plus an additional tiebreaker async, the top 8 teams will advance to a single elimination bracket to crown the champions. The bracket stage of the tournament will be played as best of 3.";
+                h2 : "Match Format";
+                p : "Each match will consist of a 3v3 Multiworld where both sides compete to see which team will have all three of its members beat the game with the lowest average time of finish:";
+                ul {
+                    li : "In a Triforce Hunt seed, timing for an individual player ends on the first completely black frame after that player has obtained the last required piece. (Due to how Triforce Hunt works in multiworld, all players on a team will normally have the same finish time, but if a player savescums a Triforce piece they found, they can have a lower Triforce count than their teammates.)";
+                    li : "In all other seeds, timing for an individual player ends on the first frame of the cutscene that plays upon killing Ganon. Players are allowed to kill Ganon to stop their timer and then reset their game, allowing them to continue collecting items for their team if necessary.";
+                }
+                h2 : "Fair Play Agreement";
+                p {
+                    : "By joining this tournament, teams must accept the terms of the ";
+                    a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement (FPA)";
+                    : ", a system that can be invoked in the event of technical issues. If playing on BizHawk, it is a strong, strong suggestion to make sure you enable backup saves as documented ";
+                    a(href = "https://wiki.ootrandomizer.com/index.php?title=Bizhawk#Enable_Save_Backup_In_Case_of_Crashes") : "here";
+                    : ".";
+                }
+                h2 : "Seed Settings";
+                p {
+                    : "Starting with Swiss round 2, all tournament matches will be played on ";
+                    a(href = "https://ootrandomizer.com/generatorDev?version=dev_6.2.205") : "version 6.2.205";
+                    : " of the randomizer. (The qualifier async and Swiss round 1 were played on ";
+                    a(href = "https://ootrandomizer.com/generatorDev?version=dev_6.2.181") : "version 6.2.181";
+                    : ".)";
+                }
+                p : "The default settings for each race have the following differences to the S5 tournament preset:";
+                ul {
+                    li : "Forest: Open";
+                    li : "Scrub Shuffle: On (Affordable)";
+                    li : "Shopsanity: 4 Items per Shop";
+                    li : "Starting Inventory: Ocarina, FW, Lens of Truth, Consumables, Rupees (no Deku Shield)";
+                    li : "Free Scarecrow's Song";
+                    li : "Starting Age: Adult";
+                    li : "Randomize Overworld Spawns: Off";
+                    li : "Excluded Locations: Kak 40/50 Gold Skulltula Reward";
+                    li : "Adult Trade Quest: Claim Check Only";
+                    li : "Enable Tricks: Dodongo's Cavern Scarecrow GS with Armos Statue";
+                    li : "Chest Appearance Matches Contents: Both Size and Texture";
+                    li : "Maps and Compasses Give Information: On";
+                }
+                p : "You can use the “Multiworld Tournament Season 3” preset to load these settings.";
+                p : "However, in every race several of the settings may be modified by the teams. During Swiss, the team that placed higher in the qualifier async gets to pick who starts the procedure. For the first game of a top 8 match, this choice is made by the team with the higher seed in the bracket, and for subsequent games of a match, by the team that lost the previous game. Ties are broken by coin flip. The draft itself follows this pattern:";
+                ul {
+                    li(class = "sheikah") : "Ban";
+                    li(class = "gerudo") : "Ban";
+                    li(class = "sheikah") : "Pick";
+                    li(class = "gerudo") : "2x Pick";
+                    li(class = "sheikah") : "Pick";
+                }
+                p {
+                    : "A ";
+                    em : "ban";
+                    : " allows a team to lock in a setting of their choice to the default. A ";
+                    em : "pick";
+                    : " will function just like last season, allowing a team to change a setting or lock it to the default as well. This drafting procedure takes place in the scheduling thread for the match and must be completed at least 30 minutes before the scheduled starting time so the seed can be rolled.";
+                }
+                p {
+                    : "The settings that can be modified and their respective options (";
+                    strong : "first";
+                    : " being the default) are, roughly ordered by impact on how drastically seeds and their length can change:";
+                }
+                ul {
+                    li {
+                        : "Win Condition:";
+                        ul {
+                            li {
+                                strong : "6 Medallion Rainbow Bridge + Remove Ganon’s Boss Key";
+                            }
+                            li : "3 Stone Rainbow Bridge + Vanilla LACS Ganon’s Boss Key";
+                            li : "Triforce Hunt with 25/30 Triforce pieces per world + 4 Reward Rainbow Bridge";
+                        }
+                    }
+                    li {
+                        : "Dungeons:";
+                        ul {
+                            li {
+                                strong : "Small Keys and Boss Keys shuffled inside their own dungeons";
+                            }
+                            li : "Small Keys and Boss Keys in their vanilla chests + dungeon Tokensanity";
+                            li : "Boss Keys in their vanilla chests + Small Keys anywhere + Keyrings on";
+                        }
+                    }
+                    li {
+                        : "Shuffle Dungeon Entrances:";
+                        ul {
+                            li {
+                                strong : "Off";
+                            }
+                            li : "On";
+                        }
+                    }
+                    li {
+                        : "Ganon's Trials:";
+                        ul {
+                            li {
+                                strong : "0";
+                            }
+                            li : "2";
+                        }
+                    }
+                    li {
+                        : "Shopsanity:";
+                        ul {
+                            li {
+                                strong : "4 Items per Shop + Random Prices";
+                            }
+                            li : "Off";
+                        }
+                    }
+                    li {
+                        : "Scrub Shuffle:";
+                        ul {
+                            li {
+                                strong : "On (Affordable)";
+                            }
+                            li : "Off";
+                        }
+                    }
+                    li {
+                        : "Zora's Fountain:";
+                        ul {
+                            li {
+                                strong : "Default Behavior (Closed)";
+                            }
+                            li : "Always Open";
+                        }
+                    }
+                    li {
+                        : "Starting Age/Randomize Overworld Spawns:";
+                        ul {
+                            li {
+                                strong : "Adult/Off";
+                            }
+                            li : "Random/On";
+                        }
+                    }
+                }
+                h2 : "Hint Distribution";
+                p : "Because of the somewhat unique settings of multiworld, there will be a custom hint distribution for this tournament. With 40 hint stones, the hint distribution will be as follows, with each hint having one duplicated hint:";
+                ul {
+                    li {
+                        : "7 Goal/Path hints:";
+                        ul {
+                            li : "No dungeon limit";
+                            li : "Zelda's Lullaby is never directly hinted";
+                        }
+                    }
+                    li : "0 Foolish hints";
+                    li {
+                        : "5-8 “Always” Hints (Settings Dependent):";
+                        ul {
+                            li : "2 active Trials (if enabled)";
+                            li : "Song from Ocarina of Time";
+                            li : "Sheik in Kakariko";
+                            li : "Deku Theater Skull Mask";
+                            li : "Kak 30 Gold Skulltula Reward";
+                            li : "ZR Frogs Ocarina Game";
+                            li : "DMC Deku Scrub (if Scrubsanity enabled)";
+                        }
+                    }
+                }
+                p : "The remainder of the hints will be filled out with selections from the “Sometimes” hint pool for a total of 20 paired hints. The following additional locations are Sometimes hints (if dungeon Tokensanity is enabled):";
+                ul {
+                    li : "Deku Tree GS Basement Back Room";
+                    li : "Water Temple GS River";
+                    li : "Spirit Temple GS Hall After Sun Block Room";
+                }
+                p : "Always and Sometimes hint are upgraded to Dual hints where available.";
+                p : "The following Sometimes hints have been removed:";
+                ul {
+                    li : "Sheik in Crater";
+                    li : "Song from Royal Familys Tomb";
+                    li : "Sheik in Forest";
+                    li : "Sheik at Temple";
+                    li : "Sheik at Colossus";
+                    li : "LH Sun";
+                    li : "GC Maze Left Chest";
+                    li : "GV Chest";
+                    li : "Graveyard Royal Familys Tomb Chest";
+                    li : "GC Pot Freestanding PoH";
+                    li : "LH Lab Dive";
+                    li : "Fire Temple Megaton Hammer Chest";
+                    li : "Fire Temple Scarecrow Chest";
+                    li : "Water Temple Boss Key Chest";
+                    li : "Water Temple GS Behind Gate";
+                    li : "Gerudo Training Ground Maze Path Final Chest";
+                    li : "Spirit Temple Silver Gauntlets Chest";
+                    li : "Spirit Temple Mirror Shield Chest";
+                    li : "Shadow Temple Freestanding Key";
+                    li : "Ganons Castle Shadow Trial Golden Gauntlets Chest";
+                }
+                h2 : "Rules";
+                p {
+                    : "This tournament will take place under the ";
+                    a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "Standard";
+                    : " racing ruleset, with some slight modifications:";
+                }
+                ul {
+                    li : "Fire Arrow Entry is allowed";
+                    li : "Playing Treasure Chest Game without magic and lens is banned";
+                    li : "DMC “pot push” is banned";
+                    li : "All custom models are banned";
+                }
+                h2 : "Multiworld Plugins";
+                p {
+                    : "There are two plugins that can be used for the item sharing: ";
+                    a(href = "https://github.com/TestRunnerSRL/bizhawk-co-op#readme") : "bizhawk-co-op";
+                    : " (also known as Multiworld 1.0) and ";
+                    a(href = "https://github.com/midoshouse/ootr-multiworld#readme") : "Mido's House Multiworld";
+                    : ". While we recommend using the Mido's House plugin since it supports Project64 in addition to BizHawk and is easier to use (see ";
+                    a(href = "https://github.com/midoshouse/ootr-multiworld#feature-comparison") : "feature comparison";
+                    : "), both plugins are legal in this tournament.";
+                }
+                p : "We were hopeful to host this season of the tournament on Multiworld 2.0, but there have been further delays with its release. In the event that it does release during this tournament, the plan is to allow Multiworld 2.0 to be used after being cleared by the tournament staff. However, be aware that by using this your team accepts the risks with using it and must abide by the standard FPA rules.";
             }
-        }
+        },
         _ => unimplemented!(),
     })
 }

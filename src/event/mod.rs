@@ -492,6 +492,16 @@ impl<'a> Data<'a> {
         self.end.map_or(false, |end| end <= Utc::now())
     }
 
+    async fn organizers(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<User>, InfoError> {
+        let mut buf = Vec::<User>::default();
+        for id in sqlx::query_scalar!(r#"SELECT organizer AS "organizer: Id" FROM organizers WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut *transaction).await? {
+            let user = User::from_id(&mut *transaction, id).await?.ok_or(InfoError::OrganizerUserData)?;
+            let (Ok(idx) | Err(idx)) = buf.binary_search_by(|probe| probe.display_name().cmp(user.display_name()).then_with(|| probe.id.cmp(&user.id)));
+            buf.insert(idx, user);
+        }
+        Ok(buf)
+    }
+
     async fn active_async(&self, transaction: &mut Transaction<'_, Postgres>, team: &Team) -> sqlx::Result<Option<AsyncKind>> {
         for kind in sqlx::query_scalar!(r#"SELECT kind AS "kind: AsyncKind" FROM asyncs WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut *transaction).await? {
             match kind {
@@ -688,10 +698,10 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
     let data = Data::new(&mut transaction, series, event).await.map_err(InfoError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, me.as_ref(), Tab::Info).await.map_err(InfoError::Event)?;
     let content = match data.series {
-        Series::Multiworld => mw::info(pool, event).await?,
-        Series::NineDaysOfSaws => ndos::info(pool, &data).await?,
-        Series::Pictionary => pic::info(pool, event).await?,
-        Series::Rsl => rsl::info(event),
+        Series::Multiworld => mw::info(&mut transaction, &data).await?,
+        Series::NineDaysOfSaws => ndos::info(&mut transaction, &data).await?,
+        Series::Pictionary => pic::info(&mut transaction, &data).await?,
+        Series::Rsl => rsl::info(&mut transaction, &data).await?,
         Series::Standard => s::info(event),
     };
     page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {

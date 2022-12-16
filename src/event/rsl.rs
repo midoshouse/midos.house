@@ -14,6 +14,7 @@ use {
         event::{
             Data,
             Error,
+            InfoError,
             Tab,
         },
         http::{
@@ -21,6 +22,7 @@ use {
             page,
         },
         user::User,
+        util::natjoin_html,
     },
 };
 
@@ -75,8 +77,8 @@ impl FromStr for Preset {
     }
 }
 
-pub(super) fn info(event: &str) -> RawHtml<String> {
-    match event {
+pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+    Ok(match &*data.event {
         "2" => html! {
             article {
                 p : "This is an archive of the 2nd season of the Random Settings League tournament.";
@@ -116,14 +118,16 @@ pub(super) fn info(event: &str) -> RawHtml<String> {
         "5" => html! {
             article {
                 p {
-                    : "This is the 5th season of the Random Settings League tournament. See ";
+                    : "This is the 5th season of the Random Settings League tournament, organized by Cubsrule21, ";
+                    : natjoin_html(data.organizers(transaction).await?);
+                    : ". See ";
                     a(href = "https://docs.google.com/document/d/1Js03yFcMw_mWx4UO_3UJB39CNCKa0bsxlBEYrHPq5Os/edit") : "the official document";
                     : " for details.";
                 }
             }
         },
         _ => unimplemented!(),
-    }
+    })
 }
 
 pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, data: Data<'_>) -> Result<RawHtml<String>, Error> {
