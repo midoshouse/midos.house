@@ -1220,7 +1220,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             race_state: Arc::new(RwLock::new(race_state)),
             official_data, high_seed_name, low_seed_name,
         };
-        if is_official {
+        if let RaceState::Draft(_) = *this.race_state.read().await {
             this.advance_draft(ctx).await?;
         }
         Ok(this)
@@ -1419,7 +1419,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                     "on" => if self.is_official() {
                         ctx.send_message("Fair play agreement is always active in official races.").await?;
                     } else if !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
-                        ctx.send_message(&format!("Sorry {reply_to}, only race monitors can do that.")).await?;
+                        ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
                     } else if self.fpa_enabled {
                         ctx.send_message("Fair play agreement is already activated.").await?;
                     } else {
@@ -1429,7 +1429,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                     "off" => if self.is_official() {
                         ctx.send_message(&format!("Sorry {reply_to}, but FPA can't be deactivated for official races.")).await?;
                     } else if !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
-                        ctx.send_message(&format!("Sorry {reply_to}, only race monitors can do that.")).await?;
+                        ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
                     } else if self.fpa_enabled {
                         self.fpa_enabled = false;
                         ctx.send_message("Fair play agreement is now deactivated.").await?;
@@ -1442,11 +1442,17 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             },
             "lock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 self.locked = true;
-                ctx.send_message("Lock initiated. I will now only roll seeds for race monitors.").await?;
+                ctx.send_message(&format!("Lock initiated. I will now only roll seeds for {}.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })).await?;
             } else {
-                ctx.send_message(&format!("Sorry {reply_to}, only race monitors can do that.")).await?;
+                ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
             },
-            //TODO !monitor command to allow tournament organizers to become race monitors
+            "monitor" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
+                ctx.add_monitor(&msg.user.as_ref().expect("received !monitor command from bot").id).await?;
+            } else if self.is_official() {
+                ctx.send_message(&format!("Sorry {reply_to}, only tournament organizers can do that.")).await?;
+            } else {
+                ctx.send_message(&format!("Sorry {reply_to}, this command is only available for official races.")).await?;
+            },
             "presets" => goal.send_presets(ctx).await?,
             "second" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.race_state.write().await;
@@ -1471,7 +1477,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 let mut state = self.race_state.clone().write_owned().await;
                 match *state {
                     RaceState::Init => if self.locked && !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
-                        ctx.send_message(&format!("Sorry {reply_to}, seed rolling is locked. Only race monitors may roll a seed for this race.")).await?;
+                        ctx.send_message(&format!("Sorry {reply_to}, seed rolling is locked. Only {} may roll a seed for this race.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })).await?;
                     } else {
                         match goal {
                             Goal::MultiworldS3 => match args[..] {
@@ -1718,7 +1724,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 self.locked = false;
                 ctx.send_message("Lock released. Anyone may now roll a seed.").await?;
             } else {
-                ctx.send_message(&format!("Sorry {reply_to}, only race monitors can do that.")).await?;
+                ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
             },
             _ => ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that command.")).await?, //TODO “did you mean”? list of available commands with !help?
         }
