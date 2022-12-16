@@ -521,9 +521,14 @@ impl GlobalState {
                     } else {
                         None
                     };
-                    let (seed_id, gen_time, file_hash, file_stem) = self.ootr_api_client.roll_seed_web(update_tx.clone(), version.clone(), true, settings).await?;
+                    let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), version.clone(), true, settings).await {
+                        Ok(data) => data,
+                        Err(RollError::Retries) => continue,
+                        Err(e) => return Err(e),
+                    };
                     drop(mw_permit);
                     let _ = update_tx.send(SeedRollUpdate::DoneWeb { rsl_preset: Some(preset), seed_id, gen_time, file_hash, file_stem }).await;
+                    return Ok(())
                 } else {
                     let patch_filename = BufRead::lines(&*output.stdout)
                         .filter_map_ok(|line| Some(regex_captures!("^Creating Patch File: (.+)$", &line)?.1.to_owned()))
