@@ -17,8 +17,11 @@ conn = psycopg.connect('dbname=midos_house user=mido')
 
 def b(seed_id, room=None, *, startgg=None, async_room1=None, async_room2=None, unlock=True):
     patch_resp = requests.get('https://ootrandomizer.com/patch/get', params={'id': seed_id})
-    patch_resp.raise_for_status()
-    file_stem = re.fullmatch('attachment; filename=(.*)\\.zpfz?', patch_resp.headers['Content-Disposition']).group(1)
+    if patch_resp.status_code == 404:
+        file_stem = input('file stem: ').strip()
+    else:
+        patch_resp.raise_for_status()
+        file_stem = re.fullmatch('attachment; filename=(.*)\\.zpfz?', patch_resp.headers['Content-Disposition']).group(1)
     with open(SEEDS_DIR / re.fullmatch('attachment; filename=(.*\\.zpfz?)', patch_resp.headers['Content-Disposition']).group(1), 'wb') as patch_f:
         patch_f.write(patch_resp.content)
     api_resp = requests.get('https://ootrandomizer.com/api/v2/seed/details', params={'id': seed_id, 'key': config['ootrApiKey']})
