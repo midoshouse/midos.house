@@ -305,12 +305,13 @@ pub(crate) enum TableCellsError {
 }
 
 pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool) -> Result<RawHtml<String>, TableCellsError> {
-    let (spoiler_file_name, spoiler_contents) = if seed.file_hash.is_none() || seed.web.map_or(true, |web| web.gen_time <= now - chrono::Duration::days(90)) {
+    let (spoiler_file_name, spoiler_path_exists, spoiler_contents) = if seed.file_hash.is_none() || seed.web.map_or(true, |web| web.gen_time <= now - chrono::Duration::days(90)) {
         let spoiler_file_name = format!("{}_Spoiler.json", seed.file_stem);
         let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
-        (Some(spoiler_file_name), Some(serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_path).await?)?))
+        let spoiler_path_exists = spoiler_path.exists();
+        (Some(spoiler_file_name), spoiler_path_exists, if spoiler_path_exists { Some(serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_path).await?)?) } else { None })
     } else {
-        (None, None)
+        (None, false, None)
     };
     Ok(html! {
         @if let Some(file_hash) = seed.file_hash {
@@ -333,11 +334,21 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
             }
         } else {
             td {
-                a(href = format!("/seed/{}.{}", seed.file_stem, if spoiler_contents.as_ref().expect("should be present since web seed missing or expired").settings.world_count.get() > 1 { "zpfz" } else { "zpf" })) : "Download";
+                a(href = format!("/seed/{}.{}", seed.file_stem, if let Some(ref spoiler) = spoiler_contents {
+                    if spoiler.settings.world_count.get() > 1 { "zpfz" } else { "zpf" }
+                } else if Path::new(DIR).join(format!("{}.zpfz", seed.file_stem)).exists() {
+                    "zpfz"
+                } else {
+                    "zpf"
+                })) : "Download";
             }
             @if spoiler_logs {
                 td {
-                    a(href = format!("/seed/{}", spoiler_file_name.expect("should be present since web seed missing or expired"))) : "View";
+                    @if spoiler_path_exists {
+                        a(href = format!("/seed/{}", spoiler_file_name.expect("should be present since web seed missing or expired"))) : "View";
+                    } else {
+                        : "not found"; //TODO different message if the race is still in progress
+                    }
                 }
             }
         }
