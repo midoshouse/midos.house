@@ -2,7 +2,6 @@ use {
     std::{
         borrow::Cow,
         fmt,
-        io,
         iter,
         marker::PhantomData,
         num::NonZeroU8,
@@ -30,10 +29,8 @@ use {
         },
     },
     serde_plain::derive_display_from_serialize,
-    tokio::{
-        fs,
-        pin,
-    },
+    tokio::pin,
+    wheel::fs,
     crate::{
         favicon::{
             Bridge,
@@ -301,7 +298,13 @@ pub(crate) fn table_empty_cells(spoiler_logs: bool) -> RawHtml<String> {
     }
 }
 
-pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool) -> io::Result<RawHtml<String>> {
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum TableCellsError {
+    #[error(transparent)] Json(#[from] serde_json::Error),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
+}
+
+pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool) -> Result<RawHtml<String>, TableCellsError> {
     let (spoiler_file_name, spoiler_contents) = if seed.file_hash.is_none() || seed.web.map_or(true, |web| web.gen_time <= now - chrono::Duration::days(90)) {
         let spoiler_file_name = format!("{}_Spoiler.json", seed.file_stem);
         let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
@@ -341,7 +344,7 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
     })
 }
 
-pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -> io::Result<RawHtml<String>> {
+pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -> Result<RawHtml<String>, TableCellsError> {
     pin!(seeds);
     let now = Utc::now();
     Ok(html! {

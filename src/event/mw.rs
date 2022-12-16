@@ -1060,7 +1060,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
     }).await?)
 }
 
-pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> sqlx::Result<RawHtml<String>> {
+pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> Result<RawHtml<String>, Error> {
     Ok(if let Some(team) = crate::team::Team::from_id(&mut *transaction, team_id).await? {
         if let Some(async_kind) = data.active_async(&mut *transaction, &team).await? {
             let async_row = sqlx::query!(r#"SELECT discord_channel AS "discord_channel: Id", web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;

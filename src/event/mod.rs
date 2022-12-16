@@ -624,6 +624,7 @@ pub(crate) enum Error {
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] TableCells(#[from] seed::TableCellsError),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
 }
@@ -674,9 +675,9 @@ impl From<url::ParseError> for StatusOrError<Error> {
 pub(crate) enum InfoError {
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Event(#[from] Error),
-    #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] TableCells(#[from] seed::TableCellsError),
     #[error("missing user data for an event organizer")]
     OrganizerUserData,
 }
@@ -1063,7 +1064,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 }
                             }
                             @if let Some(ref seed) = race.seed {
-                                : seed::table_cells(now, seed, true).await.map_err(Error::Io)?;
+                                : seed::table_cells(now, seed, true).await.map_err(Error::TableCells)?;
                             } else {
                                 : seed::table_empty_cells(true);
                             }

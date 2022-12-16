@@ -66,10 +66,6 @@ use {
     serenity_utils::RwFuture,
     sqlx::PgPool,
     tokio::{
-        fs::{
-            self,
-            File,
-        },
         io::{
             self,
             AsyncBufReadExt as _,
@@ -95,9 +91,15 @@ use {
     },
     tokio_util::io::StreamReader,
     url::Url,
-    wheel::traits::{
-        IoResultExt as _,
-        ReqwestResponseExt as _,
+    wheel::{
+        fs::{
+            self,
+            File,
+        },
+        traits::{
+            IoResultExt as _,
+            ReqwestResponseExt as _,
+        },
     },
     crate::{
         Environment,
@@ -650,7 +652,7 @@ impl SeedRollUpdate {
             Self::DoneLocal { rsl_preset, patch_filename, spoiler_log_path } => {
                 let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename").to_owned();
                 let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(Error::Custom(Box::new(RollError::PatchPath)))?;
-                let file_hash @ [hash1, hash2, hash3, hash4, hash5] = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_log_path).await?)?.file_hash;
+                let file_hash @ [hash1, hash2, hash3, hash4, hash5] = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_log_path).await.to_racetime()?)?.file_hash;
                 if let Some((startgg_set, game)) = startgg_game {
                     sqlx::query!(
                         "UPDATE races SET file_stem = $1, hash1 = $2, hash2 = $3, hash3 = $4, hash4 = $5, hash5 = $6 WHERE startgg_set = $7 AND game IS NOT DISTINCT FROM $8",
@@ -1763,7 +1765,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 match *state {
                     RaceState::RolledLocally(ref spoiler_log_path) => {
                         let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name");
-                        fs::rename(spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await?;
+                        fs::rename(spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await.to_racetime()?;
                     }
                     RaceState::RolledWeb { seed_id, ref file_stem } => {
                         let spoiler_filename = format!("{file_stem}_Spoiler.json");
@@ -1773,7 +1775,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                             .detailed_error_for_status().await.to_racetime()?
                             .json_with_text_in_error::<SeedDetailsResponse>().await.to_racetime()?
                             .spoiler_log;
-                        fs::write(Path::new(seed::DIR).join(spoiler_filename), &spoiler_log).await?;
+                        fs::write(Path::new(seed::DIR).join(spoiler_filename), &spoiler_log).await.to_racetime()?;
                     }
                     RaceState::SpoilerSent => return Ok(()),
                     _ => {}

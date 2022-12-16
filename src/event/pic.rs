@@ -164,14 +164,14 @@ pub(super) async fn info(pool: &PgPool, event: &str) -> Result<RawHtml<String>, 
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_F35CF_3PT90NK69D") },
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_F35CF_I7BN7K3S2Z") },
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_F35CF_99YI7I0K6O") },
-        ]), true).await.map_err(InfoError::Io)?),
+        ]), true).await.map_err(InfoError::TableCells)?),
         "rs1" => Some(seed::table(stream::iter(vec![
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoTR_1079630_V6516H22IW") },
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoTR_1079637_HAH75EOAHQ") },
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoTR_1079645_6XZJOSDCRW") },
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoTR_1079646_AJZWAB1X3U") },
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoTR_1079648_1DHCCQB5AC") },
-        ]), true).await.map_err(InfoError::Io)?),
+        ]), true).await.map_err(InfoError::TableCells)?),
         _ => None,
     };
     let organizers = stream::iter([
