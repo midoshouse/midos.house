@@ -475,7 +475,7 @@ impl GlobalState {
                 let output = rsl_cmd.current_dir(&rsl_script_path).output().await.at_command("RandomSettingsGenerator.py")?;
                 match output.status.code() {
                     Some(0) => {}
-                    Some(2) => return Err(RollError::Retries),
+                    Some(2) => return Err(RollError::Retries(15)),
                     _ => return Err(RollError::Wheel(wheel::Error::CommandExit { name: Cow::Borrowed("RandomSettingsGenerator.py"), output })),
                 }
                 if can_roll_on_web {
@@ -523,7 +523,7 @@ impl GlobalState {
                     };
                     let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), version.clone(), true, settings).await {
                         Ok(data) => data,
-                        Err(RollError::Retries) => continue,
+                        Err(RollError::Retries(_)) => continue,
                         Err(e) => return Err(e),
                     };
                     drop(mw_permit);
@@ -547,7 +547,7 @@ impl GlobalState {
                     return Ok(())
                 }
             }
-            let _ = update_tx.send(SeedRollUpdate::Error(RollError::Retries)).await;
+            let _ = update_tx.send(SeedRollUpdate::Error(RollError::Retries(15))).await;
             Ok(())
         }.then(|res| async move {
             match res {
@@ -578,7 +578,7 @@ async fn roll_seed_locally(version: RandoVersion, mut settings: serde_json::Map<
             spoiler_log_path.to_owned(),
         ))
     }
-    Err(RollError::Retries)
+    Err(RollError::Retries(3))
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -600,7 +600,7 @@ enum RollError {
     #[error("attempted to roll a random settings seed on web, but this branch isn't available with hidden settings on web")]
     RandomSettingsWeb,
     #[error("max retries exceeded")]
-    Retries,
+    Retries(u8),
     #[error("failed to parse random settings script output")]
     RslScriptOutput,
     #[error("failed to parse randomizer version from RSL script")]
@@ -696,6 +696,10 @@ impl SeedRollUpdate {
                 ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
                 ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
                 ctx.set_bot_raceinfo(&format!("{}{}\n{seed_url}", if let Some(preset) = rsl_preset { format!("{}\n", preset.race_info()) } else { String::default() }, format_hash(file_hash))).await?;
+            }
+            Self::Error(RollError::Retries(num_retries)) => {
+                ctx.send_message(&format!("Sorry @entrants, the randomizer reported an error {num_retries} times, so I'm giving up on rolling the seed. Please try again. If this error persists, please report it to Fenhl.")).await?;
+                *state.write().await = RaceState::Init;
             }
             Self::Error(msg) => {
                 eprintln!("seed roll error: {msg:?}");
@@ -871,7 +875,7 @@ impl OotrApiClient {
                 }
             }
         }
-        Err(RollError::Retries)
+        Err(RollError::Retries(3))
     }
 }
 
