@@ -2149,7 +2149,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                     }
                     if !value.fpa.is_empty() {
                         message.push_line("");
-                        message.push_line("FPA call:");
+                        message.push("FPA call:");
                         message.quote_rest();
                         message.push_safe(&value.fpa);
                     }

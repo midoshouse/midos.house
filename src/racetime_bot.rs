@@ -1810,7 +1810,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 }
                 *state = RaceState::SpoilerSent;
                 drop(state);
-                if let Some(OfficialRaceData { ref event, fpa_invoked, .. }) = self.official_data {
+                if let Some(OfficialRaceData { ref event, fpa_invoked, game, .. }) = self.official_data {
                     if let Some(discord_guild) = event.discord_guild {
                         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
                         if fpa_invoked {
@@ -1860,7 +1860,13 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                     } else {
                                         let winner = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                         let loser = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                        results_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
+                                        let mut msg = MessageBuilder::default();
+                                        if let Some(game) = game {
+                                            msg.push("game ");
+                                            msg.push(game);
+                                            msg.push(": ");
+                                        }
+                                        results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg
                                             .mention_team(&mut transaction, discord_guild, &winner).await.to_racetime()?
                                             .push(" (")
                                             .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(format_duration(time, false))))
@@ -1941,16 +1947,22 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                             transaction = global_state.db_pool.begin().await.to_racetime()?;
                             if let Some(event) = event::Data::new(&mut transaction, row.series, row.event).await.to_racetime()? {
                                 if let (Some(guild), Some(channel)) = (event.discord_guild, event.discord_race_room_channel) {
-                                    channel.say(&*global_state.discord_ctx.read().await, MessageBuilder::default()
-                                        .push_safe(race.phase)
-                                        .push(' ')
-                                        .push_safe(race.round)
-                                        .push(": ")
-                                        .mention_team(&mut transaction, guild, &race.team1).await.to_racetime()?
-                                        .push(" vs ")
-                                        .mention_team(&mut transaction, guild, &race.team2).await.to_racetime()?
-                                        .push(' ')
+                                    let mut msg = MessageBuilder::default();
+                                    msg.push_safe(race.phase);
+                                    msg.push(' ');
+                                    msg.push_safe(race.round);
+                                    msg.push(": ");
+                                    msg.mention_team(&mut transaction, guild, &race.team1).await.to_racetime()?;
+                                    msg.push(" vs ");
+                                    msg.mention_team(&mut transaction, guild, &race.team2).await.to_racetime()?;
+                                    if let Some(game) = row.game {
+                                        msg.push(", game ");
+                                        msg.push(game);
+                                    }
+                                    channel.say(&*global_state.discord_ctx.read().await, msg
+                                        .push(" <")
                                         .push(room_url)
+                                        .push('>')
                                     ).await.to_racetime()?;
                                 }
                             }
