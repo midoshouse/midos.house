@@ -26,6 +26,7 @@ pub(crate) struct Config {
     pub(crate) startgg_production: String,
     pub(crate) startgg_dev: String,
     pub(crate) secret_key: String,
+    pub(crate) zsr_volunteer_signups: String,
 }
 
 impl Config {

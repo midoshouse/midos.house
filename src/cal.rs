@@ -463,7 +463,7 @@ fn ics_datetime<Tz: TimeZone>(datetime: DateTime<Tz>) -> String {
     datetime.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string()
 }
 
-async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
+async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: &Environment, config: &Config, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
     match event.series {
         Series::Multiworld => match &*event.event {
             "2" => {
@@ -505,6 +505,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                 }
             }
             _ => {
+                let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
                 for race in Race::for_event(transaction, http_client, startgg_token, event.series, &event.event).await? {
                     for race_event in race.cal_events() {
                         if let Some(start) = race_event.start() {
@@ -644,6 +645,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
         },
         Series::Standard => match &*event.event {
             "6" => {
+                // qualifiers
                 for (i, (start, weekly, vod)) in [
                     // source: https://docs.google.com/document/d/1fyNO82G2D0Z7J9wobxEbjDjGnomTaIRdKgETGV_ufmc/edit
                     (Utc.with_ymd_and_hms(2022, 11, 19, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://twitch.tv/videos/1657562512")), //TODO permanent highlight/YouTube upload //TODO seed info (https://racetime.gg/ootr/neutral-bongobongo-4042)
@@ -673,7 +675,24 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                     cal_event.push(URL::new(vod.unwrap_or("https://docs.google.com/document/d/1fyNO82G2D0Z7J9wobxEbjDjGnomTaIRdKgETGV_ufmc/edit")));
                     cal.add_event(cal_event);
                 }
-                //TODO bracket matches
+                // bracket matches
+                for (i, row) in sheet_values(&config.zsr_volunteer_signups, format!("Scheduled Races!B2:D")).await?.into_iter().enumerate() {
+                    if !row.is_empty() {
+                        let mut row = row.into_iter().fuse();
+                        let datetime_et = row.next().unwrap();
+                        let matchup = row.next().unwrap();
+                        let round = row.next().unwrap();
+                        assert!(row.next().is_none());
+                        let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
+                        let duration = Duration::hours(4); //TODO better duration estimate
+                        let mut event = ics::Event::new(format!("s-6-{i}@midos.house"), ics_datetime(Utc::now()));
+                        event.push(Summary::new(format!("S6 {round}: {matchup}")));
+                        event.push(DtStart::new(ics_datetime(start)));
+                        event.push(DtEnd::new(ics_datetime(start + duration)));
+                        //TODO restream if any
+                        cal.add_event(event);
+                    }
+                }
             }
             _ => unimplemented!(),
         },
@@ -683,12 +702,11 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
 
 #[rocket::get("/calendar.ics")]
 pub(crate) async fn index(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>) -> Result<Response<ICalendar<'static>>, Error> {
-    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
     let mut transaction = pool.begin().await?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for row in sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed"#).fetch_all(&mut transaction).await? {
         let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, http_client, startgg_token, &mut cal, &event).await?;
+        add_event_races(&mut transaction, http_client, env, config, &mut cal, &event).await?;
     }
     transaction.commit().await?;
     Ok(Response(cal))
@@ -696,12 +714,11 @@ pub(crate) async fn index(env: &State<Environment>, config: &State<Config>, pool
 
 #[rocket::get("/series/<series>/calendar.ics")]
 pub(crate) async fn for_series(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series) -> Result<Response<ICalendar<'static>>, Error> {
-    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
     let mut transaction = pool.begin().await?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for event in sqlx::query_scalar!(r#"SELECT event FROM events WHERE listed AND series = $1"#, series as _).fetch_all(&mut transaction).await? {
         let event = event::Data::new(&mut transaction, series, event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, http_client, startgg_token, &mut cal, &event).await?;
+        add_event_races(&mut transaction, http_client, env, config, &mut cal, &event).await?;
     }
     transaction.commit().await?;
     Ok(Response(cal))
@@ -709,11 +726,10 @@ pub(crate) async fn for_series(env: &State<Environment>, config: &State<Config>,
 
 #[rocket::get("/event/<series>/<event>/calendar.ics")]
 pub(crate) async fn for_event(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series, event: &str) -> Result<Response<ICalendar<'static>>, StatusOrError<Error>> {
-    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
     let mut transaction = pool.begin().await.map_err(Error::Sql)?;
     let event = event::Data::new(&mut transaction, series, event).await.map_err(Error::Event)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
-    add_event_races(&mut transaction, http_client, startgg_token, &mut cal, &event).await?;
+    add_event_races(&mut transaction, http_client, env, config, &mut cal, &event).await?;
     transaction.commit().await.map_err(Error::Sql)?;
     Ok(Response(cal))
 }
