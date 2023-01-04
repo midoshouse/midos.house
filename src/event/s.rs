@@ -31,6 +31,12 @@ pub(super) fn info(event: &str) -> RawHtml<String> {
                     a(href = "https://docs.google.com/document/d/1Hkrh2A_szTUTgPqkzrqjSF0YWTtU34diLaypX9pyzUI/edit") : "the official document";
                     : " for details.";
                 }
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = "https://challonge.com/ChallengeCupSeason6") : "Challenge Cup groups and bracket";
+                    }
+                }
             }
         },
         _ => unimplemented!(),

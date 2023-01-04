@@ -684,9 +684,34 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                         let round = row.next().unwrap();
                         assert!(row.next().is_none());
                         let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
+                        if start < America::New_York.with_ymd_and_hms(2022, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue } //TODO also add an upper bound
                         let duration = Duration::hours(4); //TODO better duration estimate
                         let mut event = ics::Event::new(format!("s-6-{i}@midos.house"), ics_datetime(Utc::now()));
                         event.push(Summary::new(format!("S6 {round}: {matchup}")));
+                        event.push(DtStart::new(ics_datetime(start)));
+                        event.push(DtEnd::new(ics_datetime(start + duration)));
+                        //TODO restream if any
+                        cal.add_event(event);
+                    }
+                }
+                // Challenge Cup bracket matches
+                for (i, row) in sheet_values("1Hp0rg_bV1Ja6oPdFLomTWQmwNy7ivmLMZ1rrVC3gx0Q", format!("Submitted Matches!C2:K")).await?.into_iter().enumerate() {
+                    if !row.is_empty() {
+                        let mut row = row.into_iter().fuse();
+                        let group_round = row.next().unwrap();
+                        let p1 = row.next().unwrap();
+                        let p2 = row.next().unwrap();
+                        let _p3 = row.next().unwrap();
+                        let date_et = row.next().unwrap();
+                        let time_et = row.next().unwrap();
+                        let is_async = row.next().unwrap() == "Yes";
+                        let _restream_ok = row.next().unwrap() == "Yes";
+                        let is_cancelled = row.next().unwrap() == "TRUE";
+                        if is_cancelled { continue }
+                        let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %I:%M %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
+                        let duration = Duration::hours(4); //TODO better duration estimate
+                        let mut event = ics::Event::new(format!("s-6-cc{i}@midos.house"), ics_datetime(Utc::now()));
+                        event.push(Summary::new(format!("CCS6 {group_round}{}: {p1} vs {p2}", if is_async { " (async)" } else { "" })));
                         event.push(DtStart::new(ics_datetime(start)));
                         event.push(DtEnd::new(ics_datetime(start + duration)));
                         //TODO restream if any
