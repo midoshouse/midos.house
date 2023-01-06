@@ -2,6 +2,8 @@ use {
     std::{
         borrow::Cow,
         cmp::Ordering,
+        convert::identity,
+        fmt,
         iter,
     },
     chrono::{
@@ -18,14 +20,19 @@ use {
             URL,
         },
     },
+    lazy_regex::regex_captures,
     once_cell::sync::Lazy,
     racetime::model::RaceData,
     rocket::{
         State,
         http::Status,
+        response::content::RawHtml,
         uri,
     },
-    rocket_util::Response,
+    rocket_util::{
+        Response,
+        ToHtml as _,
+    },
     serde::Deserialize,
     sheets::Sheets,
     sqlx::{
@@ -57,9 +64,41 @@ use {
         util::{
             Id,
             StatusOrError,
+            as_variant,
         },
     },
 };
+
+#[derive(Clone)]
+pub(crate) enum RaceTeam {
+    MidosHouse(Team),
+    Named(String),
+}
+
+impl RaceTeam {
+    pub(crate) fn to_html(&self, running_text: bool) -> RawHtml<String> {
+        match self {
+            Self::MidosHouse(team) => team.to_html(running_text),
+            Self::Named(name) => name.to_html(),
+        }
+    }
+}
+
+impl fmt::Display for RaceTeam {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MidosHouse(team) => team.fmt(f),
+            Self::Named(name) => name.fmt(f),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) enum Participants {
+    Open,
+    Named(String),
+    Two([RaceTeam; 2]),
+}
 
 #[derive(Clone)]
 pub(crate) enum RaceSchedule {
@@ -158,16 +197,16 @@ impl Ord for RaceSchedule {
 pub(crate) struct Race {
     series: Series,
     event: String,
-    pub(crate) startgg_event: String,
-    pub(crate) startgg_set: String,
+    pub(crate) startgg_event: Option<String>,
+    pub(crate) startgg_set: Option<String>,
+    pub(crate) participants: Participants,
+    pub(crate) phase: Option<String>,
+    pub(crate) round: Option<String>,
     pub(crate) game: Option<i16>,
-    pub(crate) team1: Team,
-    pub(crate) team2: Team,
-    pub(crate) phase: String,
-    pub(crate) round: String,
     pub(crate) schedule: RaceSchedule,
     pub(crate) draft: Option<Draft>,
     pub(crate) seed: Option<seed::Data>,
+    pub(crate) video_url: Option<Url>,
 }
 
 impl Race {
@@ -211,11 +250,11 @@ impl Race {
                 hash4 AS "hash4: HashIcon",
                 hash5 AS "hash5: HashIcon"
             FROM races WHERE startgg_set = $1 AND game IS NOT DISTINCT FROM $2"#, &startgg_set, game).fetch_one(&mut *transaction).await?;
-            let (team1, team2) = if let (Some(team1), Some(team2)) = (row.team1, row.team2) {
-                (
+            let teams = if let [Some(team1), Some(team2)] = [row.team1, row.team2] {
+                [
                     Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?,
                     Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?,
-                )
+                ]
             } else if let [
                 Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team1)), on: _ }) }) }),
                 Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team2)), on: _ }) }) }),
@@ -224,7 +263,7 @@ impl Race {
                 let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
                 sqlx::query!("UPDATE races SET team1 = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", team1.id as _, &startgg_set, game).execute(&mut *transaction).await?;
                 sqlx::query!("UPDATE races SET team2 = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", team2.id as _, &startgg_set, game).execute(&mut *transaction).await?;
-                (team1, team2)
+                [team1, team2]
             } else {
                 return Err(Error::Teams { startgg_set, response_data })
             };
@@ -255,9 +294,11 @@ impl Race {
             Ok(Self {
                 series: row.series,
                 event: row.event,
-                startgg_event: startgg_event.clone(),
-                phase: phase.clone(),
-                round: round.clone(),
+                startgg_event: Some(startgg_event.clone()),
+                startgg_set: Some(startgg_set),
+                participants: Participants::Two(teams.map(RaceTeam::MidosHouse)),
+                phase: Some(phase.clone()),
+                round: Some(round.clone()),
                 schedule: RaceSchedule::new(
                     row.start, row.async_start1, row.async_start2,
                     end_time, async_end1, async_end2,
@@ -277,18 +318,394 @@ impl Race {
                     },
                     file_stem: Cow::Owned(file_stem),
                 }),
-                startgg_set, game, team1, team2,
+                video_url: None, //TODO
+                game,
             })
         } else {
             Err(Error::Teams { startgg_set, response_data })
         }
     }
 
-    pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, series: Series, event: &str) -> Result<Vec<Self>, Error> {
-        //TODO unify with add_event_races
+    pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: &Environment, config: &Config, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
         let mut races = Vec::default();
-        for row in sqlx::query!("SELECT startgg_set, game FROM races WHERE series = $1 AND event = $2", series as _, event).fetch_all(&mut *transaction).await? {
-            races.push(Self::from_startgg(&mut *transaction, http_client, startgg_token, row.startgg_set, row.game).await?);
+        match event.series {
+            Series::Multiworld => match &*event.event {
+                "2" => {
+                    #[derive(Deserialize)]
+                    struct MwS2Race {
+                        start: DateTime<Utc>,
+                        end: DateTime<Utc>,
+                        team1: String,
+                        team2: String,
+                        phase: String,
+                        round: String,
+                        game: Option<i16>,
+                        #[serde(rename = "async")]
+                        is_async: bool,
+                        room: Option<Url>,
+                        restream: Option<Url>,
+                    }
+
+                    static RACES: Lazy<Vec<Race>> = Lazy::new(||
+                        serde_json::from_str::<Vec<MwS2Race>>(include_str!("../assets/event/mw/2.json")) //TODO merge async halves
+                            .expect("failed to parse mw/2 race list")
+                            .into_iter()
+                            .map(|race| Race {
+                                series: Series::Multiworld,
+                                event: format!("2"),
+                                startgg_event: None,
+                                startgg_set: None,
+                                participants: Participants::Two([
+                                    RaceTeam::Named(race.team1),
+                                    RaceTeam::Named(race.team2),
+                                ]),
+                                phase: Some(race.phase),
+                                round: Some(race.round),
+                                game: race.game,
+                                schedule: if race.is_async {
+                                    RaceSchedule::Async {
+                                        start1: Some(race.start),
+                                        start2: None,
+                                        end1: Some(race.end),
+                                        end2: None,
+                                        room1: race.room,
+                                        room2: None,
+                                    }
+                                } else {
+                                    RaceSchedule::Live {
+                                        start: race.start,
+                                        end: Some(race.end),
+                                        room: race.room,
+                                    }
+                                },
+                                draft: None,
+                                seed: None,
+                                video_url: race.restream,
+                            })
+                            .collect()
+                    );
+
+                    for race in &*RACES {
+                        races.push(race.clone());
+                    }
+                }
+                _ => {
+                    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+                    for row in sqlx::query!("SELECT startgg_set, game FROM races WHERE series = $1 AND event = $2", event.series as _, &event.event).fetch_all(&mut *transaction).await? {
+                        races.push(Self::from_startgg(&mut *transaction, http_client, startgg_token, row.startgg_set, row.game).await?);
+                    }
+                }
+            },
+            Series::NineDaysOfSaws | Series::Pictionary => {
+                races.push(Self {
+                    series: event.series,
+                    event: event.event.to_string(),
+                    startgg_event: None,
+                    startgg_set: None,
+                    participants: Participants::Open,
+                    phase: None,
+                    round: None,
+                    game: None,
+                    schedule: if let Some(start) = event.start(transaction).await? {
+                        RaceSchedule::Live {
+                            end: event.end,
+                            room: event.url.clone(),
+                            start,
+                        }
+                    } else {
+                        RaceSchedule::Unscheduled
+                    },
+                    draft: None,
+                    seed: None, //TODO
+                    video_url: event.video_url.clone(),
+                });
+            }
+            Series::Rsl => match &*event.event {
+                "2" => for row in sheet_values("1TEb48hIarEXnsnGxJbq1Y4YiZxNSM1t1oBsXh_bM4LM", format!("Raw form data!B2:F")).await? {
+                    if !row.is_empty() {
+                        let mut row = row.into_iter().fuse();
+                        let p1 = row.next().unwrap();
+                        let p2 = row.next().unwrap();
+                        let date_et = row.next().unwrap();
+                        let time_et = row.next().unwrap();
+                        let stream = row.next();
+                        assert!(row.next().is_none());
+                        let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
+                        races.push(Self {
+                            series: event.series,
+                            event: event.event.to_string(),
+                            startgg_event: None,
+                            startgg_set: None,
+                            participants: Participants::Two([
+                                RaceTeam::Named(p1),
+                                RaceTeam::Named(p2),
+                            ]),
+                            //TODO add phases and round numbers from https://challonge.com/ymq48xum
+                            phase: None,
+                            round: None,
+                            game: None,
+                            schedule: RaceSchedule::Live {
+                                start: start.with_timezone(&Utc),
+                                end: None, //TODO get from RSLBot seed archive
+                                room: None, //TODO get from RSLBot seed archive
+                            },
+                            draft: None,
+                            seed: None, //TODO get from RSLBot seed archive
+                            video_url: stream.map(|stream| Url::parse(&format!("https://{stream}"))).transpose()?,
+                        });
+                    }
+                },
+                "3" => for row in sheet_values("1475TTqezcSt-okMfQaG6Rf7AlJsqBx8c_rGDKs4oBYk", format!("Sign Ups!B2:I")).await? {
+                    if !row.is_empty() {
+                        let mut row = row.into_iter().fuse();
+                        let p1 = row.next().unwrap();
+                        if p1.is_empty() { continue }
+                        let p2 = row.next().unwrap();
+                        let _round = row.next().unwrap();
+                        let date_et = row.next().unwrap();
+                        let time_et = row.next().unwrap();
+                        if row.next().map_or(false, |cancel| cancel == "TRUE") { continue }
+                        let _monitor = row.next();
+                        let stream = row.next();
+                        assert!(row.next().is_none());
+                        let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
+                        races.push(Self {
+                            series: event.series,
+                            event: event.event.to_string(),
+                            startgg_event: None,
+                            startgg_set: None,
+                            participants: Participants::Two([
+                                RaceTeam::Named(p1),
+                                RaceTeam::Named(p2),
+                            ]),
+                            //TODO add phases and round numbers from https://challonge.com/RSL_S3
+                            phase: None,
+                            round: None,
+                            game: None,
+                            schedule: RaceSchedule::Live {
+                                start: start.with_timezone(&Utc),
+                                end: None, //TODO get from RSLBot seed archive
+                                room: None, //TODO get from RSLBot seed archive
+                            },
+                            draft: None,
+                            seed: None, //TODO get from RSLBot seed archive
+                            video_url: stream.map(|stream| Url::parse(&format!("https://{stream}"))).transpose()?,
+                        });
+                    }
+                },
+                "4" => for row in sheet_values("1LRJ3oo_2AWGq8KpNNclRXOq4OW8O7LrHra7uY7oQQlA", format!("Form responses 1!B2:H")).await? {
+                    if !row.is_empty() {
+                        let mut row = row.into_iter().fuse();
+                        let p1 = row.next().unwrap();
+                        let p2 = row.next().unwrap();
+                        let round = row.next().unwrap();
+                        let date_et = row.next().unwrap();
+                        let time_et = row.next().unwrap();
+                        let _monitor = row.next();
+                        let stream = row.next();
+                        assert!(row.next().is_none());
+                        let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
+                        let (phase, round, game) = match &*round {
+                            "Quarter Final" => ("Top 8", format!("Quarterfinal"), None),
+                            "Semi Final" => ("Top 8", format!("Semifinal"), None),
+                            "Grand Final (game 1)" => ("Top 8", format!("Finals"), Some(1)),
+                            "Grand Final (game 2)" => ("Top 8", format!("Finals"), Some(2)),
+                            "Grand Final (game 3)" => ("Top 8", format!("Finals"), Some(3)),
+                            _ => ("Swiss", format!("Round {round}"), None),
+                        };
+                        races.push(Self {
+                            series: event.series,
+                            event: event.event.to_string(),
+                            startgg_event: None,
+                            startgg_set: None,
+                            participants: Participants::Two([
+                                RaceTeam::Named(p1),
+                                RaceTeam::Named(p2),
+                            ]),
+                            phase: Some(phase.to_owned()),
+                            round: Some(round),
+                            schedule: RaceSchedule::Live {
+                                start: start.with_timezone(&Utc),
+                                end: None, //TODO get from RSLBot seed archive
+                                room: None, //TODO get from RSLBot seed archive
+                            },
+                            draft: None,
+                            seed: None, //TODO get from RSLBot seed archive
+                            video_url: stream.map(|stream| Url::parse(&format!("https://{stream}"))).transpose()?,
+                            game,
+                        });
+                    }
+                },
+                "5" => for row in sheet_values("1nz7XtNxKFTq_6bfjlUmIq0fCXKkQfDC848YmVcbaoQw", format!("Form responses 1!B2:H")).await? {
+                    if !row.is_empty() {
+                        let mut row = row.into_iter().fuse();
+                        let p1 = row.next().unwrap();
+                        let p2 = row.next().unwrap();
+                        let round = row.next().unwrap();
+                        let date_utc = row.next().unwrap();
+                        let time_utc = row.next().unwrap();
+                        let _monitor = row.next();
+                        let stream = row.next();
+                        assert!(row.next().is_none());
+                        let start = Utc.datetime_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_utc:?} at {time_utc:?}"));
+                        races.push(Self {
+                            series: event.series,
+                            event: event.event.to_string(),
+                            startgg_event: None,
+                            startgg_set: None,
+                            participants: Participants::Two([
+                                RaceTeam::Named(p1),
+                                RaceTeam::Named(p2),
+                            ]),
+                            phase: Some(format!("Swiss")), //TODO top 8 support
+                            round: Some(format!("Round {round}")),
+                            game: None,
+                            schedule: RaceSchedule::Live {
+                                start: start.with_timezone(&Utc),
+                                end: None, //TODO get from RSLBot seed archive
+                                room: None, //TODO get from RSLBot seed archive
+                            },
+                            draft: None,
+                            seed: None, //TODO get from RSLBot seed archive
+                            video_url: stream.map(|stream| Url::parse(&format!("https://twitch.tv/{stream}"))).transpose()?, //TODO vod links
+                        });
+                    }
+                },
+                _ => unimplemented!(),
+            },
+            Series::Standard => match &*event.event {
+                "6" => {
+                    // qualifiers
+                    for (i, (start, weekly, room, vod)) in [
+                        // source: https://docs.google.com/document/d/1fyNO82G2D0Z7J9wobxEbjDjGnomTaIRdKgETGV_ufmc/edit
+                        (Utc.with_ymd_and_hms(2022, 11, 19, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://racetime.gg/ootr/neutral-bongobongo-4042"), "https://twitch.tv/videos/1657562512"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 11, 20, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://racetime.gg/ootr/trusty-volvagia-2022"), "https://twitch.tv/videos/1658095931"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 11, 23, 3, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/chaotic-wolfos-5287"), "https://www.twitch.tv/videos/1660399051"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 11, 26, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://racetime.gg/ootr/smart-darunia-4679"), "https://www.twitch.tv/videos/1663582442"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 11, 27, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://racetime.gg/ootr/comic-sheik-2973"), "https://www.twitch.tv/videos/1664085065"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 11, 29, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, None, "https://twitch.tv/videos/1666092237"), //TODO room URL //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 2, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/dazzling-bigocto-7483"), "https://www.twitch.tv/videos/1667839721"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 3, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://racetime.gg/ootr/secret-dampe-4738"), "https://www.twitch.tv/videos/1669607104"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 4, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://racetime.gg/ootr/clumsy-mido-8938"), "https://www.twitch.tv/videos/1670131046"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 6, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/good-bigocto-9887"), "https://www.twitch.tv/videos/1671439689"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 8, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/artful-barinade-9952"), "https://www.twitch.tv/videos/1673751509"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 10, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://racetime.gg/ootr/trusty-ingo-2577"), "https://www.twitch.tv/videos/1675739280"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 11, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), None, "https://www.twitch.tv/videos/1676628321"), //TODO room URL //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 12, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/sleepy-talon-9258"), "https://www.twitch.tv/videos/1677277961"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 15, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, None, "https://www.twitch.tv/videos/1679558638"), //TODO room URL //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 17, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://racetime.gg/ootr/trusty-wolfos-6723"), "https://www.twitch.tv/videos/1681883072"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 18, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://racetime.gg/ootr/banzai-medigoron-2895"), "https://www.twitch.tv/videos/1682377804"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 21, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/overpowered-zora-1013"), "https://www.twitch.tv/videos/1685210852"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        (Utc.with_ymd_and_hms(2022, 12, 23, 3, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/sleepy-stalfos-1734"), "https://www.twitch.tv/videos/1686484000"), //TODO permanent highlight/YouTube upload //TODO seed info
+                    ].into_iter().enumerate() {
+                        races.push(Self {
+                            series: event.series,
+                            event: event.event.to_string(),
+                            //TODO keep race IDs? (qN, cc)
+                            startgg_event: None,
+                            startgg_set: None,
+                            participants: Participants::Open,
+                            phase: Some(format!("Qualifier")),
+                            round: Some(format!("{}{}", i + 1, if let Some(weekly) = weekly { format!(" ({weekly} Weekly)") } else { String::default() })),
+                            game: None,
+                            schedule: RaceSchedule::Live {
+                                end: None, //TODO get from room
+                                room: room.map(|room| Url::parse(room)).transpose()?,
+                                start,
+                            },
+                            draft: None,
+                            seed: None, //TODO
+                            video_url: Some(Url::parse(vod)?),
+                        });
+                    }
+                    // bracket matches
+                    for row in sheet_values(&config.zsr_volunteer_signups, format!("Scheduled Races!B2:D")).await? {
+                        if !row.is_empty() {
+                            let mut row = row.into_iter().fuse();
+                            let datetime_et = row.next().unwrap();
+                            let matchup = row.next().unwrap();
+                            let round = row.next().unwrap();
+                            assert!(row.next().is_none());
+                            let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
+                            if start < America::New_York.with_ymd_and_hms(2022, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue } //TODO also add an upper bound
+                            races.push(Self {
+                                series: event.series,
+                                event: event.event.to_string(),
+                                startgg_event: None,
+                                startgg_set: None,
+                                participants: if let Some((_, p1, p2)) = regex_captures!("^(.+) +vs?.? +(.+)$", &matchup) {
+                                    Participants::Two([
+                                        RaceTeam::Named(p1.to_owned()),
+                                        RaceTeam::Named(p2.to_owned()),
+                                    ])
+                                } else {
+                                    Participants::Named(matchup)
+                                },
+                                phase: None, // main bracket
+                                round: Some(round),
+                                game: None,
+                                schedule: RaceSchedule::Live {
+                                    start: start.with_timezone(&Utc),
+                                    end: None,
+                                    room: None,
+                                },
+                                draft: None,
+                                seed: None,
+                                video_url: None, //TODO
+                            });
+                        }
+                    }
+                    // Challenge Cup bracket matches
+                    for row in sheet_values("1Hp0rg_bV1Ja6oPdFLomTWQmwNy7ivmLMZ1rrVC3gx0Q", format!("Submitted Matches!C2:K")).await? {
+                        if !row.is_empty() {
+                            let mut row = row.into_iter().fuse();
+                            let group_round = row.next().unwrap();
+                            let p1 = row.next().unwrap();
+                            let p2 = row.next().unwrap();
+                            let _p3 = row.next().unwrap();
+                            let date_et = row.next().unwrap();
+                            let time_et = row.next().unwrap();
+                            let is_async = row.next().unwrap() == "Yes";
+                            let _restream_ok = row.next().unwrap() == "Yes";
+                            let is_cancelled = row.next().unwrap() == "TRUE";
+                            if is_cancelled { continue }
+                            let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %I:%M %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
+                            races.push(Self {
+                                series: event.series,
+                                event: event.event.to_string(),
+                                startgg_event: None,
+                                startgg_set: None,
+                                participants: Participants::Two([
+                                    RaceTeam::Named(p1),
+                                    RaceTeam::Named(p2),
+                                ]),
+                                phase: Some(format!("Challenge Cup")),
+                                round: Some(group_round),
+                                game: None,
+                                schedule: if is_async {
+                                    RaceSchedule::Async {
+                                        start1: Some(start.with_timezone(&Utc)),
+                                        start2: None,
+                                        end1: None, end2: None,
+                                        room1: None,
+                                        room2: None,
+                                    }
+                                } else {
+                                    RaceSchedule::Live {
+                                        start: start.with_timezone(&Utc),
+                                        end: None,
+                                        room: None,
+                                    }
+                                },
+                                draft: None,
+                                seed: None,
+                                video_url: None, //TODO
+                            });
+                        }
+                    }
+                }
+                _ => unimplemented!(),
+            },
         }
         races.sort_unstable();
         Ok(races)
@@ -298,8 +715,12 @@ impl Race {
         event::Data::new(transaction, self.series, self.event.clone()).await?.ok_or(event::DataError::Missing)
     }
 
-    pub(crate) fn startgg_set_url(&self) -> Result<Url, url::ParseError> {
-        format!("https://start.gg/{}/set/{}", self.startgg_event, self.startgg_set).parse()
+    pub(crate) fn startgg_set_url(&self) -> Result<Option<Url>, url::ParseError> {
+        Ok(if let Self { startgg_event: Some(event), startgg_set: Some(set), .. } = self {
+            Some(format!("https://start.gg/{event}/set/{set}").parse()?)
+        } else {
+            None
+        })
     }
 
     fn cal_events(&self) -> impl Iterator<Item = Event> + Send {
@@ -374,10 +795,12 @@ impl Event {
     }
 
     pub(crate) fn active_teams(&self) -> impl Iterator<Item = &Team> + Send {
-        match self.kind {
-            EventKind::Normal => Box::new([&self.race.team1, &self.race.team2].into_iter()) as Box<dyn Iterator<Item = &Team> + Send>,
-            EventKind::Async1 => Box::new(iter::once(&self.race.team1)),
-            EventKind::Async2 => Box::new(iter::once(&self.race.team2)),
+        match self.race.participants {
+            Participants::Named(_) | Participants::Open => Box::new(iter::empty()) as Box<dyn Iterator<Item = &Team> + Send>,
+            Participants::Two([ref team1, ref team2]) => Box::new([
+                matches!(self.kind, EventKind::Normal | EventKind::Async1).then_some(team1),
+                matches!(self.kind, EventKind::Normal | EventKind::Async2).then_some(team2),
+            ].into_iter().filter_map(identity).filter_map(as_variant!(RaceTeam::MidosHouse))),
         }
     }
 
@@ -464,263 +887,51 @@ fn ics_datetime<Tz: TimeZone>(datetime: DateTime<Tz>) -> String {
 }
 
 async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: &Environment, config: &Config, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
-    match event.series {
-        Series::Multiworld => match &*event.event {
-            "2" => {
-                #[derive(Deserialize)]
-                struct Race {
-                    start: DateTime<Utc>,
-                    end: DateTime<Utc>,
-                    team1: String,
-                    team2: String,
-                    round: String,
-                    #[serde(rename = "async")]
-                    is_async: bool,
-                    room: Option<String>,
-                    restream: Option<Url>,
-                }
-
-                static RACES: Lazy<Vec<ics::Event<'static>>> = Lazy::new(||
-                    serde_json::from_str::<Vec<Race>>(include_str!("../assets/event/mw/2.json"))
-                        .expect("failed to parse mw/2 race list")
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, race)| {
-                            let mut cal_event = ics::Event::new(format!("mw-2-{i}@midos.house"), ics_datetime(Utc::now()));
-                            cal_event.push(Summary::new(format!("MW S2 {}{}: {} vs {}", race.round, if race.is_async { " (async)" } else { "" }, race.team1, race.team2)));
-                            cal_event.push(DtStart::new(ics_datetime(race.start)));
-                            cal_event.push(DtEnd::new(ics_datetime(race.end)));
-                            if let Some(restream_url) = race.restream {
-                                cal_event.push(URL::new(restream_url.to_string()));
-                            } else if let Some(room_slug) = race.room {
-                                cal_event.push(URL::new(room_slug));
-                            }
-                            cal_event
-                        })
-                        .collect()
-                );
-
-                for race in &*RACES {
-                    cal.add_event(race.clone());
-                }
-            }
-            _ => {
-                let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
-                for race in Race::for_event(transaction, http_client, startgg_token, event.series, &event.event).await? {
-                    for race_event in race.cal_events() {
-                        if let Some(start) = race_event.start() {
-                            let mut cal_event = ics::Event::new(format!("{}-{}-{}{}@midos.house",
-                                event.series,
-                                event.event,
-                                race.startgg_set,
-                                match race_event.kind {
-                                    EventKind::Normal => "",
-                                    EventKind::Async1 => "-1",
-                                    EventKind::Async2 => "-2",
-                                },
-                            ), ics_datetime(Utc::now()));
-                            cal_event.push(Summary::new(match race_event.kind {
-                                EventKind::Normal => format!("MW S{} {} {}: {} vs {}", event.event, race.phase, race.round, race.team1, race.team2),
-                                EventKind::Async1 => format!("MW S{} {} {} (async): {} vs {}", event.event, race.phase, race.round, race.team1, race.team2),
-                                EventKind::Async2 => format!("MW S{} {} {} (async): {} vs {}", event.event, race.phase, race.round, race.team2, race.team1),
-                            }));
-                            cal_event.push(DtStart::new(ics_datetime(start)));
-                            cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + Duration::hours(4))))); //TODO better fallback duration estimates depending on participants
-                            cal_event.push(URL::new(if let Some(room) = race_event.room() {
-                                room.to_string()
-                            } else {
-                                race.startgg_set_url()?.to_string()
-                            })); //TODO prefer restream URL if one exists
-                            cal.add_event(cal_event);
-                        }
-                    }
-                }
-            }
-        },
-        Series::NineDaysOfSaws | Series::Pictionary => {
-            let mut cal_event = ics::Event::new(format!("{}-{}@midos.house", event.series, event.event), ics_datetime(Utc::now()));
-            cal_event.push(Summary::new(event.display_name.clone()));
-            if let Some(start) = event.start(transaction).await? {
+    for (i, race) in Race::for_event(transaction, http_client, env, config, event).await?.into_iter().enumerate() {
+        for race_event in race.cal_events() {
+            if let Some(start) = race_event.start() {
+                let mut cal_event = ics::Event::new(format!("{}-{}-{}{}@midos.house",
+                    event.series,
+                    event.event,
+                    race.startgg_set.clone().unwrap_or_else(|| i.to_string()), //TODO use ID systems for other events
+                    match race_event.kind {
+                        EventKind::Normal => "",
+                        EventKind::Async1 => "-1",
+                        EventKind::Async2 => "-2",
+                    },
+                ), ics_datetime(Utc::now()));
+                let summary_prefix = match (&race.phase, &race.round) {
+                    (Some(phase), Some(round)) => format!("{} {phase} {round}", event.short_name()),
+                    (Some(phase), None) => format!("{} {phase}", event.short_name()),
+                    (None, Some(round)) => format!("{} {round}", event.short_name()),
+                    (None, None) => event.display_name.clone(),
+                };
+                cal_event.push(Summary::new(match race.participants {
+                    Participants::Open => summary_prefix,
+                    Participants::Named(ref participants) => match race_event.kind {
+                        EventKind::Normal => format!("{summary_prefix}: {participants}"),
+                        EventKind::Async1 | EventKind::Async2 => format!("{summary_prefix} (async): {participants}"),
+                    },
+                    Participants::Two([ref team1, ref team2]) => match race_event.kind {
+                        EventKind::Normal => format!("{summary_prefix}: {team1} vs {team2}"),
+                        EventKind::Async1 => format!("{summary_prefix} (async): {team1} vs {team2}"),
+                        EventKind::Async2 => format!("{summary_prefix} (async): {team2} vs {team1}"),
+                    },
+                }));
                 cal_event.push(DtStart::new(ics_datetime(start)));
-                let end = event.end.unwrap_or_else(|| start + Duration::hours(4)); //TODO better duration estimates depending on format & participants
-                cal_event.push(DtEnd::new(ics_datetime(end)));
+                cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + Duration::hours(4))))); //TODO better fallback duration estimates depending on format and participants
+                cal_event.push(URL::new(if let Some(ref video_url) = race.video_url {
+                    video_url.to_string()
+                } else if let Some(room) = race_event.room() {
+                    room.to_string()
+                } else if let Some(set_url) = race.startgg_set_url()? {
+                    set_url.to_string()
+                } else {
+                    uri!(event::info(event.series, &*event.event)).to_string()
+                }));
+                cal.add_event(cal_event);
             }
-            cal_event.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string()));
-            cal.add_event(cal_event);
         }
-        Series::Rsl => match &*event.event {
-            "2" => for (i, row) in sheet_values("1TEb48hIarEXnsnGxJbq1Y4YiZxNSM1t1oBsXh_bM4LM", format!("Raw form data!B2:F")).await?.into_iter().enumerate() {
-                if !row.is_empty() {
-                    let mut row = row.into_iter().fuse();
-                    let p1 = row.next().unwrap();
-                    let p2 = row.next().unwrap();
-                    let date_et = row.next().unwrap();
-                    let time_et = row.next().unwrap();
-                    let stream = row.next();
-                    assert!(row.next().is_none());
-                    let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                    let duration = Duration::hours(4) + Duration::minutes(30); //TODO better duration estimate
-                    let mut event = ics::Event::new(format!("rsl-2-{i}@midos.house"), ics_datetime(Utc::now()));
-                    event.push(Summary::new(format!("RSL S2: {p1} vs {p2}"))); //TODO add round numbers from https://challonge.com/ymq48xum
-                    event.push(DtStart::new(ics_datetime(start)));
-                    event.push(DtEnd::new(ics_datetime(start + duration)));
-                    if let Some(stream) = stream {
-                        event.push(URL::new(format!("https://{stream}")));
-                    }
-                    cal.add_event(event);
-                }
-            },
-            "3" => for (i, row) in sheet_values("1475TTqezcSt-okMfQaG6Rf7AlJsqBx8c_rGDKs4oBYk", format!("Sign Ups!B2:I")).await?.into_iter().enumerate() {
-                if !row.is_empty() {
-                    let mut row = row.into_iter().fuse();
-                    let p1 = row.next().unwrap();
-                    if p1.is_empty() { continue }
-                    let p2 = row.next().unwrap();
-                    let _round = row.next().unwrap();
-                    let date_et = row.next().unwrap();
-                    let time_et = row.next().unwrap();
-                    if row.next().map_or(false, |cancel| cancel == "TRUE") { continue }
-                    let _monitor = row.next();
-                    let stream = row.next();
-                    assert!(row.next().is_none());
-                    let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                    let duration = Duration::hours(4) + Duration::minutes(30); //TODO better duration estimate
-                    let mut event = ics::Event::new(format!("rsl-3-{i}@midos.house"), ics_datetime(Utc::now()));
-                    event.push(Summary::new(format!("RSL S3: {p1} vs {p2}"))); //TODO add round numbers from https://challonge.com/RSL_S3
-                    event.push(DtStart::new(ics_datetime(start)));
-                    event.push(DtEnd::new(ics_datetime(start + duration)));
-                    if let Some(stream) = stream {
-                        event.push(URL::new(format!("https://{stream}")));
-                    }
-                    cal.add_event(event);
-                }
-            },
-            "4" => for (i, row) in sheet_values("1LRJ3oo_2AWGq8KpNNclRXOq4OW8O7LrHra7uY7oQQlA", format!("Form responses 1!B2:H")).await?.into_iter().enumerate() {
-                if !row.is_empty() {
-                    let mut row = row.into_iter().fuse();
-                    let p1 = row.next().unwrap();
-                    let p2 = row.next().unwrap();
-                    let round = row.next().unwrap();
-                    let date_et = row.next().unwrap();
-                    let time_et = row.next().unwrap();
-                    let _monitor = row.next();
-                    let stream = row.next();
-                    assert!(row.next().is_none());
-                    let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                    let duration = Duration::hours(4) + Duration::minutes(30); //TODO better duration estimate
-                    let mut event = ics::Event::new(format!("rsl-4-{i}@midos.house"), ics_datetime(Utc::now()));
-                    event.push(Summary::new(format!("RSL S4 {}: {p1} vs {p2}", if start >= Utc.with_ymd_and_hms(2022, 5, 8, 23, 51, 35).single().expect("wrong hardcoded datetime") { round } else { format!("Swiss Round {round}") })));
-                    event.push(DtStart::new(ics_datetime(start)));
-                    event.push(DtEnd::new(ics_datetime(start + duration)));
-                    if let Some(stream) = stream {
-                        event.push(URL::new(format!("https://{stream}")));
-                    }
-                    cal.add_event(event);
-                }
-            },
-            "5" => for (i, row) in sheet_values("1nz7XtNxKFTq_6bfjlUmIq0fCXKkQfDC848YmVcbaoQw", format!("Form responses 1!B2:H")).await?.into_iter().enumerate() {
-                if !row.is_empty() {
-                    let mut row = row.into_iter().fuse();
-                    let p1 = row.next().unwrap();
-                    let p2 = row.next().unwrap();
-                    let round = row.next().unwrap();
-                    let date_utc = row.next().unwrap();
-                    let time_utc = row.next().unwrap();
-                    let _monitor = row.next();
-                    let stream = row.next();
-                    assert!(row.next().is_none());
-                    let start = Utc.datetime_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_utc:?} at {time_utc:?}"));
-                    let duration = Duration::hours(4) + Duration::minutes(30); //TODO better duration estimate
-                    let mut event = ics::Event::new(format!("rsl-5-{i}@midos.house"), ics_datetime(Utc::now()));
-                    event.push(Summary::new(format!("RSL S5 Swiss Round {round}: {p1} vs {p2}")));
-                    event.push(DtStart::new(ics_datetime(start)));
-                    event.push(DtEnd::new(ics_datetime(start + duration)));
-                    if let Some(stream) = stream {
-                        event.push(URL::new(format!("https://twitch.tv/{stream}"))); //TODO vod links
-                    }
-                    cal.add_event(event);
-                }
-            },
-            _ => unimplemented!(),
-        },
-        Series::Standard => match &*event.event {
-            "6" => {
-                // qualifiers
-                for (i, (start, weekly, vod)) in [
-                    // source: https://docs.google.com/document/d/1fyNO82G2D0Z7J9wobxEbjDjGnomTaIRdKgETGV_ufmc/edit
-                    (Utc.with_ymd_and_hms(2022, 11, 19, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://twitch.tv/videos/1657562512")), //TODO permanent highlight/YouTube upload //TODO seed info (https://racetime.gg/ootr/neutral-bongobongo-4042)
-                    (Utc.with_ymd_and_hms(2022, 11, 20, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://twitch.tv/videos/1658095931")), //TODO permanent highlight/YouTube upload //TODO seed info (https://racetime.gg/ootr/trusty-volvagia-2022)
-                    (Utc.with_ymd_and_hms(2022, 11, 23, 3, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://www.twitch.tv/videos/1660399051")), //TODO permanent highlight/YouTube upload //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 11, 26, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://www.twitch.tv/videos/1663582442")), //TODO permanent highlight/YouTube upload //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 11, 27, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://www.twitch.tv/videos/1664085065")), //TODO permanent highlight/YouTube upload //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 11, 29, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://twitch.tv/videos/1666092237")), //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 12, 2, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://www.twitch.tv/videos/1667839721")), //TODO permanent highlight/YouTube upload //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 12, 3, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://www.twitch.tv/videos/1669607104")), //TODO permanent highlight/YouTube upload //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 12, 4, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://www.twitch.tv/videos/1670131046")), //TODO permanent highlight/YouTube upload //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 12, 6, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://www.twitch.tv/videos/1671439689")), //TODO permanent highlight/YouTube upload //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 12, 8, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://www.twitch.tv/videos/1673751509")), //TODO permanent highlight/YouTube upload //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 12, 10, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://www.twitch.tv/videos/1675739280")), //TODO permanent highlight/YouTube upload //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 12, 11, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://www.twitch.tv/videos/1676628321")), //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 12, 12, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://www.twitch.tv/videos/1677277961")), //TODO permanent highlight/YouTube upload //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 12, 15, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://www.twitch.tv/videos/1679558638")), //TODO seed info
-                    (Utc.with_ymd_and_hms(2022, 12, 17, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), None),
-                    (Utc.with_ymd_and_hms(2022, 12, 18, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), None),
-                    (Utc.with_ymd_and_hms(2022, 12, 21, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
-                    (Utc.with_ymd_and_hms(2022, 12, 23, 3, 0, 0).single().expect("wrong hardcoded datetime"), None, None),
-                ].into_iter().enumerate() {
-                    let mut cal_event = ics::Event::new(format!("{}-{}-q{}@midos.house", event.series, event.event, i + 1), ics_datetime(Utc::now()));
-                    cal_event.push(Summary::new(format!("S6 Qualifier {}{}", i + 1, if let Some(weekly) = weekly { format!(" ({weekly} Weekly)") } else { String::default() })));
-                    cal_event.push(DtStart::new(ics_datetime(start)));
-                    cal_event.push(DtEnd::new(ics_datetime(start + Duration::hours(4)))); //TODO get from race room; better duration estimate from past seasons
-                    cal_event.push(URL::new(vod.unwrap_or("https://docs.google.com/document/d/1fyNO82G2D0Z7J9wobxEbjDjGnomTaIRdKgETGV_ufmc/edit")));
-                    cal.add_event(cal_event);
-                }
-                // bracket matches
-                for (i, row) in sheet_values(&config.zsr_volunteer_signups, format!("Scheduled Races!B2:D")).await?.into_iter().enumerate() {
-                    if !row.is_empty() {
-                        let mut row = row.into_iter().fuse();
-                        let datetime_et = row.next().unwrap();
-                        let matchup = row.next().unwrap();
-                        let round = row.next().unwrap();
-                        assert!(row.next().is_none());
-                        let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
-                        if start < America::New_York.with_ymd_and_hms(2022, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue } //TODO also add an upper bound
-                        let duration = Duration::hours(4); //TODO better duration estimate
-                        let mut event = ics::Event::new(format!("s-6-{i}@midos.house"), ics_datetime(Utc::now()));
-                        event.push(Summary::new(format!("S6 {round}: {matchup}")));
-                        event.push(DtStart::new(ics_datetime(start)));
-                        event.push(DtEnd::new(ics_datetime(start + duration)));
-                        //TODO restream if any
-                        cal.add_event(event);
-                    }
-                }
-                // Challenge Cup bracket matches
-                for (i, row) in sheet_values("1Hp0rg_bV1Ja6oPdFLomTWQmwNy7ivmLMZ1rrVC3gx0Q", format!("Submitted Matches!C2:K")).await?.into_iter().enumerate() {
-                    if !row.is_empty() {
-                        let mut row = row.into_iter().fuse();
-                        let group_round = row.next().unwrap();
-                        let p1 = row.next().unwrap();
-                        let p2 = row.next().unwrap();
-                        let _p3 = row.next().unwrap();
-                        let date_et = row.next().unwrap();
-                        let time_et = row.next().unwrap();
-                        let is_async = row.next().unwrap() == "Yes";
-                        let _restream_ok = row.next().unwrap() == "Yes";
-                        let is_cancelled = row.next().unwrap() == "TRUE";
-                        if is_cancelled { continue }
-                        let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %I:%M %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                        let duration = Duration::hours(4); //TODO better duration estimate
-                        let mut event = ics::Event::new(format!("s-6-cc{i}@midos.house"), ics_datetime(Utc::now()));
-                        event.push(Summary::new(format!("CCS6 {group_round}{}: {p1} vs {p2}", if is_async { " (async)" } else { "" })));
-                        event.push(DtStart::new(ics_datetime(start)));
-                        event.push(DtEnd::new(ics_datetime(start + duration)));
-                        //TODO restream if any
-                        cal.add_event(event);
-                    }
-                }
-            }
-            _ => unimplemented!(),
-        },
     }
     Ok(())
 }

@@ -105,7 +105,9 @@ use {
         Environment,
         cal::{
             self,
+            Participants,
             Race,
+            RaceTeam,
         },
         config::{
             Config,
@@ -1143,26 +1145,35 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 }
             }
             let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
-            ctx.send_message(&format!("Welcome to this {} {} race! Learn more about the tournament at https://midos.house/event/{}/{}", cal_event.race.phase, cal_event.race.round, event.series, event.event)).await?;
+            ctx.send_message(&format!("Welcome to this {} race! Learn more about the tournament at https://midos.house/event/{}/{}", match (cal_event.race.phase, cal_event.race.round) {
+                (Some(phase), Some(round)) => format!("{phase} {round}"),
+                (Some(phase), None) => phase,
+                (None, Some(round)) => round,
+                (None, None) => event.display_name.clone(),
+            }, event.series, event.event)).await?;
             ctx.send_message("Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat.").await?; //TODO different message for monitorless FPA?
-            let (high_seed_name, low_seed_name) = if let Some(Draft { ref state, high_seed }) = cal_event.race.draft {
+            let [high_seed_name, low_seed_name] = if let Some(Draft { ref state, high_seed }) = cal_event.race.draft {
                 if let mw::DraftStep::Done(settings) = state.next_step() {
                     ctx.send_message(&format!("Your seed with {settings} will be posted in 15 minutes.")).await?;
                 }
-                if cal_event.race.team1.id == high_seed {
-                    (cal_event.race.team1.name.clone().unwrap_or_else(|| format!("Team A")), cal_event.race.team2.name.clone().unwrap_or_else(|| format!("Team B")))
-                } else {
-                    (cal_event.race.team2.name.clone().unwrap_or_else(|| format!("Team A")), cal_event.race.team1.name.clone().unwrap_or_else(|| format!("Team B")))
+                match cal_event.race.participants {
+                    Participants::Open => unimplemented!("open official race"), //TODO
+                    Participants::Named(_) => unimplemented!("official race with opaque participants text"), //TODO
+                    Participants::Two([RaceTeam::MidosHouse(team1), RaceTeam::MidosHouse(team2)]) => if team1.id == high_seed {
+                        [team1.name.clone().unwrap_or_else(|| format!("Team A")), team2.name.clone().unwrap_or_else(|| format!("Team B"))]
+                    } else {
+                        [team2.name.clone().unwrap_or_else(|| format!("Team A")), team1.name.clone().unwrap_or_else(|| format!("Team B"))]
+                    },
+                    Participants::Two([_, _]) => unimplemented!("official race with non-MH teams"), //TODO
                 }
             } else {
-                (format!("Team A"), format!("Team B"))
+                [format!("Team A"), format!("Team B")]
             };
             (
-                Some(OfficialRaceData {
-                    startgg_set: cal_event.race.startgg_set.clone(),
+                cal_event.race.startgg_set.clone().map(|startgg_set| OfficialRaceData {
                     game: cal_event.race.game,
                     fpa_invoked: false,
-                    event, entrants, start,
+                    event, startgg_set, entrants, start,
                 }),
                 RaceState::Draft(cal_event.race.draft.map(|draft| draft.state).unwrap_or_default()), //TODO restrict draft picks
                 high_seed_name,
@@ -1919,13 +1930,23 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                     match racetime::authorize_with_host(global_state.host, &racetime_config.client_id, &racetime_config.client_secret, &global_state.http_client).await {
                         Ok((access_token, _)) => {
                             let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
+                            let info_prefix = match (&race.phase, &race.round) {
+                                (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                                (Some(phase), None) => Some(phase.to_owned()),
+                                (None, Some(round)) => Some(round.to_owned()),
+                                (None, None) => None,
+                            };
                             let race_slug = racetime::StartRace {
                                 goal: format!("3rd Multiworld Tournament"), //TODO don't hardcode
                                 goal_is_custom: true,
                                 team_race: true,
-                                invitational: true,
+                                invitational: !matches!(race.participants, Participants::Open),
                                 unlisted: false,
-                                info_user: format!("{} {}: {} vs {}", race.phase, race.round, race.team1, race.team2), //TODO adjust for asyncs
+                                info_user: match race.participants {
+                                    Participants::Open => info_prefix.clone().unwrap_or_default(),
+                                    Participants::Named(ref participants) => format!("{}{participants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
+                                    Participants::Two([ref team1, ref team2]) => format!("{}{team1} vs {team2}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()), //TODO adjust for asyncs
+                                },
                                 info_bot: String::default(),
                                 require_even_teams: true,
                                 start_delay: 15,
@@ -1948,13 +1969,34 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                             if let Some(event) = event::Data::new(&mut transaction, row.series, row.event).await.to_racetime()? {
                                 if let (Some(guild), Some(channel)) = (event.discord_guild, event.discord_race_room_channel) {
                                     let mut msg = MessageBuilder::default();
-                                    msg.push_safe(race.phase);
-                                    msg.push(' ');
-                                    msg.push_safe(race.round);
-                                    msg.push(": ");
-                                    msg.mention_team(&mut transaction, guild, &race.team1).await.to_racetime()?;
-                                    msg.push(" vs ");
-                                    msg.mention_team(&mut transaction, guild, &race.team2).await.to_racetime()?;
+                                    match race.participants {
+                                        Participants::Open => if let Some(prefix) = info_prefix {
+                                            msg.push_safe(prefix);
+                                        },
+                                        Participants::Named(ref participants) => {
+                                            if let Some(prefix) = info_prefix {
+                                                msg.push_safe(prefix);
+                                                msg.push(": ");
+                                            }
+                                            msg.push_safe(participants);
+                                        }
+                                        Participants::Two([ref team1, ref team2]) => {
+                                            if let Some(prefix) = info_prefix {
+                                                msg.push_safe(prefix);
+                                                //TODO adjust for asyncs
+                                                msg.push(": ");
+                                            }
+                                            match team1 {
+                                                RaceTeam::MidosHouse(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
+                                                RaceTeam::Named(name) => { msg.push_safe(name); }
+                                            }
+                                            msg.push(" vs ");
+                                            match team2 {
+                                                RaceTeam::MidosHouse(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
+                                                RaceTeam::Named(name) => { msg.push_safe(name); }
+                                            }
+                                        }
+                                    }
                                     if let Some(game) = row.game {
                                         msg.push(", game ");
                                         msg.push(game);
