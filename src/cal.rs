@@ -422,14 +422,10 @@ impl Race {
             }
             Series::Rsl => match &*event.event {
                 "2" => for row in sheet_values("1TEb48hIarEXnsnGxJbq1Y4YiZxNSM1t1oBsXh_bM4LM", format!("Raw form data!B2:F")).await? {
-                    if !row.is_empty() {
-                        let mut row = row.into_iter().fuse();
-                        let p1 = row.next().unwrap();
-                        let p2 = row.next().unwrap();
-                        let date_et = row.next().unwrap();
-                        let time_et = row.next().unwrap();
-                        let stream = row.next();
-                        assert!(row.next().is_none());
+                    if let [p1, p2, date_et, time_et, rest @ ..] = &*row {
+                        let mut rest = rest.into_iter().fuse();
+                        let stream = rest.next();
+                        assert!(rest.next().is_none());
                         let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
                         races.push(Self {
                             series: event.series,
@@ -437,8 +433,8 @@ impl Race {
                             startgg_event: None,
                             startgg_set: None,
                             participants: Participants::Two([
-                                RaceTeam::Named(p1),
-                                RaceTeam::Named(p2),
+                                RaceTeam::Named(p1.clone()),
+                                RaceTeam::Named(p2.clone()),
                             ]),
                             //TODO add phases and round numbers from https://challonge.com/ymq48xum
                             phase: None,
@@ -456,18 +452,13 @@ impl Race {
                     }
                 },
                 "3" => for row in sheet_values("1475TTqezcSt-okMfQaG6Rf7AlJsqBx8c_rGDKs4oBYk", format!("Sign Ups!B2:I")).await? {
-                    if !row.is_empty() {
-                        let mut row = row.into_iter().fuse();
-                        let p1 = row.next().unwrap();
+                    if let [p1, p2, _round, date_et, time_et, rest @ ..] = &*row {
                         if p1.is_empty() { continue }
-                        let p2 = row.next().unwrap();
-                        let _round = row.next().unwrap();
-                        let date_et = row.next().unwrap();
-                        let time_et = row.next().unwrap();
-                        if row.next().map_or(false, |cancel| cancel == "TRUE") { continue }
-                        let _monitor = row.next();
-                        let stream = row.next();
-                        assert!(row.next().is_none());
+                        let mut rest = rest.into_iter().fuse();
+                        if rest.next().map_or(false, |cancel| cancel == "TRUE") { continue }
+                        let _monitor = rest.next();
+                        let stream = rest.next();
+                        assert!(rest.next().is_none());
                         let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
                         races.push(Self {
                             series: event.series,
@@ -475,8 +466,8 @@ impl Race {
                             startgg_event: None,
                             startgg_set: None,
                             participants: Participants::Two([
-                                RaceTeam::Named(p1),
-                                RaceTeam::Named(p2),
+                                RaceTeam::Named(p1.clone()),
+                                RaceTeam::Named(p2.clone()),
                             ]),
                             //TODO add phases and round numbers from https://challonge.com/RSL_S3
                             phase: None,
@@ -494,18 +485,13 @@ impl Race {
                     }
                 },
                 "4" => for row in sheet_values("1LRJ3oo_2AWGq8KpNNclRXOq4OW8O7LrHra7uY7oQQlA", format!("Form responses 1!B2:H")).await? {
-                    if !row.is_empty() {
-                        let mut row = row.into_iter().fuse();
-                        let p1 = row.next().unwrap();
-                        let p2 = row.next().unwrap();
-                        let round = row.next().unwrap();
-                        let date_et = row.next().unwrap();
-                        let time_et = row.next().unwrap();
-                        let _monitor = row.next();
-                        let stream = row.next();
-                        assert!(row.next().is_none());
+                    if let [p1, p2, round, date_et, time_et, rest @ ..] = &*row {
+                        let mut rest = rest.into_iter().fuse();
+                        let _monitor = rest.next();
+                        let stream = rest.next();
+                        assert!(rest.next().is_none());
                         let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                        let (phase, round, game) = match &*round {
+                        let (phase, round, game) = match &**round {
                             "Quarter Final" => ("Top 8", format!("Quarterfinal"), None),
                             "Semi Final" => ("Top 8", format!("Semifinal"), None),
                             "Grand Final (game 1)" => ("Top 8", format!("Finals"), Some(1)),
@@ -519,8 +505,8 @@ impl Race {
                             startgg_event: None,
                             startgg_set: None,
                             participants: Participants::Two([
-                                RaceTeam::Named(p1),
-                                RaceTeam::Named(p2),
+                                RaceTeam::Named(p1.clone()),
+                                RaceTeam::Named(p2.clone()),
                             ]),
                             phase: Some(phase.to_owned()),
                             round: Some(round),
@@ -537,16 +523,11 @@ impl Race {
                     }
                 },
                 "5" => for row in sheet_values("1nz7XtNxKFTq_6bfjlUmIq0fCXKkQfDC848YmVcbaoQw", format!("Form responses 1!B2:H")).await? {
-                    if !row.is_empty() {
-                        let mut row = row.into_iter().fuse();
-                        let p1 = row.next().unwrap();
-                        let p2 = row.next().unwrap();
-                        let round = row.next().unwrap();
-                        let date_utc = row.next().unwrap();
-                        let time_utc = row.next().unwrap();
-                        let _monitor = row.next();
-                        let stream = row.next();
-                        assert!(row.next().is_none());
+                    if let [p1, p2, round, date_utc, time_utc, rest @ ..] = &*row {
+                        let mut rest = rest.into_iter().fuse();
+                        let _monitor = rest.next();
+                        let stream = rest.next();
+                        assert!(rest.next().is_none());
                         let start = Utc.datetime_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_utc:?} at {time_utc:?}"));
                         races.push(Self {
                             series: event.series,
@@ -554,8 +535,8 @@ impl Race {
                             startgg_event: None,
                             startgg_set: None,
                             participants: Participants::Two([
-                                RaceTeam::Named(p1),
-                                RaceTeam::Named(p2),
+                                RaceTeam::Named(p1.clone()),
+                                RaceTeam::Named(p2.clone()),
                             ]),
                             phase: Some(format!("Swiss")), //TODO top 8 support
                             round: Some(format!("Round {round}")),
@@ -620,12 +601,7 @@ impl Race {
                     }
                     // bracket matches
                     for row in sheet_values(&config.zsr_volunteer_signups, format!("Scheduled Races!B2:D")).await? {
-                        if !row.is_empty() {
-                            let mut row = row.into_iter().fuse();
-                            let datetime_et = row.next().unwrap();
-                            let matchup = row.next().unwrap();
-                            let round = row.next().unwrap();
-                            assert!(row.next().is_none());
+                        if let [datetime_et, matchup, round] = &*row {
                             let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
                             if start < America::New_York.with_ymd_and_hms(2022, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue } //TODO also add an upper bound
                             races.push(Self {
@@ -633,16 +609,16 @@ impl Race {
                                 event: event.event.to_string(),
                                 startgg_event: None,
                                 startgg_set: None,
-                                participants: if let Some((_, p1, p2)) = regex_captures!("^(.+) +vs?.? +(.+)$", &matchup) {
+                                participants: if let Some((_, p1, p2)) = regex_captures!("^(.+) +vs?.? +(.+)$", matchup) {
                                     Participants::Two([
                                         RaceTeam::Named(p1.to_owned()),
                                         RaceTeam::Named(p2.to_owned()),
                                     ])
                                 } else {
-                                    Participants::Named(matchup)
+                                    Participants::Named(matchup.clone())
                                 },
                                 phase: None, // main bracket
-                                round: Some(round),
+                                round: Some(round.clone()),
                                 game: None,
                                 schedule: RaceSchedule::Live {
                                     start: start.with_timezone(&Utc),
@@ -657,18 +633,10 @@ impl Race {
                     }
                     // Challenge Cup bracket matches
                     for row in sheet_values("1Hp0rg_bV1Ja6oPdFLomTWQmwNy7ivmLMZ1rrVC3gx0Q", format!("Submitted Matches!C2:K")).await? {
-                        if !row.is_empty() {
-                            let mut row = row.into_iter().fuse();
-                            let group_round = row.next().unwrap();
-                            let p1 = row.next().unwrap();
-                            let p2 = row.next().unwrap();
-                            let _p3 = row.next().unwrap();
-                            let date_et = row.next().unwrap();
-                            let time_et = row.next().unwrap();
-                            let is_async = row.next().unwrap() == "Yes";
-                            let _restream_ok = row.next().unwrap() == "Yes";
-                            let is_cancelled = row.next().unwrap() == "TRUE";
-                            if is_cancelled { continue }
+                        if let [group_round, p1, p2, _p3, date_et, time_et, is_async, restream_ok, is_cancelled] = &*row {
+                            let is_async = is_async == "Yes";
+                            let _restream_ok = restream_ok == "Yes";
+                            if is_cancelled == "TRUE" { continue }
                             let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %I:%M %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
                             races.push(Self {
                                 series: event.series,
@@ -676,11 +644,11 @@ impl Race {
                                 startgg_event: None,
                                 startgg_set: None,
                                 participants: Participants::Two([
-                                    RaceTeam::Named(p1),
-                                    RaceTeam::Named(p2),
+                                    RaceTeam::Named(p1.clone()),
+                                    RaceTeam::Named(p2.clone()),
                                 ]),
                                 phase: Some(format!("Challenge Cup")),
-                                round: Some(group_round),
+                                round: Some(group_round.clone()),
                                 game: None,
                                 schedule: if is_async {
                                     RaceSchedule::Async {
