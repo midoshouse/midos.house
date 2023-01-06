@@ -634,6 +634,7 @@ impl Race {
                     // Challenge Cup bracket matches
                     for row in sheet_values("1Hp0rg_bV1Ja6oPdFLomTWQmwNy7ivmLMZ1rrVC3gx0Q", format!("Submitted Matches!C2:K")).await? {
                         if let [group_round, p1, p2, _p3, date_et, time_et, is_async, restream_ok, is_cancelled] = &*row {
+                            if group_round.is_empty() { continue }
                             let is_async = is_async == "Yes";
                             let _restream_ok = restream_ok == "Yes";
                             if is_cancelled == "TRUE" { continue }
