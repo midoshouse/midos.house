@@ -610,7 +610,7 @@ impl Race {
                                 event: event.event.to_string(),
                                 startgg_event: None,
                                 startgg_set: None,
-                                participants: if let Some((_, p1, p2)) = regex_captures!("^(.+) +vs?.? +(.+)$", matchup) {
+                                participants: if let Some((_, p1, p2)) = regex_captures!("^(.+) +[Vv][Ss]?\\.? +(.+)$", matchup) {
                                     Participants::Two([
                                         RaceTeam::Named(p1.to_owned()),
                                         RaceTeam::Named(p2.to_owned()),
