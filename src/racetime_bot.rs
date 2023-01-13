@@ -130,6 +130,7 @@ use {
         user::User,
         util::{
             DurationUnit,
+            Id,
             MessageBuilderExt as _,
             format_duration,
             io_error_from_reqwest,
@@ -1925,8 +1926,8 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
             () = &mut shutdown => break,
             _ = sleep(Duration::from_secs(60)) => {
                 let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
-                for row in sqlx::query!(r#"SELECT series AS "series: Series", event, startgg_set, game FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut transaction).await.to_racetime()? { //TODO get permission to create private rooms, then also use for asyncs
-                    let race = Race::from_startgg(&mut transaction, &global_state.http_client, &global_state.startgg_token, row.startgg_set, row.game).await.to_racetime()?;
+                for row in sqlx::query!(r#"SELECT series AS "series: Series", event, id AS "id: Id" FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut transaction).await.to_racetime()? { //TODO get permission to create private rooms, then also use for asyncs
+                    let race = Race::from_id(&mut transaction, &global_state.http_client, &global_state.startgg_token, row.id).await.to_racetime()?;
                     match racetime::authorize_with_host(global_state.host, &racetime_config.client_id, &racetime_config.client_secret, &global_state.http_client).await {
                         Ok((access_token, _)) => {
                             let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
@@ -1997,7 +1998,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                                             }
                                         }
                                     }
-                                    if let Some(game) = row.game {
+                                    if let Some(game) = race.game {
                                         msg.push(", game ");
                                         msg.push(game);
                                     }

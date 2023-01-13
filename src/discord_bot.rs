@@ -43,6 +43,7 @@ use {
         team::Team,
         util::{
             Id,
+            IdTable,
             MessageBuilderExt as _,
         },
     },
@@ -159,7 +160,7 @@ impl Draft {
 
 async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: &ApplicationCommandInteraction) -> Result<Option<(Transaction<'a, Postgres>, String, Option<i16>, Vec<Team>, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
     let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
-    Ok(if let Some(row) = sqlx::query!(r#"SELECT startgg_set, game, room IS NOT NULL OR async_room1 IS NOT NULL OR async_room2 IS NOT NULL AS "has_room!" FROM races WHERE scheduling_thread = $1 ORDER BY game DESC"#, i64::from(interaction.channel_id)).fetch_optional(&mut transaction).await? {
+    Ok(if let Some(row) = sqlx::query!(r#"SELECT startgg_set AS "startgg_set!", game, room IS NOT NULL OR async_room1 IS NOT NULL OR async_room2 IS NOT NULL AS "has_room!" FROM races WHERE scheduling_thread = $1 ORDER BY game DESC"#, i64::from(interaction.channel_id)).fetch_optional(&mut transaction).await? {
         if row.has_room {
             interaction.create_interaction_response(ctx, |r| r
                 .interaction_response_data(|d| d
@@ -198,11 +199,11 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
                         }
                         teams.push(iter_team);
                     } else {
-                        return Err(cal::Error::Teams { startgg_set: row.startgg_set, response_data }.into())
+                        return Err(cal::Error::StartggTeams { startgg_set: row.startgg_set }.into())
                     }
                 }
             } else {
-                return Err(cal::Error::Teams { startgg_set: row.startgg_set, response_data }.into())
+                return Err(cal::Error::StartggTeams { startgg_set: row.startgg_set }.into())
             }
             Some((transaction, row.startgg_set, row.game, teams, team))
         }
@@ -484,10 +485,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 _ => panic!("unexpected slash command option type"),
                             });
                             if let Some(high_seed) = Team::from_discord(&mut transaction, high_seed).await? {
+                                let id = Id::new(&mut transaction, IdTable::Races).await?;
                                 sqlx::query!("INSERT INTO races
-                                    (startgg_set, game, series, event, scheduling_thread, draft_state) VALUES ($1, $2, $3, $4, $5, $6)
+                                    (id, startgg_set, game, series, event, scheduling_thread, draft_state) VALUES ($1, $2, $3, $4, $5, $6, $7)
                                     ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread, draft_state = EXCLUDED.draft_state
-                                ", &startgg_set, game, event_row.series, event_row.event, i64::from(interaction.channel_id), Json(Draft {
+                                ", i64::from(id), &startgg_set, game, event_row.series, event_row.event, i64::from(interaction.channel_id), Json(Draft {
                                     high_seed: high_seed.id,
                                     state: mw::S3Draft::default(),
                                 }) as _).execute(&mut transaction).await?;

@@ -152,6 +152,7 @@ pub(crate) struct Id(pub(crate) u64);
 
 pub(crate) enum IdTable {
     Notifications,
+    Races,
     Teams,
     Users,
 }
@@ -162,6 +163,7 @@ impl Id {
             let id = Self(thread_rng().gen());
             let query = match table {
                 IdTable::Notifications => sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM notifications WHERE id = $1) AS "exists!""#, i64::from(id)),
+                IdTable::Races => sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE id = $1) AS "exists!""#, i64::from(id)),
                 IdTable::Teams => sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE id = $1) AS "exists!""#, i64::from(id)),
                 IdTable::Users => sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, i64::from(id)),
             };

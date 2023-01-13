@@ -211,124 +211,135 @@ pub(crate) struct Race {
 }
 
 impl Race {
-    pub(crate) async fn from_startgg(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, startgg_set: String, game: Option<i16>) -> Result<Self, Error> {
-        let response_data = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) }).await?;
-        if let startgg::set_query::ResponseData {
-            set: Some(startgg::set_query::SetQuerySet {
-                full_round_text: Some(ref round),
-                phase_group: Some(startgg::set_query::SetQuerySetPhaseGroup {
-                    phase: Some(startgg::set_query::SetQuerySetPhaseGroupPhase {
-                        event: Some(startgg::set_query::SetQuerySetPhaseGroupPhaseEvent {
-                            slug: Some(ref startgg_event),
+    pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, id: Id) -> Result<Self, Error> {
+        let row = sqlx::query!(r#"SELECT
+            series AS "series: Series",
+            event,
+            startgg_set,
+            game,
+            team1 AS "team1: Id",
+            team2 AS "team2: Id",
+            draft_state AS "draft_state: Json<Draft>",
+            start,
+            async_start1,
+            async_start2,
+            end_time,
+            async_end1,
+            async_end2,
+            room,
+            async_room1,
+            async_room2,
+            web_id AS "web_id: Id",
+            web_gen_time,
+            file_stem,
+            hash1 AS "hash1: HashIcon",
+            hash2 AS "hash2: HashIcon",
+            hash3 AS "hash3: HashIcon",
+            hash4 AS "hash4: HashIcon",
+            hash5 AS "hash5: HashIcon"
+        FROM races WHERE id = $1"#, i64::from(id)).fetch_one(&mut *transaction).await?;
+        let (startgg_event, startgg_set, phase, round, slots) = if let Some(startgg_set) = row.startgg_set {
+            if let startgg::set_query::ResponseData {
+                set: Some(startgg::set_query::SetQuerySet {
+                    full_round_text: Some(round),
+                    phase_group: Some(startgg::set_query::SetQuerySetPhaseGroup {
+                        phase: Some(startgg::set_query::SetQuerySetPhaseGroupPhase {
+                            event: Some(startgg::set_query::SetQuerySetPhaseGroupPhaseEvent {
+                                slug: Some(startgg_event),
+                            }),
+                            name: Some(phase),
                         }),
-                        name: Some(ref phase),
                     }),
+                    slots: Some(slots),
                 }),
-                slots: Some(ref slots),
-            }),
-        } = response_data {
-            let row = sqlx::query!(r#"SELECT
-                series AS "series: Series",
-                event,
-                team1 AS "team1: Id",
-                team2 AS "team2: Id",
-                draft_state AS "draft_state: Json<Draft>",
-                start,
-                async_start1,
-                async_start2,
-                end_time,
-                async_end1,
-                async_end2,
-                room,
-                async_room1,
-                async_room2,
-                web_id AS "web_id: Id",
-                web_gen_time,
-                file_stem,
-                hash1 AS "hash1: HashIcon",
-                hash2 AS "hash2: HashIcon",
-                hash3 AS "hash3: HashIcon",
-                hash4 AS "hash4: HashIcon",
-                hash5 AS "hash5: HashIcon"
-            FROM races WHERE startgg_set = $1 AND game IS NOT DISTINCT FROM $2"#, &startgg_set, game).fetch_one(&mut *transaction).await?;
-            let teams = if let [Some(team1), Some(team2)] = [row.team1, row.team2] {
-                [
-                    Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?,
-                    Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?,
-                ]
-            } else if let [
+            } = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) }).await? {
+                (Some(startgg_event), Some(startgg_set), Some(phase), Some(round), Some(slots))
+            } else {
+                (None, None, None, None, None)
+            }
+        } else {
+            (None, None, None, None, None)
+        };
+        let teams = if let [Some(team1), Some(team2)] = [row.team1, row.team2] {
+            [
+                Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?,
+                Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?,
+            ]
+        } else if let (Some(startgg_set), Some(slots)) = (&startgg_set, slots) {
+            if let [
                 Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team1)), on: _ }) }) }),
                 Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team2)), on: _ }) }) }),
-            ] = **slots {
+            ] = *slots {
                 let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?;
                 let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
-                sqlx::query!("UPDATE races SET team1 = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", team1.id as _, &startgg_set, game).execute(&mut *transaction).await?;
-                sqlx::query!("UPDATE races SET team2 = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", team2.id as _, &startgg_set, game).execute(&mut *transaction).await?;
+                sqlx::query!("UPDATE races SET team1 = $1 WHERE id = $2", team1.id as _, i64::from(id)).execute(&mut *transaction).await?;
+                sqlx::query!("UPDATE races SET team2 = $1 WHERE id = $2", team2.id as _, i64::from(id)).execute(&mut *transaction).await?;
                 [team1, team2]
             } else {
-                return Err(Error::Teams { startgg_set, response_data })
-            };
-
-            macro_rules! update_end {
-                ($var:ident, $room:ident, $query:literal) => {
-                    let $var = if let Some(end) = row.$var {
-                        Some(end)
-                    } else if let Some(ref room) = row.$room {
-                        let end = http_client.get(format!("{room}/data"))
-                            .send().await?
-                            .detailed_error_for_status().await?
-                            .json_with_text_in_error::<RaceData>().await?
-                            .ended_at;
-                        if let Some(end) = end {
-                            sqlx::query!($query, end, &startgg_set, game).execute(&mut *transaction).await?;
-                        }
-                        end
-                    } else {
-                        None
-                    };
-                };
+                return Err(Error::StartggTeams { startgg_set: startgg_set.clone() })
             }
-
-            update_end!(end_time, room, "UPDATE races SET end_time = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3");
-            update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3");
-            update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3");
-            Ok(Self {
-                series: row.series,
-                event: row.event,
-                startgg_event: Some(startgg_event.clone()),
-                startgg_set: Some(startgg_set),
-                participants: Participants::Two(teams.map(RaceTeam::MidosHouse)),
-                phase: Some(phase.clone()),
-                round: Some(round.clone()),
-                schedule: RaceSchedule::new(
-                    row.start, row.async_start1, row.async_start2,
-                    end_time, async_end1, async_end2,
-                    row.room.map(|room| room.parse()).transpose()?, row.async_room1.map(|room| room.parse()).transpose()?, row.async_room2.map(|room| room.parse()).transpose()?,
-                ),
-                draft: row.draft_state.map(|Json(draft)| draft),
-                seed: row.file_stem.map(|file_stem| seed::Data {
-                    web: match (row.web_id, row.web_gen_time) {
-                        (Some(Id(id)), Some(gen_time)) => Some(seed::OotrWebData { id, gen_time }),
-                        (None, None) => None,
-                        _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
-                    },
-                    file_hash: match (row.hash1, row.hash2, row.hash3, row.hash4, row.hash5) {
-                        (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
-                        (None, None, None, None, None) => None,
-                        _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
-                    },
-                    file_stem: Cow::Owned(file_stem),
-                }),
-                video_url: None, //TODO
-                game,
-            })
         } else {
-            Err(Error::Teams { startgg_set, response_data })
+            return Err(Error::MissingTeams)
+        };
+
+        macro_rules! update_end {
+            ($var:ident, $room:ident, $query:literal) => {
+                let $var = if let Some(end) = row.$var {
+                    Some(end)
+                } else if let Some(ref room) = row.$room {
+                    let end = http_client.get(format!("{room}/data"))
+                        .send().await?
+                        .detailed_error_for_status().await?
+                        .json_with_text_in_error::<RaceData>().await?
+                        .ended_at;
+                    if let Some(end) = end {
+                        sqlx::query!($query, end, i64::from(id)).execute(&mut *transaction).await?;
+                    }
+                    end
+                } else {
+                    None
+                };
+            };
         }
+
+        update_end!(end_time, room, "UPDATE races SET end_time = $1 WHERE id = $2");
+        update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE id = $2");
+        update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE id = $2");
+        Ok(Self {
+            series: row.series,
+            event: row.event,
+            participants: Participants::Two(teams.map(RaceTeam::MidosHouse)),
+            game: row.game,
+            schedule: RaceSchedule::new(
+                row.start, row.async_start1, row.async_start2,
+                end_time, async_end1, async_end2,
+                row.room.map(|room| room.parse()).transpose()?, row.async_room1.map(|room| room.parse()).transpose()?, row.async_room2.map(|room| room.parse()).transpose()?,
+            ),
+            draft: row.draft_state.map(|Json(draft)| draft),
+            seed: row.file_stem.map(|file_stem| seed::Data {
+                web: match (row.web_id, row.web_gen_time) {
+                    (Some(Id(id)), Some(gen_time)) => Some(seed::OotrWebData { id, gen_time }),
+                    (None, None) => None,
+                    _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
+                },
+                file_hash: match (row.hash1, row.hash2, row.hash3, row.hash4, row.hash5) {
+                    (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
+                    (None, None, None, None, None) => None,
+                    _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
+                },
+                file_stem: Cow::Owned(file_stem),
+            }),
+            video_url: None, //TODO
+            startgg_event, startgg_set, phase, round,
+        })
     }
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: &Environment, config: &Config, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
+        let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
         let mut races = Vec::default();
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut *transaction).await? {
+            races.push(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?);
+        }
         match event.series {
             Series::Multiworld => match &*event.event {
                 "2" => {
@@ -390,12 +401,7 @@ impl Race {
                         races.push(race.clone());
                     }
                 }
-                _ => {
-                    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
-                    for row in sqlx::query!("SELECT startgg_set, game FROM races WHERE series = $1 AND event = $2", event.series as _, &event.event).fetch_all(&mut *transaction).await? {
-                        races.push(Self::from_startgg(&mut *transaction, http_client, startgg_token, row.startgg_set, row.game).await?);
-                    }
-                }
+                _ => {}
             },
             Series::NineDaysOfSaws | Series::Pictionary => {
                 races.push(Self {
@@ -743,21 +749,21 @@ pub(crate) struct Event {
 
 impl Event {
     pub(crate) async fn from_room(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, room: Url) -> Result<Option<Self>, Error> {
-        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, game FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+        if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
             return Ok(Some(Self {
-                race: Race::from_startgg(&mut *transaction, http_client, startgg_token, row.startgg_set, row.game).await?,
+                race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Normal,
             }))
         }
-        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, game FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+        if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
             return Ok(Some(Self {
-                race: Race::from_startgg(&mut *transaction, http_client, startgg_token, row.startgg_set, row.game).await?,
+                race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Async1,
             }))
         }
-        if let Some(row) = sqlx::query!(r#"SELECT startgg_set, game FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
+        if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut *transaction).await? {
             return Ok(Some(Self {
-                race: Race::from_startgg(&mut *transaction, http_client, startgg_token, row.startgg_set, row.game).await?,
+                race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Async2,
             }))
         }
@@ -820,10 +826,11 @@ pub(crate) enum Error {
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
-    #[error("wrong number of teams or missing data in start.gg set {startgg_set}")]
-    Teams {
+    #[error("missing teams data in race")]
+    MissingTeams,
+    #[error("wrong number of teams in start.gg set {startgg_set}")]
+    StartggTeams {
         startgg_set: String,
-        response_data: <startgg::SetQuery as graphql_client::GraphQLQuery>::ResponseData,
     },
     #[error("this start.gg team ID is not associated with a Mido's House team")]
     UnknownTeam,
