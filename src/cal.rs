@@ -557,27 +557,27 @@ impl Race {
             Series::Standard => match &*event.event {
                 "6" => {
                     // qualifiers
-                    for (i, (start, weekly, room, vod)) in [
+                    for (i, (start, end, weekly, room, vod, seed)) in [
                         // source: https://docs.google.com/document/d/1fyNO82G2D0Z7J9wobxEbjDjGnomTaIRdKgETGV_ufmc/edit
-                        (Utc.with_ymd_and_hms(2022, 11, 19, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://racetime.gg/ootr/neutral-bongobongo-4042"), "https://twitch.tv/videos/1657562512"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 11, 20, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://racetime.gg/ootr/trusty-volvagia-2022"), "https://twitch.tv/videos/1658095931"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 11, 23, 3, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/chaotic-wolfos-5287"), "https://www.twitch.tv/videos/1660399051"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 11, 26, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://racetime.gg/ootr/smart-darunia-4679"), "https://www.twitch.tv/videos/1663582442"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 11, 27, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://racetime.gg/ootr/comic-sheik-2973"), "https://www.twitch.tv/videos/1664085065"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 11, 29, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, None, "https://twitch.tv/videos/1666092237"), //TODO room URL //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 2, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/dazzling-bigocto-7483"), "https://www.twitch.tv/videos/1667839721"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 3, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://racetime.gg/ootr/secret-dampe-4738"), "https://www.twitch.tv/videos/1669607104"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 4, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://racetime.gg/ootr/clumsy-mido-8938"), "https://www.twitch.tv/videos/1670131046"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 6, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/good-bigocto-9887"), "https://www.twitch.tv/videos/1671439689"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 8, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/artful-barinade-9952"), "https://www.twitch.tv/videos/1673751509"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 10, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://racetime.gg/ootr/trusty-ingo-2577"), "https://www.twitch.tv/videos/1675739280"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 11, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), None, "https://www.twitch.tv/videos/1676628321"), //TODO room URL //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 12, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/sleepy-talon-9258"), "https://www.twitch.tv/videos/1677277961"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 15, 1, 0, 0).single().expect("wrong hardcoded datetime"), None, None, "https://www.twitch.tv/videos/1679558638"), //TODO room URL //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 17, 23, 0, 0).single().expect("wrong hardcoded datetime"), Some("NA"), Some("https://racetime.gg/ootr/trusty-wolfos-6723"), "https://www.twitch.tv/videos/1681883072"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 18, 14, 0, 0).single().expect("wrong hardcoded datetime"), Some("EU"), Some("https://racetime.gg/ootr/banzai-medigoron-2895"), "https://www.twitch.tv/videos/1682377804"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 21, 19, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/overpowered-zora-1013"), "https://www.twitch.tv/videos/1685210852"), //TODO permanent highlight/YouTube upload //TODO seed info
-                        (Utc.with_ymd_and_hms(2022, 12, 23, 3, 0, 0).single().expect("wrong hardcoded datetime"), None, Some("https://racetime.gg/ootr/sleepy-stalfos-1734"), "https://www.twitch.tv/videos/1686484000"), //TODO permanent highlight/YouTube upload //TODO seed info
+                        ((2022, 11, 19, 23, 0, 0), (2022, 11, 20, 3, 39, 27, 694), Some("NA"), "https://racetime.gg/ootr/neutral-bongobongo-4042", "https://www.youtube.com/watch?v=uuMVHppi8Uk", None),
+                        ((2022, 11, 20, 14, 0, 0), (2022, 11, 20, 17, 55, 28, 500), Some("EU"), "https://racetime.gg/ootr/trusty-volvagia-2022", "https://www.youtube.com/watch?v=7eQB379leVo", None),
+                        ((2022, 11, 23, 3, 0, 0), (2022, 11, 23, 9, 53, 31, 278), None, "https://racetime.gg/ootr/chaotic-wolfos-5287", "https://www.youtube.com/watch?v=tQQyq6x76yw", None), //TODO seed info
+                        ((2022, 11, 26, 23, 0, 0), (2022, 11, 27, 4, 54, 15, 67), Some("NA"), "https://racetime.gg/ootr/smart-darunia-4679", "https://www.youtube.com/watch?v=jaVoVsw7PqE", None), //TODO seed info
+                        ((2022, 11, 27, 14, 0, 0), (2022, 11, 27, 18, 41, 28, 265), Some("EU"), "https://racetime.gg/ootr/comic-sheik-2973", "https://www.youtube.com/watch?v=D6SWuCmuYRM", None), //TODO seed info
+                        ((2022, 11, 29, 19, 0, 0), (2022, 11, 29, 23, 20, 27, 920), None, "https://racetime.gg/ootr/eager-jabu-1097", "https://twitch.tv/videos/1666092237", None), //TODO seed info
+                        ((2022, 12, 2, 1, 0, 0), (2022, 12, 2, 4, 51, 0, 313), None, "https://racetime.gg/ootr/dazzling-bigocto-7483", "https://www.youtube.com/watch?v=k7_2gAHZOfk", None), //TODO seed info
+                        ((2022, 12, 3, 23, 0, 0), (2022, 12, 4, 4, 55, 29, 700), Some("NA"), "https://racetime.gg/ootr/secret-dampe-4738", "https://www.youtube.com/watch?v=mWNNMG9UIa4", None), //TODO seed info
+                        ((2022, 12, 4, 14, 0, 0), (2022, 12, 4, 19, 36, 40, 94), Some("EU"), "https://racetime.gg/ootr/clumsy-mido-8938", "https://www.youtube.com/watch?v=yuvVxgYawCk", None), //TODO seed info
+                        ((2022, 12, 6, 1, 0, 0), (2022, 12, 6, 5, 52, 45, 974), None, "https://racetime.gg/ootr/good-bigocto-9887", "https://www.youtube.com/watch?v=yTOC4ArmC6g", None), //TODO seed info
+                        ((2022, 12, 8, 19, 0, 0), (2022, 12, 9, 1, 11, 51, 557), None, "https://racetime.gg/ootr/artful-barinade-9952", "https://www.youtube.com/watch?v=PxYEh63lvr4", None), //TODO seed info
+                        ((2022, 12, 10, 23, 0, 0), (2022, 12, 11, 3, 35, 44, 300), Some("NA"), "https://racetime.gg/ootr/trusty-ingo-2577", "https://www.youtube.com/watch?v=zcSfvGAyGh0", None), //TODO seed info
+                        ((2022, 12, 11, 14, 0, 0), (2022, 12, 11, 18, 37, 19, 31), Some("EU"), "https://racetime.gg/ootr/speedy-jiro-3637", "https://www.twitch.tv/videos/1676628321", None), //TODO seed info
+                        ((2022, 12, 12, 19, 0, 0), (2022, 12, 13, 0, 13, 10, 597), None, "https://racetime.gg/ootr/sleepy-talon-9258", "https://www.youtube.com/watch?v=ZtT4f7w24-4", None), //TODO seed info
+                        ((2022, 12, 15, 1, 0, 0), (2022, 12, 15, 6, 3, 30, 579), None, "https://racetime.gg/ootr/hungry-gohma-3413", "https://www.twitch.tv/videos/1679558638", None), //TODO seed info
+                        ((2022, 12, 17, 23, 0, 0), (2022, 12, 18, 3, 22, 37, 317), Some("NA"), "https://racetime.gg/ootr/trusty-wolfos-6723", "https://www.youtube.com/watch?v=6BBQ7VGUSZE", None), //TODO seed info
+                        ((2022, 12, 18, 14, 0, 0), (2022, 12, 18, 19, 44, 27, 758), Some("EU"), "https://racetime.gg/ootr/banzai-medigoron-2895", "https://www.youtube.com/watch?v=JAxNet4zeuk", None), //TODO seed info
+                        ((2022, 12, 21, 19, 0, 0), (2022, 12, 22, 3, 56, 57, 266), None, "https://racetime.gg/ootr/overpowered-zora-1013", "https://www.youtube.com/watch?v=zUw7vwS96HU", None), //TODO seed info
+                        ((2022, 12, 23, 3, 0, 0), (2022, 12, 23, 7, 41, 05, 441), None, "https://racetime.gg/ootr/sleepy-stalfos-1734", "https://www.youtube.com/watch?v=iALvni6vFoA", None), //TODO seed info
                     ].into_iter().enumerate() {
                         races.push(Self {
                             series: event.series,
@@ -590,13 +590,13 @@ impl Race {
                             round: Some(format!("{}{}", i + 1, if let Some(weekly) = weekly { format!(" ({weekly} Weekly)") } else { String::default() })),
                             game: None,
                             schedule: RaceSchedule::Live {
-                                end: None, //TODO get from room
-                                room: room.map(|room| Url::parse(room)).transpose()?,
-                                start,
+                                start: Utc.with_ymd_and_hms(start.0, start.1, start.2, start.3, start.4, start.5).single().expect("wrong hardcoded datetime"),
+                                end: Some(Utc.with_ymd_and_hms(end.0, end.1, end.2, end.3, end.4, end.5).single().expect("wrong hardcoded datetime").with_nanosecond(end.6 * 1_000_000).expect("wrong hardcoded datetime")),
+                                room: Some(Url::parse(room)?),
                             },
                             draft: None,
-                            seed: None, //TODO
                             video_url: Some(Url::parse(vod)?),
+                            seed,
                         });
                     }
                     // bracket matches
