@@ -1108,6 +1108,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
 
     async fn task(global_state: Arc<GlobalState>, race_data: Arc<RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
         tokio::spawn(async move {
+            println!("race handler for {} started", race_data.read().await.url);
             let res = join_handle.await;
             let mut clean_shutdown = global_state.clean_shutdown.lock().await;
             assert!(clean_shutdown.open_rooms.remove(&race_data.read().await.url));
@@ -1115,6 +1116,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 clean_shutdown.notifier.notify_waiters();
             }
             let () = res.unwrap();
+            println!("race handler for {} stopped", race_data.read().await.url);
         });
         Ok(())
     }
