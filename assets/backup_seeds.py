@@ -32,9 +32,10 @@ def b(seed_id, room=None, *, startgg=None, async_room1=None, async_room2=None, u
             creation_timestamp = f"{datetime.datetime.strptime(input('creation timestamp: ').strip(), '%m/%d/%Y, %I:%M:%S %p UTC'):%Y-%m-%dT%H:%M:%SZ}"
             file_hash = json.loads(input('file hash: '))
         spoiler_resp = requests.get('https://ootrandomizer.com/spoilers/get', params={'id': seed_id})
-        spoiler_resp.raise_for_status()
-        with open(SEEDS_DIR / f'{file_stem}_Spoiler.json', 'wb') as spoiler_f:
-            spoiler_f.write(spoiler_resp.content)
+        if spoiler_resp.status_code != 400: # returns error 400 if no spoiler log has been generated
+            spoiler_resp.raise_for_status()
+            with open(SEEDS_DIR / f'{file_stem}_Spoiler.json', 'wb') as spoiler_f:
+                spoiler_f.write(spoiler_resp.content)
     else:
         if api_resp.json()['spoilerLog'] is None and unlock:
             requests.post('https://ootrandomizer.com/api/v2/seed/unlock', params={'key': config['ootrApiKey'], 'id': seed_id}).raise_for_status()

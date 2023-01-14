@@ -225,6 +225,8 @@ impl Race {
             team2 AS "team2: Id",
             p1,
             p2,
+            phase,
+            round,
             draft_state AS "draft_state: Json<Draft>",
             start,
             async_start1,
@@ -261,10 +263,10 @@ impl Race {
             } = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) }).await? {
                 (Some(startgg_event), Some(startgg_set), Some(phase), Some(round), Some(slots))
             } else {
-                (None, None, None, None, None)
+                (None, None, row.phase, row.round, None)
             }
         } else {
-            (None, None, None, None, None)
+            (None, None, row.phase, row.round, None)
         };
         let entrants = if let [Some(team1), Some(team2)] = [row.team1, row.team2] {
             Entrants::Two([
