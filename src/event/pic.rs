@@ -420,7 +420,7 @@ impl<'v> EnterFormDefaults<'v> {
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
 pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, defaults: EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
-    let header = data.header(&mut transaction, me.as_ref(), Tab::Enter).await?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
         let mut errors = defaults.errors();
         let form_content = html! {
@@ -448,7 +448,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
                 label(class = "help") : "(Enter your teammate's Mido's House user ID. It can be found on their profile page.)"; //TODO add JS-based user search?
             });
             fieldset {
-                input(type = "submit", value = "Submit");
+                input(type = "submit", value = "Enter");
             }
         };
         html! {
@@ -475,7 +475,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
 pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
-    let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam).await?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
     for row in sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {

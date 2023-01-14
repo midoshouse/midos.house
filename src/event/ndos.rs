@@ -158,7 +158,7 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
 pub(super) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
-    let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam).await?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
     let mut me_listed = false;
     let mut looking_for_team = Vec::default();
     for row in sqlx::query!(r#"SELECT user_id AS "user!: Id" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {

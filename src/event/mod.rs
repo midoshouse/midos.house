@@ -524,7 +524,7 @@ impl<'a> Data<'a> {
         Ok(None)
     }
 
-    async fn header(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>, tab: Tab) -> Result<RawHtml<String>, Error> {
+    pub(crate) async fn header(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>, tab: Tab, is_subpage: bool) -> Result<RawHtml<String>, Error> {
         let signed_up = if let Some(me) = me {
             sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
                 id = team
@@ -538,21 +538,21 @@ impl<'a> Data<'a> {
         };
         Ok(html! {
             h1 {
-                a(class = "nav", href? = (!matches!(tab, Tab::Info)).then(|| uri!(info(self.series, &*self.event)).to_string())) : &self.display_name;
+                a(class = "nav", href? = (!matches!(tab, Tab::Info) || is_subpage).then(|| uri!(info(self.series, &*self.event)).to_string())) : &self.display_name;
             }
             @if let Some(start) = self.start(&mut *transaction).await? {
                 h2 : format_datetime(start, DateTimeFormat { long: true, running_text: false });
             }
             div(class = "button-row") {
                 @if let Tab::Info = tab {
-                    span(class = "button selected") : "Info";
+                    a(class = "button selected", href? = is_subpage.then(|| uri!(info(self.series, &*self.event)).to_string())) : "Info";
                 } else {
                     a(class = "button", href = uri!(info(self.series, &*self.event)).to_string()) : "Info";
                 }
                 @let teams_label = if let TeamConfig::Solo = self.team_config() { "Entrants" } else { "Teams" };
                 @if !self.hide_teams_tab {
                     @if let Tab::Teams = tab {
-                        span(class = "button selected") : teams_label;
+                        a(class = "button selected", href? = is_subpage.then(|| uri!(teams(self.series, &*self.event)).to_string())) : teams_label;
                     } else if let Some(ref teams_url) = self.teams_url {
                         a(class = "button", href = teams_url.to_string()) {
                             : favicon(teams_url);
@@ -564,20 +564,20 @@ impl<'a> Data<'a> {
                 }
                 @if !self.is_single_race() { //TODO also hide for past events with no race list
                     @if let Tab::Races = tab {
-                        span(class = "button selected") : "Races";
+                        a(class = "button selected", href? = is_subpage.then(|| uri!(races(self.series, &*self.event)).to_string())) : "Races";
                     } else {
                         a(class = "button", href = uri!(races(self.series, &*self.event)).to_string()) : "Races";
                     }
                 }
                 @if signed_up {
                     @if let Tab::MyStatus = tab {
-                        span(class = "button selected") : "My Status";
+                        a(class = "button selected", href? = is_subpage.then(|| uri!(status(self.series, &*self.event)).to_string())) : "My Status";
                     } else {
                         a(class = "button", href = uri!(status(self.series, &*self.event)).to_string()) : "My Status";
                     }
                 } else if !self.is_started(transaction).await? {
                     @if let Tab::Enter = tab {
-                        span(class = "button selected") : "Enter";
+                        a(class = "button selected", href? = is_subpage.then(|| uri!(enter(self.series, &*self.event, _, _)).to_string())) : "Enter";
                     } else if let Some(ref enter_url) = self.enter_url {
                         a(class = "button", href = enter_url.to_string()) {
                             : favicon(enter_url);
@@ -588,7 +588,7 @@ impl<'a> Data<'a> {
                     }
                     @if !matches!(self.team_config(), TeamConfig::Solo) {
                         @if let Tab::FindTeam = tab {
-                            span(class = "button selected") : "Find Teammates";
+                            a(class = "button selected", href? = is_subpage.then(|| uri!(find_team(self.series, &*self.event)).to_string())) : "Find Teammates";
                         } else {
                             a(class = "button", href = uri!(find_team(self.series, &*self.event)).to_string()) : "Find Teammates";
                         }
@@ -624,7 +624,7 @@ impl ToHtml for Data<'_> {
     }
 }
 
-enum Tab {
+pub(crate) enum Tab {
     Info,
     Teams,
     Races,
@@ -704,7 +704,7 @@ pub(crate) enum InfoError {
 pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
     let mut transaction = pool.begin().await.map_err(InfoError::Sql)?;
     let data = Data::new(&mut transaction, series, event).await.map_err(InfoError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, me.as_ref(), Tab::Info).await.map_err(InfoError::Event)?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Info, false).await.map_err(InfoError::Event)?;
     let content = match data.series {
         Series::Multiworld => mw::info(&mut transaction, &data).await?,
         Series::NineDaysOfSaws => ndos::info(&mut transaction, &data).await?,
@@ -733,7 +733,7 @@ pub(crate) enum TeamsError {
 pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<TeamsError>> {
     let mut transaction = pool.begin().await.map_err(TeamsError::Sql)?;
     let data = Data::new(&mut transaction, series, event).await.map_err(TeamsError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, me.as_ref(), Tab::Teams).await.map_err(TeamsError::Event)?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Teams, false).await.map_err(TeamsError::Event)?;
     let mut signups = Vec::default();
     let has_qualifier = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier') AS "exists!""#, series as _, event).fetch_one(&mut transaction).await.map_err(TeamsError::Sql)?;
     let show_qualifier_times =
@@ -1054,7 +1054,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
 
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, me.as_ref(), Tab::Races).await?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Races, false).await?;
     let (mut past_races, ongoing_and_upcoming_races) = Race::for_event(&mut transaction, http_client, env, config, &data).await?
         .into_iter()
         .partition::<Vec<_>, _>(|race| race.schedule.is_ended());
@@ -1078,7 +1078,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
 async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, context: Context<'_>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, me.as_ref(), Tab::MyStatus).await?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::MyStatus, false).await?;
     let content = if let Some(ref me) = me {
         if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name, racetime_slug, role AS "role: Role", resigned FROM teams, team_members WHERE
             id = team
@@ -1212,7 +1212,7 @@ async fn validate_team(me: &User, client: &reqwest::Client, context: &mut Contex
 }
 
 async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
-    let header = data.header(&mut transaction, me.as_ref(), Tab::Enter).await?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
     Ok(match data.enter_flow() {
         EnterFlow::RaceTime => match data.team_config() {
             TeamConfig::Solo => page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
@@ -1266,7 +1266,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>
 fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, me: Option<User>, uri: Origin<'b>, client: &reqwest::Client, csrf: Option<CsrfToken>, data: Data<'c>, defaults: mw::EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
     let team_members = defaults.racetime_members(client);
     Box::pin(async move {
-        let header = data.header(&mut transaction, me.as_ref(), Tab::Enter).await?;
+        let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, true).await?;
         let page_content = {
             let team_members = team_members.await?;
             let mut errors = defaults.errors();
@@ -1315,7 +1315,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                     }
                 });
                 fieldset {
-                    input(type = "submit", value = "Submit");
+                    input(type = "submit", value = "Enter");
                 }
             };
             html! {
@@ -1702,7 +1702,7 @@ pub(crate) enum FindTeamError {
 async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     Ok(match data.team_config() {
         TeamConfig::Solo => {
-            let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam).await.map_err(FindTeamError::Event)?;
+            let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await.map_err(FindTeamError::Event)?;
             page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
                 : header;
                 : "This is a solo event.";

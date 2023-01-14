@@ -20,6 +20,7 @@ use {
             URL,
         },
     },
+    itertools::Itertools as _,
     lazy_regex::regex_captures,
     once_cell::sync::Lazy,
     racetime::model::RaceData,
@@ -27,6 +28,8 @@ use {
         FromForm,
         State,
         form::{
+            self,
+            Context,
             Contextual,
             Form,
         },
@@ -37,10 +40,14 @@ use {
         },
         uri,
     },
+    rocket_csrf::CsrfToken,
     rocket_util::{
+        ContextualExt as _,
         CsrfForm,
+        Origin,
         Response,
         ToHtml as _,
+        html,
     },
     serde::Deserialize,
     sheets::Sheets,
@@ -58,11 +65,18 @@ use {
     },
     crate::{
         Environment,
+        auth,
         config::Config,
         discord_bot::Draft,
         event::{
             self,
             Series,
+            Tab,
+        },
+        http::{
+            PageError,
+            PageStyle,
+            page,
         },
         seed::{
             self,
@@ -70,10 +84,15 @@ use {
         },
         startgg,
         team::Team,
+        user::User,
         util::{
+            DateTimeFormat,
             Id,
+            RedirectOrContent,
             StatusOrError,
             as_variant,
+            form_field,
+            format_datetime,
             utc,
         },
     },
@@ -994,21 +1013,287 @@ pub(crate) async fn for_event(env: &State<Environment>, config: &State<Config>, 
     Ok(Response(cal))
 }
 
+pub(super) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, race: Race, context: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+    let id = race.id.expect("race being edited must have an ID");
+    let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
+    let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+    let form = if me.is_some() {
+        let mut errors = context.errors().collect_vec();
+        html! {
+            form(action = uri!(edit_race_post(event.series, &*event.event, id)).to_string(), method = "post") {
+                : csrf;
+                @match race.schedule {
+                    RaceSchedule::Unscheduled => {}
+                    RaceSchedule::Live { ref room, .. } => : form_field("room", &mut errors, html! {
+                        label(for = "room") : "racetime.gg room:";
+                        input(type = "text", name = "room", value? = room.as_ref().map(|room| room.as_ref().to_string()));
+                    });
+                    RaceSchedule::Async { ref room1, ref room2, .. } => {
+                        : form_field("async_room1", &mut errors, html! {
+                            label(for = "async_room1") : "racetime.gg room (team A):";
+                            input(type = "text", name = "async_room1", value? = room1.as_ref().map(|room1| room1.to_string()));
+                        });
+                        : form_field("async_room2", &mut errors, html! {
+                            label(for = "async_room2") : "racetime.gg room (team B):";
+                            input(type = "text", name = "async_room2", value? = room2.as_ref().map(|room2| room2.to_string()));
+                        });
+                    }
+                }
+                //TODO allow editing seed
+                : form_field("video_url", &mut errors, html! {
+                    label(for = "video_url") : "Video URL";
+                    input(type = "text", name = "video_url", value? = race.video_url.map(|video_url| video_url.to_string()));
+                    label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel";
+                });
+                fieldset {
+                    input(type = "submit", value = "Save");
+                }
+            }
+        }
+    } else {
+        html! {
+            article {
+                p {
+                    a(href = uri!(auth::login(Some(uri!(edit_race(event.series, &*event.event, id))))).to_string()) : "Sign in or create a Mido's House account";
+                    : " to edit this race.";
+                }
+            }
+        }
+    };
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(), ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), html! {
+        : header;
+        h2 : "Edit race";
+        @if let Some(startgg_event) = race.startgg_event {
+            p {
+                : "start.gg event: ";
+                : startgg_event;
+            }
+        }
+        @if let Some(startgg_set) = race.startgg_set {
+            p {
+                : "start.gg match: ";
+                : startgg_set;
+            }
+        }
+        @match race.entrants {
+            Entrants::Open => p : "Open entry";
+            Entrants::Count { total, finished } => p {
+                : total;
+                : " entrants, ";
+                : finished;
+                : " finishers";
+            }
+            Entrants::Named(entrants) => p {
+                : "Entrants: ";
+                : entrants;
+            }
+            Entrants::Two([p1, p2]) => {
+                p : "Entrants:";
+                ol {
+                    li {
+                        @match p1 {
+                            Entrant::MidosHouseTeam(team) => : team.to_html(false);
+                            Entrant::Named(name) => : name;
+                        }
+                    }
+                    li {
+                        @match p2 {
+                            Entrant::MidosHouseTeam(team) => : team.to_html(false);
+                            Entrant::Named(name) => : name;
+                        }
+                    }
+                }
+            }
+        }
+        @if let Some(phase) = race.phase {
+            p {
+                : "Phase: ";
+                : phase;
+            }
+        }
+        @if let Some(round) = race.round {
+            p {
+                : "Round: ";
+                : round;
+            }
+        }
+        @if let Some(game) = race.game {
+            p {
+                : "Game: ";
+                : game;
+            }
+        }
+        @match race.schedule {
+            RaceSchedule::Unscheduled => p : "Not yet scheduled";
+            RaceSchedule::Live { start, end, room: _ } => {
+                p {
+                    : "Start: ";
+                    : format_datetime(start, DateTimeFormat { long: true, running_text: false });
+                }
+                @if let Some(end) = end {
+                    p {
+                        : "End: ";
+                        : format_datetime(end, DateTimeFormat { long: true, running_text: false });
+                    }
+                } else {
+                    p : "Not yet ended (will be updated automatically from the racetime.gg room, if any)";
+                }
+            }
+            RaceSchedule::Async { start1, start2, end1, end2, room1: _, room2: _ } => {
+                @if let Some(start1) = start1 {
+                    p {
+                        : "Start (team A): ";
+                        : format_datetime(start1, DateTimeFormat { long: true, running_text: false });
+                    }
+                } else {
+                    p : "Team A not yet started";
+                }
+                @if let Some(start2) = start2 {
+                    p {
+                        : "Start (team B): ";
+                        : format_datetime(start2, DateTimeFormat { long: true, running_text: false });
+                    }
+                } else {
+                    p : "Team B not yet started";
+                }
+                @if let Some(end1) = end1 {
+                    p {
+                        : "End (team A): ";
+                        : format_datetime(end1, DateTimeFormat { long: true, running_text: false });
+                    }
+                } else {
+                    p : "Team A not yet ended (will be updated automatically from the racetime.gg room, if any)";
+                }
+                @if let Some(end2) = end2 {
+                    p {
+                        : "End (team B): ";
+                        : format_datetime(end2, DateTimeFormat { long: true, running_text: false });
+                    }
+                } else {
+                    p : "Team B not yet ended (will be updated automatically from the racetime.gg room, if any)";
+                }
+            }
+        }
+        p {
+            : "The data above is currently not editable for technical reasons. Please contact ";
+            : fenhl;
+            : " if you've spotted an error in it.";
+        }
+        : form;
+    }).await?)
+}
+
 #[rocket::get("/event/<series>/<event>/races/<id>/edit")]
-pub(crate) fn edit_race(series: Series, event: &str, id: Id) -> RawHtml<String> {
-    let _ = (series, event, id); //TODO
-    unimplemented!() //TODO0
+pub(crate) async fn edit_race(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+    let mut transaction = pool.begin().await?;
+    let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let race = Race::from_id(&mut transaction, http_client, startgg_token, id).await?;
+    if race.series != event.series || race.event != event.event {
+        return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(edit_race(race.series, race.event, id)))))
+    }
+    Ok(RedirectOrContent::Content(edit_race_form(transaction, me, uri, csrf, event, race, Context::default()).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
 pub(crate) struct EditRaceForm {
     #[field(default = String::new())]
     csrf: String,
-    //TODO other fields
+    #[field(default = String::new())]
+    room: String,
+    #[field(default = String::new())]
+    async_room1: String,
+    #[field(default = String::new())]
+    async_room2: String,
+    #[field(default = String::new())]
+    video_url: String,
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit", data = "<form>")]
-pub(crate) fn edit_race_post(series: Series, event: &str, id: Id, form: Form<Contextual<'_, EditRaceForm>>) -> Redirect {
-    let _ = (series, event, id, form); //TODO
-    unimplemented!() //TODO
+pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+    let mut transaction = pool.begin().await?;
+    let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let race = Race::from_id(&mut transaction, http_client, startgg_token, id).await?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    if !me.is_archivist {
+        form.context.push_error(form::Error::validation("You must be an archivist to edit this race. If you would like to become an archivist, please contact Fenhl on Discord."));
+    }
+    if !race.editable {
+        form.context.push_error(form::Error::validation("Sorry, this race isn't editable yet."));
+    }
+    Ok(if let Some(ref value) = form.value {
+        match race.schedule {
+            RaceSchedule::Unscheduled => {
+                if !value.room.is_empty() {
+                    form.context.push_error(form::Error::validation("The race room can't be added yet because the race isn't scheduled.").with_name("room"));
+                }
+                if !value.async_room1.is_empty() {
+                    form.context.push_error(form::Error::validation("The race room can't be added yet because the race isn't scheduled.").with_name("async_room1"));
+                }
+                if !value.async_room2.is_empty() {
+                    form.context.push_error(form::Error::validation("The race room can't be added yet because the race isn't scheduled.").with_name("async_room2"));
+                }
+            }
+            RaceSchedule::Live { .. } => {
+                if !value.room.is_empty() {
+                    match Url::parse(&value.room) {
+                        Ok(room) => if let Some(host) = room.host_str() {
+                            if host != "racetime.gg" {
+                                form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("room"));
+                            }
+                        } else {
+                            form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("room"));
+                        }
+                        Err(e) => form.context.push_error(form::Error::validation(format!("Failed to parse race room URL: {e}")).with_name("room")),
+                    }
+                }
+                if !value.async_room1.is_empty() {
+                    form.context.push_error(form::Error::validation("The race room can't be added yet because the race isn't scheduled.").with_name("async_room1"));
+                }
+                if !value.async_room2.is_empty() {
+                    form.context.push_error(form::Error::validation("The race room can't be added yet because the race isn't scheduled.").with_name("async_room2"));
+                }
+            }
+            RaceSchedule::Async { .. } => {
+                if !value.room.is_empty() {
+                    form.context.push_error(form::Error::validation("The race room can't be added yet because the race isn't scheduled.").with_name("room"));
+                }
+                if !value.async_room1.is_empty() {
+                    match Url::parse(&value.async_room1) {
+                        Ok(room) => if let Some(host) = room.host_str() {
+                            if host != "racetime.gg" {
+                                form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room1"));
+                            }
+                        } else {
+                            form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room1"));
+                        }
+                        Err(e) => form.context.push_error(form::Error::validation(format!("Failed to parse race room URL: {e}")).with_name("async_room1")),
+                    }
+                }
+                if !value.async_room2.is_empty() {
+                    match Url::parse(&value.async_room2) {
+                        Ok(room) => if let Some(host) = room.host_str() {
+                            if host != "racetime.gg" {
+                                form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room2"));
+                            }
+                        } else {
+                            form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room2"));
+                        }
+                        Err(e) => form.context.push_error(form::Error::validation(format!("Failed to parse race room URL: {e}")).with_name("async_room2")),
+                    }
+                }
+            }
+        }
+        if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf, event, race, form.context).await?)
+        } else {
+            sqlx::query!("UPDATE races SET room = $1, async_room1 = $2, async_room2 = $3, video_url = $4, last_edited_by = $5, last_edited_at = NOW() WHERE id = $6", value.room, value.async_room1, value.async_room2, value.video_url, me.id as _, i64::from(id)).execute(&mut transaction).await?;
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
+        }
+    } else {
+        RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf, event, race, form.context).await?)
+    })
 }
