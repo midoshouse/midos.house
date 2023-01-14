@@ -1158,7 +1158,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                     ctx.send_message(&format!("Your seed with {settings} will be posted in 15 minutes.")).await?;
                 }
                 match cal_event.race.entrants {
-                    Entrants::Open => unimplemented!("open official race"), //TODO
+                    Entrants::Open | Entrants::Count { .. } => unimplemented!("open official race"), //TODO
                     Entrants::Named(_) => unimplemented!("official race with opaque participants text"), //TODO
                     Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)]) => if team1.id == high_seed {
                         [team1.name.clone().unwrap_or_else(|| format!("Team A")), team2.name.clone().unwrap_or_else(|| format!("Team B"))]
@@ -1944,7 +1944,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                                 invitational: !matches!(race.entrants, Entrants::Open),
                                 unlisted: false,
                                 info_user: match race.entrants {
-                                    Entrants::Open => info_prefix.clone().unwrap_or_default(),
+                                    Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
                                     Entrants::Named(ref participants) => format!("{}{participants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
                                     Entrants::Two([ref team1, ref team2]) => format!("{}{team1} vs {team2}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()), //TODO adjust for asyncs
                                 },
@@ -1971,7 +1971,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                                 if let (Some(guild), Some(channel)) = (event.discord_guild, event.discord_race_room_channel) {
                                     let mut msg = MessageBuilder::default();
                                     match race.entrants {
-                                        Entrants::Open => if let Some(prefix) = info_prefix {
+                                        Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {
                                             msg.push_safe(prefix);
                                         },
                                         Entrants::Named(ref participants) => {

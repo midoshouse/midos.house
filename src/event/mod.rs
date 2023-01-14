@@ -983,7 +983,13 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 }
                             }
                             @match race.entrants {
-                                Entrants::Open => td(colspan = "2") : "(open)"; //TODO list number of participants if known
+                                Entrants::Open => td(colspan = "2") : "(open)";
+                                Entrants::Count { total, finished } => td(colspan = "2") {
+                                    : total;
+                                    : " (";
+                                    : finished;
+                                    : " finishers)";
+                                }
                                 Entrants::Named(ref participants) => td(colspan = "2") : participants;
                                 Entrants::Two([ref team1, ref team2]) => {
                                     td(class = "vs1") {
