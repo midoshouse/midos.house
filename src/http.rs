@@ -3,6 +3,10 @@ use {
         collections::HashMap,
         io,
     },
+    base64::engine::{
+        Engine as _,
+        general_purpose::STANDARD as BASE64,
+    },
     itertools::Itertools as _,
     once_cell::sync::Lazy,
     rand::prelude::*,
@@ -388,7 +392,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
     let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
     let racetime_config = if env.is_dev() { &config.racetime_oauth_dev } else { &config.racetime_oauth_production };
     Ok(rocket::custom(rocket::Config {
-        secret_key: SecretKey::from(&base64::decode(&config.secret_key)?),
+        secret_key: SecretKey::from(&BASE64.decode(&config.secret_key)?),
         log_level: rocket::config::LogLevel::Critical,
         port,
         ..rocket::Config::default()
