@@ -67,6 +67,7 @@ pub(crate) struct User {
     pub(crate) racetime_pronouns: Option<RaceTimePronouns>,
     pub(crate) discord_id: Option<UserId>,
     pub(crate) discord_display_name: Option<String>,
+    pub(crate) is_archivist: bool,
 }
 
 impl User {
@@ -78,7 +79,8 @@ impl User {
                 racetime_display_name,
                 racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
                 discord_id AS "discord_id: Id",
-                discord_display_name
+                discord_display_name,
+                is_archivist
             FROM users WHERE id = $1"#, i64::from(id)).fetch_optional(pool).await?
                 .map(|row| Self {
                     display_source: row.display_source,
@@ -87,6 +89,7 @@ impl User {
                     racetime_pronouns: row.racetime_pronouns,
                     discord_id: row.discord_id.map(|Id(id)| id.into()),
                     discord_display_name: row.discord_display_name,
+                    is_archivist: row.is_archivist,
                     id,
                 })
         )
@@ -100,7 +103,8 @@ impl User {
                 racetime_display_name,
                 racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
                 discord_id AS "discord_id: Id",
-                discord_display_name
+                discord_display_name,
+                is_archivist
             FROM users WHERE racetime_id = $1"#, racetime_id).fetch_optional(pool).await?
                 .map(|row| Self {
                     id: row.id,
@@ -110,6 +114,7 @@ impl User {
                     racetime_pronouns: row.racetime_pronouns,
                     discord_id: row.discord_id.map(|Id(id)| id.into()),
                     discord_display_name: row.discord_display_name,
+                    is_archivist: row.is_archivist,
                 })
         )
     }
@@ -122,7 +127,8 @@ impl User {
                 racetime_id,
                 racetime_display_name,
                 racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
-                discord_display_name
+                discord_display_name,
+                is_archivist
             FROM users WHERE discord_id = $1"#, i64::from(discord_id)).fetch_optional(pool).await?
                 .map(|row| Self {
                     id: row.id,
@@ -132,6 +138,7 @@ impl User {
                     racetime_pronouns: row.racetime_pronouns,
                     discord_id: Some(discord_id),
                     discord_display_name: row.discord_display_name,
+                    is_archivist: row.is_archivist,
                 })
         )
     }

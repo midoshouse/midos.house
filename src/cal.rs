@@ -24,12 +24,21 @@ use {
     once_cell::sync::Lazy,
     racetime::model::RaceData,
     rocket::{
+        FromForm,
         State,
+        form::{
+            Contextual,
+            Form,
+        },
         http::Status,
-        response::content::RawHtml,
+        response::{
+            Redirect,
+            content::RawHtml,
+        },
         uri,
     },
     rocket_util::{
+        CsrfForm,
         Response,
         ToHtml as _,
     },
@@ -200,8 +209,10 @@ impl Ord for RaceSchedule {
 
 #[derive(Clone)]
 pub(crate) struct Race {
-    series: Series,
-    event: String,
+    pub(crate) id: Option<Id>,
+    pub(crate) editable: bool,
+    pub(crate) series: Series,
+    pub(crate) event: String,
     pub(crate) startgg_event: Option<String>,
     pub(crate) startgg_set: Option<String>,
     pub(crate) entrants: Entrants,
@@ -320,6 +331,8 @@ impl Race {
         update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE id = $2");
         update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE id = $2");
         Ok(Self {
+            id: Some(id),
+            editable: true,
             series: row.series,
             event: row.event,
             game: row.game,
@@ -380,6 +393,8 @@ impl Race {
                             .expect("failed to parse mw/2 race list")
                             .into_iter()
                             .map(|race| Race {
+                                id: None,
+                                editable: false,
                                 series: Series::Multiworld,
                                 event: format!("2"),
                                 startgg_event: None,
@@ -411,6 +426,8 @@ impl Race {
             },
             Series::NineDaysOfSaws | Series::Pictionary => {
                 races.push(Self {
+                    id: None,
+                    editable: false,
                     series: event.series,
                     event: event.event.to_string(),
                     startgg_event: None,
@@ -441,6 +458,8 @@ impl Race {
                         assert!(rest.next().is_none());
                         let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
                         races.push(Self {
+                            id: None,
+                            editable: false,
                             series: event.series,
                             event: event.event.to_string(),
                             startgg_event: None,
@@ -474,6 +493,8 @@ impl Race {
                         assert!(rest.next().is_none());
                         let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
                         races.push(Self {
+                            id: None,
+                            editable: false,
                             series: event.series,
                             event: event.event.to_string(),
                             startgg_event: None,
@@ -513,6 +534,8 @@ impl Race {
                             _ => ("Swiss", format!("Round {round}"), None),
                         };
                         races.push(Self {
+                            id: None,
+                            editable: false,
                             series: event.series,
                             event: event.event.to_string(),
                             startgg_event: None,
@@ -543,6 +566,8 @@ impl Race {
                         assert!(rest.next().is_none());
                         let start = Utc.datetime_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_utc:?} at {time_utc:?}"));
                         races.push(Self {
+                            id: None,
+                            editable: false,
                             series: event.series,
                             event: event.event.to_string(),
                             startgg_event: None,
@@ -593,6 +618,8 @@ impl Race {
                         (utc!(2022, 12, 23, 3, 0, 0), utc!(2022, 12, 23, 7, 41, 05, 441), None, "https://racetime.gg/ootr/sleepy-stalfos-1734", 56, 37, "https://www.youtube.com/watch?v=iALvni6vFoA", Some(seed::Data { web: Some(seed::OotrWebData { id: 1286215, gen_time: utc!(2022, 12, 23, 2, 45, 18) }), file_hash: Some([HashIcon::HeartContainer, HashIcon::StoneOfAgony, HashIcon::MirrorShield, HashIcon::Mushroom, HashIcon::BottledMilk]), file_stem: Cow::Borrowed("OoTR_1286215_LNKWY5APAY") })),
                     ].into_iter().enumerate() {
                         races.push(Self {
+                            id: None,
+                            editable: false,
                             series: event.series,
                             event: event.event.to_string(),
                             //TODO keep race IDs? (qN, cc)
@@ -634,6 +661,8 @@ impl Race {
                                 && race.entrants == entrants
                             ) {
                                 races.push(Self {
+                                    id: None,
+                                    editable: false,
                                     series: event.series,
                                     event: event.event.to_string(),
                                     startgg_event: None,
@@ -663,6 +692,8 @@ impl Race {
                             if is_cancelled == "TRUE" { continue }
                             let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %I:%M %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
                             races.push(Self {
+                                id: None,
+                                editable: false,
                                 series: event.series,
                                 event: event.event.to_string(),
                                 startgg_event: None,
@@ -961,4 +992,23 @@ pub(crate) async fn for_event(env: &State<Environment>, config: &State<Config>, 
     add_event_races(&mut transaction, http_client, env, config, &mut cal, &event).await?;
     transaction.commit().await.map_err(Error::Sql)?;
     Ok(Response(cal))
+}
+
+#[rocket::get("/event/<series>/<event>/races/<id>/edit")]
+pub(crate) fn edit_race(series: Series, event: &str, id: Id) -> RawHtml<String> {
+    let _ = (series, event, id); //TODO
+    unimplemented!() //TODO0
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct EditRaceForm {
+    #[field(default = String::new())]
+    csrf: String,
+    //TODO other fields
+}
+
+#[rocket::post("/event/<series>/<event>/races/<id>/edit", data = "<form>")]
+pub(crate) fn edit_race_post(series: Series, event: &str, id: Id, form: Form<Contextual<'_, EditRaceForm>>) -> Redirect {
+    let _ = (series, event, id, form); //TODO
+    unimplemented!() //TODO
 }

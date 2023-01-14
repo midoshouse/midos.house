@@ -940,9 +940,10 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 
 #[rocket::get("/event/<series>/<event>/races")]
 pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    async fn race_table(races: &[Race]) -> Result<RawHtml<String>, Error> {
+    async fn race_table(me: &Option<User>, races: &[Race]) -> Result<RawHtml<String>, Error> {
         let has_games = races.iter().any(|race| race.game.is_some());
         let has_seeds = races.iter().any(|race| race.seed.is_some());
+        let has_buttons = me.as_ref().map_or(false, |me| me.is_archivist) && races.iter().any(|race| race.editable);
         let now = Utc::now();
         Ok(html! {
             table {
@@ -957,6 +958,9 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                         th : "Links";
                         @if has_seeds {
                             : seed::table_header_cells(true);
+                        }
+                        @if has_buttons {
+                            th;
                         }
                     }
                 }
@@ -1030,6 +1034,17 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                     : seed::table_empty_cells(true);
                                 }
                             }
+                            @if has_buttons {
+                                td {
+                                    @if me.as_ref().map_or(false, |me| me.is_archivist) && race.editable {
+                                        @if let Some(id) = race.id {
+                                            a(class = "button", href = uri!(crate::cal::edit_race(race.series, &race.event, id)).to_string()) : "Edit";
+                                        } else {
+                                            //TODO edit button that creates a database entry
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1049,13 +1064,13 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
         : header;
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
-            : race_table(&ongoing_and_upcoming_races).await?;
+            : race_table(&me, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : race_table(&past_races).await?;
+            : race_table(&me, &past_races).await?;
         }
     }).await?)
 }
