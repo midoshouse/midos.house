@@ -88,6 +88,7 @@ use {
         util::{
             DateTimeFormat,
             Id,
+            IdTable,
             RedirectOrContent,
             StatusOrError,
             as_variant,
@@ -229,7 +230,6 @@ impl Ord for RaceSchedule {
 #[derive(Clone)]
 pub(crate) struct Race {
     pub(crate) id: Option<Id>,
-    pub(crate) editable: bool,
     pub(crate) series: Series,
     pub(crate) event: String,
     pub(crate) startgg_event: Option<String>,
@@ -351,7 +351,6 @@ impl Race {
         update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE id = $2");
         Ok(Self {
             id: Some(id),
-            editable: true,
             series: row.series,
             event: row.event,
             game: row.game,
@@ -413,7 +412,6 @@ impl Race {
                             .into_iter()
                             .map(|race| Race {
                                 id: None,
-                                editable: false,
                                 series: Series::Multiworld,
                                 event: format!("2"),
                                 startgg_event: None,
@@ -446,7 +444,6 @@ impl Race {
             Series::NineDaysOfSaws | Series::Pictionary => {
                 races.push(Self {
                     id: None,
-                    editable: false,
                     series: event.series,
                     event: event.event.to_string(),
                     startgg_event: None,
@@ -478,7 +475,6 @@ impl Race {
                         let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
                         races.push(Self {
                             id: None,
-                            editable: false,
                             series: event.series,
                             event: event.event.to_string(),
                             startgg_event: None,
@@ -513,7 +509,6 @@ impl Race {
                         let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
                         races.push(Self {
                             id: None,
-                            editable: false,
                             series: event.series,
                             event: event.event.to_string(),
                             startgg_event: None,
@@ -554,7 +549,6 @@ impl Race {
                         };
                         races.push(Self {
                             id: None,
-                            editable: false,
                             series: event.series,
                             event: event.event.to_string(),
                             startgg_event: None,
@@ -586,7 +580,6 @@ impl Race {
                         let start = Utc.datetime_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_utc:?} at {time_utc:?}"));
                         races.push(Self {
                             id: None,
-                            editable: false,
                             series: event.series,
                             event: event.event.to_string(),
                             startgg_event: None,
@@ -638,7 +631,6 @@ impl Race {
                     ].into_iter().enumerate() {
                         races.push(Self {
                             id: None,
-                            editable: false,
                             series: event.series,
                             event: event.event.to_string(),
                             //TODO keep race IDs? (qN, cc)
@@ -671,7 +663,6 @@ impl Race {
                             } else {
                                 Entrants::Named(matchup.clone())
                             };
-                            // skip races already in the database due to archivist edits
                             if !races.iter().any(|race|
                                 race.series == event.series
                                 && race.event == event.event
@@ -679,9 +670,23 @@ impl Race {
                                 && race.round.as_ref().map_or(false, |other_round| round == other_round)
                                 && race.entrants == entrants
                             ) {
+                                // add race to database to give it an ID
+                                let id = if let Entrants::Two([Entrant::Named(ref p1), Entrant::Named(ref p2)]) = entrants {
+                                    let id = Id::new(&mut *transaction, IdTable::Races).await?;
+                                    sqlx::query!("INSERT INTO races (start, series, event, id, p1, p2, round) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                                        start,
+                                        event.series as _,
+                                        &event.event,
+                                        id as _,
+                                        p1,
+                                        p2,
+                                        round,
+                                    ).execute(&mut *transaction).await?;
+                                    Some(id)
+                                } else {
+                                    None
+                                };
                                 races.push(Self {
-                                    id: None,
-                                    editable: false,
                                     series: event.series,
                                     event: event.event.to_string(),
                                     startgg_event: None,
@@ -697,7 +702,7 @@ impl Race {
                                     draft: None,
                                     seed: None,
                                     video_url: None, //TODO
-                                    entrants,
+                                    id, entrants,
                                 });
                             }
                         }
@@ -712,7 +717,6 @@ impl Race {
                             let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %I:%M %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
                             races.push(Self {
                                 id: None,
-                                editable: false,
                                 series: event.series,
                                 event: event.event.to_string(),
                                 startgg_event: None,
@@ -1041,7 +1045,7 @@ pub(super) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, m
                 }
                 //TODO allow editing seed
                 : form_field("video_url", &mut errors, html! {
-                    label(for = "video_url") : "Video URL";
+                    label(for = "video_url") : "Video URL:";
                     input(type = "text", name = "video_url", value? = race.video_url.map(|video_url| video_url.to_string()));
                     label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel";
                 });
@@ -1219,9 +1223,6 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
     form.verify(&csrf);
     if !me.is_archivist {
         form.context.push_error(form::Error::validation("You must be an archivist to edit this race. If you would like to become an archivist, please contact Fenhl on Discord."));
-    }
-    if !race.editable {
-        form.context.push_error(form::Error::validation("Sorry, this race isn't editable yet."));
     }
     Ok(if let Some(ref value) = form.value {
         match race.schedule {

@@ -1330,7 +1330,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                         ctx.send_message(&format!("Breaks set to {breaks}.")).await?;
                     }
                 } else {
-                    ctx.send_message(&format!("'Sorry {reply_to}, I don't recognise that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off")).await?;
+                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognise that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off")).await?;
                 },
             },
             "draft" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {

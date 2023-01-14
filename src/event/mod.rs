@@ -943,7 +943,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
     async fn race_table(me: &Option<User>, races: &[Race]) -> Result<RawHtml<String>, Error> {
         let has_games = races.iter().any(|race| race.game.is_some());
         let has_seeds = races.iter().any(|race| race.seed.is_some());
-        let has_buttons = me.as_ref().map_or(false, |me| me.is_archivist) && races.iter().any(|race| race.editable);
+        let has_buttons = me.as_ref().map_or(false, |me| me.is_archivist) && races.iter().any(|race| race.id.is_some());
         let now = Utc::now();
         Ok(html! {
             table {
@@ -1036,7 +1036,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                             }
                             @if has_buttons {
                                 td {
-                                    @if me.as_ref().map_or(false, |me| me.is_archivist) && race.editable {
+                                    @if me.as_ref().map_or(false, |me| me.is_archivist) {
                                         @if let Some(id) = race.id {
                                             a(class = "button", href = uri!(crate::cal::edit_race(race.series, &race.event, id)).to_string()) : "Edit";
                                         } else {
