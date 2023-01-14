@@ -345,21 +345,25 @@ impl Race {
                 "2" => {
                     #[derive(Deserialize)]
                     struct MwS2Race {
-                        start: DateTime<Utc>,
-                        end: DateTime<Utc>,
                         team1: String,
                         team2: String,
                         phase: String,
                         round: String,
                         game: Option<i16>,
-                        #[serde(rename = "async")]
-                        is_async: bool,
+                        start: Option<DateTime<Utc>>,
+                        end: Option<DateTime<Utc>>,
                         room: Option<Url>,
+                        async_start1: Option<DateTime<Utc>>,
+                        async_end1: Option<DateTime<Utc>>,
+                        async_room1: Option<Url>,
+                        async_start2: Option<DateTime<Utc>>,
+                        async_end2: Option<DateTime<Utc>>,
+                        async_room2: Option<Url>,
                         restream: Option<Url>,
                     }
 
                     static RACES: Lazy<Vec<Race>> = Lazy::new(||
-                        serde_json::from_str::<Vec<MwS2Race>>(include_str!("../assets/event/mw/2.json")) //TODO merge async halves
+                        serde_json::from_str::<Vec<MwS2Race>>(include_str!("../assets/event/mw/2.json"))
                             .expect("failed to parse mw/2 race list")
                             .into_iter()
                             .map(|race| Race {
@@ -374,21 +378,10 @@ impl Race {
                                 phase: Some(race.phase),
                                 round: Some(race.round),
                                 game: race.game,
-                                schedule: if race.is_async {
-                                    RaceSchedule::Async {
-                                        start1: Some(race.start),
-                                        start2: None,
-                                        end1: Some(race.end),
-                                        end2: None,
-                                        room1: race.room,
-                                        room2: None,
-                                    }
-                                } else {
-                                    RaceSchedule::Live {
-                                        start: race.start,
-                                        end: Some(race.end),
-                                        room: race.room,
-                                    }
+                                schedule: match (race.start, race.end, race.room, race.async_start1, race.async_end1, race.async_room1, race.async_start2, race.async_end2, race.async_room2) {
+                                    (Some(start), end, room, None, None, None, None, None, None) => RaceSchedule::Live { start, end, room },
+                                    (None, None, None, start1, end1, room1, start2, end2, room2) => RaceSchedule::Async { start1, start2, end1, end2, room1, room2 },
+                                    _ => panic!("inconsistent async state"),
                                 },
                                 draft: None,
                                 seed: None,

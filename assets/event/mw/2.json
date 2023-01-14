@@ -1,6 +1,5 @@
 [
     {
-        "async": false,
         "end": "2021-05-01T00:08:09.877Z",
         "restream": "https://twitch.tv/videos/1022107186",
         "room": "https://racetime.gg/ootr/invincible-saria-8953",
@@ -18,7 +17,6 @@
         "team2": "slideshow &co"
     },
     {
-        "async": false,
         "end": "2021-05-01T04:06:01.998Z",
         "room": "https://racetime.gg/ootr/fancy-jabu-1760",
         "phase": "Swiss",
@@ -36,7 +34,6 @@
         "team2": "Anju's Secret"
     },
     {
-        "async": false,
         "end": "2021-05-01T22:35:41.630Z",
         "room": "https://racetime.gg/ootr/comic-impa-1547",
         "phase": "Swiss",
@@ -50,9 +47,12 @@
         "team2": "Clowns in der Dose"
     },
     {
-        "async": true,
-        "end": "2021-05-02T06:08:52.798Z",
-        "room": "https://racetime.gg/ootr/grumpy-dodongo-8869",
+        "async_end1": "2021-05-02T06:08:52.798Z",
+        "async_end2": "2021-05-02T17:25:40.661Z",
+        "async_room1": "https://racetime.gg/ootr/grumpy-dodongo-8869",
+        "async_room2": "https://racetime.gg/ootr/sublime-morpha-3787",
+        "async_start1": "2021-05-01T23:30:00Z",
+        "async_start2": "2021-05-02T12:00:00Z",
         "phase": "Swiss",
         "round": "Round 1",
         "settingsNotDefault": [
@@ -60,27 +60,10 @@
             "Zora's Fountain",
             "Starting Age/Randomize Overworld Spawns"
         ],
-        "start": "2021-05-01T23:30:00Z",
         "team1": "Backup Strats",
         "team2": "We're picking 12 MQ"
     },
     {
-        "async": true,
-        "end": "2021-05-02T17:25:40.661Z",
-        "room": "https://racetime.gg/ootr/sublime-morpha-3787",
-        "phase": "Swiss",
-        "round": "Round 1",
-        "settingsNotDefault": [
-            "Shuffle Dungeon Entrances",
-            "Zora's Fountain",
-            "Starting Age/Randomize Overworld Spawns"
-        ],
-        "start": "2021-05-02T12:00:00Z",
-        "team1": "We're picking 12 MQ",
-        "team2": "Backup Strats"
-    },
-    {
-        "async": false,
         "end": "2021-05-02T20:22:17.331Z",
         "room": "https://racetime.gg/ootr/helpful-twinrova-8799",
         "phase": "Swiss",
@@ -96,7 +79,6 @@
         "team2": "Legend of Pukei-Pukei"
     },
     {
-        "async": false,
         "end": "2021-05-02T21:05:47.310Z",
         "room": "https://racetime.gg/ootr/vanilla-saria-8844",
         "phase": "Swiss",
@@ -110,7 +92,6 @@
         "team2": "Going HAM"
     },
     {
-        "async": false,
         "end": "2021-05-03T00:16:17.874Z",
         "room": "https://racetime.gg/ootr/lucky-lizalfos-6531",
         "phase": "Swiss",
@@ -127,7 +108,6 @@
         "team2": "Oops AD Boys"
     },
     {
-        "async": false,
         "end": "2021-05-03T22:31:49.730Z",
         "restream": "https://twitch.tv/videos/1022107486",
         "room": "https://racetime.gg/ootr/legendary-fado-2300",
@@ -143,7 +123,6 @@
         "team2": "The Try Too Hards"
     },
     {
-        "async": false,
         "end": "2021-05-08T04:53:42.625Z",
         "room": "https://racetime.gg/ootr/fancy-likelike-3527",
         "phase": "Swiss",
@@ -158,7 +137,6 @@
         "team2": "RandoWorld United"
     },
     {
-        "async": false,
         "end": "2021-05-08T05:21:49.931Z",
         "room": "https://racetime.gg/ootr/priceless-jiro-2060",
         "phase": "Swiss",
@@ -175,7 +153,6 @@
         "team2": "Real Sexy Lizalfos"
     },
     {
-        "async": false,
         "end": "2021-05-08T22:15:11.628Z",
         "room": "https://racetime.gg/ootr/puzzled-navi-4466",
         "phase": "Swiss",
@@ -193,7 +170,6 @@
         "team2": "Team WAX"
     },
     {
-        "async": false,
         "end": "2021-05-08T22:07:51.790Z",
         "room": "https://racetime.gg/ootr/gnarly-ganon-2818",
         "phase": "Swiss",
@@ -209,7 +185,6 @@
         "team2": "DAD"
     },
     {
-        "async": false,
         "end": "2021-05-08T23:08:31.639Z",
         "room": "https://racetime.gg/ootr/sublime-twinrova-2180",
         "phase": "Swiss",
@@ -226,7 +201,6 @@
         "team2": "Shotgun Fist Fight"
     },
     {
-        "async": false,
         "end": "2021-05-08T22:41:38.478Z",
         "room": "https://racetime.gg/ootr/scrawny-ganon-6565",
         "phase": "Swiss",
@@ -241,7 +215,6 @@
         "team2": "NA Aim"
     },
     {
-        "async": false,
         "end": "2021-05-08T23:29:40.251Z",
         "room": "https://racetime.gg/ootr/fancy-dampe-8439",
         "phase": "Swiss",
@@ -255,7 +228,6 @@
         "team2": "Baguettes du temps"
     },
     {
-        "async": false,
         "end": "2021-05-09T04:39:36.962Z",
         "room": "https://racetime.gg/ootr/fancy-barinade-0469",
         "phase": "Swiss",
@@ -271,7 +243,6 @@
         "team2": "30 Skulls Please"
     },
     {
-        "async": false,
         "end": "2021-05-09T22:17:19.293Z",
         "restream": "https://twitch.tv/videos/1027417445",
         "room": "https://racetime.gg/ootr/adequate-ichiro-3693",
@@ -289,7 +260,6 @@
         "team2": "Dimitri The Dodongo"
     },
     {
-        "async": false,
         "end": "2021-05-10T00:16:20.732Z",
         "room": "https://racetime.gg/ootr/proud-bongobongo-2014",
         "phase": "Swiss",
@@ -300,7 +270,6 @@
         "team2": "TatlTaelrs"
     },
     {
-        "async": false,
         "end": "2021-05-11T19:23:36.729Z",
         "room": "https://racetime.gg/ootr/speedy-epona-4191",
         "phase": "Swiss",
@@ -316,7 +285,6 @@
         "team2": "The Aussie Boiiz"
     },
     {
-        "async": false,
         "end": "2021-05-12T03:14:47.253Z",
         "restream": "https://twitch.tv/videos/1027418515",
         "room": "https://racetime.gg/ootr/frantic-volvagia-6835",
@@ -335,7 +303,6 @@
         "team2": "Hot Mess"
     },
     {
-        "async": false,
         "end": "2021-05-14T02:24:23.990Z",
         "restream": "https://twitch.tv/videos/1034469136",
         "room": "https://racetime.gg/ootr/epic-saburo-9949",
@@ -353,9 +320,9 @@
         "team2": "Gamblers Anonymous"
     },
     {
-        "async": true,
-        "end": "2021-05-16T00:31:30.652Z",
-        "room": "https://racetime.gg/ootr/daring-jiro-4277",
+        "async_end1": "2021-05-16T00:31:30.652Z",
+        "async_room1": "https://racetime.gg/ootr/daring-jiro-4277",
+        "async_start1": "2021-05-15T19:00:00Z",
         "phase": "Swiss",
         "round": "Round 2",
         "settingsNotDefault": [
@@ -365,12 +332,10 @@
             "Zora's Fountain",
             "Shuffle Gerudo Card"
         ],
-        "start": "2021-05-15T19:00:00Z",
         "team1": "slideshow &co",
         "team2": "TatlTaelrs"
     },
     {
-        "async": false,
         "end": "2021-05-16T21:34:46.184Z",
         "room": "https://racetime.gg/ootr/splendid-darunia-7285",
         "phase": "Swiss",
@@ -385,7 +350,6 @@
         "team2": "Clowns in der Dose"
     },
     {
-        "async": false,
         "end": "2021-05-17T06:01:05.815Z",
         "room": "https://racetime.gg/ootr/crazy-mamamu-1929",
         "phase": "Swiss",
@@ -400,7 +364,6 @@
         "team2": "Shotgun Fist Fight"
     },
     {
-        "async": false,
         "end": "2021-05-20T03:28:47.497Z",
         "room": "https://racetime.gg/ootr/cunning-biggoron-7108",
         "phase": "Swiss",
@@ -417,7 +380,6 @@
         "team2": "Team Mom Jeans"
     },
     {
-        "async": false,
         "end": "2021-05-20T21:36:22.167Z",
         "room": "https://racetime.gg/ootr/intrepid-jiro-0176",
         "phase": "Swiss",
@@ -432,9 +394,12 @@
         "team2": "Legend of Pukei-Pukei"
     },
     {
-        "async": true,
-        "end": "2021-05-21T05:01:51.906Z",
-        "room": "https://racetime.gg/ootr/crazy-ingo-8113",
+        "async_end1": "2021-05-21T05:01:51.906Z",
+        "async_end2": "2021-05-23T09:03:50.574Z",
+        "async_room1": "https://racetime.gg/ootr/crazy-ingo-8113",
+        "async_room2": "https://racetime.gg/misc/sublime-terry-1746",
+        "async_start1": "2021-05-20T22:30:00Z",
+        "async_start2": "2021-05-23T04:00:00Z",
         "phase": "Swiss",
         "round": "Round 2",
         "settingsNotDefault": [
@@ -444,12 +409,10 @@
             "Starting Age/Randomize Overworld Spawns",
             "Ganon's Boss Key"
         ],
-        "start": "2021-05-20T22:30:00Z",
         "team1": "Cojiro Boiz",
         "team2": "Oops AD Boys"
     },
     {
-        "async": false,
         "end": "2021-05-22T04:41:46.888Z",
         "room": "https://racetime.gg/ootr/powerful-medigoron-1217",
         "phase": "Swiss",
@@ -464,7 +427,6 @@
         "team2": "Snack Pack"
     },
     {
-        "async": false,
         "end": "2021-05-22T21:40:25.556Z",
         "room": "https://racetime.gg/ootr/disco-zelda-8425",
         "phase": "Swiss",
@@ -480,7 +442,6 @@
         "team2": "Real Sexy Lizalfos"
     },
     {
-        "async": false,
         "end": "2021-05-22T19:14:48.847Z",
         "room": "https://racetime.gg/ootr/cunning-nabooru-4738",
         "phase": "Swiss",
@@ -495,7 +456,6 @@
         "team2": "Richard The Dog"
     },
     {
-        "async": false,
         "end": "2021-05-23T00:09:07.320Z",
         "room": "https://racetime.gg/ootr/travelling-mamamu-5800",
         "phase": "Swiss",
@@ -512,7 +472,6 @@
         "team2": "A Creative Team Name"
     },
     {
-        "async": false,
         "end": "2021-05-23T00:33:49.332Z",
         "room": "https://racetime.gg/ootr/fancy-kakariko-9684",
         "phase": "Swiss",
@@ -530,7 +489,6 @@
         "team2": "Gecklamatee"
     },
     {
-        "async": false,
         "end": "2021-05-22T23:39:14.271Z",
         "room": "https://racetime.gg/ootr/powerful-twinrova-4198",
         "phase": "Swiss",
@@ -545,24 +503,6 @@
         "team2": "The 3 Ahegaos"
     },
     {
-        "async": true,
-        "end": "2021-05-23T09:03:50.574Z",
-        "room": "https://racetime.gg/misc/sublime-terry-1746",
-        "phase": "Swiss",
-        "round": "Round 2",
-        "settingsNotDefault": [
-            "Scrub Shuffle",
-            "Tokensanity",
-            "Shuffle Gerudo Card",
-            "Starting Age/Randomize Overworld Spawns",
-            "Ganon's Boss Key"
-        ],
-        "start": "2021-05-23T04:00:00Z",
-        "team1": "Oops AD Boys",
-        "team2": "Cojiro Boiz"
-    },
-    {
-        "async": false,
         "end": "2021-05-23T17:00:21.995Z",
         "room": "https://racetime.gg/ootr/critical-stalfos-4002",
         "phase": "Swiss",
@@ -578,7 +518,6 @@
         "team2": "Can You Please Just Find My Fucking Go Mode?"
     },
     {
-        "async": false,
         "end": "2021-05-23T21:12:33.974Z",
         "room": "https://racetime.gg/ootr/trusty-sheik-6141",
         "phase": "Swiss",
@@ -596,7 +535,6 @@
         "team2": "King Zordongo"
     },
     {
-        "async": false,
         "end": "2021-05-23T22:19:04.306Z",
         "room": "https://racetime.gg/ootr/funky-saria-2689",
         "phase": "Swiss",
@@ -611,7 +549,6 @@
         "team2": "Ruto Akimbo"
     },
     {
-        "async": false,
         "end": "2021-05-24T22:15:55.496Z",
         "room": "https://racetime.gg/ootr/wild-kakariko-1896",
         "phase": "Swiss",
@@ -627,7 +564,6 @@
         "team2": "DAD"
     },
     {
-        "async": false,
         "end": "2021-05-26T02:44:05.227Z",
         "room": "https://racetime.gg/ootr/smart-twinrova-7069",
         "phase": "Swiss",
@@ -644,9 +580,12 @@
         "team2": "Baguettes du temps"
     },
     {
-        "async": true,
-        "end": "2021-05-25T22:18:34.625Z",
-        "room": "https://racetime.gg/ootr/artful-talon-4749",
+        "async_end1": "2021-05-25T22:18:34.625Z",
+        "async_end2": "2021-05-26T03:17:55.096Z",
+        "async_room1": "https://racetime.gg/ootr/artful-talon-4749",
+        "async_room2": "https://racetime.gg/ootr/kind-heylisten-8653",
+        "async_start1": "2021-05-25T22:00:00Z",
+        "async_start2": "2021-05-26T01:00:00Z",
         "phase": "Swiss",
         "round": "Round 2",
         "settingsNotDefault": [
@@ -655,28 +594,10 @@
             "Rainbow Bridge",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-05-25T22:00:00Z",
         "team1": "The Gaming Grandpas",
         "team2": "30 Skulls Please"
     },
     {
-        "async": true,
-        "end": "2021-05-26T03:17:55.096Z",
-        "room": "https://racetime.gg/ootr/kind-heylisten-8653",
-        "phase": "Swiss",
-        "round": "Round 2",
-        "settingsNotDefault": [
-            "Scrub Shuffle",
-            "Shuffle Dungeon Entrances",
-            "Rainbow Bridge",
-            "Chest Size Matches Contents"
-        ],
-        "start": "2021-05-26T01:00:00Z",
-        "team1": "30 Skulls Please",
-        "team2": "The Gaming Grandpas"
-    },
-    {
-        "async": false,
         "end": "2021-05-28T04:21:01.908Z",
         "room": "https://racetime.gg/ootr/helpful-bigocto-5899",
         "phase": "Swiss",
@@ -693,7 +614,6 @@
         "team2": "Fuck Riley"
     },
     {
-        "async": false,
         "end": "2021-05-28T04:21:52.115Z",
         "room": "https://racetime.gg/ootr/silly-morpha-3722",
         "phase": "Swiss",
@@ -709,7 +629,6 @@
         "team2": "The Try Too Hards"
     },
     {
-        "async": false,
         "end": "2021-06-02T21:29:01.566Z",
         "room": "https://racetime.gg/ootr/casual-gohma-3575",
         "phase": "Swiss",
@@ -726,7 +645,6 @@
         "team2": "Going HAM"
     },
     {
-        "async": false,
         "end": "2021-06-03T22:05:45.912Z",
         "room": "https://racetime.gg/ootr/wild-blametrez-9465",
         "phase": "Swiss",
@@ -742,7 +660,6 @@
         "team2": "Team Mom Jeans"
     },
     {
-        "async": false,
         "end": "2021-06-04T23:48:56.225Z",
         "room": "https://racetime.gg/ootr/crazy-lizalfos-5329",
         "phase": "Swiss",
@@ -759,7 +676,6 @@
         "team2": "slideshow &co"
     },
     {
-        "async": false,
         "end": "2021-06-05T05:00:27.300Z",
         "room": "https://racetime.gg/ootr/amused-pierre-9092",
         "phase": "Swiss",
@@ -776,7 +692,6 @@
         "team2": "King Zordongo"
     },
     {
-        "async": false,
         "end": "2021-06-05T21:31:43.090Z",
         "room": "https://racetime.gg/ootr/frantic-fado-6344",
         "phase": "Swiss",
@@ -792,21 +707,22 @@
         "team2": "We're picking 12 MQ"
     },
     {
-        "async": true,
-        "end": "2021-06-05T22:54:32.501Z",
-        "room": "https://racetime.gg/ootr/dazzling-impa-5437",
+        "async_end1": "2021-06-05T22:54:32.501Z",
+        "async_end2": "2021-06-08T03:33:03.351Z",
+        "async_room1": "https://racetime.gg/ootr/dazzling-impa-5437",
+        "async_room2": "https://racetime.gg/ootr/powerful-dampe-8614",
+        "async_start1": "2021-06-05T18:00:00Z",
+        "async_start2": "2021-06-07T23:00:00Z",
         "phase": "Swiss",
         "round": "Round 3",
         "settingsNotDefault": [
             "Shopsanity",
             "Starting Age/Randomize Overworld Spawns"
         ],
-        "start": "2021-06-05T18:00:00Z",
         "team1": "Team Redhead",
         "team2": "Double BK Mode w/ Cheese"
     },
     {
-        "async": false,
         "end": "2021-06-05T23:18:38.027Z",
         "room": "https://racetime.gg/ootr/sublime-sheik-0029",
         "phase": "Swiss",
@@ -823,7 +739,6 @@
         "team2": "Anju's Secret"
     },
     {
-        "async": false,
         "end": "2021-06-05T23:46:15.824Z",
         "room": "https://racetime.gg/ootr/tasty-jabu-1045",
         "phase": "Swiss",
@@ -839,7 +754,6 @@
         "team2": "Raid: Shadow Temple"
     },
     {
-        "async": false,
         "end": "2021-06-06T02:00:55.368Z",
         "room": "https://racetime.gg/ootr/lucky-ingo-2808",
         "phase": "Swiss",
@@ -856,7 +770,6 @@
         "team2": "Backup Strats"
     },
     {
-        "async": false,
         "end": "2021-06-06T19:43:57.933Z",
         "restream": "https://youtube.com/watch?v=r0ypgOxSU_0",
         "room": "https://racetime.gg/ootr/charming-kakariko-8561",
@@ -873,7 +786,6 @@
         "team2": "Richard The Dog"
     },
     {
-        "async": false,
         "end": "2021-06-07T04:41:05.155Z",
         "room": "https://racetime.gg/ootr/virtual-fado-0374",
         "phase": "Swiss",
@@ -889,23 +801,12 @@
         "team2": "The Gaming Grandpas"
     },
     {
-        "async": true,
-        "end": "2021-06-08T03:33:03.351Z",
-        "room": "https://racetime.gg/ootr/powerful-dampe-8614",
-        "phase": "Swiss",
-        "round": "Round 3",
-        "settingsNotDefault": [
-            "Shopsanity",
-            "Starting Age/Randomize Overworld Spawns"
-        ],
-        "start": "2021-06-07T23:00:00Z",
-        "team1": "Double BK Mode w/ Cheese",
-        "team2": "Team Redhead"
-    },
-    {
-        "async": true,
-        "end": "2021-06-10T21:36:43.371Z",
-        "room": "https://racetime.gg/ootr/classic-cucco-5947",
+        "async_end1": "2021-06-10T21:36:43.371Z",
+        "async_end2": "2021-06-10T23:04:34.273Z",
+        "async_room1": "https://racetime.gg/ootr/classic-cucco-5947",
+        "async_room2": "https://racetime.gg/ootr/sublime-nabooru-7614",
+        "async_start1": "2021-06-10T16:30:00Z",
+        "async_start2": "2021-06-10T18:00:00Z",
         "phase": "Swiss",
         "round": "Round 3",
         "settingsNotDefault": [
@@ -914,28 +815,10 @@
             "Forest",
             "Ganon's Boss Key"
         ],
-        "start": "2021-06-10T16:30:00Z",
         "team1": "Team WAX",
         "team2": "RandoWorld United"
     },
     {
-        "async": true,
-        "end": "2021-06-10T23:04:34.273Z",
-        "room": "https://racetime.gg/ootr/sublime-nabooru-7614",
-        "phase": "Swiss",
-        "round": "Round 3",
-        "settingsNotDefault": [
-            "Shopsanity",
-            "Scrub Shuffle",
-            "Forest",
-            "Ganon's Boss Key"
-        ],
-        "start": "2021-06-10T18:00:00Z",
-        "team1": "RandoWorld United",
-        "team2": "Team WAX"
-    },
-    {
-        "async": false,
         "end": "2021-06-11T03:06:32.443Z",
         "room": "https://racetime.gg/ootr/mysterious-cucco-5775",
         "phase": "Swiss",
@@ -951,7 +834,6 @@
         "team2": "Gamblers Anonymous"
     },
     {
-        "async": false,
         "end": "2021-06-11T02:37:23.803Z",
         "room": "https://racetime.gg/ootr/classic-heylisten-4918",
         "phase": "Swiss",
@@ -967,7 +849,6 @@
         "team2": "TatlTaelrs"
     },
     {
-        "async": false,
         "end": "2021-06-11T20:24:39.755Z",
         "room": "https://racetime.gg/ootr/superb-zora-4653",
         "phase": "Swiss",
@@ -985,7 +866,6 @@
         "team2": "Hyrule Goddesses"
     },
     {
-        "async": false,
         "end": "2021-06-12T01:36:24.754Z",
         "room": "https://racetime.gg/ootr/vanilla-shiro-0863",
         "phase": "Swiss",
@@ -1002,7 +882,6 @@
         "team2": "30 Skulls Please"
     },
     {
-        "async": false,
         "end": "2021-06-12T17:13:44.295Z",
         "room": "https://racetime.gg/ootr/gnarly-sheik-1543",
         "phase": "Swiss",
@@ -1018,7 +897,6 @@
         "team2": "Legend of Pukei-Pukei"
     },
     {
-        "async": false,
         "end": "2021-06-12T21:10:16.038Z",
         "room": "https://racetime.gg/ootr/salty-ironknuckle-3780",
         "phase": "Swiss",
@@ -1035,7 +913,6 @@
         "team2": "Real Sexy Lizalfos"
     },
     {
-        "async": false,
         "end": "2021-06-12T22:56:10.125Z",
         "room": "https://racetime.gg/ootr/clean-pierre-0118",
         "phase": "Swiss",
@@ -1050,7 +927,6 @@
         "team2": "NA Aim"
     },
     {
-        "async": false,
         "end": "2021-06-13T20:33:59.494Z",
         "room": "https://racetime.gg/ootr/smart-meg-9589",
         "phase": "Swiss",
@@ -1067,7 +943,6 @@
         "team2": "Can You Please Just Find My Fucking Go Mode?"
     },
     {
-        "async": false,
         "end": "2021-06-13T20:56:59.743Z",
         "room": "https://racetime.gg/ootr/priceless-wolfos-3089",
         "phase": "Swiss",
@@ -1083,9 +958,12 @@
         "team2": "Oops AD Boys"
     },
     {
-        "async": true,
-        "end": "2021-06-16T21:45:34.381Z",
-        "room": "https://racetime.gg/ootr/casual-jiro-9815",
+        "async_end1": "2021-06-16T21:45:34.381Z",
+        "async_end2": "2021-06-19T03:26:47.635Z",
+        "async_room1": "https://racetime.gg/ootr/casual-jiro-9815",
+        "async_room2": "https://racetime.gg/ootr/dapper-navi-6351",
+        "async_start1": "2021-06-16T17:00:00Z",
+        "async_start2": "2021-06-18T22:00:00Z",
         "phase": "Swiss",
         "round": "Round 4",
         "settingsNotDefault": [
@@ -1094,12 +972,10 @@
             "Tokensanity",
             "Zora's Fountain"
         ],
-        "start": "2021-06-16T17:00:00Z",
         "team1": "Team WAX",
         "team2": "Backup Strats"
     },
     {
-        "async": false,
         "end": "2021-06-19T02:20:18.504Z",
         "room": "https://racetime.gg/ootr/foolish-heylisten-2811",
         "phase": "Swiss",
@@ -1116,23 +992,6 @@
         "team2": "Snack Pack"
     },
     {
-        "async": true,
-        "end": "2021-06-19T03:26:47.635Z",
-        "room": "https://racetime.gg/ootr/dapper-navi-6351",
-        "phase": "Swiss",
-        "round": "Round 4",
-        "settingsNotDefault": [
-            "Shopsanity",
-            "Scrub Shuffle",
-            "Tokensanity",
-            "Zora's Fountain"
-        ],
-        "start": "2021-06-18T22:00:00Z",
-        "team1": "Backup Strats",
-        "team2": "Team WAX"
-    },
-    {
-        "async": false,
         "end": "2021-06-19T21:27:04.927Z",
         "room": "https://racetime.gg/ootr/lucky-biggoron-7503",
         "phase": "Swiss",
@@ -1147,7 +1006,6 @@
         "team2": "Ruto Akimbo"
     },
     {
-        "async": false,
         "end": "2021-06-19T22:41:43.376Z",
         "room": "https://racetime.gg/ootr/artful-dodongo-8130",
         "phase": "Swiss",
@@ -1163,7 +1021,6 @@
         "team2": "Real Sexy Lizalfos"
     },
     {
-        "async": false,
         "end": "2021-06-20T20:03:44.778Z",
         "room": "https://racetime.gg/ootr/critical-epona-6335",
         "phase": "Swiss",
@@ -1178,9 +1035,12 @@
         "team2": "Richard The Dog"
     },
     {
-        "async": true,
-        "end": "2021-06-20T21:19:09.147Z",
-        "room": "https://racetime.gg/ootr/invincible-mamamu-6627",
+        "async_end1": "2021-06-20T21:19:09.147Z",
+        "async_end2": "2021-06-21T01:55:49.477Z",
+        "async_room1": "https://racetime.gg/ootr/invincible-mamamu-6627",
+        "async_room2": "https://racetime.gg/ootr/bonus-mido-9814",
+        "async_start1": "2021-06-20T17:00:00Z",
+        "async_start2": "2021-06-20T20:00:00Z",
         "phase": "Swiss",
         "round": "Round 4",
         "settingsNotDefault": [
@@ -1189,28 +1049,10 @@
             "Ganon's Boss Key",
             "Rainbow Bridge"
         ],
-        "start": "2021-06-20T17:00:00Z",
         "team1": "Clowns in der Dose",
         "team2": "The Sexy Gohmas"
     },
     {
-        "async": true,
-        "end": "2021-06-21T01:55:49.477Z",
-        "room": "https://racetime.gg/ootr/bonus-mido-9814",
-        "phase": "Swiss",
-        "round": "Round 4",
-        "settingsNotDefault": [
-            "Scrub Shuffle",
-            "Tokensanity",
-            "Ganon's Boss Key",
-            "Rainbow Bridge"
-        ],
-        "start": "2021-06-20T20:00:00Z",
-        "team1": "The Sexy Gohmas",
-        "team2": "Clowns in der Dose"
-    },
-    {
-        "async": false,
         "end": "2021-06-21T00:46:54.547Z",
         "room": "https://racetime.gg/ootr/perfect-navi-7419",
         "phase": "Swiss",
@@ -1227,7 +1069,6 @@
         "team2": "Raid: Shadow Temple"
     },
     {
-        "async": false,
         "end": "2021-06-22T22:12:55.222Z",
         "room": "https://racetime.gg/ootr/witty-medigoron-9386",
         "phase": "Swiss",
@@ -1243,23 +1084,25 @@
         "team2": "30 Skulls Please"
     },
     {
-        "async": true,
-        "end": "2021-06-23T18:39:41.678Z",
-        "room": "https://racetime.gg/ootr/classic-deadhand-5157",
+        "async_end1": "2021-06-23T18:39:41.678Z",
+        "async_room1": "https://racetime.gg/ootr/classic-deadhand-5157",
+        "async_start1": "2021-06-23T18:30:00Z",
         "phase": "Swiss",
         "round": "Round 4",
         "settingsNotDefault": [
             "Tokensanity",
             "Forest"
         ],
-        "start": "2021-06-23T18:30:00Z",
         "team1": "Going HAM",
         "team2": "Baguettes du temps"
     },
     {
-        "async": true,
-        "end": "2021-06-25T03:04:51.843Z",
-        "room": "https://racetime.gg/ootr/shiny-sheik-3246",
+        "async_end1": "2021-06-25T03:04:51.843Z",
+        "async_end2": "2021-06-25T07:05:52.145Z",
+        "async_room1": "https://racetime.gg/ootr/shiny-sheik-3246",
+        "async_room2": "https://racetime.gg/ootr/powerful-dodongo-4047",
+        "async_start1": "2021-06-24T22:00:00Z",
+        "async_start2": "2021-06-25T01:30:00Z",
         "phase": "Swiss",
         "round": "Round 4",
         "settingsNotDefault": [
@@ -1270,14 +1113,16 @@
             "Starting Age/Randomize Overworld Spawns",
             "Ganon's Boss Key"
         ],
-        "start": "2021-06-24T22:00:00Z",
         "team1": "Fuck Riley",
         "team2": "Hot Mess"
     },
     {
-        "async": true,
-        "end": "2021-06-25T02:28:32.840Z",
-        "room": "https://racetime.gg/ootr/eager-kakariko-1700",
+        "async_end1": "2021-06-25T02:28:32.840Z",
+        "async_end2": "2021-06-27T17:18:33.101Z",
+        "async_room1": "https://racetime.gg/ootr/eager-kakariko-1700",
+        "async_room2": "https://racetime.gg/ootr/cunning-dampe-9003",
+        "async_start1": "2021-06-24T22:00:00Z",
+        "async_start2": "2021-06-27T13:00:00Z",
         "phase": "Swiss",
         "round": "Round 4",
         "settingsNotDefault": [
@@ -1288,32 +1133,16 @@
             "Shuffle Gerudo Card",
             "Ganon's Boss Key"
         ],
-        "start": "2021-06-24T22:00:00Z",
         "team1": "Gamblers Anonymous",
         "team2": "Legend of Pukei-Pukei"
     },
     {
-        "async": true,
-        "end": "2021-06-25T07:05:52.145Z",
-        "room": "https://racetime.gg/ootr/powerful-dodongo-4047",
-        "phase": "Swiss",
-        "round": "Round 4",
-        "settingsNotDefault": [
-            "Tokensanity",
-            "Shuffle Dungeon Entrances",
-            "Forest",
-            "Shuffle Gerudo Card",
-            "Starting Age/Randomize Overworld Spawns",
-            "Ganon's Boss Key"
-        ],
-        "start": "2021-06-25T01:30:00Z",
-        "team1": "Hot Mess",
-        "team2": "Fuck Riley"
-    },
-    {
-        "async": true,
-        "end": "2021-06-25T16:37:44.492Z",
-        "room": "https://racetime.gg/ootr/clean-sheik-3984",
+        "async_end1": "2021-06-25T16:37:44.492Z",
+        "async_end2": "2021-06-26T00:54:21.208Z",
+        "async_room1": "https://racetime.gg/ootr/clean-sheik-3984",
+        "async_room2": "https://racetime.gg/ootr/cute-navi-8807",
+        "async_start1": "2021-06-25T12:00:00Z",
+        "async_start2": "2021-06-25T19:30:00Z",
         "phase": "Swiss",
         "round": "Round 4",
         "settingsNotDefault": [
@@ -1323,29 +1152,10 @@
             "Shuffle Gerudo Card",
             "Ganon's Boss Key"
         ],
-        "start": "2021-06-25T12:00:00Z",
         "team1": "The Aussie Boiiz",
         "team2": "Cojiro Boiz"
     },
     {
-        "async": true,
-        "end": "2021-06-26T00:54:21.208Z",
-        "room": "https://racetime.gg/ootr/cute-navi-8807",
-        "phase": "Swiss",
-        "round": "Round 4",
-        "settingsNotDefault": [
-            "Scrub Shuffle",
-            "Tokensanity",
-            "Zora's Fountain",
-            "Shuffle Gerudo Card",
-            "Ganon's Boss Key"
-        ],
-        "start": "2021-06-25T19:30:00Z",
-        "team1": "Cojiro Boiz",
-        "team2": "The Aussie Boiiz"
-    },
-    {
-        "async": false,
         "end": "2021-06-26T02:30:59.808Z",
         "room": "https://racetime.gg/ootr/innocent-ichiro-6702",
         "phase": "Swiss",
@@ -1363,7 +1173,6 @@
         "team2": "Gecklamatee"
     },
     {
-        "async": false,
         "end": "2021-06-26T04:01:56.284Z",
         "room": "https://racetime.gg/ootr/powerful-sheik-4949",
         "phase": "Swiss",
@@ -1380,7 +1189,6 @@
         "team2": "Double BK Mode w/ Cheese"
     },
     {
-        "async": false,
         "end": "2021-06-26T04:56:00.806Z",
         "room": "https://racetime.gg/ootr/snug-pierre-4687",
         "phase": "Swiss",
@@ -1396,9 +1204,12 @@
         "team2": "Team Redhead"
     },
     {
-        "async": true,
-        "end": "2021-06-26T17:38:52.242Z",
-        "room": "https://racetime.gg/ootr/proud-ingo-5588",
+        "async_end1": "2021-06-26T17:38:52.242Z",
+        "async_end2": "2021-06-29T01:47:22.033Z",
+        "async_room1": "https://racetime.gg/ootr/proud-ingo-5588",
+        "async_room2": "https://racetime.gg/ootr/mini-ichiro-6418",
+        "async_start1": "2021-06-26T12:00:00Z",
+        "async_start2": "2021-06-28T21:00:00Z",
         "phase": "Swiss",
         "round": "Round 4",
         "settingsNotDefault": [
@@ -1406,12 +1217,10 @@
             "Starting Age/Randomize Overworld Spawns",
             "Ganon's Boss Key"
         ],
-        "start": "2021-06-26T12:00:00Z",
         "team1": "The 3 Ahegaos",
         "team2": "Team Mom Jeans"
     },
     {
-        "async": false,
         "end": "2021-06-26T23:34:12.377Z",
         "room": "https://racetime.gg/ootr/scrawny-twinrova-3019",
         "phase": "Swiss",
@@ -1427,7 +1236,6 @@
         "team2": "Shotgun Fist Fight"
     },
     {
-        "async": false,
         "end": "2021-06-26T23:13:16.290Z",
         "room": "https://racetime.gg/ootr/gentle-zelda-9821",
         "phase": "Swiss",
@@ -1444,7 +1252,6 @@
         "team2": "Le Bretzel et les 2 Quiches"
     },
     {
-        "async": false,
         "end": "2021-06-27T00:41:52.516Z",
         "room": "https://racetime.gg/ootr/magic-epona-3305",
         "phase": "Swiss",
@@ -1460,25 +1267,6 @@
         "team2": "Can You Please Just Find My Fucking Go Mode?"
     },
     {
-        "async": true,
-        "end": "2021-06-27T17:18:33.101Z",
-        "room": "https://racetime.gg/ootr/cunning-dampe-9003",
-        "phase": "Swiss",
-        "round": "Round 4",
-        "settingsNotDefault": [
-            "Shopsanity",
-            "Scrub Shuffle",
-            "Tokensanity",
-            "Shuffle Dungeon Entrances",
-            "Shuffle Gerudo Card",
-            "Ganon's Boss Key"
-        ],
-        "start": "2021-06-27T13:00:00Z",
-        "team1": "Legend of Pukei-Pukei",
-        "team2": "Gamblers Anonymous"
-    },
-    {
-        "async": false,
         "end": "2021-06-27T21:38:52.044Z",
         "room": "https://racetime.gg/ootr/gnarly-wolfos-7977",
         "phase": "Swiss",
@@ -1494,7 +1282,6 @@
         "team2": "Oops AD Boys"
     },
     {
-        "async": false,
         "end": "2021-06-27T22:40:34.375Z",
         "room": "https://racetime.gg/ootr/powerful-mido-7098",
         "phase": "Swiss",
@@ -1508,22 +1295,6 @@
         "team2": "Dimitri The Dodongo"
     },
     {
-        "async": true,
-        "end": "2021-06-29T01:47:22.033Z",
-        "room": "https://racetime.gg/ootr/mini-ichiro-6418",
-        "phase": "Swiss",
-        "round": "Round 4",
-        "settingsNotDefault": [
-            "Tokensanity",
-            "Starting Age/Randomize Overworld Spawns",
-            "Ganon's Boss Key"
-        ],
-        "start": "2021-06-28T21:00:00Z",
-        "team1": "Team Mom Jeans",
-        "team2": "The 3 Ahegaos"
-    },
-    {
-        "async": false,
         "end": "2021-07-04T00:19:40.015Z",
         "room": "https://racetime.gg/ootr/dynamax-nabooru-5922",
         "phase": "Swiss",
@@ -1539,7 +1310,6 @@
         "team2": "Shotgun Fist Fight"
     },
     {
-        "async": false,
         "end": "2021-07-06T00:06:56.056Z",
         "room": "https://racetime.gg/ootr/chaotic-jiro-9470",
         "phase": "Swiss",
@@ -1555,9 +1325,12 @@
         "team2": "Salt and Pepega"
     },
     {
-        "async": true,
-        "end": "2021-07-07T05:33:50.818Z",
-        "room": "https://racetime.gg/ootr/comic-bigocto-8148",
+        "async_end1": "2021-07-07T05:33:50.818Z",
+        "async_end2": "2021-07-08T05:41:22.279Z",
+        "async_room1": "https://racetime.gg/ootr/comic-bigocto-8148",
+        "async_room2": "https://racetime.gg/ootr/gorgeous-ingo-3539",
+        "async_start1": "2021-07-06T23:00:00Z",
+        "async_start2": "2021-07-07T23:00:00Z",
         "phase": "Swiss",
         "round": "Round 5",
         "settingsNotDefault": [
@@ -1567,14 +1340,16 @@
             "Starting Age/Randomize Overworld Spawns",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-07-06T23:00:00Z",
         "team1": "TatlTaelrs",
         "team2": "NA Aim"
     },
     {
-        "async": true,
-        "end": "2021-07-07T18:43:51.069Z",
-        "room": "https://racetime.gg/ootr/banzai-ruto-7596",
+        "async_end1": "2021-07-07T18:43:51.069Z",
+        "async_end2": "2021-07-12T20:08:21.834Z",
+        "async_room1": "https://racetime.gg/ootr/banzai-ruto-7596",
+        "async_room2": "https://racetime.gg/ootr/dynamax-likelike-4592",
+        "async_start1": "2021-07-07T13:00:00Z",
+        "async_start2": "2021-07-12T15:00:00Z",
         "phase": "Swiss",
         "round": "Round 5",
         "settingsNotDefault": [
@@ -1583,14 +1358,16 @@
             "Starting Age/Randomize Overworld Spawns",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-07-07T13:00:00Z",
         "team1": "Team Mom Jeans",
         "team2": "Going HAM"
     },
     {
-        "async": true,
-        "end": "2021-07-07T22:16:08.528Z",
-        "room": "https://racetime.gg/ootr/splendid-saria-1891",
+        "async_end1": "2021-07-07T22:16:08.528Z",
+        "async_end2": "2021-07-10T00:49:36.992Z",
+        "async_room1": "https://racetime.gg/ootr/splendid-saria-1891",
+        "async_room2": "https://racetime.gg/ootr/jolly-likelike-1006",
+        "async_start1": "2021-07-07T17:00:00Z",
+        "async_start2": "2021-07-09T20:00:00Z",
         "phase": "Swiss",
         "round": "Round 5",
         "settingsNotDefault": [
@@ -1600,29 +1377,10 @@
             "Shuffle Dungeon Entrances",
             "Shuffle Gerudo Card"
         ],
-        "start": "2021-07-07T17:00:00Z",
         "team1": "Team WAX",
         "team2": "Cojiro Boiz"
     },
     {
-        "async": true,
-        "end": "2021-07-08T05:41:22.279Z",
-        "room": "https://racetime.gg/ootr/gorgeous-ingo-3539",
-        "phase": "Swiss",
-        "round": "Round 5",
-        "settingsNotDefault": [
-            "Tokensanity",
-            "Forest",
-            "Shuffle Gerudo Card",
-            "Starting Age/Randomize Overworld Spawns",
-            "Chest Size Matches Contents"
-        ],
-        "start": "2021-07-07T23:00:00Z",
-        "team1": "NA Aim",
-        "team2": "TatlTaelrs"
-    },
-    {
-        "async": false,
         "end": "2021-07-08T23:29:46.317Z",
         "room": "https://racetime.gg/ootr/smart-zora-6677",
         "phase": "Swiss",
@@ -1639,7 +1397,6 @@
         "team2": "The Gaming Grandpas"
     },
     {
-        "async": false,
         "end": "2021-07-09T23:29:26.393Z",
         "room": "https://racetime.gg/ootr/clean-cucco-0145",
         "phase": "Swiss",
@@ -1655,24 +1412,6 @@
         "team2": "Can You Please Just Find My Fucking Go Mode?"
     },
     {
-        "async": true,
-        "end": "2021-07-10T00:49:36.992Z",
-        "room": "https://racetime.gg/ootr/jolly-likelike-1006",
-        "phase": "Swiss",
-        "round": "Round 5",
-        "settingsNotDefault": [
-            "Shopsanity",
-            "Scrub Shuffle",
-            "Tokensanity",
-            "Shuffle Dungeon Entrances",
-            "Shuffle Gerudo Card"
-        ],
-        "start": "2021-07-09T20:00:00Z",
-        "team1": "Cojiro Boiz",
-        "team2": "Team WAX"
-    },
-    {
-        "async": false,
         "end": "2021-07-10T22:51:34.614Z",
         "room": "https://racetime.gg/ootr/quick-blametrez-7928",
         "phase": "Swiss",
@@ -1687,7 +1426,6 @@
         "team2": "Gamblers Anonymous"
     },
     {
-        "async": false,
         "end": "2021-07-13T02:09:28.825Z",
         "room": "https://racetime.gg/ootr/superb-mido-2803",
         "phase": "Swiss",
@@ -1702,7 +1440,6 @@
         "team2": "Richard The Dog"
     },
     {
-        "async": false,
         "end": "2021-07-11T19:34:13.902Z",
         "room": "https://racetime.gg/ootr/kind-shikashi-3859",
         "phase": "Swiss",
@@ -1718,7 +1455,6 @@
         "team2": "Clowns in der Dose"
     },
     {
-        "async": false,
         "end": "2021-07-11T20:00:09.279Z",
         "room": "https://racetime.gg/ootr/hungry-morpha-6351",
         "phase": "Swiss",
@@ -1734,9 +1470,12 @@
         "team2": "The 3 Ahegaos"
     },
     {
-        "async": true,
-        "end": "2021-07-11T21:32:36.290Z",
-        "room": "https://racetime.gg/ootr/grumpy-malon-8475",
+        "async_end1": "2021-07-11T21:32:36.290Z",
+        "async_end2": "2021-07-13T23:00:04.506Z",
+        "async_room1": "https://racetime.gg/ootr/grumpy-malon-8475",
+        "async_room2": "https://racetime.gg/ootr/powerful-pierre-2806",
+        "async_start1": "2021-07-11T17:00:00Z",
+        "async_start2": "2021-07-13T18:30:00Z",
         "phase": "Swiss",
         "round": "Round 5",
         "settingsNotDefault": [
@@ -1746,12 +1485,10 @@
             "Starting Age/Randomize Overworld Spawns",
             "Ganon's Boss Key"
         ],
-        "start": "2021-07-11T17:00:00Z",
         "team1": "Gecklamatee",
         "team2": "Baguettes du temps"
     },
     {
-        "async": false,
         "end": "2021-07-11T23:03:18.439Z",
         "room": "https://racetime.gg/ootr/crafty-ruto-9598",
         "phase": "Swiss",
@@ -1766,7 +1503,6 @@
         "team2": "Real Sexy Lizalfos"
     },
     {
-        "async": false,
         "end": "2021-07-12T01:25:23.601Z",
         "room": "https://racetime.gg/ootr/perfect-sheik-0539",
         "phase": "Swiss",
@@ -1783,9 +1519,12 @@
         "team2": "Snack Pack"
     },
     {
-        "async": true,
-        "end": "2021-07-12T06:38:04.028Z",
-        "room": "https://racetime.gg/ootr/crazy-ingo-7796",
+        "async_end1": "2021-07-12T06:38:04.028Z",
+        "async_end2": "2021-07-13T00:55:14.051Z",
+        "async_room1": "https://racetime.gg/ootr/crazy-ingo-7796",
+        "async_room2": "https://racetime.gg/ootr/swag-pierre-5991",
+        "async_start1": "2021-07-12T00:30:00Z",
+        "async_start2": "2021-07-12T19:00:00Z",
         "phase": "Swiss",
         "round": "Round 5",
         "settingsNotDefault": [
@@ -1795,14 +1534,16 @@
             "Shuffle Gerudo Card",
             "Starting Age/Randomize Overworld Spawns"
         ],
-        "start": "2021-07-12T00:30:00Z",
         "team1": "Backup Strats",
         "team2": "The Try Too Hards"
     },
     {
-        "async": true,
-        "end": "2021-07-12T17:08:13.075Z",
-        "room": "https://racetime.gg/ootr/critical-navi-8526",
+        "async_end1": "2021-07-12T17:08:13.075Z",
+        "async_end2": "2021-07-12T22:16:52.214Z",
+        "async_room1": "https://racetime.gg/ootr/critical-navi-8526",
+        "async_room2": "https://racetime.gg/ootr/tasty-dekutree-3986",
+        "async_start1": "2021-07-12T09:30:00Z",
+        "async_start2": "2021-07-12T17:00:00Z",
         "phase": "Swiss",
         "round": "Round 5",
         "settingsNotDefault": [
@@ -1811,30 +1552,16 @@
             "Shuffle Dungeon Entrances",
             "Rainbow Bridge"
         ],
-        "start": "2021-07-12T09:30:00Z",
         "team1": "The Aussie Boiiz",
         "team2": "The Sexy Gohmas"
     },
     {
-        "async": true,
-        "end": "2021-07-12T20:08:21.834Z",
-        "room": "https://racetime.gg/ootr/dynamax-likelike-4592",
-        "phase": "Swiss",
-        "round": "Round 5",
-        "settingsNotDefault": [
-            "Shuffle Dungeon Entrances",
-            "Shuffle Gerudo Card",
-            "Starting Age/Randomize Overworld Spawns",
-            "Chest Size Matches Contents"
-        ],
-        "start": "2021-07-12T15:00:00Z",
-        "team1": "Going HAM",
-        "team2": "Team Mom Jeans"
-    },
-    {
-        "async": true,
-        "end": "2021-07-12T20:42:09.855Z",
-        "room": "https://racetime.gg/ootr/gentle-cucco-5458",
+        "async_end1": "2021-07-12T20:42:09.855Z",
+        "async_end2": "2021-07-14T00:12:34.314Z",
+        "async_room1": "https://racetime.gg/ootr/gentle-cucco-5458",
+        "async_room2": "https://racetime.gg/ootr/speedy-mido-4441",
+        "async_start1": "2021-07-12T17:00:00Z",
+        "async_start2": "2021-07-13T20:00:00Z",
         "phase": "Swiss",
         "round": "Round 5",
         "settingsNotDefault": [
@@ -1844,47 +1571,16 @@
             "Rainbow Bridge",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-07-12T17:00:00Z",
         "team1": "DAD",
         "team2": "slideshow &co"
     },
     {
-        "async": true,
-        "end": "2021-07-12T22:16:52.214Z",
-        "room": "https://racetime.gg/ootr/tasty-dekutree-3986",
-        "phase": "Swiss",
-        "round": "Round 5",
-        "settingsNotDefault": [
-            "Scrub Shuffle",
-            "Tokensanity",
-            "Shuffle Dungeon Entrances",
-            "Rainbow Bridge"
-        ],
-        "start": "2021-07-12T17:00:00Z",
-        "team1": "The Sexy Gohmas",
-        "team2": "The Aussie Boiiz"
-    },
-    {
-        "async": true,
-        "end": "2021-07-13T00:55:14.051Z",
-        "room": "https://racetime.gg/ootr/swag-pierre-5991",
-        "phase": "Swiss",
-        "round": "Round 5",
-        "settingsNotDefault": [
-            "Tokensanity",
-            "Forest",
-            "Zora's Fountain",
-            "Shuffle Gerudo Card",
-            "Starting Age/Randomize Overworld Spawns"
-        ],
-        "start": "2021-07-12T19:00:00Z",
-        "team1": "The Try Too Hards",
-        "team2": "Backup Strats"
-    },
-    {
-        "async": true,
-        "end": "2021-07-13T04:45:53.733Z",
-        "room": "https://racetime.gg/ootr/daring-ironknuckle-0154",
+        "async_end1": "2021-07-13T04:45:53.733Z",
+        "async_end2": "2021-07-13T22:20:13.490Z",
+        "async_room1": "https://racetime.gg/ootr/daring-ironknuckle-0154",
+        "async_room2": "https://racetime.gg/ootr/secret-dekutree-4140",
+        "async_start1": "2021-07-13T00:00:00Z",
+        "async_start2": "2021-07-13T18:00:00Z",
         "phase": "Swiss",
         "round": "Round 5",
         "settingsNotDefault": [
@@ -1893,62 +1589,10 @@
             "Starting Age/Randomize Overworld Spawns",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-07-13T00:00:00Z",
         "team1": "Double BK Mode w/ Cheese",
         "team2": "We're picking 12 MQ"
     },
     {
-        "async": true,
-        "end": "2021-07-13T22:20:13.490Z",
-        "room": "https://racetime.gg/ootr/secret-dekutree-4140",
-        "phase": "Swiss",
-        "round": "Round 5",
-        "settingsNotDefault": [
-            "Scrub Shuffle",
-            "Zora's Fountain",
-            "Starting Age/Randomize Overworld Spawns",
-            "Chest Size Matches Contents"
-        ],
-        "start": "2021-07-13T18:00:00Z",
-        "team1": "We're picking 12 MQ",
-        "team2": "Double BK Mode w/ Cheese"
-    },
-    {
-        "async": true,
-        "end": "2021-07-13T23:00:04.506Z",
-        "room": "https://racetime.gg/ootr/powerful-pierre-2806",
-        "phase": "Swiss",
-        "round": "Round 5",
-        "settingsNotDefault": [
-            "Tokensanity",
-            "Zora's Fountain",
-            "Shuffle Gerudo Card",
-            "Starting Age/Randomize Overworld Spawns",
-            "Ganon's Boss Key"
-        ],
-        "start": "2021-07-13T18:30:00Z",
-        "team1": "Baguettes du temps",
-        "team2": "Gecklamatee"
-    },
-    {
-        "async": true,
-        "end": "2021-07-14T00:12:34.314Z",
-        "room": "https://racetime.gg/ootr/speedy-mido-4441",
-        "phase": "Swiss",
-        "round": "Round 5",
-        "settingsNotDefault": [
-            "Tokensanity",
-            "Shuffle Dungeon Entrances",
-            "Ganon's Boss Key",
-            "Rainbow Bridge",
-            "Chest Size Matches Contents"
-        ],
-        "start": "2021-07-13T20:00:00Z",
-        "team1": "slideshow &co",
-        "team2": "DAD"
-    },
-    {
-        "async": false,
         "end": "2021-07-14T04:27:05.862Z",
         "room": "https://racetime.gg/ootr/kind-shikashi-3222",
         "phase": "Swiss",
@@ -1966,9 +1610,9 @@
         "team2": "Hot Mess"
     },
     {
-        "async": true,
-        "end": "2021-07-14T15:55:11.045Z",
-        "room": "https://racetime.gg/ootr/cunning-dampe-9252",
+        "async_end1": "2021-07-14T15:55:11.045Z",
+        "async_room1": "https://racetime.gg/ootr/cunning-dampe-9252",
+        "async_start1": "2021-07-14T12:00:00Z",
         "phase": "Swiss",
         "round": "Round 5",
         "settingsNotDefault": [
@@ -1976,14 +1620,16 @@
             "Zora's Fountain",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-07-14T12:00:00Z",
         "team1": "Le Bretzel et les 2 Quiches",
         "team2": "Team Redhead"
     },
     {
-        "async": true,
-        "end": "2021-07-15T21:02:53.310Z",
-        "room": "https://racetime.gg/ootr/vanilla-cucco-9821",
+        "async_end1": "2021-07-15T21:02:53.310Z",
+        "async_end2": "2021-07-23T04:23:20.989Z",
+        "async_room1": "https://racetime.gg/ootr/vanilla-cucco-9821",
+        "async_room2": "https://racetime.gg/ootr/dapper-mamamu-0417",
+        "async_start1": "2021-07-15T16:00:00Z",
+        "async_start2": "2021-07-22T23:24:00Z",
         "phase": "Swiss",
         "round": "Round 6",
         "settingsNotDefault": [
@@ -1994,12 +1640,10 @@
             "Forest",
             "Starting Age/Randomize Overworld Spawns"
         ],
-        "start": "2021-07-15T16:00:00Z",
         "team1": "Team WAX",
         "team2": "Hot Mess"
     },
     {
-        "async": false,
         "end": "2021-07-17T01:10:58.525Z",
         "room": "https://racetime.gg/ootr/tactical-medigoron-0700",
         "phase": "Swiss",
@@ -2016,9 +1660,12 @@
         "team2": "Cojiro Boiz"
     },
     {
-        "async": true,
-        "end": "2021-07-17T04:10:40.402Z",
-        "room": "https://racetime.gg/ootr/reliable-nabooru-7464",
+        "async_end1": "2021-07-17T04:10:40.402Z",
+        "async_end2": "2021-07-19T04:14:30.683Z",
+        "async_room1": "https://racetime.gg/ootr/reliable-nabooru-7464",
+        "async_room2": "https://racetime.gg/ootr/chaotic-ruto-6774",
+        "async_start1": "2021-07-16T21:45:00Z",
+        "async_start2": "2021-07-18T22:30:00Z",
         "phase": "Swiss",
         "round": "Round 6",
         "settingsNotDefault": [
@@ -2028,12 +1675,10 @@
             "Rainbow Bridge",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-07-16T21:45:00Z",
         "team1": "TatlTaelrs",
         "team2": "Backup Strats"
     },
     {
-        "async": false,
         "end": "2021-07-17T18:34:58.964Z",
         "room": "https://racetime.gg/ootr/elegant-darunia-3561",
         "phase": "Swiss",
@@ -2048,7 +1693,6 @@
         "team2": "The 3 Ahegaos"
     },
     {
-        "async": false,
         "end": "2021-07-18T21:11:13.461Z",
         "room": "https://racetime.gg/ootr/virtual-flaredancer-3110",
         "phase": "Swiss",
@@ -2062,24 +1706,6 @@
         "team2": "DAD"
     },
     {
-        "async": true,
-        "end": "2021-07-19T04:14:30.683Z",
-        "room": "https://racetime.gg/ootr/chaotic-ruto-6774",
-        "phase": "Swiss",
-        "round": "Round 6",
-        "settingsNotDefault": [
-            "Scrub Shuffle",
-            "Tokensanity",
-            "Starting Age/Randomize Overworld Spawns",
-            "Rainbow Bridge",
-            "Chest Size Matches Contents"
-        ],
-        "start": "2021-07-18T22:30:00Z",
-        "team1": "Backup Strats",
-        "team2": "TatlTaelrs"
-    },
-    {
-        "async": false,
         "end": "2021-07-19T23:15:27.614Z",
         "room": "https://racetime.gg/ootr/lawful-impa-4264",
         "phase": "Swiss",
@@ -2095,7 +1721,6 @@
         "team2": "Anju's Secret"
     },
     {
-        "async": false,
         "end": "2021-07-21T05:48:30.705Z",
         "room": "https://racetime.gg/ootr/casual-mamamu-1390",
         "phase": "Swiss",
@@ -2111,9 +1736,12 @@
         "team2": "Snack Pack"
     },
     {
-        "async": true,
-        "end": "2021-07-21T21:35:39.176Z",
-        "room": "https://racetime.gg/ootr/travelling-shiro-2063",
+        "async_end1": "2021-07-21T21:35:39.176Z",
+        "async_end2": "2021-07-23T01:22:34.746Z",
+        "async_room1": "https://racetime.gg/ootr/travelling-shiro-2063",
+        "async_room2": "https://racetime.gg/ootr/proud-morpha-7236",
+        "async_start1": "2021-07-21T18:00:00Z",
+        "async_start2": "2021-07-22T23:00:00Z",
         "phase": "Swiss",
         "round": "Round 6",
         "settingsNotDefault": [
@@ -2123,14 +1751,16 @@
             "Shuffle Gerudo Card",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-07-21T18:00:00Z",
         "team1": "We're picking 12 MQ",
         "team2": "Gamblers Anonymous"
     },
     {
-        "async": true,
-        "end": "2021-07-22T00:28:02.330Z",
-        "room": "https://racetime.gg/ootr/classic-impa-8654",
+        "async_end1": "2021-07-22T00:28:02.330Z",
+        "async_end2": "2021-07-23T05:35:49.923Z",
+        "async_room1": "https://racetime.gg/ootr/classic-impa-8654",
+        "async_room2": "https://racetime.gg/ootr/foolish-gohma-7249",
+        "async_start1": "2021-07-21T18:30:00Z",
+        "async_start2": "2021-07-23T00:00:00Z",
         "phase": "Swiss",
         "round": "Round 6",
         "settingsNotDefault": [
@@ -2140,14 +1770,12 @@
             "Shuffle Gerudo Card",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-07-21T18:30:00Z",
         "team1": "Can You Please Just Find My Fucking Go Mode?",
         "team2": "The Try Too Hards"
     },
     {
-        "async": true,
-        "end": "2021-07-22T23:24:59.994Z",
-        "room": "https://racetime.gg/ootr/zany-kakariko-2328",
+        "async_end1": "2021-07-22T23:24:59.994Z",
+        "async_room1": "https://racetime.gg/ootr/zany-kakariko-2328",
         "phase": "Swiss",
         "round": "Round 6",
         "settingsNotDefault": [
@@ -2155,14 +1783,17 @@
             "Starting Age/Randomize Overworld Spawns",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-07-22T18:30:00Z",
+        "async_start1": "2021-07-22T18:30:00Z",
         "team1": "Fuck Riley",
         "team2": "30 Skulls Please"
     },
     {
-        "async": true,
-        "end": "2021-07-23T00:13:04.836Z",
-        "room": "https://racetime.gg/ootr/smart-epona-2889",
+        "async_end1": "2021-07-23T00:13:04.836Z",
+        "async_end2": "2021-07-24T20:42:42.189Z",
+        "async_room1": "https://racetime.gg/ootr/smart-epona-2889",
+        "async_room2": "https://racetime.gg/ootr/grumpy-blametrez-6718",
+        "async_start1": "2021-07-22T19:00:00Z",
+        "async_start2": "2021-07-24T16:00:00Z",
         "phase": "Swiss",
         "round": "Round 6",
         "settingsNotDefault": [
@@ -2172,64 +1803,10 @@
             "Ganon's Boss Key",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-07-22T19:00:00Z",
         "team1": "Baguettes du temps",
         "team2": "DO NOT RELOAD THE ROM"
     },
     {
-        "async": true,
-        "end": "2021-07-23T01:22:34.746Z",
-        "room": "https://racetime.gg/ootr/proud-morpha-7236",
-        "phase": "Swiss",
-        "round": "Round 6",
-        "settingsNotDefault": [
-            "Shopsanity",
-            "Shuffle Dungeon Entrances",
-            "Forest",
-            "Shuffle Gerudo Card",
-            "Chest Size Matches Contents"
-        ],
-        "start": "2021-07-22T23:00:00Z",
-        "team1": "Gamblers Anonymous",
-        "team2": "We're picking 12 MQ"
-    },
-    {
-        "async": true,
-        "end": "2021-07-23T04:23:20.989Z",
-        "room": "https://racetime.gg/ootr/dapper-mamamu-0417",
-        "phase": "Swiss",
-        "round": "Round 6",
-        "settingsNotDefault": [
-            "Shopsanity",
-            "Scrub Shuffle",
-            "Tokensanity",
-            "Shuffle Dungeon Entrances",
-            "Forest",
-            "Starting Age/Randomize Overworld Spawns"
-        ],
-        "start": "2021-07-22T23:24:00Z",
-        "team1": "Hot Mess",
-        "team2": "Team WAX"
-    },
-    {
-        "async": true,
-        "end": "2021-07-23T05:35:49.923Z",
-        "room": "https://racetime.gg/ootr/foolish-gohma-7249",
-        "phase": "Swiss",
-        "round": "Round 6",
-        "settingsNotDefault": [
-            "Shopsanity",
-            "Forest",
-            "Zora's Fountain",
-            "Shuffle Gerudo Card",
-            "Chest Size Matches Contents"
-        ],
-        "start": "2021-07-23T00:00:00Z",
-        "team1": "The Try Too Hards",
-        "team2": "Can You Please Just Find My Fucking Go Mode?"
-    },
-    {
-        "async": false,
         "end": "2021-07-24T09:57:48.434Z",
         "room": "https://racetime.gg/ootr/funky-pierre-5112",
         "phase": "Swiss",
@@ -2247,9 +1824,12 @@
         "team2": "Oops AD Boys"
     },
     {
-        "async": true,
-        "end": "2021-07-24T15:56:43.319Z",
-        "room": "https://racetime.gg/ootr/mega-medigoron-9578",
+        "async_end1": "2021-07-24T15:56:43.319Z",
+        "async_end2": "2021-07-25T21:23:30.666Z",
+        "async_room1": "https://racetime.gg/ootr/mega-medigoron-9578",
+        "async_room2": "https://racetime.gg/ootr/cute-volvagia-3606",
+        "async_start1": "2021-07-24T12:00:00Z",
+        "async_start2": "2021-07-25T17:00:00Z",
         "phase": "Swiss",
         "round": "Round 6",
         "settingsNotDefault": [
@@ -2259,12 +1839,10 @@
             "Shuffle Dungeon Entrances",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-07-24T12:00:00Z",
         "team1": "Legend of Pukei-Pukei",
         "team2": "Dimitri The Dodongo"
     },
     {
-        "async": false,
         "end": "2021-07-24T17:17:56.641Z",
         "room": "https://racetime.gg/ootr/gorgeous-shikashi-9289",
         "phase": "Swiss",
@@ -2278,24 +1856,6 @@
         "team2": "Going HAM"
     },
     {
-        "async": true,
-        "end": "2021-07-24T20:42:42.189Z",
-        "room": "https://racetime.gg/ootr/grumpy-blametrez-6718",
-        "phase": "Swiss",
-        "round": "Round 6",
-        "settingsNotDefault": [
-            "Tokensanity",
-            "Zora's Fountain",
-            "Starting Age/Randomize Overworld Spawns",
-            "Ganon's Boss Key",
-            "Chest Size Matches Contents"
-        ],
-        "start": "2021-07-24T16:00:00Z",
-        "team1": "DO NOT RELOAD THE ROM",
-        "team2": "Baguettes du temps"
-    },
-    {
-        "async": false,
         "end": "2021-07-24T23:38:15.406Z",
         "room": "https://racetime.gg/ootr/lurking-twinrova-5400",
         "phase": "Swiss",
@@ -2312,9 +1872,12 @@
         "team2": "The Sexy Gohmas"
     },
     {
-        "async": true,
-        "end": "2021-07-25T20:35:29.315Z",
-        "room": "https://racetime.gg/ootr/scruffy-heylisten-0200",
+        "async_end1": "2021-07-25T20:35:29.315Z",
+        "async_end2": "2021-07-26T16:00:26.970Z",
+        "async_room1": "https://racetime.gg/ootr/scruffy-heylisten-0200",
+        "async_room2": "https://racetime.gg/ootr/banzai-dodongo-6370",
+        "async_start1": "2021-07-25T15:00:00Z",
+        "async_start2": "2021-07-26T08:30:00Z",
         "phase": "Swiss",
         "round": "Round 6",
         "settingsNotDefault": [
@@ -2324,12 +1887,10 @@
             "Shuffle Dungeon Entrances",
             "Rainbow Bridge"
         ],
-        "start": "2021-07-25T15:00:00Z",
         "team1": "King Zordongo",
         "team2": "The Aussie Boiiz"
     },
     {
-        "async": false,
         "end": "2021-07-25T20:34:14.102Z",
         "room": "https://racetime.gg/ootr/obedient-sheik-1335",
         "phase": "Swiss",
@@ -2345,24 +1906,6 @@
         "team2": "Shotgun Fist Fight"
     },
     {
-        "async": true,
-        "end": "2021-07-25T21:23:30.666Z",
-        "room": "https://racetime.gg/ootr/cute-volvagia-3606",
-        "phase": "Swiss",
-        "round": "Round 6",
-        "settingsNotDefault": [
-            "Shopsanity",
-            "Scrub Shuffle",
-            "Tokensanity",
-            "Shuffle Dungeon Entrances",
-            "Chest Size Matches Contents"
-        ],
-        "start": "2021-07-25T17:00:00Z",
-        "team1": "Dimitri The Dodongo",
-        "team2": "Legend of Pukei-Pukei"
-    },
-    {
-        "async": false,
         "end": "2021-07-25T21:35:33.439Z",
         "room": "https://racetime.gg/ootr/lurking-ruto-9000",
         "phase": "Swiss",
@@ -2377,7 +1920,6 @@
         "team2": "Richard The Dog"
     },
     {
-        "async": false,
         "end": "2021-07-25T23:47:12.007Z",
         "room": "https://racetime.gg/ootr/mega-shikashi-3213",
         "phase": "Swiss",
@@ -2393,24 +1935,6 @@
         "team2": "Ruto Akimbo"
     },
     {
-        "async": true,
-        "end": "2021-07-26T16:00:26.970Z",
-        "room": "https://racetime.gg/ootr/banzai-dodongo-6370",
-        "phase": "Swiss",
-        "round": "Round 6",
-        "settingsNotDefault": [
-            "Shopsanity",
-            "Scrub Shuffle",
-            "Tokensanity",
-            "Shuffle Dungeon Entrances",
-            "Rainbow Bridge"
-        ],
-        "start": "2021-07-26T08:30:00Z",
-        "team1": "The Aussie Boiiz",
-        "team2": "King Zordongo"
-    },
-    {
-        "async": false,
         "end": "2021-07-29T05:36:49.543Z",
         "room": "https://racetime.gg/ootr/amazing-shikashi-1391",
         "phase": "Swiss",
@@ -2426,9 +1950,9 @@
         "team2": "Real Sexy Lizalfos"
     },
     {
-        "async": true,
-        "end": "2021-07-31T03:07:31.645Z",
-        "room": "https://racetime.gg/ootr/cute-dodongo-5966",
+        "async_end1": "2021-07-31T03:07:31.645Z",
+        "async_room1": "https://racetime.gg/ootr/cute-dodongo-5966",
+        "async_start1": "2021-07-30T23:00:00Z",
         "phase": "Swiss",
         "round": "Round 6",
         "settingsNotDefault": [
@@ -2437,12 +1961,10 @@
             "Ganon's Boss Key",
             "Chest Size Matches Contents"
         ],
-        "start": "2021-07-30T23:00:00Z",
         "team1": "NA Aim",
         "team2": "The Gaming Grandpas"
     },
     {
-        "async": false,
         "end": "2021-08-05T23:11:16.697Z",
         "room": "https://racetime.gg/ootr/mysterious-cucco-0303",
         "phase": "Top 8",
@@ -2461,7 +1983,6 @@
         "team2": "DAD"
     },
     {
-        "async": false,
         "end": "2021-08-07T22:30:44.124Z",
         "room": "https://racetime.gg/ootr/dizzy-likelike-5016",
         "phase": "Top 8",
@@ -2478,7 +1999,6 @@
         "team2": "Team Mom Jeans"
     },
     {
-        "async": false,
         "end": "2021-08-08T05:11:53.543Z",
         "room": "https://racetime.gg/ootr/smart-biggoron-1587",
         "phase": "Top 8",
@@ -2494,7 +2014,6 @@
         "team2": "Snack Pack"
     },
     {
-        "async": false,
         "end": "2021-08-09T02:15:41.056Z",
         "room": "https://racetime.gg/ootr/perfect-cucco-2374",
         "phase": "Top 8",
@@ -2508,7 +2027,6 @@
         "team2": "Richard The Dog"
     },
     {
-        "async": false,
         "end": "2021-08-14T22:31:59.229Z",
         "room": "https://racetime.gg/ootr/bonus-stalfos-6198",
         "phase": "Top 8",
@@ -2526,7 +2044,6 @@
         "team2": "slideshow &co"
     },
     {
-        "async": false,
         "end": "2021-08-15T04:34:56.626Z",
         "room": "https://racetime.gg/ootr/silly-kokiri-3091",
         "phase": "Top 8",
@@ -2541,7 +2058,6 @@
         "team2": "Snack Pack"
     },
     {
-        "async": false,
         "end": "2021-08-20T22:25:36.368Z",
         "room": "https://racetime.gg/ootr/clumsy-flaredancer-6309",
         "phase": "Top 8",
@@ -2559,7 +2075,6 @@
         "team2": "DAD"
     },
     {
-        "async": false,
         "end": "2021-08-21T19:36:44.855Z",
         "room": "https://racetime.gg/ootr/frantic-jiro-2671",
         "phase": "Top 8",
@@ -2574,7 +2089,6 @@
         "team2": "Richard The Dog"
     },
     {
-        "async": false,
         "end": "2021-08-23T04:49:35.892Z",
         "room": "https://racetime.gg/ootr/lurking-sheik-8822",
         "phase": "Top 8",
@@ -2590,7 +2104,6 @@
         "team2": "Team Mom Jeans"
     },
     {
-        "async": false,
         "end": "2021-08-26T02:51:31.245Z",
         "room": "https://racetime.gg/ootr/sublime-nabooru-3833",
         "phase": "Top 8",
@@ -2605,7 +2118,6 @@
         "team2": "Richard The Dog"
     },
     {
-        "async": false,
         "end": "2021-08-30T21:58:23.436Z",
         "restream": "https://twitch.tv/videos/1141855903",
         "room": "https://racetime.gg/ootr/mega-pierre-8170",
@@ -2625,7 +2137,6 @@
         "team2": "DAD"
     },
     {
-        "async": false,
         "end": "2021-09-06T19:37:32.389Z",
         "room": "https://racetime.gg/ootr/famous-likelike-0158",
         "phase": "Top 8",
@@ -2642,7 +2153,6 @@
         "team2": "Richard The Dog"
     },
     {
-        "async": false,
         "end": "2021-09-06T21:37:56.828Z",
         "restream": "https://youtube.com/watch?v=OF0szEdUmV0&list=PLoBQgkYcUe0UyZ66vu-K1-jWBEWPPnHXp",
         "room": "https://racetime.gg/ootr/crafty-ganon-6770",
@@ -2660,7 +2170,6 @@
         "team2": "DAD"
     },
     {
-        "async": false,
         "end": "2021-09-18T19:50:29.156Z",
         "room": "https://racetime.gg/ootr/artful-ruto-5586",
         "phase": "Top 8",
@@ -2675,7 +2184,6 @@
         "team2": "Richard The Dog"
     },
     {
-        "async": false,
         "end": "2021-10-16T21:40:39.666Z",
         "restream": "https://youtube.com/watch?v=XynyC3l3HiE",
         "room": "https://racetime.gg/ootr/agreeable-zora-1864",
@@ -2693,7 +2201,6 @@
         "team2": "Salt and Pepega"
     },
     {
-        "async": false,
         "end": "2021-11-06T23:07:42.917Z",
         "restream": "https://youtube.com/watch?v=jUlCGsmbrf0",
         "room": "https://racetime.gg/ootr/innocent-sheik-1493",
