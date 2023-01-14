@@ -244,7 +244,8 @@ impl Race {
             hash2 AS "hash2: HashIcon",
             hash3 AS "hash3: HashIcon",
             hash4 AS "hash4: HashIcon",
-            hash5 AS "hash5: HashIcon"
+            hash5 AS "hash5: HashIcon",
+            video_url
         FROM races WHERE id = $1"#, i64::from(id)).fetch_one(&mut *transaction).await?;
         let (startgg_event, startgg_set, phase, round, slots) = if let Some(startgg_set) = row.startgg_set {
             if let startgg::set_query::ResponseData {
@@ -341,7 +342,7 @@ impl Race {
                 },
                 file_stem: Cow::Owned(file_stem),
             }),
-            video_url: None, //TODO
+            video_url: row.video_url.map(|url| url.parse()).transpose()?,
             startgg_event, startgg_set, entrants, phase, round,
         })
     }
