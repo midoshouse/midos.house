@@ -321,6 +321,7 @@
     },
     {
         "async_end1": "2021-05-16T00:31:30.652Z",
+        "async_end2": "2021-05-16T00:31:30.652Z",
         "async_room1": "https://racetime.gg/ootr/daring-jiro-4277",
         "async_start1": "2021-05-15T19:00:00Z",
         "phase": "Swiss",
@@ -1085,6 +1086,7 @@
     },
     {
         "async_end1": "2021-06-23T18:39:41.678Z",
+        "async_end2": "2021-06-23T18:39:41.678Z",
         "async_room1": "https://racetime.gg/ootr/classic-deadhand-5157",
         "async_start1": "2021-06-23T18:30:00Z",
         "phase": "Swiss",
@@ -1611,6 +1613,7 @@
     },
     {
         "async_end1": "2021-07-14T15:55:11.045Z",
+        "async_end2": "2021-07-14T15:55:11.045Z",
         "async_room1": "https://racetime.gg/ootr/cunning-dampe-9252",
         "async_start1": "2021-07-14T12:00:00Z",
         "phase": "Swiss",
@@ -1775,6 +1778,7 @@
     },
     {
         "async_end1": "2021-07-22T23:24:59.994Z",
+        "async_end2": "2021-07-22T23:24:59.994Z",
         "async_room1": "https://racetime.gg/ootr/zany-kakariko-2328",
         "phase": "Swiss",
         "round": "Round 6",
@@ -1951,6 +1955,7 @@
     },
     {
         "async_end1": "2021-07-31T03:07:31.645Z",
+        "async_end2": "2021-07-31T03:07:31.645Z",
         "async_room1": "https://racetime.gg/ootr/cute-dodongo-5966",
         "async_start1": "2021-07-30T23:00:00Z",
         "phase": "Swiss",
