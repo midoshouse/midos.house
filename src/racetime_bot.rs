@@ -105,9 +105,9 @@ use {
         Environment,
         cal::{
             self,
-            Participants,
+            Entrant,
+            Entrants,
             Race,
-            RaceTeam,
         },
         config::{
             Config,
@@ -1157,15 +1157,15 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 if let mw::DraftStep::Done(settings) = state.next_step() {
                     ctx.send_message(&format!("Your seed with {settings} will be posted in 15 minutes.")).await?;
                 }
-                match cal_event.race.participants {
-                    Participants::Open => unimplemented!("open official race"), //TODO
-                    Participants::Named(_) => unimplemented!("official race with opaque participants text"), //TODO
-                    Participants::Two([RaceTeam::MidosHouse(team1), RaceTeam::MidosHouse(team2)]) => if team1.id == high_seed {
+                match cal_event.race.entrants {
+                    Entrants::Open => unimplemented!("open official race"), //TODO
+                    Entrants::Named(_) => unimplemented!("official race with opaque participants text"), //TODO
+                    Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)]) => if team1.id == high_seed {
                         [team1.name.clone().unwrap_or_else(|| format!("Team A")), team2.name.clone().unwrap_or_else(|| format!("Team B"))]
                     } else {
                         [team2.name.clone().unwrap_or_else(|| format!("Team A")), team1.name.clone().unwrap_or_else(|| format!("Team B"))]
                     },
-                    Participants::Two([_, _]) => unimplemented!("official race with non-MH teams"), //TODO
+                    Entrants::Two([_, _]) => unimplemented!("official race with non-MH teams"), //TODO
                 }
             } else {
                 [format!("Team A"), format!("Team B")]
@@ -1941,12 +1941,12 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                                 goal: format!("3rd Multiworld Tournament"), //TODO don't hardcode
                                 goal_is_custom: true,
                                 team_race: true,
-                                invitational: !matches!(race.participants, Participants::Open),
+                                invitational: !matches!(race.entrants, Entrants::Open),
                                 unlisted: false,
-                                info_user: match race.participants {
-                                    Participants::Open => info_prefix.clone().unwrap_or_default(),
-                                    Participants::Named(ref participants) => format!("{}{participants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
-                                    Participants::Two([ref team1, ref team2]) => format!("{}{team1} vs {team2}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()), //TODO adjust for asyncs
+                                info_user: match race.entrants {
+                                    Entrants::Open => info_prefix.clone().unwrap_or_default(),
+                                    Entrants::Named(ref participants) => format!("{}{participants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
+                                    Entrants::Two([ref team1, ref team2]) => format!("{}{team1} vs {team2}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()), //TODO adjust for asyncs
                                 },
                                 info_bot: String::default(),
                                 require_even_teams: true,
@@ -1970,31 +1970,31 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                             if let Some(event) = event::Data::new(&mut transaction, row.series, row.event).await.to_racetime()? {
                                 if let (Some(guild), Some(channel)) = (event.discord_guild, event.discord_race_room_channel) {
                                     let mut msg = MessageBuilder::default();
-                                    match race.participants {
-                                        Participants::Open => if let Some(prefix) = info_prefix {
+                                    match race.entrants {
+                                        Entrants::Open => if let Some(prefix) = info_prefix {
                                             msg.push_safe(prefix);
                                         },
-                                        Participants::Named(ref participants) => {
+                                        Entrants::Named(ref participants) => {
                                             if let Some(prefix) = info_prefix {
                                                 msg.push_safe(prefix);
                                                 msg.push(": ");
                                             }
                                             msg.push_safe(participants);
                                         }
-                                        Participants::Two([ref team1, ref team2]) => {
+                                        Entrants::Two([ref team1, ref team2]) => {
                                             if let Some(prefix) = info_prefix {
                                                 msg.push_safe(prefix);
                                                 //TODO adjust for asyncs
                                                 msg.push(": ");
                                             }
                                             match team1 {
-                                                RaceTeam::MidosHouse(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
-                                                RaceTeam::Named(name) => { msg.push_safe(name); }
+                                                Entrant::MidosHouseTeam(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
+                                                Entrant::Named(name) => { msg.push_safe(name); }
                                             }
                                             msg.push(" vs ");
                                             match team2 {
-                                                RaceTeam::MidosHouse(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
-                                                RaceTeam::Named(name) => { msg.push_safe(name); }
+                                                Entrant::MidosHouseTeam(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
+                                                Entrant::Named(name) => { msg.push_safe(name); }
                                             }
                                         }
                                     }

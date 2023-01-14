@@ -82,7 +82,7 @@ use {
         auth,
         cal::{
             self,
-            Participants,
+            Entrants,
             Race,
             RaceSchedule,
         },
@@ -178,7 +178,7 @@ impl Role {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Series {
     Multiworld,
     NineDaysOfSaws,
@@ -982,10 +982,10 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                     }
                                 }
                             }
-                            @match race.participants {
-                                Participants::Open => td(colspan = "2") : "(open)"; //TODO list number of participants if known
-                                Participants::Named(ref participants) => td(colspan = "2") : participants;
-                                Participants::Two([ref team1, ref team2]) => {
+                            @match race.entrants {
+                                Entrants::Open => td(colspan = "2") : "(open)"; //TODO list number of participants if known
+                                Entrants::Named(ref participants) => td(colspan = "2") : participants;
+                                Entrants::Two([ref team1, ref team2]) => {
                                     td(class = "vs1") {
                                         : team1.to_html(false);
                                         @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {

@@ -70,35 +70,35 @@ use {
     },
 };
 
-#[derive(Clone)]
-pub(crate) enum RaceTeam {
-    MidosHouse(Team),
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) enum Entrant {
+    MidosHouseTeam(Team),
     Named(String),
 }
 
-impl RaceTeam {
+impl Entrant {
     pub(crate) fn to_html(&self, running_text: bool) -> RawHtml<String> {
         match self {
-            Self::MidosHouse(team) => team.to_html(running_text),
+            Self::MidosHouseTeam(team) => team.to_html(running_text),
             Self::Named(name) => name.to_html(),
         }
     }
 }
 
-impl fmt::Display for RaceTeam {
+impl fmt::Display for Entrant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MidosHouse(team) => team.fmt(f),
+            Self::MidosHouseTeam(team) => team.fmt(f),
             Self::Named(name) => name.fmt(f),
         }
     }
 }
 
-#[derive(Clone)]
-pub(crate) enum Participants {
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) enum Entrants {
     Open,
     Named(String),
-    Two([RaceTeam; 2]),
+    Two([Entrant; 2]),
 }
 
 #[derive(Clone)]
@@ -200,7 +200,7 @@ pub(crate) struct Race {
     event: String,
     pub(crate) startgg_event: Option<String>,
     pub(crate) startgg_set: Option<String>,
-    pub(crate) participants: Participants,
+    pub(crate) entrants: Entrants,
     pub(crate) phase: Option<String>,
     pub(crate) round: Option<String>,
     pub(crate) game: Option<i16>,
@@ -219,6 +219,8 @@ impl Race {
             game,
             team1 AS "team1: Id",
             team2 AS "team2: Id",
+            p1,
+            p2,
             draft_state AS "draft_state: Json<Draft>",
             start,
             async_start1,
@@ -260,11 +262,16 @@ impl Race {
         } else {
             (None, None, None, None, None)
         };
-        let teams = if let [Some(team1), Some(team2)] = [row.team1, row.team2] {
-            [
-                Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?,
-                Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?,
-            ]
+        let entrants = if let [Some(team1), Some(team2)] = [row.team1, row.team2] {
+            Entrants::Two([
+                Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?),
+                Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?),
+            ])
+        } else if let [Some(p1), Some(p2)] = [row.p1, row.p2] {
+            Entrants::Two([
+                Entrant::Named(p1),
+                Entrant::Named(p2),
+            ])
         } else if let (Some(startgg_set), Some(slots)) = (&startgg_set, slots) {
             if let [
                 Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team1)), on: _ }) }) }),
@@ -274,7 +281,7 @@ impl Race {
                 let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
                 sqlx::query!("UPDATE races SET team1 = $1 WHERE id = $2", team1.id as _, i64::from(id)).execute(&mut *transaction).await?;
                 sqlx::query!("UPDATE races SET team2 = $1 WHERE id = $2", team2.id as _, i64::from(id)).execute(&mut *transaction).await?;
-                [team1, team2]
+                Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)])
             } else {
                 return Err(Error::StartggTeams { startgg_set: startgg_set.clone() })
             }
@@ -308,7 +315,6 @@ impl Race {
         Ok(Self {
             series: row.series,
             event: row.event,
-            participants: Participants::Two(teams.map(RaceTeam::MidosHouse)),
             game: row.game,
             schedule: RaceSchedule::new(
                 row.start, row.async_start1, row.async_start2,
@@ -330,7 +336,7 @@ impl Race {
                 file_stem: Cow::Owned(file_stem),
             }),
             video_url: None, //TODO
-            startgg_event, startgg_set, phase, round,
+            startgg_event, startgg_set, entrants, phase, round,
         })
     }
 
@@ -371,9 +377,9 @@ impl Race {
                                 event: format!("2"),
                                 startgg_event: None,
                                 startgg_set: None,
-                                participants: Participants::Two([
-                                    RaceTeam::Named(race.team1),
-                                    RaceTeam::Named(race.team2),
+                                entrants: Entrants::Two([
+                                    Entrant::Named(race.team1),
+                                    Entrant::Named(race.team2),
                                 ]),
                                 phase: Some(race.phase),
                                 round: Some(race.round),
@@ -402,7 +408,7 @@ impl Race {
                     event: event.event.to_string(),
                     startgg_event: None,
                     startgg_set: None,
-                    participants: Participants::Open,
+                    entrants: Entrants::Open,
                     phase: None,
                     round: None,
                     game: None,
@@ -432,9 +438,9 @@ impl Race {
                             event: event.event.to_string(),
                             startgg_event: None,
                             startgg_set: None,
-                            participants: Participants::Two([
-                                RaceTeam::Named(p1.clone()),
-                                RaceTeam::Named(p2.clone()),
+                            entrants: Entrants::Two([
+                                Entrant::Named(p1.clone()),
+                                Entrant::Named(p2.clone()),
                             ]),
                             //TODO add phases and round numbers from https://challonge.com/ymq48xum
                             phase: None,
@@ -465,9 +471,9 @@ impl Race {
                             event: event.event.to_string(),
                             startgg_event: None,
                             startgg_set: None,
-                            participants: Participants::Two([
-                                RaceTeam::Named(p1.clone()),
-                                RaceTeam::Named(p2.clone()),
+                            entrants: Entrants::Two([
+                                Entrant::Named(p1.clone()),
+                                Entrant::Named(p2.clone()),
                             ]),
                             //TODO add phases and round numbers from https://challonge.com/RSL_S3
                             phase: None,
@@ -504,9 +510,9 @@ impl Race {
                             event: event.event.to_string(),
                             startgg_event: None,
                             startgg_set: None,
-                            participants: Participants::Two([
-                                RaceTeam::Named(p1.clone()),
-                                RaceTeam::Named(p2.clone()),
+                            entrants: Entrants::Two([
+                                Entrant::Named(p1.clone()),
+                                Entrant::Named(p2.clone()),
                             ]),
                             phase: Some(phase.to_owned()),
                             round: Some(round),
@@ -534,9 +540,9 @@ impl Race {
                             event: event.event.to_string(),
                             startgg_event: None,
                             startgg_set: None,
-                            participants: Participants::Two([
-                                RaceTeam::Named(p1.clone()),
-                                RaceTeam::Named(p2.clone()),
+                            entrants: Entrants::Two([
+                                Entrant::Named(p1.clone()),
+                                Entrant::Named(p2.clone()),
                             ]),
                             phase: Some(format!("Swiss")), //TODO top 8 support
                             round: Some(format!("Round {round}")),
@@ -585,7 +591,7 @@ impl Race {
                             //TODO keep race IDs? (qN, cc)
                             startgg_event: None,
                             startgg_set: None,
-                            participants: Participants::Open,
+                            entrants: Entrants::Open,
                             phase: Some(format!("Qualifier")),
                             round: Some(format!("{}{}", i + 1, if let Some(weekly) = weekly { format!(" ({weekly} Weekly)") } else { String::default() })),
                             game: None,
@@ -604,31 +610,41 @@ impl Race {
                         if let [datetime_et, matchup, round] = &*row {
                             let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
                             if start < America::New_York.with_ymd_and_hms(2022, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue } //TODO also add an upper bound
-                            races.push(Self {
-                                series: event.series,
-                                event: event.event.to_string(),
-                                startgg_event: None,
-                                startgg_set: None,
-                                participants: if let Some((_, p1, p2)) = regex_captures!("^(.+) +[Vv][Ss]?\\.? +(.+)$", matchup) {
-                                    Participants::Two([
-                                        RaceTeam::Named(p1.to_owned()),
-                                        RaceTeam::Named(p2.to_owned()),
-                                    ])
-                                } else {
-                                    Participants::Named(matchup.clone())
-                                },
-                                phase: None, // main bracket
-                                round: Some(round.clone()),
-                                game: None,
-                                schedule: RaceSchedule::Live {
-                                    start: start.with_timezone(&Utc),
-                                    end: None,
-                                    room: None,
-                                },
-                                draft: None,
-                                seed: None,
-                                video_url: None, //TODO
-                            });
+                            let entrants = if let Some((_, p1, p2)) = regex_captures!("^(.+) +[Vv][Ss]?\\.? +(.+)$", matchup) {
+                                Entrants::Two([
+                                    Entrant::Named(p1.to_owned()),
+                                    Entrant::Named(p2.to_owned()),
+                                ])
+                            } else {
+                                Entrants::Named(matchup.clone())
+                            };
+                            // skip races already in the database due to archivist edits
+                            if !races.iter().any(|race|
+                                race.series == event.series
+                                && race.event == event.event
+                                && race.phase.is_none()
+                                && race.round.as_ref().map_or(false, |other_round| round == other_round)
+                                && race.entrants == entrants
+                            ) {
+                                races.push(Self {
+                                    series: event.series,
+                                    event: event.event.to_string(),
+                                    startgg_event: None,
+                                    startgg_set: None,
+                                    phase: None, // main bracket
+                                    round: Some(round.clone()),
+                                    game: None,
+                                    schedule: RaceSchedule::Live {
+                                        start: start.with_timezone(&Utc),
+                                        end: None,
+                                        room: None,
+                                    },
+                                    draft: None,
+                                    seed: None,
+                                    video_url: None, //TODO
+                                    entrants,
+                                });
+                            }
                         }
                     }
                     // Challenge Cup bracket matches
@@ -644,9 +660,9 @@ impl Race {
                                 event: event.event.to_string(),
                                 startgg_event: None,
                                 startgg_set: None,
-                                participants: Participants::Two([
-                                    RaceTeam::Named(p1.clone()),
-                                    RaceTeam::Named(p2.clone()),
+                                entrants: Entrants::Two([
+                                    Entrant::Named(p1.clone()),
+                                    Entrant::Named(p2.clone()),
                                 ]),
                                 phase: Some(format!("Challenge Cup")),
                                 round: Some(group_round.clone()),
@@ -764,12 +780,12 @@ impl Event {
     }
 
     pub(crate) fn active_teams(&self) -> impl Iterator<Item = &Team> + Send {
-        match self.race.participants {
-            Participants::Named(_) | Participants::Open => Box::new(iter::empty()) as Box<dyn Iterator<Item = &Team> + Send>,
-            Participants::Two([ref team1, ref team2]) => Box::new([
+        match self.race.entrants {
+            Entrants::Named(_) | Entrants::Open => Box::new(iter::empty()) as Box<dyn Iterator<Item = &Team> + Send>,
+            Entrants::Two([ref team1, ref team2]) => Box::new([
                 matches!(self.kind, EventKind::Normal | EventKind::Async1).then_some(team1),
                 matches!(self.kind, EventKind::Normal | EventKind::Async2).then_some(team2),
-            ].into_iter().filter_map(identity).filter_map(as_variant!(RaceTeam::MidosHouse))),
+            ].into_iter().filter_map(identity).filter_map(as_variant!(Entrant::MidosHouseTeam))),
         }
     }
 
@@ -876,13 +892,13 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                     (None, Some(round)) => format!("{} {round}", event.short_name()),
                     (None, None) => event.display_name.clone(),
                 };
-                cal_event.push(Summary::new(match race.participants {
-                    Participants::Open => summary_prefix,
-                    Participants::Named(ref participants) => match race_event.kind {
+                cal_event.push(Summary::new(match race.entrants {
+                    Entrants::Open => summary_prefix,
+                    Entrants::Named(ref participants) => match race_event.kind {
                         EventKind::Normal => format!("{summary_prefix}: {participants}"),
                         EventKind::Async1 | EventKind::Async2 => format!("{summary_prefix} (async): {participants}"),
                     },
-                    Participants::Two([ref team1, ref team2]) => match race_event.kind {
+                    Entrants::Two([ref team1, ref team2]) => match race_event.kind {
                         EventKind::Normal => format!("{summary_prefix}: {team1} vs {team2}"),
                         EventKind::Async1 => format!("{summary_prefix} (async): {team1} vs {team2}"),
                         EventKind::Async2 => format!("{summary_prefix} (async): {team2} vs {team1}"),
