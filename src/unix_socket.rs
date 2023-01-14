@@ -40,8 +40,11 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                 println!("preparing to stop Mido's House: acquiring clean shutdown mutex");
                                 let mut clean_shutdown = clean_shutdown.lock().await;
                                 clean_shutdown.requested = true;
-                                if clean_shutdown.num_rooms > 0 {
-                                    println!("preparing to stop Mido's House: waiting for {} rooms to close", clean_shutdown.num_rooms);
+                                if !clean_shutdown.open_rooms.is_empty() {
+                                    println!("preparing to stop Mido's House: waiting for {} rooms to close:", clean_shutdown.open_rooms.len());
+                                    for room_url in &clean_shutdown.open_rooms {
+                                        println!("{room_url}");
+                                    }
                                     let notifier = Arc::clone(&clean_shutdown.notifier);
                                     drop(clean_shutdown);
                                     notifier.notified().await;

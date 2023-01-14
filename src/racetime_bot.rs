@@ -1,7 +1,10 @@
 use {
     std::{
         borrow::Cow,
-        collections::HashMap,
+        collections::{
+            HashMap,
+            HashSet,
+        },
         fmt,
         io::prelude::*,
         marker::PhantomData,
@@ -353,7 +356,7 @@ impl FromStr for Goal {
 #[derive(Default)]
 pub(crate) struct CleanShutdown {
     pub(crate) requested: bool,
-    pub(crate) num_rooms: usize,
+    pub(crate) open_rooms: HashSet<String>,
     pub(crate) notifier: Arc<Notify>,
 }
 
@@ -973,8 +976,8 @@ impl<B: Bot> Handler<B> {
         let mut clean_shutdown = global_state.clean_shutdown.lock().await;
         B::should_handle_goal(&race_data.goal)
         && !matches!(race_data.status.value, RaceStatusValue::Finished | RaceStatusValue::Cancelled)
-        && if !clean_shutdown.requested || clean_shutdown.num_rooms > 0 {
-            if increment_num_rooms { clean_shutdown.num_rooms += 1 }
+        && if !clean_shutdown.requested || !clean_shutdown.open_rooms.is_empty() {
+            if increment_num_rooms { assert!(clean_shutdown.open_rooms.insert(race_data.url.clone())) }
             true
         } else {
             false
@@ -1103,12 +1106,12 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
         Ok(!Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await)
     }
 
-    async fn task(global_state: Arc<GlobalState>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
+    async fn task(global_state: Arc<GlobalState>, race_data: Arc<RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
         tokio::spawn(async move {
             let res = join_handle.await;
             let mut clean_shutdown = global_state.clean_shutdown.lock().await;
-            clean_shutdown.num_rooms -= 1;
-            if clean_shutdown.requested && clean_shutdown.num_rooms == 0 {
+            assert!(clean_shutdown.open_rooms.remove(&race_data.read().await.url));
+            if clean_shutdown.requested && clean_shutdown.open_rooms.is_empty() {
                 clean_shutdown.notifier.notify_waiters();
             }
             let () = res.unwrap();
