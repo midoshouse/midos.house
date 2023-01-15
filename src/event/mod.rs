@@ -1039,8 +1039,6 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                     @if me.as_ref().map_or(false, |me| me.is_archivist) {
                                         @if let Some(id) = race.id {
                                             a(class = "button", href = uri!(crate::cal::edit_race(race.series, &race.event, id)).to_string()) : "Edit";
-                                        } else {
-                                            //TODO edit button that creates a database entry
                                         }
                                     }
                                 }

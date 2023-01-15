@@ -1290,7 +1290,15 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf, event, race, form.context).await?)
         } else {
-            sqlx::query!("UPDATE races SET room = $1, async_room1 = $2, async_room2 = $3, video_url = $4, last_edited_by = $5, last_edited_at = NOW() WHERE id = $6", value.room, value.async_room1, value.async_room2, value.video_url, me.id as _, i64::from(id)).execute(&mut transaction).await?;
+            sqlx::query!(
+                "UPDATE races SET room = $1, async_room1 = $2, async_room2 = $3, video_url = $4, last_edited_by = $5, last_edited_at = NOW() WHERE id = $6",
+                (!value.room.is_empty()).then(|| &value.room),
+                (!value.async_room1.is_empty()).then(|| &value.async_room1),
+                (!value.async_room2.is_empty()).then(|| &value.async_room2),
+                (!value.video_url.is_empty()).then(|| &value.video_url),
+                me.id as _,
+                i64::from(id),
+            ).execute(&mut transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
