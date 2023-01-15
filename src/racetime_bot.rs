@@ -283,6 +283,14 @@ pub(crate) enum Goal {
 pub(crate) struct GoalFromStrError;
 
 impl Goal {
+    fn matches_event(&self, series: Series, event: &str) -> bool {
+        match self {
+            Self::MultiworldS3 => series == Series::Multiworld && event == "3",
+            Self::NineDaysOfSaws => series == Series::NineDaysOfSaws,
+            Self::Rsl => series == Series::Rsl,
+        }
+    }
+
     pub(crate) fn is_custom(&self) -> bool {
         match self {
             Self::MultiworldS3 => true,
@@ -1932,6 +1940,8 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
             _ = sleep(Duration::from_secs(60)) => {
                 let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
                 for row in sqlx::query!(r#"SELECT series AS "series: Series", event, id AS "id: Id" FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut transaction).await.to_racetime()? { //TODO get permission to create private rooms, then also use for asyncs
+                    let Some(goal) = all::<Goal>().find(|goal| goal.matches_event(row.series, &row.event)) else { continue };
+                    if let Goal::Rsl = goal { continue } // we're currently not opening rooms for RSL bracket matches despite having a goal for it
                     let race = Race::from_id(&mut transaction, &global_state.http_client, &global_state.startgg_token, row.id).await.to_racetime()?;
                     match racetime::authorize_with_host(global_state.host, &racetime_config.client_id, &racetime_config.client_secret, &global_state.http_client).await {
                         Ok((access_token, _)) => {
@@ -1943,7 +1953,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                                 (None, None) => None,
                             };
                             let race_slug = racetime::StartRace {
-                                goal: format!("3rd Multiworld Tournament"), //TODO don't hardcode
+                                goal: goal.as_str().to_owned(),
                                 goal_is_custom: true,
                                 team_race: true,
                                 invitational: !matches!(race.entrants, Entrants::Open),
