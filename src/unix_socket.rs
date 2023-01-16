@@ -8,13 +8,15 @@ use {
         io,
         net::UnixListener,
         select,
-        sync::Mutex,
     },
     wheel::{
         fs,
         traits::IoResultExt as _,
     },
-    crate::racetime_bot,
+    crate::{
+        racetime_bot,
+        util::sync::Mutex,
+    },
 };
 
 pub(crate) const PATH: &str = "/usr/local/share/midos-house/sock";

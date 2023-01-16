@@ -14,18 +14,16 @@ use {
         Deserialize,
         Serialize,
     },
-    tokio::{
-        sync::Mutex,
-        time::{
-            Instant,
-            sleep_until,
-        },
+    tokio::time::{
+        Instant,
+        sleep_until,
     },
     typemap_rev::{
         TypeMap,
         TypeMapKey,
     },
     wheel::traits::ReqwestResponseExt as _,
+    crate::util::sync::Mutex,
 };
 
 static CACHE: Lazy<Mutex<(Instant, TypeMap)>> = Lazy::new(|| Mutex::new((Instant::now(), TypeMap::default())));

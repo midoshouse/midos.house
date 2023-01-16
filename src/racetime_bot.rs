@@ -78,10 +78,7 @@ use {
         process::Command,
         select,
         sync::{
-            Mutex,
             Notify,
-            OwnedRwLockWriteGuard,
-            RwLock,
             Semaphore,
             TryAcquireError,
             mpsc,
@@ -138,6 +135,11 @@ use {
             format_duration,
             io_error_from_reqwest,
             parse_duration,
+            sync::{
+                ArcRwLock,
+                Mutex,
+                OwnedRwLockWriteGuard,
+            },
         },
     },
 };
@@ -659,7 +661,7 @@ enum SeedRollUpdate {
 }
 
 impl SeedRollUpdate {
-    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &Arc<RwLock<RaceState>>, startgg_game: Option<&(String, Option<i16>)>, description: &str) -> Result<(), Error> {
+    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &ArcRwLock<RaceState>, startgg_game: Option<&(String, Option<i16>)>, description: &str) -> Result<(), Error> {
         match self {
             Self::Queued(0) => ctx.send_message("I'm already rolling other multiworld seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
             Self::Queued(1) => ctx.send_message("I'm already rolling other multiworld seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
@@ -976,7 +978,7 @@ struct Handler<B: Bot> {
     start_saved: bool,
     fpa_enabled: bool,
     locked: bool,
-    race_state: Arc<RwLock<RaceState>>,
+    race_state: ArcRwLock<RaceState>,
 }
 
 impl<B: Bot> Handler<B> {
@@ -1060,7 +1062,7 @@ impl<B: Bot> Handler<B> {
         drop(state);
         let db_pool = ctx.global_state.db_pool.clone();
         let ctx = ctx.clone();
-        let state = Arc::clone(&self.race_state);
+        let state = self.race_state.clone();
         let startgg_game = self.official_data.as_ref().map(|official_data| (official_data.startgg_set.clone(), official_data.game));
         let mut official_start = self.official_data.as_ref().map(|official_data| official_data.start);
         tokio::spawn(async move {
@@ -1114,7 +1116,8 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
         Ok(!Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await)
     }
 
-    async fn task(global_state: Arc<GlobalState>, race_data: Arc<RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
+    async fn task(global_state: Arc<GlobalState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
+        let race_data = ArcRwLock::from(race_data);
         tokio::spawn(async move {
             println!("race handler for {} started", race_data.read().await.url);
             let res = join_handle.await;
@@ -1251,11 +1254,15 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             start_saved: false,
             fpa_enabled: is_official,
             locked: false,
-            race_state: Arc::new(RwLock::new(race_state)),
+            race_state: ArcRwLock::new(race_state),
             official_data, high_seed_name, low_seed_name,
         };
-        if let RaceState::Draft(_) = *this.race_state.read().await {
-            this.advance_draft(ctx).await?;
+        {
+            let state = this.race_state.read().await;
+            if let RaceState::Draft(_) = *state {
+                drop(state);
+                this.advance_draft(ctx).await?;
+            }
         }
         Ok(this)
     }
@@ -2070,7 +2077,7 @@ pub(crate) async fn main(db_pool: PgPool, http_client: reqwest::Client, discord_
     let ((), (), ()) = tokio::try_join!(
         create_rooms(global_state.clone(), env, config.clone(), shutdown.clone()),
         handle_rooms::<Mido>(global_state.clone(), env, if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }, shutdown.clone()),
-        handle_rooms::<RslBot>(global_state, env, &config.racetime_bot_rsl, shutdown),
+        handle_rooms::<RslBot>(global_state, env, if env.is_dev() { &config.racetime_bot_rsl_dev } else { &config.racetime_bot_rsl_production }, shutdown),
     )?;
     Ok(())
 }
