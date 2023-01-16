@@ -1225,6 +1225,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
         form.context.push_error(form::Error::validation("You must be an archivist to edit this race. If you would like to become an archivist, please contact Fenhl on Discord."));
     }
     Ok(if let Some(ref value) = form.value {
+        let mut valid_room_urls = Vec::default();
         match race.schedule {
             RaceSchedule::Unscheduled => {
                 if !value.room.is_empty() {
@@ -1241,7 +1242,9 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                 if !value.room.is_empty() {
                     match Url::parse(&value.room) {
                         Ok(room) => if let Some(host) = room.host_str() {
-                            if host != "racetime.gg" {
+                            if host == "racetime.gg" {
+                                valid_room_urls.push(room);
+                            } else {
                                 form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("room"));
                             }
                         } else {
@@ -1264,7 +1267,9 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                 if !value.async_room1.is_empty() {
                     match Url::parse(&value.async_room1) {
                         Ok(room) => if let Some(host) = room.host_str() {
-                            if host != "racetime.gg" {
+                            if host == "racetime.gg" {
+                                valid_room_urls.push(room);
+                            } else {
                                 form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room1"));
                             }
                         } else {
@@ -1276,7 +1281,9 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                 if !value.async_room2.is_empty() {
                     match Url::parse(&value.async_room2) {
                         Ok(room) => if let Some(host) = room.host_str() {
-                            if host != "racetime.gg" {
+                            if host == "racetime.gg" {
+                                valid_room_urls.push(room);
+                            } else {
                                 form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room2"));
                             }
                         } else {
@@ -1285,6 +1292,32 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                         Err(e) => form.context.push_error(form::Error::validation(format!("Failed to parse race room URL: {e}")).with_name("async_room2")),
                     }
                 }
+            }
+        }
+        let mut file_hash = None;
+        let mut web_id = None::<u64>;
+        for room in valid_room_urls {
+            match http_client.get(format!("{room}/data")).send().await {
+                Ok(response) => match response.detailed_error_for_status().await {
+                    Ok(response) => match response.json_with_text_in_error::<RaceData>().await {
+                        Ok(race_data) => if let Some(info_bot) = race_data.info_bot {
+                            if let Some((_, hash1, hash2, hash3, hash4, hash5, web_id_str)) = regex_captures!("^([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)\nhttps://ootrandomizer\\.com/seed/get\\?id=([0-9+])$", &info_bot) {
+                                let Some(hash1) = HashIcon::from_racetime_emoji(hash1) else { continue };
+                                let Some(hash2) = HashIcon::from_racetime_emoji(hash2) else { continue };
+                                let Some(hash3) = HashIcon::from_racetime_emoji(hash3) else { continue };
+                                let Some(hash4) = HashIcon::from_racetime_emoji(hash4) else { continue };
+                                let Some(hash5) = HashIcon::from_racetime_emoji(hash5) else { continue };
+                                file_hash = Some([hash1, hash2, hash3, hash4, hash5]);
+                                web_id = Some(web_id_str.parse().expect("found race room linking to out-of-range web seed ID"));
+                                //TODO back up seed
+                                break
+                            }
+                        },
+                        Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}"))), //TODO with_name
+                    },
+                    Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}"))), //TODO with_name
+                },
+                Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}"))), //TODO with_name
             }
         }
         if form.context.errors().next().is_some() {
@@ -1299,6 +1332,15 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                 me.id as _,
                 i64::from(id),
             ).execute(&mut transaction).await?;
+            if let Some([hash1, hash2, hash3, hash4, hash5]) = file_hash {
+                sqlx::query!(
+                    "UPDATE races SET hash1 = $1, hash2 = $2, hash3 = $3, hash4 = $4, hash5 = $5 WHERE id = $6",
+                    hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, i64::from(id),
+                ).execute(&mut transaction).await?;
+            }
+            if let Some(web_id) = web_id {
+                sqlx::query!("UPDATE races SET web_id = $1 WHERE id = $2", web_id as i64, i64::from(id)).execute(&mut transaction).await?;
+            }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }

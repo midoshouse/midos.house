@@ -125,6 +125,44 @@ pub(crate) enum HashIcon {
 }
 
 impl HashIcon {
+    pub(crate) fn from_racetime_emoji(emoji: &str) -> Option<Self> {
+        match emoji {
+            "HashBeans" => Some(Self::Beans),
+            "HashBigMagic" => Some(Self::BigMagic),
+            "HashBombchu" => Some(Self::Bombchu),
+            "HashBoomerang" => Some(Self::Boomerang),
+            "HashBossKey" => Some(Self::BossKey),
+            "HashBottledFish" => Some(Self::BottledFish),
+            "HashBottledMilk" => Some(Self::BottledMilk),
+            "HashBow" => Some(Self::Bow),
+            "HashCompass" => Some(Self::Compass),
+            "HashCucco" => Some(Self::Cucco),
+            "HashDekuNut" => Some(Self::DekuNut),
+            "HashDekuStick" => Some(Self::DekuStick),
+            "HashFairyOcarina" => Some(Self::FairyOcarina),
+            "HashFrog" => Some(Self::Frog),
+            "HashGoldScale" => Some(Self::GoldScale),
+            "HashHeart" => Some(Self::HeartContainer),
+            "HashHoverBoots" => Some(Self::HoverBoots),
+            "HashKokiriTunic" => Some(Self::KokiriTunic),
+            "HashLensOfTruth" => Some(Self::LensOfTruth),
+            "HashLongshot" => Some(Self::Longshot),
+            "HashMap" => Some(Self::Map),
+            "HashMaskOfTruth" => Some(Self::MaskOfTruth),
+            "HashMasterSword" => Some(Self::MasterSword),
+            "HashHammer" => Some(Self::MegatonHammer),
+            "HashMirrorShield" => Some(Self::MirrorShield),
+            "HashMushroom" => Some(Self::Mushroom),
+            "HashSaw" => Some(Self::Saw),
+            "HashSilvers" => Some(Self::SilverGauntlets),
+            "HashSkullToken" => Some(Self::SkullToken),
+            "HashSlingshot" => Some(Self::Slingshot),
+            "HashSoldOut" => Some(Self::SoldOut),
+            "HashStoneOfAgony" => Some(Self::StoneOfAgony),
+            _ => None,
+        }
+    }
+
     pub(crate) fn to_racetime_emoji(&self) -> &'static str {
         match self {
             Self::Beans => "HashBeans",
