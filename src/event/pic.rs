@@ -3,6 +3,7 @@ use {
         borrow::Cow,
         cmp::Ordering::*,
     },
+    chrono::prelude::*,
     futures::stream,
     itertools::Itertools as _,
     rocket::{
@@ -153,9 +154,9 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "rs2" => html! {
             p {
                 : "The seed will be rolled on ";
-                a(href = "https://github.com/fenhl/plando-random-settings/tree/f0517efc8018bf62e119bc3f9d4035b25a116cbd") : "version 2.3.8 Fenhl-3";
+                a(href = "https://github.com/fenhl/plando-random-settings/tree/a47aaf8385bf4552989fca96dfaea3823592f1bf") : "version 2.3.8 Fenhl-4";
                 : " of the random settings script. We will be using ";
-                a(href = "https://github.com/fenhl/plando-random-settings/blob/f0517efc8018bf62e119bc3f9d4035b25a116cbd/weights/pictionary_override.json") : "a special weights override";
+                a(href = "https://github.com/fenhl/plando-random-settings/blob/a47aaf8385bf4552989fca96dfaea3823592f1bf/weights/pictionary_override.json") : "a special weights override";
                 : " for Pictionary spoiler log races. Changes include:";
             }
             ul {
@@ -167,7 +168,6 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         li : "Ice trap mayhem/onslaught + quad damage/OHKO";
                         li : "Separate key shuffle setting for the Thieves' Hideout";
                         li : "Random scrub prices without a starting wallet";
-                        li : "OHKO without starting Nayru's Love";
                         li : "All goals reachable (33% chance)";
                         li : "Boss keys in overworld, any dungeon, or regional";
                     }
@@ -185,7 +185,7 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         li : "Closed Kokiri Forest exit (50% chance, independent of Closed/Open Deku) with a 5% chance of Require Gohma";
                         li : "Shuffled Thieves' Hideout entrances (50% chance if interiors are shuffled)";
                         li : "Shuffled Gerudo Valley river exit (50% chance)";
-                        li : "Shuffled Blue Warps (vanilla, dungeon entrance, or shuffled)";
+                        li : "Shuffled blue warps (vanilla, dungeon entrance, or shuffled)";
                         li : "Full one-way entrance randomization (owls, warp songs, spawns, blue warps, and the Gerudo Valley river exit can lead to more destinations; 25% chance each)";
                         li : "Only one one-way entrance of any type goes to a given hint area (50% chance)";
                         li : "Vanilla song locations (5% chance)";
@@ -245,7 +245,14 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             }
             p {
                 : "Before the race we will provide a room on ";
-                a(href = "https://aggie.io/") : "aggie.io";
+                @match data.base_start.map(|base_start| base_start.year()) {
+                    Some(..=2022) => a(href = "https://aggie.io/") : "aggie.io";
+                    Some(2023) => {
+                        a(href = "https://magma.com/") : "magma.com";
+                        : " (formerly known as aggie.io)";
+                    }
+                    (Some(2024..) | None) => a(href = "https://magma.com/") : "magma.com";
+                }
                 : " to each team. The canvas will be set to 660×460 for restream purposes.";
             }
             p {
