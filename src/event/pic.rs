@@ -150,6 +150,73 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 : ".";
             }
         },
+        "rs2" => html! {
+            p {
+                : "The seed will be rolled on ";
+                a(href = "https://github.com/fenhl/plando-random-settings/tree/f0517efc8018bf62e119bc3f9d4035b25a116cbd") : "version 2.3.8 Fenhl-3";
+                : " of the random settings script. We will be using ";
+                a(href = "https://github.com/fenhl/plando-random-settings/blob/f0517efc8018bf62e119bc3f9d4035b25a116cbd/weights/pictionary_override.json") : "a special weights override";
+                : " for Pictionary spoiler log races. Changes include:";
+            }
+            ul {
+                li : "To reduce complexity for the pilot, overworld ER is disabled.";
+                li : "Master Quest dungeons are disabled due to a lack of documentation for spoiler log location names.";
+                li {
+                    : "Some of the settings and combinations of settings that are disabled in RSL for information-related reasons are turned back on, since they're not an issue if you have the spoiler log:";
+                    ul {
+                        li : "Ice trap mayhem/onslaught + quad damage/OHKO";
+                        li : "Separate key shuffle setting for the Thieves' Hideout";
+                        li : "Random scrub prices without a starting wallet";
+                        li : "OHKO without starting Nayru's Love";
+                        li : "All goals reachable (33% chance)";
+                        li : "Boss keys in overworld, any dungeon, or regional";
+                    }
+                }
+                li {
+                    : "The seed will be rolled on ";
+                    a(href = "https://github.com/fenhl/OoT-Randomizer/tree/f9d0e0f9e2f9e9c2358cfa3dcd75ca595ab5084c") : "Fenhl's branch";
+                    : ", so some settings that aren't in Dev-R are added:";
+                    ul {
+                        li : "Boss rooms included in mixed entrance pools (50% chance if mixed pools is on)";
+                        li : "Triforce Hunt variants: Ice% (single piece in the iron boots chest) and Triforce Blitz (3 pieces found in dungeons), 5% chance each";
+                        li : "Shuffled dungeon rewards (vanilla, own dungeon, regional, overworld, any dungeon, or anywhere; 5% chance each)";
+                        li : "Keyrings give boss keys (50% chance)";
+                        li : "Shuffled silver rupees (same weights as small key shuffle) with silver rupee pouches (20% chance)";
+                        li : "Closed Kokiri Forest exit (50% chance, independent of Closed/Open Deku) with a 5% chance of Require Gohma";
+                        li : "Shuffled Thieves' Hideout entrances (50% chance if interiors are shuffled)";
+                        li : "Shuffled Gerudo Valley river exit (50% chance)";
+                        li : "Shuffled Blue Warps (vanilla, dungeon entrance, or shuffled)";
+                        li : "Full one-way entrance randomization (owls, warp songs, spawns, blue warps, and the Gerudo Valley river exit can lead to more destinations; 25% chance each)";
+                        li : "Only one one-way entrance of any type goes to a given hint area (50% chance)";
+                        li : "Vanilla song locations (5% chance)";
+                        li : "Vanilla base item pool (5% chance)";
+                    }
+                }
+                li {
+                    : "Some newer settings that are not yet included in RSL due to the ongoing tournament are enabled:";
+                    ul {
+                        li : "Shuffled Ganon's Castle entrance (25% chance)";
+                        li : "Shuffled beehives (50% chance)";
+                    }
+                }
+                li {
+                    : "The following settings that would give the runner hints or similar information are disabled:";
+                    ul {
+                        li : "Maps & compasses give info";
+                        li : "Chest appearance matches contents";
+                        li : "Gossip stone hints";
+                        li : "Temple of Time altar hints";
+                        li : "Ganondorf & Dampé diary light arrow hints";
+                        li : "Warp song text boxes hinting destinations";
+                    }
+                }
+            }
+            p {
+                : "Everything else is the same as ";
+                a(href = "https://rsl-leaderboard.web.app/weights") : "the usual RSL weights";
+                : ".";
+            }
+        },
         _ => unimplemented!(),
     };
     let sample_seeds = match &*data.event {
