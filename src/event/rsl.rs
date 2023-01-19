@@ -79,9 +79,18 @@ impl FromStr for Preset {
 
 pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
     Ok(match &*data.event {
+        "1" => html! {
+            article {
+                p : "This is an archive of the 1st season of the Random Settings League tournament, organized by Cubsrule21, ";
+                : natjoin_html(data.organizers(transaction).await?);
+                : ".";
+            }
+        },
         "2" => html! {
             article {
-                p : "This is an archive of the 2nd season of the Random Settings League tournament.";
+                p : "This is an archive of the 2nd season of the Random Settings League tournament, organized by Cubsrule21, ";
+                : natjoin_html(data.organizers(transaction).await?);
+                : ".";
                 h2 : "See also";
                 ul {
                     li {
@@ -92,7 +101,9 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         },
         "3" => html! {
             article {
-                p : "This is an archive of the 3rd season of the Random Settings League tournament.";
+                p : "This is an archive of the 3rd season of the Random Settings League tournament, organized by Cubsrule21, ";
+                : natjoin_html(data.organizers(transaction).await?);
+                : ".";
                 h2 : "See also";
                 ul {
                     li {
@@ -103,7 +114,9 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         },
         "4" => html! {
             article {
-                p : "This is an archive of the 4th season of the Random Settings League tournament.";
+                p : "This is an archive of the 4th season of the Random Settings League tournament, organized by Cubsrule21, ";
+                : natjoin_html(data.organizers(transaction).await?);
+                : ".";
                 h2 : "See also";
                 ul {
                     li {
