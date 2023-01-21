@@ -85,6 +85,7 @@ pub(crate) fn static_url(path: &str) -> String {
 pub(crate) enum PageKind {
     Index,
     Banner,
+    Center,
     Login,
     MyProfile,
     Notifications,
@@ -185,7 +186,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                         }
                     }
                     @if let Some(content) = content {
-                        main {
+                        main(class? = matches!(style.kind, PageKind::Center).then(|| "center")) {
                             : content;
                         }
                     }
@@ -321,6 +322,38 @@ async fn new_event(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> P
     }).await
 }
 
+#[rocket::get("/mw")]
+async fn mw(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
+    let transaction = pool.begin().await?;
+    page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::default() }, "Mido's House Multiworld", html! {
+        h1 : "Mido's House Multiworld";
+        img(class = "banner icon", src = static_url("mw.png"));
+        p {
+            : "Mido's House Multiworld is a tool that can be used to play ";
+            a(href = "https://wiki.ootrandomizer.com/index.php?title=Multiworld") : "multiworld";
+            : " seeds of the ";
+            a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
+            : ". It supports both ";
+            a(href = "https://tasvideos.org/BizHawk") : "BizHawk";
+            : " and ";
+            a(href = "https://pj64-emu.com/") : "Project64";
+            : ", and does not require port forwarding.";
+        }
+        div(class = "button-row") {
+            a(class = "button", href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "Download";
+        }
+        p {
+            : "If you can't or don't want to use the installer, you can follow the ";
+            a(href = "https://github.com/midoshouse/ootr-multiworld#manual") : "manual install instructions";
+            : " instead.";
+        }
+        p {
+            a(href = "https://github.com/midoshouse/ootr-multiworld") : "The source code for Mido's House Multiworld";
+            : " is available on GitHub";
+        }
+    }).await
+}
+
 #[rocket::get("/robots.txt")]
 async fn robots_txt() -> RawText<&'static str> {
     RawText("User-agent: *\nDisallow: /seed/\nDisallow: /static/\n")
@@ -401,6 +434,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         index,
         archive,
         new_event,
+        mw,
         robots_txt,
         api::graphql_request,
         api::graphql_query,

@@ -70,6 +70,7 @@ use {
         },
         favicon::ChestAppearances,
         http::{
+            self,
             PageStyle,
             page,
         },
@@ -696,7 +697,7 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : "There are two plugins that can be used for the item sharing: ";
                     a(href = "https://github.com/TestRunnerSRL/bizhawk-co-op#readme") : "bizhawk-co-op";
                     : " (also known as Multiworld 1.0) and ";
-                    a(href = "https://github.com/midoshouse/ootr-multiworld#readme") : "Mido's House Multiworld";
+                    a(href = uri!(http::mw).to_string()) : "Mido's House Multiworld";
                     : ". While we recommend using the Mido's House plugin since it supports Project64 in addition to BizHawk and is easier to use (see ";
                     a(href = "https://github.com/midoshouse/ootr-multiworld#feature-comparison") : "feature comparison";
                     : "), both plugins are legal in this tournament.";

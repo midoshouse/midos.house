@@ -61,6 +61,10 @@ body > div {
     flex-grow: 0;
 }
 
+.center {
+    text-align: center;
+}
+
 .button-row {
     flex-flow: row wrap;
 }
@@ -68,6 +72,10 @@ body > div {
 div.button-row {
     display: flex;
     padding: 0 16px;
+}
+
+.center .button-row {
+    justify-content: center;
 }
 
 span.button-row {
@@ -251,6 +259,11 @@ textarea {
 .banner {
     min-height: 0;
     object-fit: contain;
+}
+
+.icon {
+    max-width: 25vw;
+    max-height: 25vh;
 }
 
 .nearest-neighbor {
