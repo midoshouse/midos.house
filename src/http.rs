@@ -349,7 +349,7 @@ async fn mw(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResu
         }
         p {
             a(href = "https://github.com/midoshouse/ootr-multiworld") : "The source code for Mido's House Multiworld";
-            : " is available on GitHub";
+            : " is available on GitHub.";
         }
     }).await
 }
