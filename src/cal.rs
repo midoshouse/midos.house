@@ -578,6 +578,12 @@ impl Race {
                         let stream = rest.next();
                         assert!(rest.next().is_none());
                         let start = Utc.datetime_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_utc:?} at {time_utc:?}"));
+                        let (phase, round) = match &**round {
+                            "1/4 final" => ("Top 8", format!("Quarterfinal")),
+                            "1/2 final" => ("Top 8", format!("Semifinal")),
+                            "final" => ("Top 8", format!("Finals")),
+                            _ => ("Swiss", format!("Round {round}")),
+                        };
                         races.push(Self {
                             id: None,
                             series: event.series,
@@ -588,9 +594,9 @@ impl Race {
                                 Entrant::Named(p1.clone()),
                                 Entrant::Named(p2.clone()),
                             ]),
-                            phase: Some(format!("Swiss")), //TODO top 8 support
-                            round: Some(format!("Round {round}")),
-                            game: None,
+                            phase: Some(phase.to_owned()),
+                            round: Some(round),
+                            game: None, //TODO
                             schedule: RaceSchedule::Live {
                                 start: start.with_timezone(&Utc),
                                 end: None, //TODO get from RSLBot seed archive
@@ -655,6 +661,7 @@ impl Race {
                         if let [datetime_et, matchup, round] = &*row {
                             let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
                             if start < America::New_York.with_ymd_and_hms(2022, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue } //TODO also add an upper bound
+                            if round.contains("RSL") { continue }
                             let entrants = if let Some((_, p1, p2)) = regex_captures!("^(.+) +[Vv][Ss]?\\.? +(.+)$", matchup) {
                                 Entrants::Two([
                                     Entrant::Named(p1.to_owned()),
@@ -701,7 +708,7 @@ impl Race {
                                     },
                                     draft: None,
                                     seed: None,
-                                    video_url: None, //TODO
+                                    video_url: None,
                                     id, entrants,
                                 });
                             }
