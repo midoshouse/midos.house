@@ -282,6 +282,7 @@ impl ChestAppearance {
         let mut appearance = match item_name {
             "Bow" |
             "Slingshot" |
+            "Deku Seed Bag" |
             "Boomerang" |
             "Progressive Hookshot" |
             "Lens of Truth" |
@@ -331,6 +332,7 @@ impl ChestAppearance {
             "Biggoron Sword" |
             "Fire Arrows" |
             "Ice Arrows" |
+            "Blue Fire Arrows" |
             "Light Arrows" |
             "Dins Fire" |
             "Farores Wind" |
@@ -364,7 +366,16 @@ impl ChestAppearance {
             "Easter Egg (Blue)" |
             "Triforce of Power" |
             "Triforce of Wisdom" |
-            "Triforce of Courage" => match camc_kind {
+            "Triforce of Courage" |
+            "Kokiri Emerald" |
+            "Goron Ruby" |
+            "Zora Sapphire" |
+            "Light Medallion" |
+            "Forest Medallion" |
+            "Fire Medallion" |
+            "Water Medallion" |
+            "Shadow Medallion" |
+            "Spirit Medallion" => match camc_kind {
                 CorrectChestAppearances::Off => unreachable!(),
                 CorrectChestAppearances::Classic => ChestAppearance { texture: ChestTexture::Normal, big: true },
                 CorrectChestAppearances::Textures => ChestAppearance { texture: ChestTexture::Major, big: false },
@@ -540,7 +551,7 @@ impl ChestAppearances {
 
     pub(crate) fn random() -> Self {
         //TODO automatically keep up to date with the dev-fenhl branch of the RSL script
-        static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../assets/chests-rsl-a8692e3.json")).expect("failed to parse chest weights"));
+        static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../assets/chests-rsl-e02ce52.json")).expect("failed to parse chest weights"));
 
         WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
     }
