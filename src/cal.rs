@@ -680,7 +680,7 @@ impl Race {
                             let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
                             if start < America::New_York.with_ymd_and_hms(2022, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue } //TODO also add an upper bound
                             if round.contains("RSL") { continue }
-                            let entrants = if let Some((_, p1, p2)) = regex_captures!("^(.+) +[Vv][Ss]?\\.? +(.+)$", matchup) {
+                            let entrants = if let Some((_, p1, p2)) = regex_captures!("^(.+) +(?i:vs?\\.?|x) +(.+)$", matchup) {
                                 Entrants::Two([
                                     Entrant::Named(p1.to_owned()),
                                     Entrant::Named(p2.to_owned()),
