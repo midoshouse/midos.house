@@ -2,15 +2,18 @@ use {
     std::{
         borrow::Cow,
         cmp::Ordering,
+        collections::HashMap,
         convert::identity,
         fmt,
         iter,
+        path::Path,
     },
     chrono::{
         Duration,
         prelude::*,
     },
     chrono_tz::America,
+    futures::stream::TryStreamExt as _,
     ics::{
         ICalendar,
         properties::{
@@ -24,6 +27,7 @@ use {
     lazy_regex::regex_captures,
     once_cell::sync::Lazy,
     racetime::model::RaceData,
+    reqwest::StatusCode,
     rocket::{
         FromForm,
         State,
@@ -57,8 +61,16 @@ use {
         Transaction,
         types::Json,
     },
+    tokio::io,
+    tokio_util::io::StreamReader,
     url::Url,
-    wheel::traits::ReqwestResponseExt as _,
+    wheel::{
+        fs::{
+            self,
+            File,
+        },
+        traits::ReqwestResponseExt as _,
+    },
     yup_oauth2::{
         ServiceAccountAuthenticator,
         read_service_account_key,
@@ -81,6 +93,7 @@ use {
         seed::{
             self,
             HashIcon,
+            SpoilerLog,
         },
         startgg,
         team::Team,
@@ -94,6 +107,7 @@ use {
             as_variant,
             form_field,
             format_datetime,
+            io_error_from_reqwest,
             utc,
         },
     },
@@ -1232,7 +1246,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
         form.context.push_error(form::Error::validation("You must be an archivist to edit this race. If you would like to become an archivist, please contact Fenhl on Discord."));
     }
     Ok(if let Some(ref value) = form.value {
-        let mut valid_room_urls = Vec::default();
+        let mut valid_room_urls = HashMap::new();
         match race.schedule {
             RaceSchedule::Unscheduled => {
                 if !value.room.is_empty() {
@@ -1250,7 +1264,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                     match Url::parse(&value.room) {
                         Ok(room) => if let Some(host) = room.host_str() {
                             if host == "racetime.gg" {
-                                valid_room_urls.push(room);
+                                valid_room_urls.insert("room", room);
                             } else {
                                 form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("room"));
                             }
@@ -1275,7 +1289,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                     match Url::parse(&value.async_room1) {
                         Ok(room) => if let Some(host) = room.host_str() {
                             if host == "racetime.gg" {
-                                valid_room_urls.push(room);
+                                valid_room_urls.insert("async_room1", room);
                             } else {
                                 form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room1"));
                             }
@@ -1289,7 +1303,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                     match Url::parse(&value.async_room2) {
                         Ok(room) => if let Some(host) = room.host_str() {
                             if host == "racetime.gg" {
-                                valid_room_urls.push(room);
+                                valid_room_urls.insert("async_room2", room);
                             } else {
                                 form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room2"));
                             }
@@ -1303,7 +1317,8 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
         }
         let mut file_hash = None;
         let mut web_id = None::<u64>;
-        for room in valid_room_urls {
+        let mut file_stem = None;
+        for (field_name, room) in valid_room_urls {
             match http_client.get(format!("{room}/data")).send().await {
                 Ok(response) => match response.detailed_error_for_status().await {
                     Ok(response) => match response.json_with_text_in_error::<RaceData>().await {
@@ -1316,15 +1331,72 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                                 let Some(hash5) = HashIcon::from_racetime_emoji(hash5) else { continue };
                                 file_hash = Some([hash1, hash2, hash3, hash4, hash5]);
                                 web_id = Some(web_id_str.parse().expect("found race room linking to out-of-range web seed ID"));
-                                //TODO back up seed
+                                match http_client.get("https://ootrandomizer.com/patch/get").query(&[("id", web_id)]).send().await {
+                                    Ok(patch_response) => match patch_response.detailed_error_for_status().await {
+                                        Ok(patch_response) => if let Some(content_disposition) = patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION) {
+                                            match content_disposition.to_str() {
+                                                Ok(content_disposition) => if let Some((_, patch_file_name)) = regex_captures!("^attachment; filename=(.+)$", content_disposition) {
+                                                    let patch_file_name = patch_file_name.to_owned();
+                                                    if let Some((_, patch_file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_file_name) {
+                                                        file_stem = Some(patch_file_stem.to_owned());
+                                                        match File::create(Path::new(seed::DIR).join(&patch_file_name)).await {
+                                                            Ok(mut file) => if let Err(e) = io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut file).await {
+                                                                form.context.push_error(form::Error::validation(format!("Error saving patch file from room data: {e}")).with_name(field_name))
+                                                            },
+                                                            Err(e) => form.context.push_error(form::Error::validation(format!("Error saving patch file from room data: {e}")).with_name(field_name)),
+                                                        }
+                                                    } else {
+                                                        form.context.push_error(form::Error::validation("Couldn't parse patch file name from room data").with_name(field_name));
+                                                    }
+                                                } else {
+                                                    form.context.push_error(form::Error::validation("Couldn't parse patch file name from room data").with_name(field_name));
+                                                },
+                                                Err(e) => form.context.push_error(form::Error::validation(format!("Couldn't parse patch file name from room data: {e}")).with_name(field_name)),
+                                            }
+                                        } else {
+                                            form.context.push_error(form::Error::validation("Couldn't parse patch file name from room data").with_name(field_name));
+                                        }
+                                        Err(e) => form.context.push_error(form::Error::validation(format!("Error getting patch file from room data: {e}")).with_name(field_name)),
+                                    },
+                                    Err(e) => form.context.push_error(form::Error::validation(format!("Error getting patch file from room data: {e}")).with_name(field_name)),
+                                }
+                                if let Some(ref file_stem) = file_stem {
+                                    match http_client.get("https://ootrandomizer.com/spoilers/get").query(&[("id", web_id)]).send().await {
+                                        Ok(spoiler_response) => if spoiler_response.status() != StatusCode::BAD_REQUEST { // returns error 400 if no spoiler log has been generated
+                                            match spoiler_response.detailed_error_for_status().await {
+                                                Ok(spoiler_response) => {
+                                                    let spoiler_filename = format!("{file_stem}_Spoiler.json");
+                                                    let spoiler_path = Path::new(seed::DIR).join(&spoiler_filename);
+                                                    match File::create(&spoiler_path).await {
+                                                        Ok(mut file) => match io::copy_buf(&mut StreamReader::new(spoiler_response.bytes_stream().map_err(io_error_from_reqwest)), &mut file).await {
+                                                            Ok(_) => if file_hash.is_none() {
+                                                                match fs::read(spoiler_path).await {
+                                                                    Ok(buf) => match serde_json::from_slice::<SpoilerLog>(&buf) {
+                                                                        Ok(spoiler_log) => file_hash = Some(spoiler_log.file_hash),
+                                                                        Err(e) => form.context.push_error(form::Error::validation(format!("Error reading spoiler log from room data: {e}")).with_name(field_name)),
+                                                                    },
+                                                                    Err(e) => form.context.push_error(form::Error::validation(format!("Error reading spoiler log from room data: {e}")).with_name(field_name)),
+                                                                }
+                                                            },
+                                                            Err(e) => form.context.push_error(form::Error::validation(format!("Error saving spoiler log from room data: {e}")).with_name(field_name)),
+                                                        },
+                                                        Err(e) => form.context.push_error(form::Error::validation(format!("Error saving spoiler log from room data: {e}")).with_name(field_name)),
+                                                    }
+                                                }
+                                                Err(e) => form.context.push_error(form::Error::validation(format!("Error getting spoiler log from room data: {e}")).with_name(field_name)),
+                                            }
+                                        },
+                                        Err(e) => form.context.push_error(form::Error::validation(format!("Error getting spoiler log from room data: {e}")).with_name(field_name)),
+                                    }
+                                }
                                 break
                             }
                         },
-                        Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}"))), //TODO with_name
+                        Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}")).with_name(field_name)),
                     },
-                    Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}"))), //TODO with_name
+                    Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}")).with_name(field_name)),
                 },
-                Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}"))), //TODO with_name
+                Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}")).with_name(field_name)),
             }
         }
         if form.context.errors().next().is_some() {
@@ -1347,6 +1419,9 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
             }
             if let Some(web_id) = web_id {
                 sqlx::query!("UPDATE races SET web_id = $1 WHERE id = $2", web_id as i64, i64::from(id)).execute(&mut transaction).await?;
+            }
+            if let Some(file_stem) = file_stem {
+                sqlx::query!("UPDATE races SET file_stem = $1 WHERE id = $2", file_stem, i64::from(id)).execute(&mut transaction).await?;
             }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
