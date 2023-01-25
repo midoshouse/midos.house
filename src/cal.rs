@@ -1100,9 +1100,9 @@ pub(super) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, m
                 }
                 //TODO allow editing seed
                 : form_field("video_url", &mut errors, html! {
-                    label(for = "video_url") : "Video URL:";
+                    label(for = "video_url") : "Restream URL:";
                     input(type = "text", name = "video_url", value? = race.video_url.map(|video_url| video_url.to_string()));
-                    label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel";
+                    label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
                 });
                 fieldset {
                     input(type = "submit", value = "Save");
