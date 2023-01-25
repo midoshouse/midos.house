@@ -692,7 +692,7 @@ impl Race {
                                 race.series == event.series
                                 && race.event == event.event
                                 && race.phase.is_none()
-                                && race.round.as_ref().map_or(false, |other_round| round == other_round)
+                                && race.round.as_ref().map_or(false, |other_round| other_round == round)
                                 && race.entrants == entrants
                             ) {
                                 // add race to database to give it an ID
@@ -740,38 +740,58 @@ impl Race {
                             let _restream_ok = restream_ok == "Yes";
                             if is_cancelled == "TRUE" { continue }
                             let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %I:%M %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                            races.push(Self {
-                                id: None,
-                                series: event.series,
-                                event: event.event.to_string(),
-                                startgg_event: None,
-                                startgg_set: None,
-                                entrants: Entrants::Two([
-                                    Entrant::Named(p1.clone()),
-                                    Entrant::Named(p2.clone()),
-                                ]),
-                                phase: Some(format!("Challenge Cup")),
-                                round: Some(group_round.clone()),
-                                game: None,
-                                schedule: if is_async {
-                                    RaceSchedule::Async {
-                                        start1: Some(start.with_timezone(&Utc)),
-                                        start2: None,
-                                        end1: None, end2: None,
-                                        room1: None,
-                                        room2: None,
-                                    }
-                                } else {
-                                    RaceSchedule::Live {
-                                        start: start.with_timezone(&Utc),
-                                        end: None,
-                                        room: None,
-                                    }
-                                },
-                                draft: None,
-                                seed: None,
-                                video_url: None, //TODO
-                            });
+                            let entrants = Entrants::Two([
+                                Entrant::Named(p1.clone()),
+                                Entrant::Named(p2.clone()),
+                            ]);
+                            if !races.iter().any(|race|
+                                race.series == event.series
+                                && race.event == event.event
+                                && race.phase.as_ref().map_or(false, |other_phase| other_phase == "Challenge Cup")
+                                && race.round.as_ref().map_or(false, |other_round| other_round == group_round)
+                                && race.entrants == entrants
+                            ) {
+                                // add race to database to give it an ID
+                                let id = Id::new(&mut *transaction, IdTable::Races).await?;
+                                sqlx::query!("INSERT INTO races (start, series, event, id, p1, p2, phase, round) VALUES ($1, $2, $3, $4, $5, $6, 'Challenge Cup', $7)",
+                                    start,
+                                    event.series as _,
+                                    &event.event,
+                                    id as _,
+                                    p1,
+                                    p2,
+                                    group_round,
+                                ).execute(&mut *transaction).await?;
+                                races.push(Self {
+                                    id: Some(id),
+                                    series: event.series,
+                                    event: event.event.to_string(),
+                                    startgg_event: None,
+                                    startgg_set: None,
+                                    phase: Some(format!("Challenge Cup")),
+                                    round: Some(group_round.clone()),
+                                    game: None,
+                                    schedule: if is_async {
+                                        RaceSchedule::Async {
+                                            start1: Some(start.with_timezone(&Utc)),
+                                            start2: None,
+                                            end1: None, end2: None,
+                                            room1: None,
+                                            room2: None,
+                                        }
+                                    } else {
+                                        RaceSchedule::Live {
+                                            start: start.with_timezone(&Utc),
+                                            end: None,
+                                            room: None,
+                                        }
+                                    },
+                                    draft: None,
+                                    seed: None,
+                                    video_url: None,
+                                    entrants,
+                                });
+                            }
                         }
                     }
                 }
