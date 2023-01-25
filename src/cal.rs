@@ -377,8 +377,12 @@ impl Race {
             seed: row.file_stem.map(|file_stem| seed::Data {
                 web: match (row.web_id, row.web_gen_time) {
                     (Some(Id(id)), Some(gen_time)) => Some(seed::OotrWebData { id, gen_time }),
-                    (None, None) => None,
-                    _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
+                    (Some(Id(id)), None) => match (row.start, row.async_start1, row.async_start2) {
+                        (Some(start), None, None) | (None, Some(start), None) | (None, None, Some(start)) => Some(seed::OotrWebData { id, gen_time: start - Duration::days(1) }),
+                        (None, Some(async_start1), Some(async_start2)) => Some(seed::OotrWebData { id, gen_time: async_start1.min(async_start2) - Duration::days(1) }),
+                        (_, _, _) => None,
+                    },
+                    (None, _) => None,
                 },
                 file_hash: match (row.hash1, row.hash2, row.hash3, row.hash4, row.hash5) {
                     (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
@@ -1242,6 +1246,9 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
     let race = Race::from_id(&mut transaction, http_client, startgg_token, id).await?;
     let mut form = form.into_inner();
     form.verify(&csrf);
+    if race.series != event.series || race.event != event.event {
+        form.context.push_error(form::Error::validation("This race is not part of this event."));
+    }
     if !me.is_archivist {
         form.context.push_error(form::Error::validation("You must be an archivist to edit this race. If you would like to become an archivist, please contact Fenhl on Discord."));
     }
@@ -1323,7 +1330,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                 Ok(response) => match response.detailed_error_for_status().await {
                     Ok(response) => match response.json_with_text_in_error::<RaceData>().await {
                         Ok(race_data) => if let Some(info_bot) = race_data.info_bot {
-                            if let Some((_, hash1, hash2, hash3, hash4, hash5, web_id_str)) = regex_captures!("^([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)\nhttps://ootrandomizer\\.com/seed/get\\?id=([0-9+])$", &info_bot) {
+                            if let Some((_, hash1, hash2, hash3, hash4, hash5, web_id_str)) = regex_captures!("^([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)\nhttps://ootrandomizer\\.com/seed/get\\?id=([0-9]+)$", &info_bot) {
                                 let Some(hash1) = HashIcon::from_racetime_emoji(hash1) else { continue };
                                 let Some(hash2) = HashIcon::from_racetime_emoji(hash2) else { continue };
                                 let Some(hash3) = HashIcon::from_racetime_emoji(hash3) else { continue };
