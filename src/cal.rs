@@ -1008,7 +1008,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                     (None, Some(round)) => format!("{} {round}", event.short_name()),
                     (None, None) => event.display_name.clone(),
                 };
-                cal_event.push(Summary::new(match race.entrants {
+                let summary_prefix = match race.entrants {
                     Entrants::Open | Entrants::Count { .. } => summary_prefix,
                     Entrants::Named(ref participants) => match race_event.kind {
                         EventKind::Normal => format!("{summary_prefix}: {participants}"),
@@ -1019,6 +1019,11 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                         EventKind::Async1 => format!("{summary_prefix} (async): {team1} vs {team2}"),
                         EventKind::Async2 => format!("{summary_prefix} (async): {team2} vs {team1}"),
                     },
+                };
+                cal_event.push(Summary::new(if let Some(game) = race.game {
+                    format!("{summary_prefix}, game {game}")
+                } else {
+                    summary_prefix
                 }));
                 cal_event.push(DtStart::new(ics_datetime(start)));
                 cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + Duration::hours(4))))); //TODO better fallback duration estimates depending on format and participants
