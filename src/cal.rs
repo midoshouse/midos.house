@@ -688,13 +688,18 @@ impl Race {
                             } else {
                                 Entrants::Named(matchup.clone())
                             };
-                            if !races.iter().any(|race|
+                            if let Some(race @ Race { id: Some(id), .. }) = races.iter().find(|race|
                                 race.series == event.series
                                 && race.event == event.event
                                 && race.phase.is_none()
                                 && race.round.as_ref().map_or(false, |other_round| other_round == round)
                                 && race.entrants == entrants
                             ) {
+                                match race.schedule {
+                                    RaceSchedule::Live { start: old_start, .. } if old_start == start => {}
+                                    _ => { sqlx::query!("UPDATE races SET start = $1 WHERE id = $2", start, i64::from(*id)).execute(&mut *transaction).await?; }
+                                }
+                            } else {
                                 // add race to database to give it an ID
                                 let id = if let Entrants::Two([Entrant::Named(ref p1), Entrant::Named(ref p2)]) = entrants {
                                     let id = Id::new(&mut *transaction, IdTable::Races).await?;
@@ -744,13 +749,18 @@ impl Race {
                                 Entrant::Named(p1.clone()),
                                 Entrant::Named(p2.clone()),
                             ]);
-                            if !races.iter().any(|race|
+                            if let Some(race @ Race { id: Some(id), .. }) = races.iter().find(|race|
                                 race.series == event.series
                                 && race.event == event.event
                                 && race.phase.as_ref().map_or(false, |other_phase| other_phase == "Challenge Cup")
                                 && race.round.as_ref().map_or(false, |other_round| other_round == group_round)
                                 && race.entrants == entrants
                             ) {
+                                match race.schedule {
+                                    RaceSchedule::Live { start: old_start, .. } if old_start == start => {}
+                                    _ => { sqlx::query!("UPDATE races SET start = $1 WHERE id = $2", start, i64::from(*id)).execute(&mut *transaction).await?; }
+                                }
+                            } else {
                                 // add race to database to give it an ID
                                 let id = Id::new(&mut *transaction, IdTable::Races).await?;
                                 sqlx::query!("INSERT INTO races (start, series, event, id, p1, p2, phase, round) VALUES ($1, $2, $3, $4, $5, $6, 'Challenge Cup', $7)",
