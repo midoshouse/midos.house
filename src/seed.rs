@@ -347,7 +347,15 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
         let spoiler_file_name = format!("{}_Spoiler.json", seed.file_stem);
         let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
         let spoiler_path_exists = spoiler_path.exists();
-        (Some(spoiler_file_name), spoiler_path_exists, if spoiler_path_exists { Some(serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_path).await?)?) } else { None })
+        (
+            Some(spoiler_file_name),
+            spoiler_path_exists,
+            if spoiler_path_exists && (seed.file_hash.is_none() || seed.web.map_or(true, |web| web.gen_time <= now - chrono::Duration::days(90))) {
+                Some(serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_path).await?)?)
+            } else {
+                None
+            },
+        )
     } else {
         (None, false, None)
     };
