@@ -256,6 +256,7 @@ pub(crate) struct Race {
     pub(crate) draft: Option<Draft>,
     pub(crate) seed: Option<seed::Data>,
     pub(crate) video_url: Option<Url>,
+    ignored: bool,
 }
 
 impl Race {
@@ -289,7 +290,8 @@ impl Race {
             hash3 AS "hash3: HashIcon",
             hash4 AS "hash4: HashIcon",
             hash5 AS "hash5: HashIcon",
-            video_url
+            video_url,
+            ignored
         FROM races WHERE id = $1"#, i64::from(id)).fetch_one(&mut *transaction).await?;
         let (startgg_event, startgg_set, phase, round, slots) = if let Some(startgg_set) = row.startgg_set {
             if let startgg::set_query::ResponseData {
@@ -392,6 +394,7 @@ impl Race {
                 file_stem: Cow::Owned(file_stem),
             }),
             video_url: row.video_url.map(|url| url.parse()).transpose()?,
+            ignored: row.ignored,
             startgg_event, startgg_set, entrants, phase, round,
         })
     }
@@ -542,6 +545,7 @@ impl Race {
                                 draft: None,
                                 seed: None,
                                 video_url: race.restream,
+                                ignored: false,
                             })
                             .collect()
                     );
@@ -575,6 +579,7 @@ impl Race {
                     draft: None,
                     seed: None, //TODO
                     video_url: event.video_url.clone(),
+                    ignored: false,
                 });
             }
             Series::Rsl => match &*event.event {
@@ -607,6 +612,7 @@ impl Race {
                             draft: None,
                             seed: None, //TODO get from RSLBot seed archive
                             video_url: stream.map(|stream| Url::parse(&format!("https://{stream}"))).transpose()?,
+                            ignored: false,
                         }).await?;
                     }
                 },
@@ -641,6 +647,7 @@ impl Race {
                             draft: None,
                             seed: None, //TODO get from RSLBot seed archive
                             video_url: stream.map(|stream| Url::parse(&format!("https://{stream}"))).transpose()?,
+                            ignored: false,
                         }).await?;
                     }
                 },
@@ -679,6 +686,7 @@ impl Race {
                             draft: None,
                             seed: None, //TODO get from RSLBot seed archive
                             video_url: stream.map(|stream| Url::parse(&format!("https://{stream}"))).transpose()?,
+                            ignored: false,
                             game,
                         }).await?;
                     }
@@ -717,6 +725,7 @@ impl Race {
                             draft: None,
                             seed: None, //TODO get from RSLBot seed archive
                             video_url: stream.map(|stream| Url::parse(&format!("https://twitch.tv/{stream}"))).transpose()?, //TODO vod links
+                            ignored: false,
                         }).await?;
                     }
                 },
@@ -765,6 +774,7 @@ impl Race {
                             },
                             draft: None,
                             video_url: Some(Url::parse(vod)?),
+                            ignored: false,
                             seed,
                         });
                     }
@@ -773,7 +783,6 @@ impl Race {
                         if let [datetime_et, matchup, round] = &*row {
                             let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
                             if start < America::New_York.with_ymd_and_hms(2022, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue } //TODO also add an upper bound
-                            if round.contains("RSL") { continue } //TODO replace with a table column to ignore a race
                             add_or_update_race(&mut *transaction, &mut races, Self {
                                 id: None,
                                 series: event.series,
@@ -799,6 +808,7 @@ impl Race {
                                 draft: None,
                                 seed: None,
                                 video_url: None,
+                                ignored: false,
                             }).await?;
                         }
                     }
@@ -841,6 +851,7 @@ impl Race {
                                 draft: None,
                                 seed: None,
                                 video_url: None,
+                                ignored: false,
                             }).await?;
                         }
                     }
@@ -848,6 +859,7 @@ impl Race {
                 _ => unimplemented!(),
             },
         }
+        races.retain(|race| !race.ignored);
         races.sort_unstable();
         Ok(races)
     }
