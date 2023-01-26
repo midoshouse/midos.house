@@ -405,16 +405,21 @@ impl Race {
                 RaceSchedule::Live { start, end, ref room } => (start, end, room),
                 _ => unimplemented!(), //TODO
             };
-            if let Some(found_race @ Race { id: Some(id), .. }) = races.iter().find(|iter_race|
+            if let Some(found_race) = races.iter_mut().find(|iter_race|
                 iter_race.series == race.series
                 && iter_race.event == race.event
                 && iter_race.phase == race.phase
                 && iter_race.round == race.round
                 && iter_race.entrants == race.entrants
             ) {
-                match found_race.schedule {
-                    RaceSchedule::Live { start: old_start, .. } if old_start == start => {}
-                    _ => { sqlx::query!("UPDATE races SET start = $1 WHERE id = $2", start, i64::from(*id)).execute(transaction).await?; }
+                if let Some(id) = found_race.id {
+                    match found_race.schedule {
+                        RaceSchedule::Live { start: ref mut old_start, .. } => if *old_start != start {
+                            sqlx::query!("UPDATE races SET start = $1 WHERE id = $2", start, i64::from(id)).execute(transaction).await?;
+                            *old_start = start;
+                        },
+                        _ => { sqlx::query!("UPDATE races SET start = $1 WHERE id = $2", start, i64::from(id)).execute(transaction).await?; }
+                    }
                 }
             } else {
                 // add race to database to give it an ID
