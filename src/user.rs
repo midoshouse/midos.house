@@ -1,4 +1,8 @@
 use {
+    convert_case::{
+        Case,
+        Casing as _,
+    },
     rocket::{
         State,
         http::Status,
@@ -150,7 +154,23 @@ impl User {
         }
     }
 
-    pub(crate) fn possessive_pronoun(&self) -> &'static str {
+    fn subjective_pronoun(&self) -> &'static str {
+        match self.racetime_pronouns {
+            Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => "he",
+            Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "she",
+            Some(RaceTimePronouns::They | RaceTimePronouns::Other) | None => "they",
+        }
+    }
+
+    fn subjective_pronoun_uses_plural_form(&self) -> bool {
+        match self.racetime_pronouns {
+            Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => false,
+            Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => false,
+            Some(RaceTimePronouns::They | RaceTimePronouns::Other) | None => true,
+        }
+    }
+
+    pub(crate) fn possessive_determiner(&self) -> &'static str {
         match self.racetime_pronouns {
             Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => "his",
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "her",
@@ -285,6 +305,18 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
     };
     page(transaction, &me, &uri, PageStyle { kind: if me.as_ref().map_or(false, |me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
         h1 : user.display_name();
+        @if user.is_archivist {
+            p {
+                : "This user is an archivist: ";
+                : user.subjective_pronoun().to_case(Case::Title);
+                @if user.subjective_pronoun_uses_plural_form() {
+                    : " help";
+                } else {
+                    : " helps";
+                }
+                : " with adding data like race room and restream links to past races.";
+            }
+        }
         p {
             : "Mido's House user ID: ";
             code : user.id.0;

@@ -181,7 +181,7 @@ impl Notification {
                         TeamConfig::CoOp => {
                             : creator;
                             : " invited you to join ";
-                            : creator.possessive_pronoun();
+                            : creator.possessive_determiner();
                             : " team";
                             @if let Some(team_name) = team_row.name {
                                 : " “";
@@ -201,7 +201,7 @@ impl Notification {
                             : " (";
                             : pic::Role::try_from(creator_role).expect("non-Pictionary role in Pictionary team");
                             : ") invited you to join ";
-                            : creator.possessive_pronoun();
+                            : creator.possessive_determiner();
                             : " team";
                             @if let Some(team_name) = team_row.name {
                                 : " “";
