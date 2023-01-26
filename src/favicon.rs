@@ -103,10 +103,15 @@ pub(crate) enum ShuffleGanonBosskey {
     Overworld,
     AnyDungeon,
     Keysanity,
+    #[serde(alias = "lacs_vanilla")]
     OnLacs,
+    #[serde(alias = "lacs_stones")] // close enough for CAMC purposes
     Stones,
+    #[serde(alias = "lacs_medallions")] // close enough for CAMC purposes
     Medallions,
+    #[serde(alias = "lacs_dungeons")] // close enough for CAMC purposes
     Dungeons,
+    #[serde(alias = "lacs_tokens")] // close enough for CAMC purposes
     Tokens,
     Hearts,
 }
