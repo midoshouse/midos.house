@@ -154,9 +154,9 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "rs2" => html! {
             p {
                 : "The seed will be rolled on ";
-                a(href = "https://github.com/fenhl/plando-random-settings/tree/a47aaf8385bf4552989fca96dfaea3823592f1bf") : "version 2.3.8 Fenhl-4";
+                a(href = "https://github.com/fenhl/plando-random-settings/tree/360555ecdc61cbf720f0672522dc748bb2efc60a") : "version 2.3.8 Fenhl-8";
                 : " of the random settings script. We will be using ";
-                a(href = "https://github.com/fenhl/plando-random-settings/blob/a47aaf8385bf4552989fca96dfaea3823592f1bf/weights/pictionary_override.json") : "a special weights override";
+                a(href = "https://github.com/fenhl/plando-random-settings/blob/360555ecdc61cbf720f0672522dc748bb2efc60a/weights/pictionary_override.json") : "a special weights override";
                 : " for Pictionary spoiler log races. Changes include:";
             }
             ul {
@@ -174,7 +174,7 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
                 li {
                     : "The seed will be rolled on ";
-                    a(href = "https://github.com/fenhl/OoT-Randomizer/tree/f9d0e0f9e2f9e9c2358cfa3dcd75ca595ab5084c") : "Fenhl's branch";
+                    a(href = "https://ootrandomizer.com/generatorDev?version=devFenhlRSL_7.1.32") : "Fenhl's branch";
                     : ", so some settings that aren't in Dev-R are added:";
                     ul {
                         li : "Boss rooms included in mixed entrance pools (50% chance if mixed pools is on)";
