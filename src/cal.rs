@@ -397,6 +397,99 @@ impl Race {
     }
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: &Environment, config: &Config, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
+        async fn add_or_update_race(transaction: &mut Transaction<'_, Postgres>, races: &mut Vec<Race>, mut race: Race) -> sqlx::Result<()> {
+            let (start, end, room) = match race.schedule {
+                RaceSchedule::Live { start, end, ref room } => (start, end, room),
+                _ => unimplemented!(), //TODO
+            };
+            if let Some(found_race @ Race { id: Some(id), .. }) = races.iter().find(|iter_race|
+                iter_race.series == race.series
+                && iter_race.event == race.event
+                && iter_race.phase == race.phase
+                && iter_race.round == race.round
+                && iter_race.entrants == race.entrants
+            ) {
+                match found_race.schedule {
+                    RaceSchedule::Live { start: old_start, .. } if old_start == start => {}
+                    _ => { sqlx::query!("UPDATE races SET start = $1 WHERE id = $2", start, i64::from(*id)).execute(transaction).await?; }
+                }
+            } else {
+                // add race to database to give it an ID
+                let (team1, team2, p1, p2) = match race.entrants {
+                    Entrants::Open => (None, None, None, None),
+                    Entrants::Count { .. } => unimplemented!(), //TODO
+                    Entrants::Named(_) => unimplemented!(), //TODO
+                    Entrants::Two([ref p1, ref p2]) => {
+                        let (team1, p1) = match p1 {
+                            Entrant::MidosHouseTeam(team) => (Some(team.id), None),
+                            Entrant::Named(name) => (None, Some(name)),
+                        };
+                        let (team2, p2) = match p2 {
+                            Entrant::MidosHouseTeam(team) => (Some(team.id), None),
+                            Entrant::Named(name) => (None, Some(name)),
+                        };
+                        (team1, team2, p1, p2)
+                    }
+                };
+                let id = Id::new(&mut *transaction, IdTable::Races).await?;
+                sqlx::query!("INSERT INTO races (
+                    startgg_set,
+                    start,
+                    series,
+                    event,
+                    room,
+                    draft_state,
+                    end_time,
+                    team1,
+                    team2,
+                    web_id,
+                    web_gen_time,
+                    file_stem,
+                    hash1,
+                    hash2,
+                    hash3,
+                    hash4,
+                    hash5,
+                    game,
+                    id,
+                    p1,
+                    p2,
+                    video_url,
+                    phase,
+                    round
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)",
+                    race.startgg_set,
+                    start,
+                    race.series as _,
+                    race.event,
+                    room.as_ref().map(|url| url.to_string()),
+                    Json(&race.draft) as _,
+                    end,
+                    team1.map(|id| i64::from(id)),
+                    team2.map(|id| i64::from(id)),
+                    race.seed.as_ref().and_then(|seed| seed.web).map(|web| web.id as i64),
+                    race.seed.as_ref().and_then(|seed| seed.web).map(|web| web.gen_time),
+                    race.seed.as_ref().map(|seed| &*seed.file_stem),
+                    race.seed.as_ref().and_then(|seed| seed.file_hash).map(|[hash1, _, _, _, _]| hash1) as _,
+                    race.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, hash2, _, _, _]| hash2) as _,
+                    race.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, hash3, _, _]| hash3) as _,
+                    race.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, _, hash4, _]| hash4) as _,
+                    race.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, _, _, hash5]| hash5) as _,
+                    race.game,
+                    id as _,
+                    p1,
+                    p2,
+                    race.video_url.as_ref().map(|url| url.to_string()),
+                    race.phase,
+                    race.round,
+                ).execute(transaction).await?;
+                race.id = Some(id);
+                races.push(race);
+            }
+            Ok(())
+        }
+
         let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
         let mut races = Vec::default();
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut *transaction).await? {
@@ -492,7 +585,7 @@ impl Race {
                         let stream = rest.next();
                         assert!(rest.next().is_none());
                         let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                        races.push(Self {
+                        add_or_update_race(&mut *transaction, &mut races, Self {
                             id: None,
                             series: event.series,
                             event: event.event.to_string(),
@@ -514,7 +607,7 @@ impl Race {
                             draft: None,
                             seed: None, //TODO get from RSLBot seed archive
                             video_url: stream.map(|stream| Url::parse(&format!("https://{stream}"))).transpose()?,
-                        });
+                        }).await?;
                     }
                 },
                 "3" => for row in sheet_values("1475TTqezcSt-okMfQaG6Rf7AlJsqBx8c_rGDKs4oBYk", format!("Sign Ups!B2:I")).await? {
@@ -526,7 +619,7 @@ impl Race {
                         let stream = rest.next();
                         assert!(rest.next().is_none());
                         let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                        races.push(Self {
+                        add_or_update_race(&mut *transaction, &mut races, Self {
                             id: None,
                             series: event.series,
                             event: event.event.to_string(),
@@ -548,7 +641,7 @@ impl Race {
                             draft: None,
                             seed: None, //TODO get from RSLBot seed archive
                             video_url: stream.map(|stream| Url::parse(&format!("https://{stream}"))).transpose()?,
-                        });
+                        }).await?;
                     }
                 },
                 "4" => for row in sheet_values("1LRJ3oo_2AWGq8KpNNclRXOq4OW8O7LrHra7uY7oQQlA", format!("Form responses 1!B2:H")).await? {
@@ -566,7 +659,7 @@ impl Race {
                             "Grand Final (game 3)" => ("Top 8", format!("Finals"), Some(3)),
                             _ => ("Swiss", format!("Round {round}"), None),
                         };
-                        races.push(Self {
+                        add_or_update_race(&mut *transaction, &mut races, Self {
                             id: None,
                             series: event.series,
                             event: event.event.to_string(),
@@ -587,7 +680,7 @@ impl Race {
                             seed: None, //TODO get from RSLBot seed archive
                             video_url: stream.map(|stream| Url::parse(&format!("https://{stream}"))).transpose()?,
                             game,
-                        });
+                        }).await?;
                     }
                 },
                 "5" => for row in sheet_values("1nz7XtNxKFTq_6bfjlUmIq0fCXKkQfDC848YmVcbaoQw", format!("Form responses 1!B2:H")).await? {
@@ -603,7 +696,7 @@ impl Race {
                             "final" => ("Top 8", format!("Finals")),
                             _ => ("Swiss", format!("Round {round}")),
                         };
-                        races.push(Self {
+                        add_or_update_race(&mut *transaction, &mut races, Self {
                             id: None,
                             series: event.series,
                             event: event.event.to_string(),
@@ -624,7 +717,7 @@ impl Race {
                             draft: None,
                             seed: None, //TODO get from RSLBot seed archive
                             video_url: stream.map(|stream| Url::parse(&format!("https://twitch.tv/{stream}"))).transpose()?, //TODO vod links
-                        });
+                        }).await?;
                     }
                 },
                 _ => unimplemented!(),
@@ -680,62 +773,33 @@ impl Race {
                         if let [datetime_et, matchup, round] = &*row {
                             let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
                             if start < America::New_York.with_ymd_and_hms(2022, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue } //TODO also add an upper bound
-                            if round.contains("RSL") { continue }
-                            let entrants = if let Some((_, p1, p2)) = regex_captures!("^(.+) +(?i:vs?\\.?|x) +(.+)$", matchup) {
-                                Entrants::Two([
-                                    Entrant::Named(p1.to_owned()),
-                                    Entrant::Named(p2.to_owned()),
-                                ])
-                            } else {
-                                Entrants::Named(matchup.clone())
-                            };
-                            if let Some(race @ Race { id: Some(id), .. }) = races.iter().find(|race|
-                                race.series == event.series
-                                && race.event == event.event
-                                && race.phase.is_none()
-                                && race.round.as_ref().map_or(false, |other_round| other_round == round)
-                                && race.entrants == entrants
-                            ) {
-                                match race.schedule {
-                                    RaceSchedule::Live { start: old_start, .. } if old_start == start => {}
-                                    _ => { sqlx::query!("UPDATE races SET start = $1 WHERE id = $2", start, i64::from(*id)).execute(&mut *transaction).await?; }
-                                }
-                            } else {
-                                // add race to database to give it an ID
-                                let id = if let Entrants::Two([Entrant::Named(ref p1), Entrant::Named(ref p2)]) = entrants {
-                                    let id = Id::new(&mut *transaction, IdTable::Races).await?;
-                                    sqlx::query!("INSERT INTO races (start, series, event, id, p1, p2, round) VALUES ($1, $2, $3, $4, $5, $6, $7)",
-                                        start,
-                                        event.series as _,
-                                        &event.event,
-                                        id as _,
-                                        p1,
-                                        p2,
-                                        round,
-                                    ).execute(&mut *transaction).await?;
-                                    Some(id)
+                            if round.contains("RSL") { continue } //TODO replace with a table column to ignore a race
+                            add_or_update_race(&mut *transaction, &mut races, Self {
+                                id: None,
+                                series: event.series,
+                                event: event.event.to_string(),
+                                startgg_event: None,
+                                startgg_set: None,
+                                entrants: if let Some((_, p1, p2)) = regex_captures!("^(.+) +(?i:vs?\\.?|x) +(.+)$", matchup) {
+                                    Entrants::Two([
+                                        Entrant::Named(p1.to_owned()),
+                                        Entrant::Named(p2.to_owned()),
+                                    ])
                                 } else {
-                                    None
-                                };
-                                races.push(Self {
-                                    series: event.series,
-                                    event: event.event.to_string(),
-                                    startgg_event: None,
-                                    startgg_set: None,
-                                    phase: None, // main bracket
-                                    round: Some(round.clone()),
-                                    game: None,
-                                    schedule: RaceSchedule::Live {
-                                        start: start.with_timezone(&Utc),
-                                        end: None,
-                                        room: None,
-                                    },
-                                    draft: None,
-                                    seed: None,
-                                    video_url: None,
-                                    id, entrants,
-                                });
-                            }
+                                    Entrants::Named(matchup.clone())
+                                },
+                                phase: None, // main bracket
+                                round: Some(round.clone()),
+                                game: None,
+                                schedule: RaceSchedule::Live {
+                                    start: start.with_timezone(&Utc),
+                                    end: None,
+                                    room: None,
+                                },
+                                draft: None,
+                                seed: None,
+                                video_url: None,
+                            }).await?;
                         }
                     }
                     // Challenge Cup bracket matches
@@ -746,63 +810,38 @@ impl Race {
                             let _restream_ok = restream_ok == "Yes";
                             if is_cancelled == "TRUE" { continue }
                             let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %I:%M %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                            let entrants = Entrants::Two([
-                                Entrant::Named(p1.clone()),
-                                Entrant::Named(p2.clone()),
-                            ]);
-                            if let Some(race @ Race { id: Some(id), .. }) = races.iter().find(|race|
-                                race.series == event.series
-                                && race.event == event.event
-                                && race.phase.as_ref().map_or(false, |other_phase| other_phase == "Challenge Cup")
-                                && race.round.as_ref().map_or(false, |other_round| other_round == group_round)
-                                && race.entrants == entrants
-                            ) {
-                                match race.schedule {
-                                    RaceSchedule::Live { start: old_start, .. } if old_start == start => {}
-                                    _ => { sqlx::query!("UPDATE races SET start = $1 WHERE id = $2", start, i64::from(*id)).execute(&mut *transaction).await?; }
-                                }
-                            } else {
-                                // add race to database to give it an ID
-                                let id = Id::new(&mut *transaction, IdTable::Races).await?;
-                                sqlx::query!("INSERT INTO races (start, series, event, id, p1, p2, phase, round) VALUES ($1, $2, $3, $4, $5, $6, 'Challenge Cup', $7)",
-                                    start,
-                                    event.series as _,
-                                    &event.event,
-                                    id as _,
-                                    p1,
-                                    p2,
-                                    group_round,
-                                ).execute(&mut *transaction).await?;
-                                races.push(Self {
-                                    id: Some(id),
-                                    series: event.series,
-                                    event: event.event.to_string(),
-                                    startgg_event: None,
-                                    startgg_set: None,
-                                    phase: Some(format!("Challenge Cup")),
-                                    round: Some(group_round.clone()),
-                                    game: None,
-                                    schedule: if is_async {
-                                        RaceSchedule::Async {
-                                            start1: Some(start.with_timezone(&Utc)),
-                                            start2: None,
-                                            end1: None, end2: None,
-                                            room1: None,
-                                            room2: None,
-                                        }
-                                    } else {
-                                        RaceSchedule::Live {
-                                            start: start.with_timezone(&Utc),
-                                            end: None,
-                                            room: None,
-                                        }
-                                    },
-                                    draft: None,
-                                    seed: None,
-                                    video_url: None,
-                                    entrants,
-                                });
-                            }
+                            add_or_update_race(&mut *transaction, &mut races, Self {
+                                id: None,
+                                series: event.series,
+                                event: event.event.to_string(),
+                                startgg_event: None,
+                                startgg_set: None,
+                                entrants: Entrants::Two([
+                                    Entrant::Named(p1.clone()),
+                                    Entrant::Named(p2.clone()),
+                                ]),
+                                phase: Some(format!("Challenge Cup")),
+                                round: Some(group_round.clone()),
+                                game: None,
+                                schedule: if is_async {
+                                    RaceSchedule::Async {
+                                        start1: Some(start.with_timezone(&Utc)),
+                                        start2: None,
+                                        end1: None, end2: None,
+                                        room1: None,
+                                        room2: None,
+                                    }
+                                } else {
+                                    RaceSchedule::Live {
+                                        start: start.with_timezone(&Utc),
+                                        end: None,
+                                        room: None,
+                                    }
+                                },
+                                draft: None,
+                                seed: None,
+                                video_url: None,
+                            }).await?;
                         }
                     }
                 }
@@ -1359,87 +1398,108 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
             }
         }
         let mut file_hash = None;
-        let mut web_id = None::<u64>;
+        let mut web_id = None;
+        let mut web_gen_time = None;
         let mut file_stem = None;
         for (field_name, room) in valid_room_urls {
-            match http_client.get(format!("{room}/data")).send().await {
-                Ok(response) => match response.detailed_error_for_status().await {
-                    Ok(response) => match response.json_with_text_in_error::<RaceData>().await {
-                        Ok(race_data) => if let Some(info_bot) = race_data.info_bot {
-                            if let Some((_, hash1, hash2, hash3, hash4, hash5, web_id_str)) = regex_captures!("^([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)\nhttps://ootrandomizer\\.com/seed/get\\?id=([0-9]+)$", &info_bot) {
-                                let Some(hash1) = HashIcon::from_racetime_emoji(hash1) else { continue };
-                                let Some(hash2) = HashIcon::from_racetime_emoji(hash2) else { continue };
-                                let Some(hash3) = HashIcon::from_racetime_emoji(hash3) else { continue };
-                                let Some(hash4) = HashIcon::from_racetime_emoji(hash4) else { continue };
-                                let Some(hash5) = HashIcon::from_racetime_emoji(hash5) else { continue };
-                                file_hash = Some([hash1, hash2, hash3, hash4, hash5]);
-                                web_id = Some(web_id_str.parse().expect("found race room linking to out-of-range web seed ID"));
-                                match http_client.get("https://ootrandomizer.com/patch/get").query(&[("id", web_id)]).send().await {
-                                    Ok(patch_response) => match patch_response.detailed_error_for_status().await {
-                                        Ok(patch_response) => if let Some(content_disposition) = patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION) {
-                                            match content_disposition.to_str() {
-                                                Ok(content_disposition) => if let Some((_, patch_file_name)) = regex_captures!("^attachment; filename=(.+)$", content_disposition) {
-                                                    let patch_file_name = patch_file_name.to_owned();
-                                                    if let Some((_, patch_file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_file_name) {
-                                                        file_stem = Some(patch_file_stem.to_owned());
-                                                        match File::create(Path::new(seed::DIR).join(&patch_file_name)).await {
-                                                            Ok(mut file) => if let Err(e) = io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut file).await {
-                                                                form.context.push_error(form::Error::validation(format!("Error saving patch file from room data: {e}")).with_name(field_name))
-                                                            },
-                                                            Err(e) => form.context.push_error(form::Error::validation(format!("Error saving patch file from room data: {e}")).with_name(field_name)),
+            if let Some(row) = sqlx::query!(r#"SELECT
+                file_stem,
+                web_id AS "web_id: Id",
+                web_gen_time,
+                hash1 AS "hash1: HashIcon",
+                hash2 AS "hash2: HashIcon",
+                hash3 AS "hash3: HashIcon",
+                hash4 AS "hash4: HashIcon",
+                hash5 AS "hash5: HashIcon"
+            FROM rsl_seeds WHERE room = $1"#, room.to_string()).fetch_optional(&mut transaction).await? {
+                file_hash = Some([row.hash1, row.hash2, row.hash3, row.hash4, row.hash5]);
+                if let Some(Id(new_web_id)) = row.web_id {
+                    web_id = Some(new_web_id);
+                }
+                if let Some(new_web_gen_time) = row.web_gen_time {
+                    web_gen_time = Some(new_web_gen_time);
+                }
+                file_stem = Some(row.file_stem);
+            } else {
+                match http_client.get(format!("{room}/data")).send().await {
+                    Ok(response) => match response.detailed_error_for_status().await {
+                        Ok(response) => match response.json_with_text_in_error::<RaceData>().await {
+                            Ok(race_data) => if let Some(info_bot) = race_data.info_bot {
+                                if let Some((_, hash1, hash2, hash3, hash4, hash5, web_id_str)) = regex_captures!("^([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)\nhttps://ootrandomizer\\.com/seed/get\\?id=([0-9]+)$", &info_bot) {
+                                    let Some(hash1) = HashIcon::from_racetime_emoji(hash1) else { continue };
+                                    let Some(hash2) = HashIcon::from_racetime_emoji(hash2) else { continue };
+                                    let Some(hash3) = HashIcon::from_racetime_emoji(hash3) else { continue };
+                                    let Some(hash4) = HashIcon::from_racetime_emoji(hash4) else { continue };
+                                    let Some(hash5) = HashIcon::from_racetime_emoji(hash5) else { continue };
+                                    file_hash = Some([hash1, hash2, hash3, hash4, hash5]);
+                                    web_id = Some(web_id_str.parse().expect("found race room linking to out-of-range web seed ID"));
+                                    match http_client.get("https://ootrandomizer.com/patch/get").query(&[("id", web_id)]).send().await {
+                                        Ok(patch_response) => match patch_response.detailed_error_for_status().await {
+                                            Ok(patch_response) => if let Some(content_disposition) = patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION) {
+                                                match content_disposition.to_str() {
+                                                    Ok(content_disposition) => if let Some((_, patch_file_name)) = regex_captures!("^attachment; filename=(.+)$", content_disposition) {
+                                                        let patch_file_name = patch_file_name.to_owned();
+                                                        if let Some((_, patch_file_stem)) = regex_captures!(r"^(.+)\.zpfz?$", &patch_file_name) {
+                                                            file_stem = Some(patch_file_stem.to_owned());
+                                                            match File::create(Path::new(seed::DIR).join(&patch_file_name)).await {
+                                                                Ok(mut file) => if let Err(e) = io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut file).await {
+                                                                    form.context.push_error(form::Error::validation(format!("Error saving patch file from room data: {e}")).with_name(field_name))
+                                                                },
+                                                                Err(e) => form.context.push_error(form::Error::validation(format!("Error saving patch file from room data: {e}")).with_name(field_name)),
+                                                            }
+                                                        } else {
+                                                            form.context.push_error(form::Error::validation("Couldn't parse patch file name from room data").with_name(field_name));
                                                         }
                                                     } else {
                                                         form.context.push_error(form::Error::validation("Couldn't parse patch file name from room data").with_name(field_name));
-                                                    }
-                                                } else {
-                                                    form.context.push_error(form::Error::validation("Couldn't parse patch file name from room data").with_name(field_name));
-                                                },
-                                                Err(e) => form.context.push_error(form::Error::validation(format!("Couldn't parse patch file name from room data: {e}")).with_name(field_name)),
+                                                    },
+                                                    Err(e) => form.context.push_error(form::Error::validation(format!("Couldn't parse patch file name from room data: {e}")).with_name(field_name)),
+                                                }
+                                            } else {
+                                                form.context.push_error(form::Error::validation("Couldn't parse patch file name from room data").with_name(field_name));
                                             }
-                                        } else {
-                                            form.context.push_error(form::Error::validation("Couldn't parse patch file name from room data").with_name(field_name));
-                                        }
+                                            Err(e) => form.context.push_error(form::Error::validation(format!("Error getting patch file from room data: {e}")).with_name(field_name)),
+                                        },
                                         Err(e) => form.context.push_error(form::Error::validation(format!("Error getting patch file from room data: {e}")).with_name(field_name)),
-                                    },
-                                    Err(e) => form.context.push_error(form::Error::validation(format!("Error getting patch file from room data: {e}")).with_name(field_name)),
-                                }
-                                if let Some(ref file_stem) = file_stem {
-                                    match http_client.get("https://ootrandomizer.com/spoilers/get").query(&[("id", web_id)]).send().await {
-                                        Ok(spoiler_response) => if spoiler_response.status() != StatusCode::BAD_REQUEST { // returns error 400 if no spoiler log has been generated
-                                            match spoiler_response.detailed_error_for_status().await {
-                                                Ok(spoiler_response) => {
-                                                    let spoiler_filename = format!("{file_stem}_Spoiler.json");
-                                                    let spoiler_path = Path::new(seed::DIR).join(&spoiler_filename);
-                                                    match File::create(&spoiler_path).await {
-                                                        Ok(mut file) => match io::copy_buf(&mut StreamReader::new(spoiler_response.bytes_stream().map_err(io_error_from_reqwest)), &mut file).await {
-                                                            Ok(_) => if file_hash.is_none() {
-                                                                match fs::read(spoiler_path).await {
-                                                                    Ok(buf) => match serde_json::from_slice::<SpoilerLog>(&buf) {
-                                                                        Ok(spoiler_log) => file_hash = Some(spoiler_log.file_hash),
+                                    }
+                                    if let Some(ref file_stem) = file_stem {
+                                        match http_client.get("https://ootrandomizer.com/spoilers/get").query(&[("id", web_id)]).send().await {
+                                            Ok(spoiler_response) => if spoiler_response.status() != StatusCode::BAD_REQUEST { // returns error 400 if no spoiler log has been generated
+                                                match spoiler_response.detailed_error_for_status().await {
+                                                    Ok(spoiler_response) => {
+                                                        let spoiler_filename = format!("{file_stem}_Spoiler.json");
+                                                        let spoiler_path = Path::new(seed::DIR).join(&spoiler_filename);
+                                                        match File::create(&spoiler_path).await {
+                                                            Ok(mut file) => match io::copy_buf(&mut StreamReader::new(spoiler_response.bytes_stream().map_err(io_error_from_reqwest)), &mut file).await {
+                                                                Ok(_) => if file_hash.is_none() {
+                                                                    match fs::read(spoiler_path).await {
+                                                                        Ok(buf) => match serde_json::from_slice::<SpoilerLog>(&buf) {
+                                                                            Ok(spoiler_log) => file_hash = Some(spoiler_log.file_hash),
+                                                                            Err(e) => form.context.push_error(form::Error::validation(format!("Error reading spoiler log from room data: {e}")).with_name(field_name)),
+                                                                        },
                                                                         Err(e) => form.context.push_error(form::Error::validation(format!("Error reading spoiler log from room data: {e}")).with_name(field_name)),
-                                                                    },
-                                                                    Err(e) => form.context.push_error(form::Error::validation(format!("Error reading spoiler log from room data: {e}")).with_name(field_name)),
-                                                                }
+                                                                    }
+                                                                },
+                                                                Err(e) => form.context.push_error(form::Error::validation(format!("Error saving spoiler log from room data: {e}")).with_name(field_name)),
                                                             },
                                                             Err(e) => form.context.push_error(form::Error::validation(format!("Error saving spoiler log from room data: {e}")).with_name(field_name)),
-                                                        },
-                                                        Err(e) => form.context.push_error(form::Error::validation(format!("Error saving spoiler log from room data: {e}")).with_name(field_name)),
+                                                        }
                                                     }
+                                                    Err(e) => form.context.push_error(form::Error::validation(format!("Error getting spoiler log from room data: {e}")).with_name(field_name)),
                                                 }
-                                                Err(e) => form.context.push_error(form::Error::validation(format!("Error getting spoiler log from room data: {e}")).with_name(field_name)),
-                                            }
-                                        },
-                                        Err(e) => form.context.push_error(form::Error::validation(format!("Error getting spoiler log from room data: {e}")).with_name(field_name)),
+                                            },
+                                            Err(e) => form.context.push_error(form::Error::validation(format!("Error getting spoiler log from room data: {e}")).with_name(field_name)),
+                                        }
                                     }
+                                    break
                                 }
-                                break
-                            }
+                            },
+                            Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}")).with_name(field_name)),
                         },
                         Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}")).with_name(field_name)),
                     },
                     Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}")).with_name(field_name)),
-                },
-                Err(e) => form.context.push_error(form::Error::validation(format!("Error getting room data: {e}")).with_name(field_name)),
+                }
             }
         }
         if form.context.errors().next().is_some() {
@@ -1462,6 +1522,9 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
             }
             if let Some(web_id) = web_id {
                 sqlx::query!("UPDATE races SET web_id = $1 WHERE id = $2", web_id as i64, i64::from(id)).execute(&mut transaction).await?;
+            }
+            if let Some(web_gen_time) = web_gen_time {
+                sqlx::query!("UPDATE races SET web_gen_time = $1 WHERE id = $2", web_gen_time, i64::from(id)).execute(&mut transaction).await?;
             }
             if let Some(file_stem) = file_stem {
                 sqlx::query!("UPDATE races SET file_stem = $1 WHERE id = $2", file_stem, i64::from(id)).execute(&mut transaction).await?;
