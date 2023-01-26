@@ -467,7 +467,7 @@ impl Race {
                     race.series as _,
                     race.event,
                     room.as_ref().map(|url| url.to_string()),
-                    Json(&race.draft) as _,
+                    race.draft.as_ref().map(Json) as _,
                     end,
                     team1.map(|id| i64::from(id)),
                     team2.map(|id| i64::from(id)),
