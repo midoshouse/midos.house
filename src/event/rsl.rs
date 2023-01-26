@@ -84,7 +84,9 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 p {
                     : "This is an archive of the 1st season of the Random Settings League tournament, organized by Cubsrule21, ";
                     : natjoin_html(data.organizers(transaction).await?);
-                    : ".";
+                    : ". See ";
+                    a(href = "https://docs.google.com/document/d/1wmoZHdwYijJwXLYgZbadjRYOGBNXio2hhKEIkFNgDgU/edit") : "the official document";
+                    : " for details.";
                 }
             }
         },

@@ -485,6 +485,7 @@ impl Race {
                 });
             }
             Series::Rsl => match &*event.event {
+                "1" => {} // no match data available
                 "2" => for row in sheet_values("1TEb48hIarEXnsnGxJbq1Y4YiZxNSM1t1oBsXh_bM4LM", format!("Raw form data!B2:F")).await? {
                     if let [p1, p2, date_et, time_et, rest @ ..] = &*row {
                         let mut rest = rest.into_iter().fuse();
