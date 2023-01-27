@@ -400,7 +400,7 @@ impl Race {
     }
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: &Environment, config: &Config, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
-        async fn add_or_update_race(transaction: &mut Transaction<'_, Postgres>, races: &mut Vec<Race>, mut race: Race) -> sqlx::Result<()> {
+        async fn add_or_update_race(transaction: &mut Transaction<'_, Postgres>, races: &mut Vec<Race>, require_matching_start_time: bool, mut race: Race) -> sqlx::Result<()> {
             let (start, end, room) = match race.schedule {
                 RaceSchedule::Live { start, end, ref room } => (start, end, room),
                 _ => unimplemented!(), //TODO
@@ -410,7 +410,12 @@ impl Race {
                 && iter_race.event == race.event
                 && iter_race.phase == race.phase
                 && iter_race.round == race.round
+                && iter_race.game == race.game
                 && iter_race.entrants == race.entrants
+                && (!require_matching_start_time || match iter_race.schedule {
+                    RaceSchedule::Live { start: iter_start, .. } => iter_start == start,
+                    _ => false,
+                })
             ) {
                 if let Some(id) = found_race.id {
                     match found_race.schedule {
@@ -595,7 +600,7 @@ impl Race {
                         let stream = rest.next();
                         assert!(rest.next().is_none());
                         let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                        add_or_update_race(&mut *transaction, &mut races, Self {
+                        add_or_update_race(&mut *transaction, &mut races, true, Self {
                             id: None,
                             series: event.series,
                             event: event.event.to_string(),
@@ -630,7 +635,7 @@ impl Race {
                         let stream = rest.next();
                         assert!(rest.next().is_none());
                         let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                        add_or_update_race(&mut *transaction, &mut races, Self {
+                        add_or_update_race(&mut *transaction, &mut races, true, Self {
                             id: None,
                             series: event.series,
                             event: event.event.to_string(),
@@ -671,7 +676,7 @@ impl Race {
                             "Grand Final (game 3)" => ("Top 8", format!("Finals"), Some(3)),
                             _ => ("Swiss", format!("Round {round}"), None),
                         };
-                        add_or_update_race(&mut *transaction, &mut races, Self {
+                        add_or_update_race(&mut *transaction, &mut races, true, Self {
                             id: None,
                             series: event.series,
                             event: event.event.to_string(),
@@ -709,7 +714,7 @@ impl Race {
                             "final" => ("Top 8", format!("Finals")),
                             _ => ("Swiss", format!("Round {round}")),
                         };
-                        add_or_update_race(&mut *transaction, &mut races, Self {
+                        add_or_update_race(&mut *transaction, &mut races, false, Self {
                             id: None,
                             series: event.series,
                             event: event.event.to_string(),
@@ -788,7 +793,7 @@ impl Race {
                         if let [datetime_et, matchup, round] = &*row {
                             let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
                             if start < America::New_York.with_ymd_and_hms(2022, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue } //TODO also add an upper bound
-                            add_or_update_race(&mut *transaction, &mut races, Self {
+                            add_or_update_race(&mut *transaction, &mut races, false, Self {
                                 id: None,
                                 series: event.series,
                                 event: event.event.to_string(),
@@ -825,7 +830,7 @@ impl Race {
                             let _restream_ok = restream_ok == "Yes";
                             if is_cancelled == "TRUE" { continue }
                             let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %I:%M %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                            add_or_update_race(&mut *transaction, &mut races, Self {
+                            add_or_update_race(&mut *transaction, &mut races, false, Self {
                                 id: None,
                                 series: event.series,
                                 event: event.event.to_string(),
