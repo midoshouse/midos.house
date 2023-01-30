@@ -594,42 +594,7 @@ impl Race {
             }
             Series::Rsl => match &*event.event {
                 "1" => {} // no match data available
-                "2" => {} // added to database
-                "3" => for row in sheet_values("1475TTqezcSt-okMfQaG6Rf7AlJsqBx8c_rGDKs4oBYk", format!("Sign Ups!B2:I")).await? {
-                    if let [p1, p2, _round, date_et, time_et, rest @ ..] = &*row {
-                        if p1.is_empty() { continue }
-                        let mut rest = rest.into_iter().fuse();
-                        if rest.next().map_or(false, |cancel| cancel == "TRUE") { continue }
-                        let _monitor = rest.next();
-                        let stream = rest.next();
-                        assert!(rest.next().is_none());
-                        let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %-I:%M:%S %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                        add_or_update_race(&mut *transaction, &mut races, true, Self {
-                            id: None,
-                            series: event.series,
-                            event: event.event.to_string(),
-                            startgg_event: None,
-                            startgg_set: None,
-                            entrants: Entrants::Two([
-                                Entrant::Named(p1.clone()),
-                                Entrant::Named(p2.clone()),
-                            ]),
-                            //TODO add phases and round numbers from https://challonge.com/RSL_S3
-                            phase: None,
-                            round: None,
-                            game: None,
-                            schedule: RaceSchedule::Live {
-                                start: start.with_timezone(&Utc),
-                                end: None, //TODO get from RSLBot seed archive
-                                room: None, //TODO get from RSLBot seed archive
-                            },
-                            draft: None,
-                            seed: None, //TODO get from RSLBot seed archive
-                            video_url: stream.map(|stream| Url::parse(&format!("https://{stream}"))).transpose()?,
-                            ignored: false,
-                        }).await?;
-                    }
-                },
+                "2" | "3" => {} // added to database
                 "4" => for row in sheet_values("1LRJ3oo_2AWGq8KpNNclRXOq4OW8O7LrHra7uY7oQQlA", format!("Form responses 1!B2:H")).await? {
                     if let [p1, p2, round, date_et, time_et, rest @ ..] = &*row {
                         let mut rest = rest.into_iter().fuse();
