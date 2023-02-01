@@ -188,7 +188,7 @@ pub(crate) enum Series {
 }
 
 impl Series {
-    fn to_str(&self) -> &'static str {
+    pub(crate) fn to_str(&self) -> &'static str {
         match self {
             Self::Multiworld => "mw",
             Self::NineDaysOfSaws => "9dos",

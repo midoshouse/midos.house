@@ -850,9 +850,13 @@ impl PartialOrd for Race {
 impl Ord for Race {
     fn cmp(&self, other: &Self) -> Ordering {
         self.schedule.cmp(&other.schedule)
-            .then_with(|| self.startgg_event.cmp(&other.startgg_event))
+            .then_with(|| self.series.to_str().cmp(other.series.to_str()))
+            .then_with(|| self.event.cmp(&other.event))
+            .then_with(|| self.phase.cmp(&other.phase))
+            .then_with(|| self.round.cmp(&other.round))
             .then_with(|| self.startgg_set.cmp(&other.startgg_set))
             .then_with(|| self.game.cmp(&other.game))
+            .then_with(|| self.id.cmp(&other.id))
     }
 }
 
