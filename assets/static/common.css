@@ -25,7 +25,8 @@ a {
 
 a.nav,
 a.button,
-a:hover {
+a:hover,
+.favicon {
     text-decoration: none;
 }
 
