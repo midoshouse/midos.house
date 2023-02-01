@@ -198,6 +198,15 @@ impl RaceSchedule {
             Self::Async { end1, end2, .. } => end1.is_some() && end2.is_some(),
         }
     }
+
+    fn start_matches(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Unscheduled, Self::Unscheduled) => true,
+            (Self::Live { start: start_a, .. }, Self::Live { start: start_b, .. }) => start_a == start_b,
+            (Self::Async { start1: start_a1, start2: start_a2, .. }, Self::Async { start1: start_b1, start2: start_b2, .. }) => start_a1 == start_b1 && start_a2 == start_b2,
+            (Self::Unscheduled, _) | (Self::Live { .. }, _) | (Self::Async { .. }, _) => false, // ensure compile error on missing variants by listing each left-hand side individually
+        }
+    }
 }
 
 impl PartialEq for RaceSchedule {
@@ -401,10 +410,6 @@ impl Race {
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: &Environment, config: &Config, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
         async fn add_or_update_race(transaction: &mut Transaction<'_, Postgres>, races: &mut Vec<Race>, require_matching_start_time: bool, mut race: Race) -> sqlx::Result<()> {
-            let (start, end, room) = match race.schedule {
-                RaceSchedule::Live { start, end, ref room } => (start, end, room),
-                _ => unimplemented!(), //TODO
-            };
             if let Some(found_race) = races.iter_mut().find(|iter_race|
                 iter_race.series == race.series
                 && iter_race.event == race.event
@@ -412,18 +417,35 @@ impl Race {
                 && iter_race.round == race.round
                 && iter_race.game == race.game
                 && iter_race.entrants == race.entrants
-                && (!require_matching_start_time || match iter_race.schedule {
-                    RaceSchedule::Live { start: iter_start, .. } => iter_start == start,
-                    _ => false,
-                })
+                && (!require_matching_start_time || iter_race.schedule.start_matches(&race.schedule))
             ) {
                 if let Some(id) = found_race.id {
-                    match found_race.schedule {
-                        RaceSchedule::Live { start: ref mut old_start, .. } => if *old_start != start {
-                            sqlx::query!("UPDATE races SET start = $1 WHERE id = $2", start, i64::from(id)).execute(transaction).await?;
-                            *old_start = start;
-                        },
-                        _ => { sqlx::query!("UPDATE races SET start = $1 WHERE id = $2", start, i64::from(id)).execute(transaction).await?; }
+                    if !found_race.schedule.start_matches(&race.schedule) {
+                        match race.schedule {
+                            RaceSchedule::Unscheduled => {
+                                found_race.schedule = RaceSchedule::Unscheduled;
+                                sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL WHERE id = $1", i64::from(id)).execute(transaction).await?;
+                            }
+                            RaceSchedule::Live { start, .. } => {
+                                match found_race.schedule {
+                                    RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
+                                    RaceSchedule::Live { start: ref mut old_start, .. } => *old_start = start,
+                                    RaceSchedule::Async { .. } => unimplemented!("race listed as async in database was rescheduled as live"), //TODO
+                                }
+                                sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, i64::from(id)).execute(transaction).await?;
+                            },
+                            RaceSchedule::Async { start1, start2, .. } => {
+                                match found_race.schedule {
+                                    RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
+                                    RaceSchedule::Live { .. } => unimplemented!("race listed as live in database was rescheduled as async"), //TODO
+                                    RaceSchedule::Async { start1: ref mut old_start1, start2: ref mut old_start2, .. } => {
+                                        *old_start1 = start1;
+                                        *old_start2 = start2;
+                                    }
+                                }
+                                sqlx::query!("UPDATE races SET start = NULL, async_start1 = $1, async_start2 = $2 WHERE id = $3", start1, start2, i64::from(id)).execute(transaction).await?;
+                            }
+                        }
                     }
                 }
             } else {
@@ -444,14 +466,25 @@ impl Race {
                         (team1, team2, p1, p2)
                     }
                 };
+                let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match race.schedule {
+                    RaceSchedule::Unscheduled => (None, None, None, None, None, None, None, None, None),
+                    RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
+                    RaceSchedule::Async { start1, start2, end1, end2, ref room1, ref room2 } => (None, start1, start2, None, end1, end2, None, room1.as_ref(), room2.as_ref()),
+                };
                 let id = Id::new(&mut *transaction, IdTable::Races).await?;
                 sqlx::query!("INSERT INTO races (
                     startgg_set,
                     start,
                     series,
                     event,
+                    async_start2,
+                    async_start1,
                     room,
+                    async_room1,
+                    async_room2,
                     draft_state,
+                    async_end1,
+                    async_end2,
                     end_time,
                     team1,
                     team2,
@@ -471,13 +504,19 @@ impl Race {
                     phase,
                     round
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)",
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)",
                     race.startgg_set,
                     start,
                     race.series as _,
                     race.event,
-                    room.as_ref().map(|url| url.to_string()),
+                    async_start2,
+                    async_start1,
+                    room.map(|url| url.to_string()),
+                    async_room1.map(|url| url.to_string()),
+                    async_room2.map(|url| url.to_string()),
                     race.draft.as_ref().map(Json) as _,
+                    async_end1,
+                    async_end2,
                     end,
                     team1.map(|id| i64::from(id)),
                     team2.map(|id| i64::from(id)),
