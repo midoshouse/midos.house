@@ -525,7 +525,7 @@ impl GlobalState {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
-            let rsl_script_path = preset.script_path()?; //TODO automatically clone if not present and ensure base rom is in place
+            let rsl_script_path = preset.script_path()?; //TODO automatically clone if not present and ensure base rom is in place (need to create data directory)
             // update the RSL script
             if !preset.is_version_locked() {
                 let repo = Repository::open(&rsl_script_path)?;
@@ -776,7 +776,12 @@ impl SeedRollUpdate {
                 } else {
                     ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{spoiler_filename}")).await?;
                 }
-                ctx.set_bot_raceinfo(&format!("{}{}\n{seed_url}", if let Some(preset) = rsl_preset { format!("{}\n", preset.race_info()) } else { String::default() }, format_hash(file_hash))).await?;
+                ctx.set_bot_raceinfo(&format!(
+                    "{}{}\n{seed_url}{}",
+                    if let Some(preset) = rsl_preset { format!("{}\n", preset.race_info()) } else { String::default() },
+                    format_hash(file_hash),
+                    if send_spoiler_log { format!("\nhttps://midos.house/seed/{spoiler_filename}") } else { String::default() },
+                )).await?;
                 *state.write().await = RaceState::RolledLocally(spoiler_log_path);
             }
             Self::DoneWeb { rsl_preset, seed_id, gen_time, file_hash, file_stem, send_spoiler_log } => {
