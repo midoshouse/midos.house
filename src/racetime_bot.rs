@@ -458,7 +458,7 @@ impl GlobalState {
     fn roll_seed(self: Arc<Self>, version: RandoVersion, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
-            let can_roll_on_web = match self.ootr_api_client.can_roll_on_web(&version, settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds")), false).await {
+            let can_roll_on_web = match self.ootr_api_client.can_roll_on_web(None, &version, settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"))).await {
                 Ok(can_roll_on_web) => can_roll_on_web,
                 Err(e) => {
                     update_tx.send(SeedRollUpdate::Error(e)).await?;
@@ -542,7 +542,7 @@ impl GlobalState {
                     break local_version.parse()?
                 }
             };
-            let can_roll_on_web = self.ootr_api_client.can_roll_on_web(&version, world_count, true).await?;
+            let can_roll_on_web = self.ootr_api_client.can_roll_on_web(Some(&preset), &version, world_count).await?;
             // run the RSL script
             let _ = update_tx.send(SeedRollUpdate::Started).await;
             let outer_tries = if can_roll_on_web { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script
@@ -878,19 +878,20 @@ impl OotrApiClient {
             .currently_active_version)
     }
 
-    async fn can_roll_on_web(&self, version: &RandoVersion, world_count: u8, random_settings: bool) -> Result<bool, RollError> {
+    async fn can_roll_on_web(&self, rsl_preset: Option<&VersionedRslPreset>, version: &RandoVersion, world_count: u8) -> Result<bool, RollError> {
         if world_count > 3 { return Ok(false) }
-        if random_settings && version.branch.web_name_random_settings().is_none() { return Ok(false) }
+        if rsl_preset.is_some() && version.branch.web_name_random_settings().is_none() { return Ok(false) }
         // check if randomizer version is available on web
         if !KNOWN_GOOD_WEB_VERSIONS.contains(&version) {
-            if !random_settings && version.supplementary.is_some() {
+            if version.supplementary.is_some() && !matches!(rsl_preset, Some(VersionedRslPreset::Xopar { .. })) {
                 // The version API endpoint does not return the supplementary version number, so we can't be sure we have the right version unless it was manually checked and added to KNOWN_GOOD_WEB_VERSIONS.
-                // For RSL, we assume the supplementary version number is correct since we dynamically get the version from the RSL script.
+                // For the RSL script's main branch, we assume the supplementary version number is correct since we dynamically get the version from the RSL script.
+                // The dev-fenhl branch of the RSL script can point to versions not available on web, so we can't make this assumption there.
                 return Ok(false)
             }
-            if let Ok(latest_web_version) = self.get_version(version.branch, random_settings).await {
+            if let Ok(latest_web_version) = self.get_version(version.branch, rsl_preset.is_some()).await {
                 if latest_web_version != version.base { // there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
-                    println!("web version mismatch on {} branch: we need {} but latest is {latest_web_version}", version.branch.web_name(random_settings).expect("checked above"), version.base);
+                    println!("web version mismatch on {} branch: we need {} but latest is {latest_web_version}", version.branch.web_name(rsl_preset.is_some()).expect("checked above"), version.base);
                     return Ok(false)
                 }
             } else {
