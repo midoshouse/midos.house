@@ -274,10 +274,69 @@ impl FromStr for RandoVersion {
     }
 }
 
+enum RslDevFenhlPreset {
+    Pictionary,
+}
+
+impl RslDevFenhlPreset {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Pictionary => "pictionary",
+        }
+    }
+}
+
+enum VersionedRslPreset {
+    Xopar {
+        version: Option<Version>,
+        preset: rsl::Preset,
+    },
+    Fenhl {
+        version: Option<(Version, u8)>,
+        preset: RslDevFenhlPreset,
+    },
+}
+
+impl VersionedRslPreset {
+    fn name(&self) -> &'static str {
+        match self {
+            Self::Xopar { preset, .. } => preset.name(),
+            Self::Fenhl { preset, .. } => preset.name(),
+        }
+    }
+
+    fn is_version_locked(&self) -> bool {
+        match self {
+            Self::Xopar { version, .. } => version.is_some(),
+            Self::Fenhl { version, .. } => version.is_some(),
+        }
+    }
+
+    fn script_path(&self) -> Result<Cow<'static, Path>, RollError> {
+        Ok({
+            #[cfg(unix)] {
+                match self {
+                    Self::Fenhl { version: None, .. } => Cow::Borrowed(Path::new("/opt/git/github.com/fenhl/plando-random-settings/master")),
+                    Self::Fenhl { version: Some((base, supplementary)), .. } => Cow::Owned(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join(format!("rsl-dev-fenhl-{base}-{supplementary}"))).ok_or(RollError::RandoPath)?),
+                    Self::Xopar { version: None, .. } => Cow::Owned(BaseDirectories::new()?.find_data_file("fenhl/rslbot/plando-random-settings").ok_or(RollError::RandoPath)?),
+                    Self::Xopar { version: Some(version), .. } => Cow::Owned(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join(format!("rsl-{version}"))).ok_or(RollError::RandoPath)?),
+                }
+            }
+            #[cfg(windows)] {
+                match self {
+                    Self::Fenhl { .. } => Cow::Borrowed(Path::new("C:/Users/fenhl/git/github.com/fenhl/plando-random-settings/main")), //TODO respect script version field
+                    Self::Xopar { .. } => Cow::Borrowed(Path::new("C:/Users/fenhl/git/github.com/matthewkirby/plando-random-settings/main")), //TODO respect script version field
+                }
+            }
+        })
+    }
+}
+
 #[derive(Sequence)]
 pub(crate) enum Goal {
     MultiworldS3,
     NineDaysOfSaws,
+    PicRs2,
     Rsl,
 }
 
@@ -290,6 +349,7 @@ impl Goal {
         match self {
             Self::MultiworldS3 => series == Series::Multiworld && event == "3",
             Self::NineDaysOfSaws => series == Series::NineDaysOfSaws,
+            Self::PicRs2 => series == Series::Pictionary && event == "rs2",
             Self::Rsl => series == Series::Rsl,
         }
     }
@@ -298,6 +358,7 @@ impl Goal {
         match self {
             Self::MultiworldS3 => true,
             Self::NineDaysOfSaws => true,
+            Self::PicRs2 => true,
             Self::Rsl => false,
         }
     }
@@ -306,6 +367,7 @@ impl Goal {
         match self {
             Self::MultiworldS3 => "3rd Multiworld Tournament",
             Self::NineDaysOfSaws => "9 Days of SAWS",
+            Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
             Self::Rsl => "Random settings league",
         }
     }
@@ -314,7 +376,7 @@ impl Goal {
         match self {
             Self::MultiworldS3 => RandoVersion::dev(6, 2, 205),
             Self::NineDaysOfSaws => RandoVersion::branch(RandoBranch::DevFenhl, 6, 9, 14, 2),
-            Self::Rsl => panic!("randomizer version for RSL must be parsed from RSL script"),
+            Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
         }
     }
 
@@ -337,6 +399,7 @@ impl Goal {
                 ctx.send_message("!seed day8: S6 + dungeon ER").await?;
                 ctx.send_message("!seed day9: S6").await?;
             }
+            Self::PicRs2 => ctx.send_message("!seed: The settings used for the race").await?,
             Self::Rsl => for preset in all::<rsl::Preset>() {
                 ctx.send_message(&format!("!seed{}: {}", match preset {
                     rsl::Preset::League => String::default(),
@@ -450,14 +513,13 @@ impl GlobalState {
         update_rx
     }
 
-    fn roll_rsl_seed(self: Arc<Self>, preset: rsl::Preset, world_count: u8) -> mpsc::Receiver<SeedRollUpdate> {
+    fn roll_rsl_seed(self: Arc<Self>, preset: VersionedRslPreset, world_count: u8) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
-            #[cfg(unix)] let rsl_script_path = BaseDirectories::new()?.find_data_file("fenhl/rslbot/plando-random-settings").ok_or(RollError::RandoPath)?;
-            #[cfg(windows)] let rsl_script_path = Path::new("C:/Users/fenhl/git/github.com/matthewkirby/plando-random-settings/main").to_owned();
+            let rsl_script_path = preset.script_path()?; //TODO automatically clone if not present
             // update the RSL script
-            {
+            if !preset.is_version_locked() {
                 let repo = Repository::open(&rsl_script_path)?;
                 let mut origin = repo.find_remote("origin")?;
                 origin.fetch(&["master"], None, None)?;
@@ -480,7 +542,7 @@ impl GlobalState {
                 let mut rsl_cmd = Command::new(PYTHON);
                 rsl_cmd.arg("RandomSettingsGenerator.py");
                 rsl_cmd.arg("--no_log_errors");
-                if !matches!(preset, rsl::Preset::League) {
+                if !matches!(preset, VersionedRslPreset::Xopar { preset: rsl::Preset::League, .. }) {
                     rsl_cmd.arg(format!("--override={}_override.json", preset.name()));
                 }
                 if world_count > 1 {
@@ -544,7 +606,10 @@ impl GlobalState {
                         Err(e) => return Err(e),
                     };
                     drop(mw_permit);
-                    let _ = update_tx.send(SeedRollUpdate::DoneWeb { rsl_preset: Some(preset), seed_id, gen_time, file_hash, file_stem }).await;
+                    let _ = update_tx.send(SeedRollUpdate::DoneWeb {
+                        rsl_preset: if let VersionedRslPreset::Xopar { preset, .. } = preset { Some(preset) } else { None },
+                        seed_id, gen_time, file_hash, file_stem,
+                    }).await;
                     return Ok(())
                 } else {
                     let patch_filename = BufRead::lines(&*output.stdout)
@@ -560,7 +625,10 @@ impl GlobalState {
                         fs::remove_file(rsl_script_path.join("patches").join(extra_output_filename)).await.missing_ok()?;
                     }
                     fs::rename(patch_path, Path::new(seed::DIR).join(&patch_filename)).await?;
-                    let _ = update_tx.send(SeedRollUpdate::DoneLocal { rsl_preset: Some(preset), patch_filename, spoiler_log_path }).await;
+                    let _ = update_tx.send(SeedRollUpdate::DoneLocal {
+                        rsl_preset: if let VersionedRslPreset::Xopar { preset, .. } = preset { Some(preset) } else { None },
+                        patch_filename, spoiler_log_path,
+                    }).await;
                     return Ok(())
                 }
             }
@@ -1095,15 +1163,8 @@ impl<B: Bot> Handler<B> {
         self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_seed(version, settings), description);
     }
 
-    fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: rsl::Preset, world_count: u8) {
-        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count), match preset {
-            rsl::Preset::League => format!("a Random Settings League seed"),
-            rsl::Preset::Beginner => format!("a random settings Beginner seed"),
-            rsl::Preset::Intermediate => format!("a random settings Intermediate seed"),
-            rsl::Preset::Ddr => format!("a random settings DDR seed"),
-            rsl::Preset::CoOp => format!("a random settings co-op seed"),
-            rsl::Preset::Multiworld => format!("a random settings multiworld seed for {world_count} players"),
-        });
+    fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: VersionedRslPreset, world_count: u8, description: String) {
+        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count), description);
     }
 }
 
@@ -1229,6 +1290,10 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                             ctx.send_message("Welcome! This is a practice room for 9 Days of SAWS. Learn more about the event at https://docs.google.com/document/d/1xELThZtIctwN-vYtYhUqtd88JigNzabk8OZHANa0gqY/edit").await?;
                             ctx.send_message("You can roll a seed using “!seed day1”, “!seed day2”, etc. For more info about these options, use !presets").await?;
                         }
+                        Goal::PicRs2 => {
+                            ctx.send_message("Welcome! This is a practice room for the 2nd Random Settings Pictionary Spoiler Log Race. Learn more about the race at https://midos.house/event/pic/rs2").await?;
+                            ctx.send_message("Create a seed with !seed").await?;
+                        }
                         Goal::Rsl => {
                             ctx.send_message("Welcome to the OoTR Random Settings League! Create a seed with !seed <preset>").await?;
                             ctx.send_message("If no preset is selected, default RSL settings will be used. For a list of presets, use !presets").await?;
@@ -1277,7 +1342,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 match *state {
                     RaceState::Init => match goal {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                        Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_none() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
@@ -1354,7 +1419,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 match *state {
                     RaceState::Init => match goal {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                        Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_none() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
@@ -1422,7 +1487,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 match *state {
                     RaceState::Init => match goal {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                        Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_some() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick has already been chosen.")).await?;
@@ -1445,9 +1510,9 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                             *fpa_invoked = true;
                             //TODO different message for restreamed races
                             let player_team = match goal {
-                                Goal::MultiworldS3 => "team",
-                                Goal::NineDaysOfSaws => "player/team",
                                 Goal::Rsl => "player",
+                                Goal::MultiworldS3 | Goal::PicRs2 => "team",
+                                Goal::NineDaysOfSaws => "player/team",
                             };
                             ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. The {player_team} that did not call FPA can continue playing; the race will be retimed once completed.")).await?;
                         } else {
@@ -1501,7 +1566,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 match *state {
                     RaceState::Init => match goal {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                        Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_some() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick has already been chosen.")).await?;
@@ -1681,6 +1746,10 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                     goal.send_presets(ctx).await?;
                                 }
                             }
+                            Goal::PicRs2 => self.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
+                                version: Some((Version::new(2, 3, 8), 8)),
+                                preset: RslDevFenhlPreset::Pictionary,
+                            }, 1, format!("a random settings Pictionary seed")),
                             Goal::Rsl => {
                                 let (preset, world_count) = match args[..] {
                                     [] => (rsl::Preset::League, 1),
@@ -1728,7 +1797,14 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                         return Ok(())
                                     }
                                 };
-                                self.roll_rsl_seed(ctx, state, preset, world_count);
+                                self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, match preset {
+                                    rsl::Preset::League => format!("a Random Settings League seed"),
+                                    rsl::Preset::Beginner => format!("a random settings Beginner seed"),
+                                    rsl::Preset::Intermediate => format!("a random settings Intermediate seed"),
+                                    rsl::Preset::Ddr => format!("a random settings DDR seed"),
+                                    rsl::Preset::CoOp => format!("a random settings co-op seed"),
+                                    rsl::Preset::Multiworld => format!("a random settings multiworld seed for {world_count} players"),
+                                });
                             }
                         }
                     },
@@ -1745,7 +1821,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 match *state {
                     RaceState::Init => match goal {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                        Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft(ref mut draft) => if draft.went_first.is_none() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
