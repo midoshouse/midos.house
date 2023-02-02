@@ -455,7 +455,7 @@ impl GlobalState {
         }
     }
 
-    fn roll_seed(self: Arc<Self>, version: RandoVersion, settings: serde_json::Map<String, Json>) -> mpsc::Receiver<SeedRollUpdate> {
+    fn roll_seed(self: Arc<Self>, version: RandoVersion, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
             let can_roll_on_web = match self.ootr_api_client.can_roll_on_web(&version, settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds")), false).await {
@@ -496,15 +496,23 @@ impl GlobalState {
                 None
             };
             if can_roll_on_web {
-                match self.ootr_api_client.roll_seed_web(update_tx.clone(), version, false, settings).await {
-                    Ok((seed_id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::DoneWeb { rsl_preset: None, seed_id, gen_time, file_hash, file_stem }).await?,
+                match self.ootr_api_client.roll_seed_web(update_tx.clone(), version, false, spoiler_log, settings).await {
+                    Ok((seed_id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::DoneWeb {
+                        rsl_preset: None,
+                        send_spoiler_log: spoiler_log,
+                        seed_id, gen_time, file_hash, file_stem,
+                    }).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
                 drop(mw_permit);
             } else {
                 update_tx.send(SeedRollUpdate::Started).await?;
                 match roll_seed_locally(version, settings).await {
-                    Ok((patch_filename, spoiler_log_path)) => update_tx.send(SeedRollUpdate::DoneLocal { rsl_preset: None, patch_filename, spoiler_log_path }).await?,
+                    Ok((patch_filename, spoiler_log_path)) => update_tx.send(SeedRollUpdate::DoneLocal {
+                        rsl_preset: None,
+                        send_spoiler_log: spoiler_log,
+                        patch_filename, spoiler_log_path,
+                    }).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
             }
@@ -513,7 +521,7 @@ impl GlobalState {
         update_rx
     }
 
-    fn roll_rsl_seed(self: Arc<Self>, preset: VersionedRslPreset, world_count: u8) -> mpsc::Receiver<SeedRollUpdate> {
+    fn roll_rsl_seed(self: Arc<Self>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
@@ -600,7 +608,7 @@ impl GlobalState {
                     } else {
                         None
                     };
-                    let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), version.clone(), true, settings).await {
+                    let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), version.clone(), true, spoiler_log, settings).await {
                         Ok(data) => data,
                         Err(RollError::Retries(_)) => continue,
                         Err(e) => return Err(e),
@@ -608,6 +616,7 @@ impl GlobalState {
                     drop(mw_permit);
                     let _ = update_tx.send(SeedRollUpdate::DoneWeb {
                         rsl_preset: if let VersionedRslPreset::Xopar { preset, .. } = preset { Some(preset) } else { None },
+                        send_spoiler_log: spoiler_log,
                         seed_id, gen_time, file_hash, file_stem,
                     }).await;
                     return Ok(())
@@ -627,6 +636,7 @@ impl GlobalState {
                     fs::rename(patch_path, Path::new(seed::DIR).join(&patch_filename)).await?;
                     let _ = update_tx.send(SeedRollUpdate::DoneLocal {
                         rsl_preset: if let VersionedRslPreset::Xopar { preset, .. } = preset { Some(preset) } else { None },
+                        send_spoiler_log: spoiler_log,
                         patch_filename, spoiler_log_path,
                     }).await;
                     return Ok(())
@@ -716,6 +726,7 @@ enum SeedRollUpdate {
         rsl_preset: Option<rsl::Preset>,
         patch_filename: String,
         spoiler_log_path: PathBuf,
+        send_spoiler_log: bool,
     },
     /// The seed has been rolled on ootrandomizer.com, includes the seed ID.
     DoneWeb {
@@ -724,6 +735,7 @@ enum SeedRollUpdate {
         gen_time: DateTime<Utc>,
         file_hash: [HashIcon; 5],
         file_stem: String,
+        send_spoiler_log: bool,
     },
     /// Seed rolling failed.
     Error(RollError),
@@ -740,7 +752,7 @@ impl SeedRollUpdate {
             Self::MovedForward(pos) => ctx.send_message(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
             Self::WaitRateLimit(until) => ctx.send_message(&format!("Your seed will be rolled in {}.", format_duration(until - Instant::now(), true))).await?,
             Self::Started => ctx.send_message(&format!("Rolling {description}…")).await?,
-            Self::DoneLocal { rsl_preset, patch_filename, spoiler_log_path } => {
+            Self::DoneLocal { rsl_preset, patch_filename, spoiler_log_path, send_spoiler_log } => {
                 let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename").to_owned();
                 let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(Error::Custom(Box::new(RollError::PatchPath)))?;
                 let file_hash @ [hash1, hash2, hash3, hash4, hash5] = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_log_path).await.to_racetime()?)?.file_hash;
@@ -756,13 +768,18 @@ impl SeedRollUpdate {
                         format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), &file_stem, preset as _, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
                     ).execute(db_pool).await.to_racetime()?;
                 }
-                *state.write().await = RaceState::RolledLocally(spoiler_log_path);
                 let seed_url = format!("https://midos.house/seed/{patch_filename}");
                 ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
-                ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{spoiler_filename}")).await?;
+                if send_spoiler_log {
+                    fs::rename(&spoiler_log_path, Path::new(seed::DIR).join(&spoiler_filename)).await.to_racetime()?;
+                    ctx.send_message(&format!("And here is the spoiler log: https://midos.house/seed/{spoiler_filename}")).await?;
+                } else {
+                    ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{spoiler_filename}")).await?;
+                }
                 ctx.set_bot_raceinfo(&format!("{}{}\n{seed_url}", if let Some(preset) = rsl_preset { format!("{}\n", preset.race_info()) } else { String::default() }, format_hash(file_hash))).await?;
+                *state.write().await = RaceState::RolledLocally(spoiler_log_path);
             }
-            Self::DoneWeb { rsl_preset, seed_id, gen_time, file_hash, file_stem } => {
+            Self::DoneWeb { rsl_preset, seed_id, gen_time, file_hash, file_stem, send_spoiler_log } => {
                 let [hash1, hash2, hash3, hash4, hash5] = file_hash;
                 if let Some((startgg_set, game)) = startgg_game {
                     sqlx::query!(
@@ -776,11 +793,15 @@ impl SeedRollUpdate {
                         format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), &file_stem, preset as _, seed_id as i64, gen_time, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
                     ).execute(db_pool).await.to_racetime()?;
                 }
-                *state.write().await = RaceState::RolledWeb { seed_id, file_stem };
                 let seed_url = format!("https://ootrandomizer.com/seed/get?id={seed_id}");
                 ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
-                ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
+                if send_spoiler_log {
+                    ctx.send_message("The spoiler log is also available on the seed page.").await?;
+                } else {
+                    ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
+                }
                 ctx.set_bot_raceinfo(&format!("{}{}\n{seed_url}", if let Some(preset) = rsl_preset { format!("{}\n", preset.race_info()) } else { String::default() }, format_hash(file_hash))).await?;
+                *state.write().await = RaceState::RolledWeb { seed_id, file_stem };
             }
             Self::Error(RollError::Retries(num_retries)) => {
                 ctx.send_message(&format!("Sorry @entrants, the randomizer reported an error {num_retries} times, so I'm giving up on rolling the seed. Please try again. If this error persists, please report it to Fenhl.")).await?;
@@ -880,7 +901,7 @@ impl OotrApiClient {
         Ok(true)
     }
 
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, version: RandoVersion, random_settings: bool, settings: serde_json::Map<String, Json>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
+    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, version: RandoVersion, random_settings: bool, spoiler_log: bool, settings: serde_json::Map<String, Json>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
         #[serde_as]
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -923,7 +944,11 @@ impl OotrApiClient {
             if !random_settings {
                 update_tx.send(SeedRollUpdate::Started).await?;
             }
-            let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[("key", &*self.api_key), ("version", &*format!("{}_{}", version.branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?, version.base)), ("locked", "1")]), Some(&settings)).await?
+            let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[
+                ("key", &*self.api_key),
+                ("version", &*format!("{}_{}", version.branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?, version.base)),
+                ("locked", if spoiler_log { "0" } else { "1" }),
+            ]), Some(&settings)).await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error().await?;
             if let Some(mut next_seed) = next_seed {
@@ -1118,7 +1143,7 @@ impl<B: Bot> Handler<B> {
                     3 => format!("{}, pick the final setting. You can also use “!skip” if you want to leave the settings as they are.", team.choose(&self.high_seed_name, &self.low_seed_name)),
                     _ => unreachable!(),
                 }).await?,
-                mw::DraftStep::Done(settings) => self.roll_seed(ctx, state, self.goal(ctx).await.rando_version(), settings.resolve(), format!("a seed with {settings}")),
+                mw::DraftStep::Done(settings) => self.roll_seed(ctx, state, self.goal(ctx).await.rando_version(), settings.resolve(), false, format!("a seed with {settings}")),
             }
         } else {
             unreachable!()
@@ -1159,12 +1184,12 @@ impl<B: Bot> Handler<B> {
         });
     }
 
-    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: RandoVersion, settings: serde_json::Map<String, Json>, description: String) {
-        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_seed(version, settings), description);
+    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: RandoVersion, settings: serde_json::Map<String, Json>, spoiler_log: bool, description: String) {
+        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_seed(version, settings, spoiler_log), description);
     }
 
-    fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: VersionedRslPreset, world_count: u8, description: String) {
-        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count), description);
+    fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool, description: String) {
+        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count, spoiler_log), description);
     }
 }
 
@@ -1592,10 +1617,10 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                     ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
                                 }
-                                [ref arg] if arg == "base" => self.roll_seed(ctx, state, goal.rando_version(), mw::S3Settings::default().resolve(), format!("a seed with {}", mw::S3Settings::default())),
+                                [ref arg] if arg == "base" => self.roll_seed(ctx, state, goal.rando_version(), mw::S3Settings::default().resolve(), false, format!("a seed with {}", mw::S3Settings::default())),
                                 [ref arg] if arg == "random" => {
                                     let settings = mw::S3Settings::random(&mut thread_rng());
-                                    self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), format!("a seed with {settings}"));
+                                    self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), false, format!("a seed with {settings}"));
                                 }
                                 [ref arg] if arg == "draft" => {
                                     *state = RaceState::Draft(mw::S3Draft::default());
@@ -1639,7 +1664,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                         ctx.send_message(&format!("Sorry {reply_to}, you need to pair each setting with a value.")).await?;
                                         self.send_settings(ctx).await?;
                                     } else {
-                                        self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), format!("a seed with {settings}"));
+                                        self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), false, format!("a seed with {settings}"));
                                     }
                                 }
                             },
@@ -1736,7 +1761,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                     _ => None,
                                 } {
                                     settings.insert(format!("user_message"), json!(format!("9 Days of SAWS: day {}", &arg[3..])));
-                                    self.roll_seed(ctx, state, goal.rando_version(), settings, format!("a {description} seed"));
+                                    self.roll_seed(ctx, state, goal.rando_version(), settings, false, format!("a {description} seed"));
                                 } else {
                                     ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
@@ -1749,7 +1774,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                             Goal::PicRs2 => self.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
                                 version: Some((Version::new(2, 3, 8), 8)),
                                 preset: RslDevFenhlPreset::Pictionary,
-                            }, 1, format!("a random settings Pictionary seed")),
+                            }, 1, true, format!("a random settings Pictionary seed")),
                             Goal::Rsl => {
                                 let (preset, world_count) = match args[..] {
                                     [] => (rsl::Preset::League, 1),
@@ -1797,7 +1822,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                         return Ok(())
                                     }
                                 };
-                                self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, match preset {
+                                self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, false, match preset {
                                     rsl::Preset::League => format!("a Random Settings League seed"),
                                     rsl::Preset::Beginner => format!("a random settings Beginner seed"),
                                     rsl::Preset::Intermediate => format!("a random settings Intermediate seed"),
@@ -1900,10 +1925,10 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 //TODO also make sure this isn't the first half of an async
                 let mut state = self.race_state.write().await;
                 match *state {
-                    RaceState::RolledLocally(ref spoiler_log_path) => {
+                    RaceState::RolledLocally(ref spoiler_log_path) => if spoiler_log_path.exists() {
                         let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name");
                         fs::rename(spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await.to_racetime()?;
-                    }
+                    },
                     RaceState::RolledWeb { seed_id, ref file_stem } => {
                         let spoiler_filename = format!("{file_stem}_Spoiler.json");
                         ctx.global_state.ootr_api_client.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &seed_id.to_string())]), None::<&()>).await?
