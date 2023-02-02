@@ -157,7 +157,7 @@ const KNOWN_GOOD_WEB_VERSIONS: [RandoVersion; 5] = [
     RandoVersion::dev(6, 2, 205),
     RandoVersion::branch(RandoBranch::DevR, 6, 2, 238, 1),
     RandoVersion::branch(RandoBranch::DevFenhl, 6, 9, 14, 2),
-    RandoVersion::branch(RandoBranch::DevFenhl, 7, 1, 32, 5),
+    RandoVersion::branch(RandoBranch::DevFenhl, 7, 1, 32, 7),
 ];
 
 const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
