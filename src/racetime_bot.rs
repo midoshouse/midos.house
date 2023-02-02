@@ -525,7 +525,7 @@ impl GlobalState {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
-            let rsl_script_path = preset.script_path()?; //TODO automatically clone if not present
+            let rsl_script_path = preset.script_path()?; //TODO automatically clone if not present and ensure base rom is in place
             // update the RSL script
             if !preset.is_version_locked() {
                 let repo = Repository::open(&rsl_script_path)?;
@@ -1773,7 +1773,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                 }
                             }
                             Goal::PicRs2 => self.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
-                                version: Some((Version::new(2, 3, 8), 8)),
+                                version: Some((Version::new(2, 3, 8), 10)),
                                 preset: RslDevFenhlPreset::Pictionary,
                             }, 1, true, format!("a random settings Pictionary seed")),
                             Goal::Rsl => {

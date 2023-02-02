@@ -154,13 +154,14 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "rs2" => html! {
             p {
                 : "The seed will be rolled on ";
-                a(href = "https://github.com/fenhl/plando-random-settings/tree/360555ecdc61cbf720f0672522dc748bb2efc60a") : "version 2.3.8 Fenhl-8";
+                a(href = "https://github.com/fenhl/plando-random-settings/tree/bd5405a0237217e15f82d1e73d0baf9450d6bb9c") : "version 2.3.8 Fenhl-10";
                 : " of the random settings script. We will be using ";
-                a(href = "https://github.com/fenhl/plando-random-settings/blob/360555ecdc61cbf720f0672522dc748bb2efc60a/weights/pictionary_override.json") : "a special weights override";
+                a(href = "https://github.com/fenhl/plando-random-settings/blob/bd5405a0237217e15f82d1e73d0baf9450d6bb9c/weights/pictionary_override.json") : "a special weights override";
                 : " for Pictionary spoiler log races. Changes include:";
             }
             ul {
-                li : "To reduce complexity for the pilot, overworld ER is disabled.";
+                li : "Shop shuffle is disabled due to a bug on the randomizer version we're using.";
+                li : "Overworld ER is disabled to reduce complexity for the pilot.";
                 li : "Master Quest dungeons are disabled due to a lack of documentation for spoiler log location names.";
                 li {
                     : "Some of the settings and combinations of settings that are disabled in RSL for information-related reasons are turned back on, since they're not an issue if you have the spoiler log:";
@@ -174,17 +175,15 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
                 li {
                     : "The seed will be rolled on ";
-                    a(href = "https://ootrandomizer.com/generatorDev?version=devFenhlRSL_7.1.32") : "Fenhl's branch";
+                    a(href = "https://github.com/fenhl/OoT-Randomizer/tree/5139c90cac5013b4d9a52ede9f15d3676f82492d") : "Fenhl's branch";
                     : ", so some settings that aren't in Dev-R are added:";
                     ul {
                         li : "Boss rooms included in mixed entrance pools (50% chance if mixed pools is on)";
                         li : "Triforce Hunt variants: Ice% (single piece in the iron boots chest) and Triforce Blitz (3 pieces found in dungeons), 5% chance each";
                         li : "Shuffled dungeon rewards (vanilla, own dungeon, regional, overworld, any dungeon, or anywhere; 5% chance each)";
-                        li : "Keyrings give boss keys (50% chance)";
                         li : "Shuffled silver rupees (same weights as small key shuffle) with silver rupee pouches (20% chance)";
                         li : "Closed Kokiri Forest exit (50% chance, independent of Closed/Open Deku) with a 5% chance of Require Gohma";
                         li : "Shuffled Thieves' Hideout entrances (50% chance if interiors are shuffled)";
-                        li : "Shuffled Gerudo Valley river exit (50% chance)";
                         li : "Shuffled blue warps (vanilla, dungeon entrance, or shuffled)";
                         li : "Full one-way entrance randomization (owls, warp songs, spawns, blue warps, and the Gerudo Valley river exit can lead to more destinations; 25% chance each)";
                         li : "Only one one-way entrance of any type goes to a given hint area (50% chance)";
@@ -197,6 +196,8 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     ul {
                         li : "Shuffled Ganon's Castle entrance (25% chance)";
                         li : "Shuffled beehives (50% chance)";
+                        li : "Keyrings give boss keys (50% chance)";
+                        li : "Shuffled Gerudo Valley river exit (50% chance)";
                     }
                 }
                 li {
