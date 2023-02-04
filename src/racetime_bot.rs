@@ -117,6 +117,7 @@ use {
         event::{
             self,
             Series,
+            TeamConfig,
             mw,
             ndos,
             rsl,
@@ -437,6 +438,7 @@ struct GlobalState {
     /// Locked while event rooms are being created. Wait with handling new rooms while it's held.
     new_room_lock: Mutex<()>,
     host: &'static str,
+    racetime_config: ConfigRaceTime,
     db_pool: PgPool,
     http_client: reqwest::Client,
     startgg_token: String,
@@ -446,11 +448,11 @@ struct GlobalState {
 }
 
 impl GlobalState {
-    fn new(db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Self {
+    fn new(racetime_config: ConfigRaceTime, db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Self {
         Self {
             new_room_lock: Mutex::default(),
             ootr_api_client: OotrApiClient::new(http_client.clone(), ootr_api_key),
-            host, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown,
+            host, racetime_config, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown,
         }
     }
 
@@ -1045,6 +1047,11 @@ struct OfficialRaceData {
     fpa_invoked: bool,
 }
 
+struct RestreamState {
+    restreamer_racetime_id: String,
+    ready: bool,
+}
+
 trait Bot: Send + Sync + 'static {
     fn should_handle_goal(goal: &racetime::model::Goal) -> bool;
 }
@@ -1072,6 +1079,7 @@ struct Handler<B: Bot> {
     official_data: Option<OfficialRaceData>,
     high_seed_name: String,
     low_seed_name: String,
+    restreams: HashMap<Url, Option<RestreamState>>,
     breaks: Option<Breaks>,
     break_notifications: Option<tokio::task::JoinHandle<()>>,
     start_saved: bool,
@@ -1229,7 +1237,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
         let data = ctx.data().await;
         let new_room_lock = ctx.global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-        let (official_data, race_state, high_seed_name, low_seed_name) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
+        let (official_data, video_url, race_state, high_seed_name, low_seed_name) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
             let mut entrants = Vec::default();
             let start = cal_event.start().expect("handling room for official race without start time");
             for team in cal_event.active_teams() {
@@ -1274,6 +1282,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                         [team2.name.clone().unwrap_or_else(|| format!("Team A")), team1.name.clone().unwrap_or_else(|| format!("Team B"))]
                     },
                     Entrants::Two([_, _]) => unimplemented!("official race with non-MH teams"), //TODO
+                    Entrants::Three([_, _, _]) => unimplemented!("official race with 3 teams"), //TODO
                 }
             } else {
                 [format!("Team A"), format!("Team B")]
@@ -1284,6 +1293,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                     fpa_invoked: false,
                     event, startgg_set, entrants, start,
                 }),
+                cal_event.race.video_url.clone(),
                 RaceState::Draft(cal_event.race.draft.map(|draft| draft.state).unwrap_or_default()), //TODO restrict draft picks
                 high_seed_name,
                 low_seed_name,
@@ -1335,6 +1345,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             }
             (
                 None,
+                None,
                 RaceState::default(),
                 format!("Team A"),
                 format!("Team B"),
@@ -1345,6 +1356,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
         let is_official = official_data.is_some();
         let this = Self {
             _phantom: PhantomData,
+            restreams: HashMap::from_iter(video_url.map(|url| (url, None))),
             breaks: None, //TODO default breaks for restreamed matches?
             break_notifications: None,
             start_saved: false,
@@ -1538,13 +1550,16 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                     } else {
                         if let Some(OfficialRaceData { ref mut fpa_invoked, .. }) = self.official_data {
                             *fpa_invoked = true;
-                            //TODO different message for restreamed races
-                            let player_team = match goal {
-                                Goal::Rsl => "player",
-                                Goal::MultiworldS3 | Goal::PicRs2 => "team",
-                                Goal::NineDaysOfSaws => "player/team",
-                            };
-                            ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. The {player_team} that did not call FPA can continue playing; the race will be retimed once completed.")).await?;
+                            if self.restreams.is_empty() {
+                                let player_team = match goal {
+                                    Goal::Rsl => "player",
+                                    Goal::MultiworldS3 | Goal::PicRs2 => "team",
+                                    Goal::NineDaysOfSaws => "player/team",
+                                };
+                                ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. The {player_team} that did not call FPA can continue playing; the race will be retimed once completed.")).await?;
+                            } else {
+                                ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. Please pause since this race is being restreamed.")).await?;
+                            }
                         } else {
                             ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}.")).await?;
                         }
@@ -1591,6 +1606,85 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 ctx.send_message(&format!("Sorry {reply_to}, this command is only available for official races.")).await?;
             },
             "presets" => goal.send_presets(ctx).await?,
+            "ready" => {
+                if let Some(state) = self.restreams.values_mut().filter_map(Option::as_mut).find(|state| state.restreamer_racetime_id == msg.user.as_ref().expect("received !ready command from bot").id) {
+                    state.ready = true;
+                } else {
+                    ctx.send_message(&format!("Sorry {reply_to}, only restreamers can do that.")).await?;
+                    return Ok(())
+                }
+                if self.restreams.values().all(|state| state.as_ref().map_or(false, |state| state.ready)) {
+                    ctx.send_message(&format!("All restreams ready, unlocking auto-start…")).await?;
+                    let (access_token, _) = racetime::authorize_with_host(ctx.global_state.host, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
+                    racetime::EditRace {
+                        goal: goal.as_str().to_owned(),
+                        goal_is_custom: goal.is_custom(),
+                        start_delay: 15,
+                        time_limit: 24,
+                        chat_message_delay: 0,
+                        team_race: None,
+                        unlisted: None,
+                        info_user: None,
+                        info_bot: None,
+                        require_even_teams: None,
+                        time_limit_auto_complete: None,
+                        streaming_required: None,
+                        auto_start: Some(true),
+                        allow_comments: None,
+                        hide_comments: None,
+                        allow_prerace_chat: None,
+                        allow_midrace_chat: None,
+                        allow_non_entrant_chat: None,
+                    }.edit_with_host(ctx.global_state.host, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
+                } else {
+                    ctx.send_message(&format!("Restream ready, still waiting for other restreams.")).await?;
+                }
+            }
+            "restreamer" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
+                if let [restream_url, restreamer_racetime_id] = &args[..] {
+                    let restream_url = if restream_url.contains('/') {
+                        Url::parse(restream_url)
+                    } else {
+                        Url::parse(&format!("https://twitch.tv/{restream_url}"))
+                    };
+                    if let Ok(restream_url) = restream_url {
+                        if self.restreams.is_empty() {
+                            let (access_token, _) = racetime::authorize_with_host(ctx.global_state.host, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
+                            racetime::EditRace {
+                                goal: goal.as_str().to_owned(),
+                                goal_is_custom: goal.is_custom(),
+                                start_delay: 15,
+                                time_limit: 24,
+                                chat_message_delay: 0,
+                                team_race: None,
+                                unlisted: None,
+                                info_user: None,
+                                info_bot: None,
+                                require_even_teams: None,
+                                time_limit_auto_complete: None,
+                                streaming_required: None,
+                                auto_start: Some(false),
+                                allow_comments: None,
+                                hide_comments: None,
+                                allow_prerace_chat: None,
+                                allow_midrace_chat: None,
+                                allow_non_entrant_chat: None,
+                            }.edit_with_host(ctx.global_state.host, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
+                        }
+                        *self.restreams.entry(restream_url).or_default() = Some(RestreamState {
+                            restreamer_racetime_id: restreamer_racetime_id.clone(),
+                            ready: false,
+                        });
+                        ctx.send_message("Restreamer assigned. Use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.").await?; //TODO mention restreamer
+                    } else {
+                        ctx.send_message(&format!("Sorry {reply_to}, that doesn't seem to be a valid URL or Twitch channel.")).await?;
+                    }
+                } else {
+                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognise that format for adding a restreamer.")).await?; //TODO better help message
+                }
+            } else {
+                ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
+            },
             "second" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.race_state.write().await;
                 match *state {
@@ -2046,8 +2140,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
     }
 }
 
-async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: Config, mut shutdown: rocket::Shutdown) -> Result<(), Error> {
-    let racetime_config = if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production };
+async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shutdown) -> Result<(), Error> {
     loop {
         select! {
             () = &mut shutdown => break,
@@ -2057,7 +2150,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                     let Some(goal) = all::<Goal>().find(|goal| goal.matches_event(row.series, &row.event)) else { continue };
                     if let Goal::Rsl = goal { continue } // we're currently not opening rooms for RSL bracket matches despite having a goal for it
                     let race = Race::from_id(&mut transaction, &global_state.http_client, &global_state.startgg_token, row.id).await.to_racetime()?;
-                    match racetime::authorize_with_host(global_state.host, &racetime_config.client_id, &racetime_config.client_secret, &global_state.http_client).await {
+                    match racetime::authorize_with_host(global_state.host, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.http_client).await {
                         Ok((access_token, _)) => {
                             let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
                             let info_prefix = match (&race.phase, &race.round) {
@@ -2068,14 +2161,15 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                             };
                             let race_slug = racetime::StartRace {
                                 goal: goal.as_str().to_owned(),
-                                goal_is_custom: true,
-                                team_race: true,
+                                goal_is_custom: goal.is_custom(),
+                                team_race: !matches!(race.event(&mut transaction).await.to_racetime()?.team_config(), TeamConfig::Solo),
                                 invitational: !matches!(race.entrants, Entrants::Open),
                                 unlisted: false,
                                 info_user: match race.entrants {
                                     Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
                                     Entrants::Named(ref participants) => format!("{}{participants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
                                     Entrants::Two([ref team1, ref team2]) => format!("{}{team1} vs {team2}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()), //TODO adjust for asyncs
+                                    Entrants::Three([ref team1, ref team2, ref team3]) => format!("{}{team1} vs {team2} vs {team3}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()), //TODO adjust for asyncs
                                 },
                                 info_bot: String::default(),
                                 require_even_teams: true,
@@ -2083,7 +2177,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                                 time_limit: 24,
                                 time_limit_auto_complete: false,
                                 streaming_required: None,
-                                auto_start: true, //TODO no autostart if restreamed
+                                auto_start: race.video_url.is_none(),
                                 allow_comments: true,
                                 hide_comments: true,
                                 allow_prerace_chat: true,
@@ -2122,6 +2216,27 @@ async fn create_rooms(global_state: Arc<GlobalState>, env: Environment, config: 
                                             }
                                             msg.push(" vs ");
                                             match team2 {
+                                                Entrant::MidosHouseTeam(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
+                                                Entrant::Named(name) => { msg.push_safe(name); }
+                                            }
+                                        }
+                                        Entrants::Three([ref team1, ref team2, ref team3]) => {
+                                            if let Some(prefix) = info_prefix {
+                                                msg.push_safe(prefix);
+                                                //TODO adjust for asyncs
+                                                msg.push(": ");
+                                            }
+                                            match team1 {
+                                                Entrant::MidosHouseTeam(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
+                                                Entrant::Named(name) => { msg.push_safe(name); }
+                                            }
+                                            msg.push(" vs ");
+                                            match team2 {
+                                                Entrant::MidosHouseTeam(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
+                                                Entrant::Named(name) => { msg.push_safe(name); }
+                                            }
+                                            msg.push(" vs ");
+                                            match team3 {
                                                 Entrant::MidosHouseTeam(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
                                                 Entrant::Named(name) => { msg.push_safe(name); }
                                             }
@@ -2179,10 +2294,11 @@ async fn handle_rooms<B: Bot>(global_state: Arc<GlobalState>, env: Environment, 
 }
 
 pub(crate) async fn main(db_pool: PgPool, http_client: reqwest::Client, discord_ctx: RwFuture<DiscordCtx>, ootr_api_key: String, env: Environment, config: Config, shutdown: rocket::Shutdown, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Result<(), Error> {
+    let racetime_config = if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone();
     let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
-    let global_state = Arc::new(GlobalState::new(db_pool.clone(), http_client.clone(), ootr_api_key.clone(), startgg_token.to_owned(), env.racetime_host(), discord_ctx, clean_shutdown));
+    let global_state = Arc::new(GlobalState::new(racetime_config, db_pool.clone(), http_client.clone(), ootr_api_key.clone(), startgg_token.to_owned(), env.racetime_host(), discord_ctx, clean_shutdown));
     let ((), (), ()) = tokio::try_join!(
-        create_rooms(global_state.clone(), env, config.clone(), shutdown.clone()),
+        create_rooms(global_state.clone(), shutdown.clone()),
         handle_rooms::<Mido>(global_state.clone(), env, if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }, shutdown.clone()),
         handle_rooms::<RslBot>(global_state, env, if env.is_dev() { &config.racetime_bot_rsl_dev } else { &config.racetime_bot_rsl_production }, shutdown),
     )?;

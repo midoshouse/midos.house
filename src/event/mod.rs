@@ -959,7 +959,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                         @if has_games {
                             th : "Game";
                         }
-                        th(colspan = "2") : "Entrants";
+                        th(colspan = "6") : "Entrants";
                         th : "Links";
                         @if has_seeds {
                             : seed::table_header_cells(true);
@@ -992,16 +992,16 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 }
                             }
                             @match race.entrants {
-                                Entrants::Open => td(colspan = "2") : "(open)";
-                                Entrants::Count { total, finished } => td(colspan = "2") {
+                                Entrants::Open => td(colspan = "6") : "(open)";
+                                Entrants::Count { total, finished } => td(colspan = "6") {
                                     : total;
                                     : " (";
                                     : finished;
                                     : " finishers)";
                                 }
-                                Entrants::Named(ref participants) => td(colspan = "2") : participants;
+                                Entrants::Named(ref participants) => td(colspan = "6") : participants;
                                 Entrants::Two([ref team1, ref team2]) => {
-                                    td(class = "vs1") {
+                                    td(class = "vs1", colspan = "3") {
                                         : team1.to_html(false);
                                         @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {
                                             br;
@@ -1010,7 +1010,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                             }
                                         }
                                     }
-                                    td(class = "vs2") {
+                                    td(class = "vs2", colspan = "3") {
                                         : team2.to_html(false);
                                         @if let RaceSchedule::Async { start2: Some(start), .. } = race.schedule {
                                             br;
@@ -1019,6 +1019,11 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                             }
                                         }
                                     }
+                                }
+                                Entrants::Three([ref team1, ref team2, ref team3]) => {
+                                    td(colspan = "2") : team1.to_html(false);
+                                    td(colspan = "2") : team2.to_html(false);
+                                    td(colspan = "2") : team3.to_html(false);
                                 }
                             }
                             td {

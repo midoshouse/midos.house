@@ -146,6 +146,7 @@ pub(crate) enum Entrants {
     },
     Named(String),
     Two([Entrant; 2]),
+    Three([Entrant; 3]),
 }
 
 #[derive(Clone)]
@@ -279,6 +280,7 @@ impl Race {
             team2 AS "team2: Id",
             p1,
             p2,
+            p3,
             phase,
             round,
             draft_state AS "draft_state: Json<Draft>",
@@ -329,26 +331,34 @@ impl Race {
                 Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?),
                 Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?),
             ])
-        } else if let [Some(p1), Some(p2)] = [row.p1, row.p2] {
-            Entrants::Two([
-                Entrant::Named(p1),
-                Entrant::Named(p2),
-            ])
-        } else if let (Some(startgg_set), Some(slots)) = (&startgg_set, slots) {
-            if let [
-                Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team1)), on: _ }) }) }),
-                Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team2)), on: _ }) }) }),
-            ] = *slots {
-                let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?;
-                let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
-                sqlx::query!("UPDATE races SET team1 = $1 WHERE id = $2", team1.id as _, i64::from(id)).execute(&mut *transaction).await?;
-                sqlx::query!("UPDATE races SET team2 = $1 WHERE id = $2", team2.id as _, i64::from(id)).execute(&mut *transaction).await?;
-                Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)])
-            } else {
-                return Err(Error::StartggTeams { startgg_set: startgg_set.clone() })
-            }
         } else {
-            return Err(Error::MissingTeams)
+            match [row.p1, row.p2, row.p3] {
+                [Some(p1), Some(p2), Some(p3)] => Entrants::Three([
+                    Entrant::Named(p1),
+                    Entrant::Named(p2),
+                    Entrant::Named(p3),
+                ]),
+                [Some(p1), Some(p2), None] => Entrants::Two([
+                    Entrant::Named(p1),
+                    Entrant::Named(p2),
+                ]),
+                _ => if let (Some(startgg_set), Some(slots)) = (&startgg_set, slots) {
+                    if let [
+                        Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team1)), on: _ }) }) }),
+                        Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team2)), on: _ }) }) }),
+                    ] = *slots {
+                        let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?;
+                        let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
+                        sqlx::query!("UPDATE races SET team1 = $1 WHERE id = $2", team1.id as _, i64::from(id)).execute(&mut *transaction).await?;
+                        sqlx::query!("UPDATE races SET team2 = $1 WHERE id = $2", team2.id as _, i64::from(id)).execute(&mut *transaction).await?;
+                        Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)])
+                    } else {
+                        return Err(Error::StartggTeams { startgg_set: startgg_set.clone() })
+                    }
+                } else {
+                    return Err(Error::MissingTeams)
+                },
+            }
         };
 
         macro_rules! update_end {
@@ -450,8 +460,8 @@ impl Race {
                 }
             } else {
                 // add race to database to give it an ID
-                let (team1, team2, p1, p2) = match race.entrants {
-                    Entrants::Open => (None, None, None, None),
+                let (team1, team2, p1, p2, p3) = match race.entrants {
+                    Entrants::Open => (None, None, None, None, None),
                     Entrants::Count { .. } => unimplemented!(), //TODO
                     Entrants::Named(_) => unimplemented!(), //TODO
                     Entrants::Two([ref p1, ref p2]) => {
@@ -463,7 +473,25 @@ impl Race {
                             Entrant::MidosHouseTeam(team) => (Some(team.id), None),
                             Entrant::Named(name) => (None, Some(name)),
                         };
-                        (team1, team2, p1, p2)
+                        (team1, team2, p1, p2, None)
+                    }
+                    Entrants::Three([ref p1, ref p2, ref p3]) => {
+                        (
+                            None,
+                            None,
+                            Some(match p1 {
+                                Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
+                                Entrant::Named(name) => name,
+                            }),
+                            Some(match p2 {
+                                Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
+                                Entrant::Named(name) => name,
+                            }),
+                            Some(match p3 {
+                                Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
+                                Entrant::Named(name) => name,
+                            }),
+                        )
                     }
                 };
                 let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match race.schedule {
@@ -502,9 +530,10 @@ impl Race {
                     p2,
                     video_url,
                     phase,
-                    round
+                    round,
+                    p3
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)",
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)",
                     race.startgg_set,
                     start,
                     race.series as _,
@@ -535,6 +564,7 @@ impl Race {
                     race.video_url.as_ref().map(|url| url.to_string()),
                     race.phase,
                     race.round,
+                    p3,
                 ).execute(transaction).await?;
                 race.id = Some(id);
                 races.push(race);
@@ -797,24 +827,32 @@ impl Race {
                     }
                     // Challenge Cup bracket matches
                     for row in sheet_values("1Hp0rg_bV1Ja6oPdFLomTWQmwNy7ivmLMZ1rrVC3gx0Q", format!("Submitted Matches!C2:K")).await? {
-                        if let [group_round, p1, p2, _p3, date_et, time_et, is_async, restream_ok, is_cancelled] = &*row {
+                        if let [group_round, p1, p2, p3, date_et, time_et, is_async, restream_ok, is_cancelled] = &*row {
                             if group_round.is_empty() { continue }
                             let is_async = is_async == "Yes";
                             let _restream_ok = restream_ok == "Yes";
                             if is_cancelled == "TRUE" { continue }
                             let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %I:%M %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
+                            let (round, entrants) = if p3.is_empty() {
+                                (group_round.clone(), Entrants::Two([
+                                    Entrant::Named(p1.clone()),
+                                    Entrant::Named(p2.clone()),
+                                ]))
+                            } else {
+                                (format!("{group_round} Tiebreaker"), Entrants::Three([
+                                    Entrant::Named(p1.clone()),
+                                    Entrant::Named(p2.clone()),
+                                    Entrant::Named(p3.clone()),
+                                ]))
+                            };
                             add_or_update_race(&mut *transaction, &mut races, false, Self {
                                 id: None,
                                 series: event.series,
                                 event: event.event.to_string(),
                                 startgg_event: None,
                                 startgg_set: None,
-                                entrants: Entrants::Two([
-                                    Entrant::Named(p1.clone()),
-                                    Entrant::Named(p2.clone()),
-                                ]),
                                 phase: Some(format!("Challenge Cup")),
-                                round: Some(group_round.clone()),
+                                round: Some(round),
                                 game: None,
                                 schedule: if is_async {
                                     RaceSchedule::Async {
@@ -835,6 +873,7 @@ impl Race {
                                 seed: None,
                                 video_url: None,
                                 ignored: false,
+                                entrants,
                             }).await?;
                         }
                     }
@@ -941,6 +980,10 @@ impl Event {
                 matches!(self.kind, EventKind::Normal | EventKind::Async1).then_some(team1),
                 matches!(self.kind, EventKind::Normal | EventKind::Async2).then_some(team2),
             ].into_iter().filter_map(identity).filter_map(as_variant!(Entrant::MidosHouseTeam))),
+            Entrants::Three([ref team1, ref team2, ref team3]) => match self.kind {
+                EventKind::Normal => Box::new([team1, team2, team3].into_iter().filter_map(as_variant!(Entrant::MidosHouseTeam))),
+                EventKind::Async1 | EventKind::Async2 => unimplemented!(), //TODO
+            },
         }
     }
 
@@ -1057,6 +1100,10 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                         EventKind::Normal => format!("{summary_prefix}: {team1} vs {team2}"),
                         EventKind::Async1 => format!("{summary_prefix} (async): {team1} vs {team2}"),
                         EventKind::Async2 => format!("{summary_prefix} (async): {team2} vs {team1}"),
+                    },
+                    Entrants::Three([ref team1, ref team2, ref team3]) => match race_event.kind {
+                        EventKind::Normal => format!("{summary_prefix}: {team1} vs {team2} vs {team3}"),
+                        EventKind::Async1 | EventKind::Async2 => unimplemented!(), //TODO
                     },
                 };
                 cal_event.push(Summary::new(if let Some(game) = race.game {
@@ -1201,6 +1248,29 @@ pub(super) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, m
                     }
                     li {
                         @match p2 {
+                            Entrant::MidosHouseTeam(team) => : team.to_html(false);
+                            Entrant::Named(name) => : name;
+                        }
+                    }
+                }
+            }
+            Entrants::Three([p1, p2, p3]) => {
+                p : "Entrants:";
+                ol {
+                    li {
+                        @match p1 {
+                            Entrant::MidosHouseTeam(team) => : team.to_html(false);
+                            Entrant::Named(name) => : name;
+                        }
+                    }
+                    li {
+                        @match p2 {
+                            Entrant::MidosHouseTeam(team) => : team.to_html(false);
+                            Entrant::Named(name) => : name;
+                        }
+                    }
+                    li {
+                        @match p3 {
                             Entrant::MidosHouseTeam(team) => : team.to_html(false);
                             Entrant::Named(name) => : name;
                         }
