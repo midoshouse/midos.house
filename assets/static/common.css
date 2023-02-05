@@ -178,7 +178,7 @@ table td {
 
 table th,
 table td {
-    padding: 8px;
+    padding: 4px;
 }
 
 .sheikah {
@@ -294,6 +294,11 @@ footer,
 @media (min-width: 768px) {
     nav h1 {
         font-size: 64px;
+    }
+
+    table th,
+    table td {
+        padding: 8px;
     }
 }
 
