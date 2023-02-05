@@ -1245,7 +1245,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 while let Some(member) = members.try_next().await.to_racetime()? {
                     if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
                         match entrant.status.value {
-                            EntrantStatusValue::Requested => ctx.accept_request(&member).await.expect("failed to accept race join request"),
+                            EntrantStatusValue::Requested => ctx.accept_request(&member).await?,
                             EntrantStatusValue::Invited |
                             EntrantStatusValue::Declined |
                             EntrantStatusValue::Ready |
@@ -1599,7 +1599,30 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                 ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
             },
             "monitor" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
-                ctx.add_monitor(&msg.user.as_ref().expect("received !monitor command from bot").id).await?;
+                let monitor = &msg.user.as_ref().expect("received !monitor command from bot").id;
+                if let Some(entrant) = ctx.data().await.entrants.iter().find(|entrant| entrant.user.id == *monitor) {
+                    match entrant.status.value {
+                        EntrantStatusValue::Requested => {
+                            ctx.accept_request(monitor).await?;
+                            ctx.add_monitor(monitor).await?;
+                            ctx.remove_entrant(monitor).await?;
+                        }
+                        EntrantStatusValue::Invited |
+                        EntrantStatusValue::Declined |
+                        EntrantStatusValue::Ready |
+                        EntrantStatusValue::NotReady |
+                        EntrantStatusValue::InProgress |
+                        EntrantStatusValue::Done |
+                        EntrantStatusValue::Dnf |
+                        EntrantStatusValue::Dq => {
+                            ctx.add_monitor(monitor).await?;
+                        }
+                    }
+                } else {
+                    ctx.invite_user(monitor).await?;
+                    ctx.add_monitor(monitor).await?;
+                    ctx.remove_entrant(monitor).await?;
+                }
             } else if self.is_official() {
                 ctx.send_message(&format!("Sorry {reply_to}, only tournament organizers can do that.")).await?;
             } else {
