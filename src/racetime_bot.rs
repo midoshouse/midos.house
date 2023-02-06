@@ -1028,7 +1028,10 @@ impl fmt::Display for Breaks {
 enum RaceState {
     #[default]
     Init,
-    Draft(mw::S3Draft),
+    Draft {
+        state: mw::S3Draft,
+        spoiler_log: bool,
+    },
     Rolling,
     RolledLocally(PathBuf),
     RolledWeb {
@@ -1122,8 +1125,8 @@ impl<B: Bot> Handler<B> {
     async fn send_settings(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         let available_settings = {
             let state = self.race_state.read().await;
-            if let RaceState::Draft(ref draft) = *state {
-                draft.available_settings()
+            if let RaceState::Draft { ref state, .. } = *state {
+                state.available_settings()
             } else {
                 mw::S3Draft::default().available_settings()
             }
@@ -1145,7 +1148,7 @@ impl<B: Bot> Handler<B> {
 
     async fn advance_draft(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         let state = self.race_state.clone().write_owned().await;
-        if let RaceState::Draft(ref draft) = *state {
+        if let RaceState::Draft { state: ref draft, spoiler_log } = *state {
             match draft.next_step() {
                 mw::DraftStep::GoFirst => ctx.send_message(&format!("{}, you have the higher seed. Choose whether you want to go !first or !second", self.high_seed_name)).await?,
                 mw::DraftStep::Ban { prev_bans, team } => ctx.send_message(&format!("{}, lock a setting to its default using “!ban <setting>”, or use “!skip” if you don't want to ban anything.{}", team.choose(&self.high_seed_name, &self.low_seed_name), if prev_bans == 0 { " Use “!settings” for a list of available settings." } else { "" })).await?,
@@ -1156,7 +1159,7 @@ impl<B: Bot> Handler<B> {
                     3 => format!("{}, pick the final setting. You can also use “!skip” if you want to leave the settings as they are.", team.choose(&self.high_seed_name, &self.low_seed_name)),
                     _ => unreachable!(),
                 }).await?,
-                mw::DraftStep::Done(settings) => self.roll_seed(ctx, state, self.goal(ctx).await.rando_version(), settings.resolve(), false, format!("a seed with {settings}")),
+                mw::DraftStep::Done(settings) => self.roll_seed(ctx, state, self.goal(ctx).await.rando_version(), settings.resolve(), spoiler_log, format!("a seed with {settings}")),
             }
         } else {
             unreachable!()
@@ -1294,7 +1297,11 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                     event, startgg_set, entrants, start,
                 }),
                 cal_event.race.video_url.clone(),
-                RaceState::Draft(cal_event.race.draft.map(|draft| draft.state).unwrap_or_default()), //TODO restrict draft picks
+                RaceState::Draft {
+                    state: cal_event.race.draft.map(|draft| draft.state).unwrap_or_default(),
+                    spoiler_log: false,
+                    //TODO restrict draft picks
+                },
                 high_seed_name,
                 low_seed_name,
             )
@@ -1340,7 +1347,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                         }
                     },
                     RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } => ctx.send_message("@entrants I just restarted. You may have to reconfigure !breaks and !fpa. Sorry about that.").await?,
-                    RaceState::Draft(_) | RaceState::Rolling | RaceState::SpoilerSent => unreachable!(),
+                    RaceState::Draft { .. } | RaceState::Rolling | RaceState::SpoilerSent => unreachable!(),
                 }
             }
             (
@@ -1367,7 +1374,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
         };
         {
             let state = this.race_state.read().await;
-            if let RaceState::Draft(_) = *state {
+            if let RaceState::Draft { .. } = *state {
                 drop(state);
                 this.advance_draft(ctx).await?;
             }
@@ -1386,7 +1393,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
-                    RaceState::Draft(ref mut draft) => if draft.went_first.is_none() {
+                    RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_none() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
                     } else if draft.pick_count() >= 2 {
                         ctx.send_message(&format!("Sorry {reply_to}, bans have already been chosen.")).await?;
@@ -1463,7 +1470,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
-                    RaceState::Draft(ref mut draft) => if draft.went_first.is_none() {
+                    RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_none() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
                     } else if draft.pick_count() < 2 {
                         ctx.send_message(&format!("Sorry {reply_to}, bans haven't been chosen yet, use “!ban <setting>”")).await?;
@@ -1531,7 +1538,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
-                    RaceState::Draft(ref mut draft) => if draft.went_first.is_some() {
+                    RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_some() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick has already been chosen.")).await?;
                     } else {
                         draft.went_first = Some(true);
@@ -1715,7 +1722,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
-                    RaceState::Draft(ref mut draft) => if draft.went_first.is_some() {
+                    RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_some() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick has already been chosen.")).await?;
                     } else {
                         draft.went_first = Some(false);
@@ -1727,7 +1734,8 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
-            "seed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
+            "seed" | "spoilerseed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
+                let spoiler_log = cmd_name.to_ascii_lowercase() == "spoilerseed";
                 let mut state = self.race_state.clone().write_owned().await;
                 match *state {
                     RaceState::Init => if self.locked && !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
@@ -1739,13 +1747,13 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                     ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
                                 }
-                                [ref arg] if arg == "base" => self.roll_seed(ctx, state, goal.rando_version(), mw::S3Settings::default().resolve(), false, format!("a seed with {}", mw::S3Settings::default())),
+                                [ref arg] if arg == "base" => self.roll_seed(ctx, state, goal.rando_version(), mw::S3Settings::default().resolve(), spoiler_log, format!("a seed with {}", mw::S3Settings::default())),
                                 [ref arg] if arg == "random" => {
                                     let settings = mw::S3Settings::random(&mut thread_rng());
-                                    self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), false, format!("a seed with {settings}"));
+                                    self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), spoiler_log, format!("a seed with {settings}"));
                                 }
                                 [ref arg] if arg == "draft" => {
-                                    *state = RaceState::Draft(mw::S3Draft::default());
+                                    *state = RaceState::Draft { state: mw::S3Draft::default(), spoiler_log };
                                     drop(state);
                                     self.advance_draft(ctx).await?;
                                 }
@@ -1786,7 +1794,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                         ctx.send_message(&format!("Sorry {reply_to}, you need to pair each setting with a value.")).await?;
                                         self.send_settings(ctx).await?;
                                     } else {
-                                        self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), false, format!("a seed with {settings}"));
+                                        self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), spoiler_log, format!("a seed with {settings}"));
                                     }
                                 }
                             },
@@ -1883,7 +1891,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                     _ => None,
                                 } {
                                     settings.insert(format!("user_message"), json!(format!("9 Days of SAWS: day {}", &arg[3..])));
-                                    self.roll_seed(ctx, state, goal.rando_version(), settings, false, format!("a {description} seed"));
+                                    self.roll_seed(ctx, state, goal.rando_version(), settings, spoiler_log, format!("a {description} seed"));
                                 } else {
                                     ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
@@ -1944,7 +1952,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                         return Ok(())
                                     }
                                 };
-                                self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, false, match preset {
+                                self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, spoiler_log, match preset {
                                     rsl::Preset::League => format!("a Random Settings League seed"),
                                     rsl::Preset::Beginner => format!("a random settings Beginner seed"),
                                     rsl::Preset::Intermediate => format!("a random settings Intermediate seed"),
@@ -1955,7 +1963,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                             }
                         }
                     },
-                    RaceState::Draft(..) => ctx.send_message(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
+                    RaceState::Draft { .. } => ctx.send_message(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
                     RaceState::Rolling => ctx.send_message(&format!("Sorry {reply_to}, but I'm already rolling a seed for this room. Please wait.")).await?,
                     RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, but I already rolled a seed. Check the race info!")).await?,
                 }
@@ -1970,7 +1978,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                         Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
-                    RaceState::Draft(ref mut draft) => if draft.went_first.is_none() {
+                    RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_none() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
                     } else if let 0 | 1 | 5 = draft.pick_count() {
                         draft.skipped_bans += 1;
@@ -1984,7 +1992,6 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
-            //TODO !spoilerseed?
             "unlock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 self.locked = false;
                 ctx.send_message("Lock released. Anyone may now roll a seed.").await?;
