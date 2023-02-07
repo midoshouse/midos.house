@@ -34,6 +34,7 @@ use {
     },
     itertools::Itertools as _,
     lazy_regex::regex_captures,
+    ootr_utils as rando,
     racetime::{
         Error,
         ResultExt as _,
@@ -145,7 +146,6 @@ use {
     },
 };
 #[cfg(unix)] use xdg::BaseDirectories;
-#[cfg(windows)] use directories::UserDirs;
 
 #[cfg(unix)] const PYTHON: &str = "python3";
 #[cfg(windows)] const PYTHON: &str = "py";
@@ -153,126 +153,14 @@ use {
 const CATEGORY: &str = "ootr";
 
 /// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
-const KNOWN_GOOD_WEB_VERSIONS: [RandoVersion; 4] = [
-    RandoVersion::dev(6, 2, 181),
-    RandoVersion::dev(6, 2, 205),
-    RandoVersion::branch(RandoBranch::DevR, 6, 2, 238, 1),
-    RandoVersion::branch(RandoBranch::DevFenhl, 6, 9, 14, 2),
+const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 4] = [
+    rando::Version::from_dev(6, 2, 181),
+    rando::Version::from_dev(6, 2, 205),
+    rando::Version::from_branch(rando::Branch::DevR, 6, 2, 238, 1),
+    rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2),
 ];
 
 const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum RandoBranch {
-    Dev,
-    DevFenhl,
-    DevR,
-}
-
-impl RandoBranch {
-    #[cfg(windows)] fn github_username(&self) -> &'static str {
-        match self {
-            Self::Dev => "TestRunnerSRL",
-            Self::DevFenhl => "fenhl",
-            Self::DevR => "Roman971",
-        }
-    }
-
-    fn web_name_known_settings(&self) -> &'static str {
-        match self {
-            Self::Dev => "dev",
-            Self::DevFenhl => "devFenhl",
-            Self::DevR => "devR",
-        }
-    }
-
-    fn web_name_random_settings(&self) -> Option<&'static str> {
-        match self {
-            Self::Dev => None,
-            Self::DevFenhl => Some("devFenhlRSL"),
-            Self::DevR => Some("devRSL"),
-        }
-    }
-
-    fn web_name(&self, random_settings: bool) -> Option<&'static str> {
-        if random_settings {
-            self.web_name_random_settings()
-        } else {
-            Some(self.web_name_known_settings())
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct RandoVersion {
-    branch: RandoBranch,
-    base: Version,
-    supplementary: Option<u8>,
-}
-
-impl RandoVersion {
-    const fn dev(major: u8, minor: u8, patch: u8) -> Self {
-        Self {
-            branch: RandoBranch::Dev,
-            base: Version::new(major as u64, minor as u64, patch as u64),
-            supplementary: None,
-        }
-    }
-
-    const fn branch(branch: RandoBranch, major: u8, minor: u8, patch: u8, supplementary: u8) -> Self {
-        Self {
-            base: Version::new(major as u64, minor as u64, patch as u64),
-            supplementary: Some(supplementary),
-            branch,
-        }
-    }
-
-    #[cfg(unix)] fn dir(&self) -> Option<PathBuf> {
-        BaseDirectories::new().ok()?.find_data_file(Path::new("midos-house").join(format!(
-            "rando-{}-{}{}",
-            self.branch.web_name_known_settings(),
-            self.base,
-            if let Some(supplementary) = self.supplementary { format!("-{supplementary}") } else { String::default() },
-        )))
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-enum RandoVersionParseError {
-    #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
-    #[error("incorrect randomizer base version format")]
-    Base,
-    #[error("unknown branch in randomizer version")]
-    Branch,
-    #[error("empty randomizer version or multiple spaces")]
-    Words,
-}
-
-impl FromStr for RandoVersion {
-    type Err = RandoVersionParseError;
-
-    fn from_str(s: &str) -> Result<Self, RandoVersionParseError> {
-        match &*s.split_ascii_whitespace().collect_vec() {
-            [base] => {
-                let (_, major, minor, patch) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+)$", base).ok_or(RandoVersionParseError::Base)?;
-                Ok(Self::dev(major.parse()?, minor.parse()?, patch.parse()?))
-            }
-            [base, extra] => {
-                let (_, major, minor, patch) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+)$", base).ok_or(RandoVersionParseError::Base)?;
-                if *extra == "f.LUM" {
-                    Ok(Self::dev(major.parse()?, minor.parse()?, patch.parse()?))
-                } else if let Some((_, supplementary)) = regex_captures!("^Fenhl-([0-9]+)$", extra) {
-                    Ok(Self::branch(RandoBranch::DevFenhl, major.parse()?, minor.parse()?, patch.parse()?, supplementary.parse()?))
-                } else if let Some((_, supplementary)) = regex_captures!("^R-([0-9]+)$", extra) {
-                    Ok(Self::branch(RandoBranch::DevR, major.parse()?, minor.parse()?, patch.parse()?, supplementary.parse()?))
-                } else {
-                    Err(RandoVersionParseError::Branch)
-                }
-            }
-            _ => Err(RandoVersionParseError::Words),
-        }
-    }
-}
 
 enum RslDevFenhlPreset {
     Pictionary,
@@ -317,9 +205,9 @@ impl VersionedRslPreset {
             #[cfg(unix)] {
                 match self {
                     Self::Fenhl { version: None, .. } => Cow::Borrowed(Path::new("/opt/git/github.com/fenhl/plando-random-settings/master")),
-                    Self::Fenhl { version: Some((base, supplementary)), .. } => Cow::Owned(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join(format!("rsl-dev-fenhl-{base}-{supplementary}"))).ok_or(RollError::RandoPath)?),
-                    Self::Xopar { version: None, .. } => Cow::Owned(BaseDirectories::new()?.find_data_file("fenhl/rslbot/plando-random-settings").ok_or(RollError::RandoPath)?),
-                    Self::Xopar { version: Some(version), .. } => Cow::Owned(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join(format!("rsl-{version}"))).ok_or(RollError::RandoPath)?),
+                    Self::Fenhl { version: Some((base, supplementary)), .. } => Cow::Owned(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join(format!("rsl-dev-fenhl-{base}-{supplementary}"))).ok_or(RollError::RslPath)?),
+                    Self::Xopar { version: None, .. } => Cow::Owned(BaseDirectories::new()?.find_data_file("fenhl/rslbot/plando-random-settings").ok_or(RollError::RslPath)?),
+                    Self::Xopar { version: Some(version), .. } => Cow::Owned(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join(format!("rsl-{version}"))).ok_or(RollError::RslPath)?),
                 }
             }
             #[cfg(windows)] {
@@ -372,10 +260,10 @@ impl Goal {
         }
     }
 
-    fn rando_version(&self) -> RandoVersion {
+    fn rando_version(&self) -> rando::Version {
         match self {
-            Self::MultiworldS3 => RandoVersion::dev(6, 2, 205),
-            Self::NineDaysOfSaws => RandoVersion::branch(RandoBranch::DevFenhl, 6, 9, 14, 2),
+            Self::MultiworldS3 => rando::Version::from_dev(6, 2, 205),
+            Self::NineDaysOfSaws => rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2),
             Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
         }
     }
@@ -456,7 +344,7 @@ impl GlobalState {
         }
     }
 
-    fn roll_seed(self: Arc<Self>, version: RandoVersion, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+    fn roll_seed(self: Arc<Self>, version: rando::Version, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
             let can_roll_on_web = match self.ootr_api_client.can_roll_on_web(None, &version, settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"))).await {
@@ -655,18 +543,17 @@ impl GlobalState {
     }
 }
 
-async fn roll_seed_locally(version: RandoVersion, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
+async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
     settings.insert(format!("create_patch_file"), json!(true));
     settings.insert(format!("create_compressed_rom"), json!(false));
     for _ in 0..3 {
-        #[cfg(unix)] let rando_path = version.dir().ok_or(RollError::RandoPath)?;
-        #[cfg(windows)] let rando_path = UserDirs::new().ok_or(RollError::RandoPath)?.home_dir().join("git").join("github.com").join(version.branch.github_username()).join("OoT-Randomizer").join("tag").join(version.base.to_string()); //TODO adjust for tag systems on branches other than Dev
+        let rando_path = version.dir()?;
         let mut rando_process = Command::new(PYTHON).arg("OoTRandomizer.py").arg("--no_log").arg("--settings=-").current_dir(rando_path).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
         rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await?;
         let output = rando_process.wait_with_output().await?;
         let stderr = if output.status.success() { BufRead::lines(&*output.stderr).try_collect::<_, Vec<_>, _>()? } else { continue };
-        let patch_path = Path::new(stderr.iter().rev().filter_map(|line| line.strip_prefix("Created patch file archive at: ")).next().ok_or(RollError::PatchPath)?);
-        let spoiler_log_path = Path::new(stderr.iter().rev().filter_map(|line| line.strip_prefix("Created spoiler log at: ")).next().ok_or(RollError::SpoilerLogPath)?);
+        let patch_path = Path::new(stderr.iter().rev().find_map(|line| line.strip_prefix("Created patch file archive at: ")).ok_or(RollError::PatchPath)?);
+        let spoiler_log_path = Path::new(stderr.iter().rev().find_map(|line| line.strip_prefix("Created spoiler log at: ")).ok_or(RollError::SpoilerLogPath)?);
         let patch_filename = patch_path.file_name().expect("patch file path with no file name");
         fs::rename(patch_path, Path::new(seed::DIR).join(patch_filename)).await?;
         return Ok((
@@ -679,11 +566,12 @@ async fn roll_seed_locally(version: RandoVersion, mut settings: serde_json::Map<
 
 #[derive(Debug, thiserror::Error)]
 enum RollError {
+    #[error(transparent)] Dir(#[from] rando::DirError),
     #[error(transparent)] Git(#[from] git2::Error),
     #[error(transparent)] Header(#[from] reqwest::header::ToStrError),
     #[error(transparent)] Io(#[from] std::io::Error),
     #[error(transparent)] Json(#[from] serde_json::Error),
-    #[error(transparent)] RandoVersion(#[from] RandoVersionParseError),
+    #[error(transparent)] RandoVersion(#[from] rando::VersionParseError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[cfg(unix)] #[error(transparent)] Xdg(#[from] xdg::BaseDirectoriesError),
@@ -691,10 +579,11 @@ enum RollError {
     ChannelClosed,
     #[error("randomizer did not report patch location")]
     PatchPath,
-    #[error("randomizer version not found")]
-    RandoPath,
     #[error("attempted to roll a random settings seed on web, but this branch isn't available with hidden settings on web")]
     RandomSettingsWeb,
+    #[cfg(unix)]
+    #[error("RSL script not found")]
+    RslPath,
     #[error("max retries exceeded")]
     Retries(u8),
     #[error("failed to parse random settings script output")]
@@ -871,7 +760,7 @@ impl OotrApiClient {
         res
     }
 
-    async fn get_version(&self, branch: RandoBranch, random_settings: bool) -> Result<Version, RollError> {
+    async fn get_version(&self, branch: rando::Branch, random_settings: bool) -> Result<Version, RollError> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct VersionResponse {
@@ -884,20 +773,20 @@ impl OotrApiClient {
             .currently_active_version)
     }
 
-    async fn can_roll_on_web(&self, rsl_preset: Option<&VersionedRslPreset>, version: &RandoVersion, world_count: u8) -> Result<bool, RollError> {
+    async fn can_roll_on_web(&self, rsl_preset: Option<&VersionedRslPreset>, version: &rando::Version, world_count: u8) -> Result<bool, RollError> {
         if world_count > 3 { return Ok(false) }
-        if rsl_preset.is_some() && version.branch.web_name_random_settings().is_none() { return Ok(false) }
+        if rsl_preset.is_some() && version.branch().web_name_random_settings().is_none() { return Ok(false) }
         // check if randomizer version is available on web
         if !KNOWN_GOOD_WEB_VERSIONS.contains(&version) {
-            if version.supplementary.is_some() && !matches!(rsl_preset, Some(VersionedRslPreset::Xopar { .. })) {
+            if version.supplementary().is_some() && !matches!(rsl_preset, Some(VersionedRslPreset::Xopar { .. })) {
                 // The version API endpoint does not return the supplementary version number, so we can't be sure we have the right version unless it was manually checked and added to KNOWN_GOOD_WEB_VERSIONS.
                 // For the RSL script's main branch, we assume the supplementary version number is correct since we dynamically get the version from the RSL script.
                 // The dev-fenhl branch of the RSL script can point to versions not available on web, so we can't make this assumption there.
                 return Ok(false)
             }
-            if let Ok(latest_web_version) = self.get_version(version.branch, rsl_preset.is_some()).await {
-                if latest_web_version != version.base { // there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
-                    println!("web version mismatch on {} branch: we need {} but latest is {latest_web_version}", version.branch.web_name(rsl_preset.is_some()).expect("checked above"), version.base);
+            if let Ok(latest_web_version) = self.get_version(version.branch(), rsl_preset.is_some()).await {
+                if latest_web_version != *version.base() { // there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
+                    println!("web version mismatch on {} branch: we need {} but latest is {latest_web_version}", version.branch().web_name(rsl_preset.is_some()).expect("checked above"), version.base());
                     return Ok(false)
                 }
             } else {
@@ -908,7 +797,7 @@ impl OotrApiClient {
         Ok(true)
     }
 
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, version: RandoVersion, random_settings: bool, spoiler_log: bool, settings: serde_json::Map<String, Json>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
+    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, version: rando::Version, random_settings: bool, spoiler_log: bool, settings: serde_json::Map<String, Json>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
         #[serde_as]
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -953,7 +842,7 @@ impl OotrApiClient {
             }
             let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[
                 ("key", &*self.api_key),
-                ("version", &*format!("{}_{}", version.branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?, version.base)),
+                ("version", &*format!("{}_{}", version.branch().web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?, version.base())),
                 ("locked", if spoiler_log { "0" } else { "1" }),
             ]), Some(&settings)).await?
                 .detailed_error_for_status().await?
@@ -1200,7 +1089,7 @@ impl<B: Bot> Handler<B> {
         });
     }
 
-    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: RandoVersion, settings: serde_json::Map<String, Json>, spoiler_log: bool, description: String) {
+    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: rando::Version, settings: serde_json::Map<String, Json>, spoiler_log: bool, description: String) {
         self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_seed(version, settings, spoiler_log), description);
     }
 
