@@ -1096,6 +1096,38 @@ impl<B: Bot> Handler<B> {
     fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool, description: String) {
         self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count, spoiler_log), description);
     }
+
+    /// Returns `false` if this race was already finished/cancelled.
+    async fn unlock_spoiler_log(&self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct SeedDetailsResponse {
+            spoiler_log: String,
+        }
+
+        //TODO make sure this isn't the first half of an async
+        let mut state = self.race_state.write().await;
+        match *state {
+            RaceState::RolledLocally(ref spoiler_log_path) => if spoiler_log_path.exists() {
+                let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name");
+                fs::rename(spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await.to_racetime()?;
+            },
+            RaceState::RolledWeb { seed_id, ref file_stem } => {
+                let spoiler_filename = format!("{file_stem}_Spoiler.json");
+                ctx.global_state.ootr_api_client.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &seed_id.to_string())]), None::<&()>).await?
+                    .detailed_error_for_status().await.to_racetime()?;
+                let spoiler_log = ctx.global_state.ootr_api_client.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &seed_id.to_string())])).await?
+                    .detailed_error_for_status().await.to_racetime()?
+                    .json_with_text_in_error::<SeedDetailsResponse>().await.to_racetime()?
+                    .spoiler_log;
+                fs::write(Path::new(seed::DIR).join(spoiler_filename), &spoiler_log).await.to_racetime()?;
+            }
+            RaceState::SpoilerSent => return Ok(false),
+            _ => {}
+        }
+        *state = RaceState::SpoilerSent;
+        Ok(true)
+    }
 }
 
 #[async_trait]
@@ -1893,12 +1925,6 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
     }
 
     async fn race_data(&mut self, ctx: &RaceContext<GlobalState>, _old_race_data: RaceData) -> Result<(), Error> {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct SeedDetailsResponse {
-            spoiler_log: String,
-        }
-
         let data = ctx.data().await;
         if let Some(OfficialRaceData { ref entrants, .. }) = self.official_data {
             for entrant in &data.entrants {
@@ -1939,29 +1965,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                     })
                 });
             },
-            RaceStatusValue::Finished => {
-                //TODO also make sure this isn't the first half of an async
-                let mut state = self.race_state.write().await;
-                match *state {
-                    RaceState::RolledLocally(ref spoiler_log_path) => if spoiler_log_path.exists() {
-                        let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name");
-                        fs::rename(spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await.to_racetime()?;
-                    },
-                    RaceState::RolledWeb { seed_id, ref file_stem } => {
-                        let spoiler_filename = format!("{file_stem}_Spoiler.json");
-                        ctx.global_state.ootr_api_client.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &seed_id.to_string())]), None::<&()>).await?
-                            .detailed_error_for_status().await.to_racetime()?;
-                        let spoiler_log = ctx.global_state.ootr_api_client.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &seed_id.to_string())])).await?
-                            .detailed_error_for_status().await.to_racetime()?
-                            .json_with_text_in_error::<SeedDetailsResponse>().await.to_racetime()?
-                            .spoiler_log;
-                        fs::write(Path::new(seed::DIR).join(spoiler_filename), &spoiler_log).await.to_racetime()?;
-                    }
-                    RaceState::SpoilerSent => return Ok(()),
-                    _ => {}
-                }
-                *state = RaceState::SpoilerSent;
-                drop(state);
+            RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx).await? {
                 if let Some(OfficialRaceData { ref event, fpa_invoked, game, .. }) = self.official_data {
                     if let Some(discord_guild) = event.discord_guild {
                         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
@@ -2040,10 +2044,13 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                         transaction.commit().await.to_racetime()?;
                     }
                 }
-            }
-            RaceStatusValue::Cancelled => if let Goal::Rsl = self.goal(ctx).await {
-                sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", ctx.global_state.host, ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
             },
+            RaceStatusValue::Cancelled => {
+                self.unlock_spoiler_log(ctx).await?;
+                if let Goal::Rsl = self.goal(ctx).await {
+                    sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", ctx.global_state.host, ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
+                }
+            }
             _ => {}
         }
         Ok(())
