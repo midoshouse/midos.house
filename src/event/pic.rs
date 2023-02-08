@@ -235,6 +235,13 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoTR_1079646_AJZWAB1X3U") },
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoTR_1079648_1DHCCQB5AC") },
         ]), true).await.map_err(InfoError::TableCells)?),
+        "rs2" => Some(seed::table(stream::iter(vec![
+            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_0C493PMPSI") },
+            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_CZA69C9BX9") },
+            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_XR5TXT3BC5") },
+            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_PF8TF95HTH") },
+            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_R4D5R447UG") },
+        ]), true).await.map_err(InfoError::TableCells)?),
         _ => None,
     };
     Ok(html! {
