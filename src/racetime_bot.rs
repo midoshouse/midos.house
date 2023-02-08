@@ -145,7 +145,10 @@ use {
         },
     },
 };
-#[cfg(unix)] use xdg::BaseDirectories;
+#[cfg(unix)] use {
+    async_proto::Protocol,
+    xdg::BaseDirectories,
+};
 
 #[cfg(unix)] const PYTHON: &str = "python3";
 #[cfg(windows)] const PYTHON: &str = "py";
@@ -162,19 +165,35 @@ const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 4] = [
 
 const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
 
-enum RslDevFenhlPreset {
+#[derive(Default)]
+pub(crate) enum RslDevFenhlPreset {
+    #[default]
+    Fenhl,
     Pictionary,
 }
 
 impl RslDevFenhlPreset {
     fn name(&self) -> &'static str {
         match self {
+            Self::Fenhl => "fenhl",
             Self::Pictionary => "pictionary",
         }
     }
 }
 
-enum VersionedRslPreset {
+impl FromStr for RslDevFenhlPreset {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, ()> {
+        Ok(match &*s.to_ascii_lowercase() {
+            "fenhl" => Self::Fenhl,
+            "pic" | "pictionary" => Self::Pictionary,
+            _ => return Err(()),
+        })
+    }
+}
+
+pub(crate) enum VersionedRslPreset {
     Xopar {
         version: Option<Version>,
         preset: rsl::Preset,
@@ -186,6 +205,22 @@ enum VersionedRslPreset {
 }
 
 impl VersionedRslPreset {
+    #[cfg(unix)] pub(crate) fn new_unversioned(branch: &str, preset: Option<&str>) -> Result<Self, ()> {
+        Ok(match branch {
+            "xopar" => Self::Xopar { version: None, preset: preset.map(rsl::Preset::from_str).transpose()?.unwrap_or_default() },
+            "fenhl" => Self::Fenhl { version: None, preset: preset.map(RslDevFenhlPreset::from_str).transpose()?.unwrap_or_default() },
+            _ => return Err(()),
+        })
+    }
+
+    #[cfg(unix)] pub(crate) fn new_versioned(version: rando::Version, preset: Option<&str>) -> Result<Self, ()> {
+        Ok(match version.branch() {
+            rando::Branch::DevR => Self::Xopar { version: Some(version.base().clone()), preset: preset.map(rsl::Preset::from_str).transpose()?.unwrap_or_default() },
+            rando::Branch::DevFenhl => Self::Fenhl { version: Some((version.base().clone(), version.supplementary().unwrap())), preset: preset.map(RslDevFenhlPreset::from_str).transpose()?.unwrap_or_default() },
+            _ => return Err(()),
+        })
+    }
+
     fn name(&self) -> &'static str {
         match self {
             Self::Xopar { preset, .. } => preset.name(),
@@ -322,7 +357,7 @@ pub(crate) struct CleanShutdown {
     pub(crate) notifier: Arc<Notify>,
 }
 
-struct GlobalState {
+pub(crate) struct GlobalState {
     /// Locked while event rooms are being created. Wait with handling new rooms while it's held.
     new_room_lock: Mutex<()>,
     host: &'static str,
@@ -336,7 +371,7 @@ struct GlobalState {
 }
 
 impl GlobalState {
-    fn new(racetime_config: ConfigRaceTime, db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Self {
+    pub(crate) fn new(racetime_config: ConfigRaceTime, db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Self {
         Self {
             new_room_lock: Mutex::default(),
             ootr_api_client: OotrApiClient::new(http_client.clone(), ootr_api_key),
@@ -344,7 +379,7 @@ impl GlobalState {
         }
     }
 
-    fn roll_seed(self: Arc<Self>, version: rando::Version, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_seed(self: Arc<Self>, version: rando::Version, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
             let can_roll_on_web = match self.ootr_api_client.can_roll_on_web(None, &version, settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"))).await {
@@ -366,11 +401,11 @@ impl GlobalState {
                             waiting.push(pos_tx);
                             (pos, pos_rx)
                         };
-                        update_tx.send(SeedRollUpdate::Queued(pos)).await?;
+                        update_tx.send(SeedRollUpdate::Queued(pos.try_into().unwrap())).await?;
                         while pos > 0 {
                             let () = pos_rx.recv().await.expect("queue position notifier closed");
                             pos -= 1;
-                            update_tx.send(SeedRollUpdate::MovedForward(pos)).await?;
+                            update_tx.send(SeedRollUpdate::MovedForward(pos.try_into().unwrap())).await?;
                         }
                         let mut waiting = self.ootr_api_client.waiting.lock().await;
                         let permit = self.ootr_api_client.mw_seed_rollers.acquire().await.expect("seed queue semaphore closed");
@@ -397,10 +432,13 @@ impl GlobalState {
             } else {
                 update_tx.send(SeedRollUpdate::Started).await?;
                 match roll_seed_locally(version, settings).await {
-                    Ok((patch_filename, spoiler_log_path)) => update_tx.send(SeedRollUpdate::DoneLocal {
-                        rsl_preset: None,
-                        send_spoiler_log: spoiler_log,
-                        patch_filename, spoiler_log_path,
+                    Ok((patch_filename, spoiler_log_path)) => update_tx.send(match spoiler_log_path.into_os_string().into_string() {
+                        Ok(spoiler_log_path) => SeedRollUpdate::DoneLocal {
+                            rsl_preset: None,
+                            send_spoiler_log: spoiler_log,
+                            patch_filename, spoiler_log_path,
+                        },
+                        Err(e) => SeedRollUpdate::Error(e.into())
                     }).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
@@ -410,7 +448,7 @@ impl GlobalState {
         update_rx
     }
 
-    fn roll_rsl_seed(self: Arc<Self>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_rsl_seed(self: Arc<Self>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
@@ -479,11 +517,11 @@ impl GlobalState {
                                     waiting.push(pos_tx);
                                     (pos, pos_rx)
                                 };
-                                let _ = update_tx.send(SeedRollUpdate::Queued(pos)).await;
+                                let _ = update_tx.send(SeedRollUpdate::Queued(pos.try_into().unwrap())).await;
                                 while pos > 0 {
                                     let () = pos_rx.recv().await.expect("queue position notifier closed");
                                     pos -= 1;
-                                    let _ = update_tx.send(SeedRollUpdate::MovedForward(pos)).await;
+                                    let _ = update_tx.send(SeedRollUpdate::MovedForward(pos.try_into().unwrap())).await;
                                 }
                                 let mut waiting = self.ootr_api_client.waiting.lock().await;
                                 let permit = self.ootr_api_client.mw_seed_rollers.acquire().await.expect("seed queue semaphore closed");
@@ -525,8 +563,9 @@ impl GlobalState {
                     fs::rename(patch_path, Path::new(seed::DIR).join(&patch_filename)).await?;
                     let _ = update_tx.send(SeedRollUpdate::DoneLocal {
                         rsl_preset: if let VersionedRslPreset::Xopar { preset, .. } = preset { Some(preset) } else { None },
+                        spoiler_log_path: spoiler_log_path.into_os_string().into_string()?,
                         send_spoiler_log: spoiler_log,
-                        patch_filename, spoiler_log_path,
+                        patch_filename,
                     }).await;
                     return Ok(())
                 }
@@ -565,7 +604,9 @@ async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Ma
 }
 
 #[derive(Debug, thiserror::Error)]
-enum RollError {
+#[cfg_attr(unix, derive(Protocol))]
+#[cfg_attr(unix, async_proto(via = (String, String)))]
+pub(crate) enum RollError {
     #[error(transparent)] Dir(#[from] rando::DirError),
     #[error(transparent)] Git(#[from] git2::Error),
     #[error(transparent)] Header(#[from] reqwest::header::ToStrError),
@@ -575,8 +616,18 @@ enum RollError {
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[cfg(unix)] #[error(transparent)] Xdg(#[from] xdg::BaseDirectoriesError),
+    #[error("{display}")]
+    Cloned {
+        debug: String,
+        display: String,
+    },
     #[error("there is nothing waiting for this seed anymore")]
     ChannelClosed,
+    #[cfg(unix)]
+    #[error("randomizer settings must be a JSON object")]
+    NonObjectSettings,
+    #[error("non-UTF-8 filename")]
+    OsString(std::ffi::OsString),
     #[error("randomizer did not report patch location")]
     PatchPath,
     #[error("attempted to roll a random settings seed on web, but this branch isn't available with hidden settings on web")]
@@ -602,20 +653,40 @@ impl From<mpsc::error::SendError<SeedRollUpdate>> for RollError {
     }
 }
 
-enum SeedRollUpdate {
+impl From<std::ffi::OsString> for RollError {
+    fn from(value: std::ffi::OsString) -> Self {
+        Self::OsString(value)
+    }
+}
+
+impl From<(String, String)> for RollError {
+    fn from((debug, display): (String, String)) -> Self {
+        Self::Cloned { debug, display }
+    }
+}
+
+impl<'a> From<&'a RollError> for (String, String) {
+    fn from(e: &RollError) -> Self {
+        (e.to_string(), format!("{e:?}"))
+    }
+}
+
+#[derive(Debug)]
+#[cfg_attr(unix, derive(Protocol))]
+pub(crate) enum SeedRollUpdate {
     /// The seed rollers are busy and the seed has been queued.
-    Queued(usize),
+    Queued(u64),
     /// A seed in front of us is done and we've moved to a new position in the queue.
-    MovedForward(usize),
+    MovedForward(u64),
     /// We've cleared the queue but have to wait for the rate limit to expire.
-    WaitRateLimit(Instant),
+    WaitRateLimit(Duration),
     /// We've cleared the queue and are now being rolled.
     Started,
     /// The seed has been rolled locally, includes the patch filename.
     DoneLocal {
         rsl_preset: Option<rsl::Preset>,
         patch_filename: String,
-        spoiler_log_path: PathBuf,
+        spoiler_log_path: String,
         send_spoiler_log: bool,
     },
     /// The seed has been rolled on ootrandomizer.com, includes the seed ID.
@@ -640,9 +711,10 @@ impl SeedRollUpdate {
             Self::MovedForward(0) => ctx.send_message("The queue has moved and your seed is now at the front so it will be rolled next.").await?,
             Self::MovedForward(1) => ctx.send_message("The queue has moved and there is only 1 more seed in front of yours.").await?,
             Self::MovedForward(pos) => ctx.send_message(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
-            Self::WaitRateLimit(until) => ctx.send_message(&format!("Your seed will be rolled in {}.", format_duration(until - Instant::now(), true))).await?,
+            Self::WaitRateLimit(duration) => ctx.send_message(&format!("Your seed will be rolled in {}.", format_duration(duration, true))).await?,
             Self::Started => ctx.send_message(&format!("Rolling {description}…")).await?,
             Self::DoneLocal { rsl_preset, patch_filename, spoiler_log_path, send_spoiler_log } => {
+                let spoiler_log_path = PathBuf::from(spoiler_log_path);
                 let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename").to_owned();
                 let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(Error::Custom(Box::new(RollError::PatchPath)))?;
                 let file_hash @ [hash1, hash2, hash3, hash4, hash5] = serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_log_path).await.to_racetime()?)?.file_hash;
@@ -830,7 +902,7 @@ impl OotrApiClient {
             let next_seed = if is_mw {
                 let next_seed = self.next_mw_seed.lock().await;
                 if let Some(duration) = next_seed.checked_duration_since(Instant::now()) {
-                    update_tx.send(SeedRollUpdate::WaitRateLimit(*next_seed)).await?;
+                    update_tx.send(SeedRollUpdate::WaitRateLimit(duration)).await?;
                     sleep(duration).await;
                 }
                 Some(next_seed)
@@ -1108,7 +1180,7 @@ impl<B: Bot> Handler<B> {
         //TODO make sure this isn't the first half of an async
         let mut state = self.race_state.write().await;
         match *state {
-            RaceState::RolledLocally(ref spoiler_log_path) => if spoiler_log_path.exists() {
+            RaceState::RolledLocally(ref spoiler_log_path) => if Path::new(spoiler_log_path).exists() {
                 let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name");
                 fs::rename(spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await.to_racetime()?;
             },
@@ -2093,7 +2165,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 unlisted: false,
                                 info_user: match race.entrants {
                                     Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
-                                    Entrants::Named(ref participants) => format!("{}{participants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
+                                    Entrants::Named(ref entrants) => format!("{}{entrants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
                                     Entrants::Two([ref team1, ref team2]) => format!("{}{team1} vs {team2}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()), //TODO adjust for asyncs
                                     Entrants::Three([ref team1, ref team2, ref team3]) => format!("{}{team1} vs {team2} vs {team3}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()), //TODO adjust for asyncs
                                 },
@@ -2123,12 +2195,12 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                         Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {
                                             msg.push_safe(prefix);
                                         },
-                                        Entrants::Named(ref participants) => {
+                                        Entrants::Named(ref entrants) => {
                                             if let Some(prefix) = info_prefix {
                                                 msg.push_safe(prefix);
                                                 msg.push(": ");
                                             }
-                                            msg.push_safe(participants);
+                                            msg.push_safe(entrants);
                                         }
                                         Entrants::Two([ref team1, ref team2]) => {
                                             if let Some(prefix) = info_prefix {
@@ -2219,10 +2291,7 @@ async fn handle_rooms<B: Bot>(global_state: Arc<GlobalState>, env: Environment, 
     }
 }
 
-pub(crate) async fn main(db_pool: PgPool, http_client: reqwest::Client, discord_ctx: RwFuture<DiscordCtx>, ootr_api_key: String, env: Environment, config: Config, shutdown: rocket::Shutdown, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Result<(), Error> {
-    let racetime_config = if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone();
-    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
-    let global_state = Arc::new(GlobalState::new(racetime_config, db_pool.clone(), http_client.clone(), ootr_api_key.clone(), startgg_token.to_owned(), env.racetime_host(), discord_ctx, clean_shutdown));
+pub(crate) async fn main(env: Environment, config: Config, shutdown: rocket::Shutdown, global_state: Arc<GlobalState>) -> Result<(), Error> {
     let ((), (), ()) = tokio::try_join!(
         create_rooms(global_state.clone(), shutdown.clone()),
         handle_rooms::<Mido>(global_state.clone(), env, if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }, shutdown.clone()),

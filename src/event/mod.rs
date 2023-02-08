@@ -999,7 +999,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                     : finished;
                                     : " finishers)";
                                 }
-                                Entrants::Named(ref participants) => td(colspan = "6") : participants;
+                                Entrants::Named(ref entrants) => td(colspan = "6") : entrants;
                                 Entrants::Two([ref team1, ref team2]) => {
                                     td(class = "vs1", colspan = "3") {
                                         : team1.to_html(false);

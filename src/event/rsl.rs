@@ -25,10 +25,13 @@ use {
         util::natjoin_html,
     },
 };
+#[cfg(unix)] use async_proto::Protocol;
 
-#[derive(Clone, Copy, Sequence, sqlx::Type)]
+#[derive(Debug, Default, Clone, Copy, Sequence, sqlx::Type)]
 #[sqlx(type_name = "rsl_preset", rename_all = "lowercase")]
+#[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum Preset {
+    #[default]
     League,
     Beginner,
     Intermediate,

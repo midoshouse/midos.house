@@ -18,7 +18,7 @@ ThrowOnNativeFailure
 wsl cp /home/fenhl/wslgit/github.com/midoshouse/midos.house/target/release/midos-house /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/target/wsl/release/midos-house
 ThrowOnNativeFailure
 
-ssh midos.house sudo -u mido bin/midos-house prepare-stop
+ssh midos.house 'if systemctl is-active midos-house; then sudo -u mido bin/midos-house prepare-stop; fi'
 ThrowOnNativeFailure
 
 ssh midos.house sudo systemctl stop midos-house

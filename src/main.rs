@@ -20,6 +20,10 @@ use {
 #[cfg(unix)] use {
     async_proto::Protocol as _,
     tokio::net::UnixStream,
+    crate::{
+        racetime_bot::SeedRollUpdate,
+        unix_socket::ClientMessage as Subcommand,
+    },
 };
 #[cfg(not(unix))] use futures::future;
 
@@ -63,6 +67,10 @@ impl Environment {
     }
 }
 
+#[cfg(not(unix))]
+#[derive(clap::Subcommand)]
+enum Subcommand {}
+
 #[derive(clap::Parser)]
 struct Args {
     #[clap(long, value_enum, default_value_t)]
@@ -71,11 +79,6 @@ struct Args {
     port: Option<u16>,
     #[clap(subcommand)]
     subcommand: Option<Subcommand>,
-}
-
-#[derive(clap::Subcommand)]
-enum Subcommand {
-    #[cfg(unix)] PrepareStop,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -97,17 +100,17 @@ enum Error {
 #[wheel::main(rocket, debug)]
 async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
     if let Some(subcommand) = subcommand {
+        #[cfg(unix)] let mut sock = UnixStream::connect(unix_socket::PATH).await?;
+        #[cfg(unix)] subcommand.write(&mut sock).await?;
         match subcommand {
             #[cfg(unix)] Subcommand::PrepareStop => {
-                //TODO detect if already stopped
-                println!("preparing to stop Mido's House: connecting UNIX socket");
-                let mut sock = UnixStream::connect(unix_socket::PATH).await?;
-                println!("preparing to stop Mido's House: sending command");
-                unix_socket::ClientMessage::PrepareStop.write(&mut sock).await?;
                 println!("preparing to stop Mido's House: waiting for reply");
                 u8::read(&mut sock).await?;
                 println!("preparing to stop Mido's House: done");
             }
+            #[cfg(unix)] Subcommand::Roll { .. } | Subcommand::RollRsl { .. } => while let Some(update) = Option::<SeedRollUpdate>::read(&mut sock).await? {
+                println!("{update:#?}");
+            },
         }
     } else {
         let config = Config::load().await?;
@@ -124,17 +127,20 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
         let rocket = http::rocket(db_pool.clone(), discord_builder.ctx_fut.clone(), http_client.clone(), config.clone(), env, port.unwrap_or_else(|| if env.is_dev() { 24814 } else { 24812 })).await?;
         let discord_builder = discord_bot::configure_builder(discord_builder, db_pool.clone(), http_client.clone(), config.clone(), env, rocket.shutdown());
         let clean_shutdown = Arc::default();
-        #[cfg(unix)] let unix_listener = unix_socket::listen(rocket.shutdown(), Arc::clone(&clean_shutdown));
-        let racetime_task = tokio::spawn(racetime_bot::main(
+        let racetime_config = if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone();
+        let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+        let global_state = Arc::new(racetime_bot::GlobalState::new(
+            racetime_config,
             db_pool,
             http_client,
-            discord_builder.ctx_fut.clone(),
             config.ootr_api_key.clone(),
-            env,
-            config.clone(),
-            rocket.shutdown(),
-            clean_shutdown,
-        )).map(|res| match res {
+            startgg_token.clone(),
+            env.racetime_host(),
+            discord_builder.ctx_fut.clone(),
+            Arc::clone(&clean_shutdown),
+        ));
+        #[cfg(unix)] let unix_listener = unix_socket::listen(rocket.shutdown(), clean_shutdown, Arc::clone(&global_state));
+        let racetime_task = tokio::spawn(racetime_bot::main(env, config, rocket.shutdown(), global_state)).map(|res| match res {
             Ok(Ok(())) => Ok(()),
             Ok(Err(e)) => Err(Error::from(e)),
             Err(e) => Err(Error::from(e)),

@@ -43,12 +43,14 @@ use {
         http::static_url,
     },
 };
+#[cfg(unix)] use async_proto::Protocol;
 
 #[cfg(unix)] pub(crate) const DIR: &str = "/var/www/midos.house/seed";
 #[cfg(windows)] pub(crate) const DIR: &str = "C:/Users/fenhl/games/zelda/oot/midos-house-seeds";
 
 #[derive(Debug, Clone, Copy, sqlx::Type, Deserialize, Serialize)]
 #[sqlx(type_name = "hash_icon")]
+#[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum HashIcon {
     #[serde(rename = "Deku Stick")]
     #[sqlx(rename = "Deku Stick")]

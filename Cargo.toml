@@ -127,5 +127,8 @@ branch = "main"
 features = ["reqwest", "rocket-beta", "serde", "serde_json"]
 
 [target.'cfg(unix)'.dependencies]
-async-proto = "0.16"
 xdg = "2"
+
+[target.'cfg(unix)'.dependencies.async-proto]
+version = "0.16"
+features = ["chrono", "serde_json"]

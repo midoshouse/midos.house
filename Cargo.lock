@@ -194,7 +194,9 @@ checksum = "60744c207553491a3be4386aa3ec059b56382a087b7b429a664acf3c96005313"
 dependencies = [
  "async-proto-derive",
  "byteorder",
+ "chrono",
  "semver",
+ "serde_json",
  "thiserror",
  "tokio",
 ]

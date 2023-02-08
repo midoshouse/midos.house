@@ -342,6 +342,7 @@ impl Race {
                     Entrant::Named(p1),
                     Entrant::Named(p2),
                 ]),
+                [Some(p1), None, None] => Entrants::Named(p1),
                 _ => if let (Some(startgg_set), Some(slots)) = (&startgg_set, slots) {
                     if let [
                         Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team1)), on: _ }) }) }),
@@ -463,7 +464,7 @@ impl Race {
                 let (team1, team2, p1, p2, p3) = match race.entrants {
                     Entrants::Open => (None, None, None, None, None),
                     Entrants::Count { .. } => unimplemented!(), //TODO
-                    Entrants::Named(_) => unimplemented!(), //TODO
+                    Entrants::Named(ref entrants) => (None, None, Some(entrants), None, None),
                     Entrants::Two([ref p1, ref p2]) => {
                         let (team1, p1) = match p1 {
                             Entrant::MidosHouseTeam(team) => (Some(team.id), None),
@@ -1092,9 +1093,9 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                 };
                 let summary_prefix = match race.entrants {
                     Entrants::Open | Entrants::Count { .. } => summary_prefix,
-                    Entrants::Named(ref participants) => match race_event.kind {
-                        EventKind::Normal => format!("{summary_prefix}: {participants}"),
-                        EventKind::Async1 | EventKind::Async2 => format!("{summary_prefix} (async): {participants}"),
+                    Entrants::Named(ref entrants) => match race_event.kind {
+                        EventKind::Normal => format!("{summary_prefix}: {entrants}"),
+                        EventKind::Async1 | EventKind::Async2 => format!("{summary_prefix} (async): {entrants}"),
                     },
                     Entrants::Two([ref team1, ref team2]) => match race_event.kind {
                         EventKind::Normal => format!("{summary_prefix}: {team1} vs {team2}"),
