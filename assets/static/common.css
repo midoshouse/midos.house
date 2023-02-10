@@ -96,9 +96,15 @@ input[type="submit"],
     padding: 8px;
 }
 
+input[type="submit"],
+.button {
+    border-inline-width: 0.5px;
+}
+
 fieldset input[type="submit"],
 .button-row form:nth-child(1) input[type="submit"],
 .button:nth-child(1) {
+    border-inline-start-width: 1px;
     border-start-start-radius: 8px;
     border-end-start-radius: 8px;
 }
@@ -106,6 +112,7 @@ fieldset input[type="submit"],
 fieldset input[type="submit"],
 .button-row form:nth-last-child(1) input[type="submit"],
 .button:nth-last-child(1) {
+    border-inline-end-width: 1px;
     border-start-end-radius: 8px;
     border-end-end-radius: 8px;
 }
