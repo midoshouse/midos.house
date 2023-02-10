@@ -88,6 +88,7 @@ span.button-row {
     padding-inline: 0;
 }
 
+input[type="text"],
 input[type="submit"],
 .button {
     background-color: white;
@@ -323,6 +324,7 @@ footer,
         color: white;
     }
 
+    input[type="text"],
     input[type="submit"],
     .button {
         background-color: black;
