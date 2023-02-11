@@ -9,6 +9,7 @@ use {
     },
     itertools::Itertools as _,
     once_cell::sync::Lazy,
+    ootr_utils::spoiler::SpoilerLog,
     rand::prelude::*,
     rocket::{
         Request,
@@ -63,7 +64,6 @@ use {
             ChestTextures,
         },
         notification::Notification,
-        seed::SpoilerLog,
         user::User,
         util::{
             DateTimeFormat,

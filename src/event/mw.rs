@@ -20,6 +20,7 @@ use {
     },
     itertools::Itertools as _,
     once_cell::sync::Lazy,
+    ootr_utils::spoiler::HashIcon,
     rand::prelude::*,
     rocket::{
         FromFormField,
@@ -74,10 +75,7 @@ use {
             PageStyle,
             page,
         },
-        seed::{
-            self,
-            HashIcon,
-        },
+        seed,
         user::User,
         util::{
             DateTimeFormat,

@@ -34,7 +34,13 @@ use {
     },
     itertools::Itertools as _,
     lazy_regex::regex_captures,
-    ootr_utils as rando,
+    ootr_utils::{
+        self as rando,
+        spoiler::{
+            HashIcon,
+            SpoilerLog,
+        },
+    },
     racetime::{
         Error,
         ResultExt as _,
@@ -123,11 +129,7 @@ use {
             ndos,
             rsl,
         },
-        seed::{
-            self,
-            HashIcon,
-            SpoilerLog,
-        },
+        seed,
         team::Team,
         user::User,
         util::{

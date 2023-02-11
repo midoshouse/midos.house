@@ -64,6 +64,7 @@ features = ["png"]
 [dependencies.ootr-utils]
 git = "https://github.com/midoshouse/rust-ootr-utils"
 branch = "main"
+features = ["sqlx"]
 
 [dependencies.reqwest]
 version = "0.11"

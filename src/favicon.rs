@@ -14,6 +14,17 @@ use {
     },
     itertools::Itertools as _,
     once_cell::sync::Lazy,
+    ootr_utils::{
+        Version,
+        spoiler::{
+            Bridge,
+            CorrectChestAppearances,
+            Item,
+            LacsCondition,
+            ShuffleGanonBosskey,
+            SpoilerLog,
+        },
+    },
     rand::prelude::*,
     rocket::{
         fs::NamedFile,
@@ -33,9 +44,7 @@ use {
         Response,
         Suffix,
     },
-    semver::Version,
     serde::Deserialize,
-    crate::seed::SpoilerLog,
 };
 
 #[derive(Clone, Copy)]
@@ -52,157 +61,18 @@ enum CamcVersion {
 }
 
 impl CamcVersion {
-    fn from_rando_version(rando_version: &str) -> Self {
-        let rando_base_version = rando_version.split_once(' ').expect("invalid randomizer version").0.parse::<Version>().expect("failed to parse randomizer version");
-        if rando_base_version >= Version::new(6, 2, 233) {
+    fn from_rando_version(rando_version: &Version) -> Self {
+        if *rando_version.base() >= semver::Version::new(6, 2, 233) {
             Self::Pr1751
-        } else if rando_base_version >= Version::new(6, 2, 54) {
+        } else if *rando_version.base() >= semver::Version::new(6, 2, 54) {
             Self::Pr1500
-        } else if rando_base_version >= Version::new(6, 2, 4) {
+        } else if *rando_version.base() >= semver::Version::new(6, 2, 4) {
             Self::Initial
         } else {
             // CSMC seems to have been introduced before the current versioning scheme
             Self::Classic
         }
     }
-}
-
-#[derive(Default, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum Bridge {
-    Open,
-    Vanilla,
-    Stones,
-    #[default]
-    Medallions,
-    Dungeons,
-    Tokens,
-    Hearts,
-}
-
-#[derive(Default, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum LacsCondition {
-    #[default]
-    Vanilla,
-    Stones,
-    Medallions,
-    Dungeons,
-    Tokens,
-    Hearts,
-}
-
-#[derive(Default, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum ShuffleGanonBosskey {
-    Remove,
-    Vanilla,
-    #[default]
-    Dungeon,
-    Regional,
-    Overworld,
-    AnyDungeon,
-    Keysanity,
-    #[serde(alias = "lacs_vanilla")]
-    OnLacs,
-    #[serde(alias = "lacs_stones")] // close enough for CAMC purposes
-    Stones,
-    #[serde(alias = "lacs_medallions")] // close enough for CAMC purposes
-    Medallions,
-    #[serde(alias = "lacs_dungeons")] // close enough for CAMC purposes
-    Dungeons,
-    #[serde(alias = "lacs_tokens")] // close enough for CAMC purposes
-    Tokens,
-    Hearts,
-}
-
-#[derive(Default, Clone, Copy, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum CorrectChestAppearances {
-    #[default]
-    Off,
-    Classic,
-    Textures,
-    #[serde(alias = "sizes")]
-    Both,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum MinorItemAsMajorChest {
-    Bombchus,
-    Shields,
-}
-
-/// The `minor_items_as_major_chest` setting is a checkbox on main Dev but a multiselect on dev-fenhl.
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum JsonMinorItemsAsMajorChest {
-    Checkbox(bool),
-    Multiselect(Vec<MinorItemAsMajorChest>),
-}
-
-impl From<JsonMinorItemsAsMajorChest> for MinorItemsAsMajorChest {
-    fn from(value: JsonMinorItemsAsMajorChest) -> Self {
-        match value {
-            JsonMinorItemsAsMajorChest::Checkbox(value) => Self { bombchus: value, shields: value },
-            JsonMinorItemsAsMajorChest::Multiselect(items) => {
-                let mut value = Self { bombchus: false, shields: false };
-                for item in items {
-                    match item {
-                        MinorItemAsMajorChest::Bombchus => value.bombchus = true,
-                        MinorItemAsMajorChest::Shields => value.shields = true,
-                    }
-                }
-                value
-            }
-        }
-    }
-}
-
-#[derive(Default, Deserialize)]
-#[serde(from = "JsonMinorItemsAsMajorChest")]
-pub(crate) struct MinorItemsAsMajorChest {
-    bombchus: bool,
-    shields: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(untagged)]
-enum JsonItem {
-    Simple(String),
-    Complex {
-        item: String,
-        model: Option<String>,
-    },
-}
-
-#[derive(Deserialize)]
-#[serde(from = "JsonItem")]
-struct Item {
-    item: String,
-    model: Option<String>,
-}
-
-impl From<JsonItem> for Item {
-    fn from(item: JsonItem) -> Self {
-        match item {
-            JsonItem::Simple(item) => Self { item, model: None },
-            JsonItem::Complex { item, model } => Self { item, model },
-        }
-    }
-}
-
-fn make_blue_rupee() -> Item { Item { item: format!("Rupees (5)"), model: None } }
-fn make_green_rupee() -> Item { Item { item: format!("Rupee (1)"), model: None } }
-fn make_recovery_heart() -> Item { Item { item: format!("Recovery Heart"), model: None } }
-
-#[derive(Deserialize)]
-pub(crate) struct SpoilerLogLocations {
-    #[serde(rename = "KF Midos Top Left Chest", default = "make_blue_rupee")] kf_midos_top_left_chest: Item,
-    #[serde(rename = "KF Midos Top Right Chest", default = "make_blue_rupee")] kf_midos_top_right_chest: Item,
-    #[serde(rename = "KF Midos Bottom Left Chest", default = "make_green_rupee")] kf_midos_bottom_left_chest: Item,
-    #[serde(rename = "KF Midos Bottom Right Chest", default = "make_recovery_heart")] kf_midos_bottom_right_chest: Item,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]

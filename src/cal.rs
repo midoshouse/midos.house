@@ -26,6 +26,10 @@ use {
     itertools::Itertools as _,
     lazy_regex::regex_captures,
     once_cell::sync::Lazy,
+    ootr_utils::spoiler::{
+        HashIcon,
+        SpoilerLog,
+    },
     racetime::model::RaceData,
     reqwest::StatusCode,
     rocket::{
@@ -90,11 +94,7 @@ use {
             PageStyle,
             page,
         },
-        seed::{
-            self,
-            HashIcon,
-            SpoilerLog,
-        },
+        seed,
         startgg,
         team::Team,
         user::User,
