@@ -111,6 +111,8 @@ pub(crate) enum PageError {
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("missing user data for Fenhl")]
     FenhlUserData,
+    #[error("missing user data for Xopar")]
+    XoparUserData,
 }
 
 pub(crate) type PageResult = Result<RawHtml<String>, PageError>;
@@ -131,6 +133,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
         (None, Some(content))
     };
     let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+    let xopar = User::from_id(&mut transaction, Id(17762941071474623984)).await?.ok_or(PageError::XoparUserData)?;
     transaction.commit().await?;
     Ok(html! {
         : Doctype;
@@ -201,7 +204,11 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                         : " • ";
                         a(href = "https://github.com/midoshouse/midos.house") : "source code";
                     }
-                    p : "Special thanks to Maplestar for some of the chest icons used in the logo, and to Xopar and shiroaeli for some of the seed hash icons!";
+                    p {
+                        : "Special thanks to Maplestar for some of the chest icons used in the logo, and to ";
+                        : xopar;
+                        : " and shiroaeli for some of the seed hash icons!";
+                    }
                 }
             }
         }
