@@ -1,5 +1,8 @@
 use {
-    std::str::FromStr,
+    std::{
+        fmt,
+        str::FromStr,
+    },
     rand::prelude::*,
     rocket::{
         UriDisplayPath,
@@ -74,6 +77,12 @@ impl FromStr for Id {
         s.parse::<u64>()
             .map(Self)
             .or_else(|_| s.parse::<i64>().map(Self::from))
+    }
+}
+
+impl fmt::Display for Id {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 

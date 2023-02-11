@@ -693,12 +693,12 @@ impl Race {
                             game: None, //TODO
                             schedule: RaceSchedule::Live {
                                 start: start.with_timezone(&Utc),
-                                end: None, //TODO get from RSLBot seed archive
-                                room: None, //TODO get from RSLBot seed archive
+                                end: None,
+                                room: None,
                             },
                             draft: None,
-                            seed: None, //TODO get from RSLBot seed archive
-                            video_url: stream.map(|stream| Url::parse(&format!("https://twitch.tv/{stream}"))).transpose()?, //TODO vod links
+                            seed: None,
+                            video_url: stream.map(|stream| Url::parse(&format!("https://twitch.tv/{stream}"))).transpose()?,
                             ignored: false,
                         }).await?;
                     }
@@ -1035,16 +1035,26 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
     for (i, race) in Race::for_event(transaction, http_client, env, config, event).await?.into_iter().enumerate() {
         for race_event in race.cal_events() {
             if let Some(start) = race_event.start() {
-                let mut cal_event = ics::Event::new(format!("{}-{}-{}{}@midos.house",
-                    event.series,
-                    event.event,
-                    race.startgg_set.clone().unwrap_or_else(|| i.to_string()), //TODO use ID systems for other events
-                    match race_event.kind {
-                        EventKind::Normal => "",
-                        EventKind::Async1 => "-1",
-                        EventKind::Async2 => "-2",
-                    },
-                ), ics_datetime(Utc::now()));
+                let mut cal_event = ics::Event::new(if let Some(id) = race.id {
+                    format!("{id}{}@midos.house",
+                        match race_event.kind {
+                            EventKind::Normal => "",
+                            EventKind::Async1 => "-1",
+                            EventKind::Async2 => "-2",
+                        },
+                    )
+                } else {
+                    format!("{}-{}-{}{}@midos.house",
+                        event.series,
+                        event.event,
+                        race.startgg_set.clone().unwrap_or_else(|| i.to_string()),
+                        match race_event.kind {
+                            EventKind::Normal => "",
+                            EventKind::Async1 => "-1",
+                            EventKind::Async2 => "-2",
+                        },
+                    )
+                }, ics_datetime(Utc::now()));
                 let summary_prefix = match (&race.phase, &race.round) {
                     (Some(phase), Some(round)) => format!("{} {phase} {round}", event.short_name()),
                     (Some(phase), None) => format!("{} {phase}", event.short_name()),
