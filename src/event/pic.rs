@@ -154,13 +154,12 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "rs2" => html! {
             p {
                 : "The seed will be rolled on ";
-                a(href = "https://github.com/fenhl/plando-random-settings/tree/bd5405a0237217e15f82d1e73d0baf9450d6bb9c") : "version 2.3.8 Fenhl-10";
+                a(href = "https://github.com/fenhl/plando-random-settings/tree/e15d97185093ae7dafa7a4e5ee9bf7fe7ced42dc") : "version 2.3.8 Fenhl-14";
                 : " of the random settings script. We will be using ";
-                a(href = "https://github.com/fenhl/plando-random-settings/blob/bd5405a0237217e15f82d1e73d0baf9450d6bb9c/weights/pictionary_override.json") : "a special weights override";
+                a(href = "https://github.com/fenhl/plando-random-settings/blob/e15d97185093ae7dafa7a4e5ee9bf7fe7ced42dc/weights/pictionary_override.json") : "a special weights override";
                 : " for Pictionary spoiler log races. Changes include:";
             }
             ul {
-                li : "Shop shuffle is disabled due to a bug on the randomizer version we're using.";
                 li : "Overworld ER is disabled to reduce complexity for the pilot.";
                 li : "Master Quest dungeons are disabled due to a lack of documentation for spoiler log location names.";
                 li {
@@ -175,7 +174,7 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
                 li {
                     : "The seed will be rolled on ";
-                    a(href = "https://github.com/fenhl/OoT-Randomizer/tree/5139c90cac5013b4d9a52ede9f15d3676f82492d") : "Fenhl's branch";
+                    a(href = "https://github.com/fenhl/OoT-Randomizer/tree/ff5ba67fc1e66304332b0e8e5d43ba95c0231b4e") : "Fenhl's branch";
                     : ", so some settings that aren't in Dev-R are added:";
                     ul {
                         li : "Boss rooms included in mixed entrance pools (50% chance if mixed pools is on)";
@@ -236,11 +235,11 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoTR_1079648_1DHCCQB5AC") },
         ]), true).await.map_err(InfoError::TableCells)?),
         "rs2" => Some(seed::table(stream::iter(vec![
-            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_0C493PMPSI") },
-            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_CZA69C9BX9") },
-            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_XR5TXT3BC5") },
-            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_PF8TF95HTH") },
-            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_R4D5R447UG") },
+            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_1S6GBQNP8R") },
+            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_IIPBIQ4XAB") },
+            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_LBZIZMD75C") },
+            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_3OBW74243M") },
+            seed::Data { web: None, file_hash: None, file_stem: Cow::Borrowed("OoT_5ADE7_E18HE17UKF") },
         ]), true).await.map_err(InfoError::TableCells)?),
         _ => None,
     };
