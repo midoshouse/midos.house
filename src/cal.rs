@@ -672,11 +672,13 @@ impl Race {
                         let stream = rest.next();
                         assert!(rest.next().is_none());
                         let start = Utc.datetime_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_utc:?} at {time_utc:?}"));
-                        let (phase, round) = match &**round {
-                            "1/4 final" => ("Top 8", format!("Quarterfinal")),
-                            "1/2 final" => ("Top 8", format!("Semifinal")),
-                            "final" => ("Top 8", format!("Finals")),
-                            _ => ("Swiss", format!("Round {round}")),
+                        let (phase, round, game) = match &**round {
+                            "1/4 final" => ("Top 8", format!("Quarterfinal"), None),
+                            "1/2 final" => ("Top 8", format!("Semifinal"), None),
+                            "final game 1" => ("Top 8", format!("Finals"), Some(1)),
+                            "final game 2" => ("Top 8", format!("Finals"), Some(2)),
+                            "final game 3" => ("Top 8", format!("Finals"), Some(3)),
+                            _ => ("Swiss", format!("Round {round}"), None),
                         };
                         add_or_update_race(&mut *transaction, &mut races, false, Self {
                             id: None,
@@ -690,7 +692,6 @@ impl Race {
                             ]),
                             phase: Some(phase.to_owned()),
                             round: Some(round),
-                            game: None, //TODO
                             schedule: RaceSchedule::Live {
                                 start: start.with_timezone(&Utc),
                                 end: None,
@@ -700,6 +701,7 @@ impl Race {
                             seed: None,
                             video_url: stream.map(|stream| Url::parse(&format!("https://twitch.tv/{stream}"))).transpose()?,
                             ignored: false,
+                            game,
                         }).await?;
                     }
                 },
