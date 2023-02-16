@@ -25,7 +25,6 @@ use {
     },
     itertools::Itertools as _,
     lazy_regex::regex_captures,
-    once_cell::sync::Lazy,
     ootr_utils::spoiler::{
         HashIcon,
         SpoilerLog,
@@ -57,7 +56,6 @@ use {
         ToHtml as _,
         html,
     },
-    serde::Deserialize,
     sheets::Sheets,
     sqlx::{
         PgPool,
@@ -579,63 +577,7 @@ impl Race {
             races.push(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?);
         }
         match event.series {
-            Series::Multiworld => match &*event.event {
-                "2" => {
-                    #[derive(Deserialize)]
-                    struct MwS2Race {
-                        team1: String,
-                        team2: String,
-                        phase: String,
-                        round: String,
-                        game: Option<i16>,
-                        start: Option<DateTime<Utc>>,
-                        end: Option<DateTime<Utc>>,
-                        room: Option<Url>,
-                        async_start1: Option<DateTime<Utc>>,
-                        async_end1: Option<DateTime<Utc>>,
-                        async_room1: Option<Url>,
-                        async_start2: Option<DateTime<Utc>>,
-                        async_end2: Option<DateTime<Utc>>,
-                        async_room2: Option<Url>,
-                        restream: Option<Url>,
-                    }
-
-                    static RACES: Lazy<Vec<Race>> = Lazy::new(||
-                        serde_json::from_str::<Vec<MwS2Race>>(include_str!("../assets/event/mw/2.json"))
-                            .expect("failed to parse mw/2 race list")
-                            .into_iter()
-                            .map(|race| Race {
-                                id: None,
-                                series: Series::Multiworld,
-                                event: format!("2"),
-                                startgg_event: None,
-                                startgg_set: None,
-                                entrants: Entrants::Two([
-                                    Entrant::Named(race.team1),
-                                    Entrant::Named(race.team2),
-                                ]),
-                                phase: Some(race.phase),
-                                round: Some(race.round),
-                                game: race.game,
-                                schedule: match (race.start, race.end, race.room, race.async_start1, race.async_end1, race.async_room1, race.async_start2, race.async_end2, race.async_room2) {
-                                    (Some(start), end, room, None, None, None, None, None, None) => RaceSchedule::Live { start, end, room },
-                                    (None, None, None, start1, end1, room1, start2, end2, room2) => RaceSchedule::Async { start1, start2, end1, end2, room1, room2 },
-                                    _ => panic!("inconsistent async state"),
-                                },
-                                draft: None,
-                                seed: None,
-                                video_url: race.restream,
-                                ignored: false,
-                            })
-                            .collect()
-                    );
-
-                    for race in &*RACES {
-                        add_or_update_race(&mut *transaction, &mut races, true, race.clone()).await?;
-                    }
-                }
-                _ => {}
-            },
+            Series::Multiworld => {} // added to database
             Series::NineDaysOfSaws | Series::Pictionary => {
                 races.push(Self {
                     id: None,
