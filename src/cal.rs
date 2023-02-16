@@ -631,7 +631,7 @@ impl Race {
                     );
 
                     for race in &*RACES {
-                        races.push(race.clone());
+                        add_or_update_race(&mut *transaction, &mut races, true, race.clone()).await?;
                     }
                 }
                 _ => {}
