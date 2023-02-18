@@ -47,7 +47,7 @@ enum DisplaySource {
 }
 
 #[derive(Debug, sqlx::Type, Deserialize)]
-#[sqlx(type_name = "racetime_pronouns", rename_all = "snake_case")]
+#[sqlx(type_name = "racetime_pronouns")]
 pub(crate) enum RaceTimePronouns {
     #[serde(rename = "she/her")]
     She,

@@ -366,6 +366,17 @@ async fn robots_txt() -> RawText<&'static str> {
     RawText("User-agent: *\nDisallow: /seed/\nDisallow: /static/\n")
 }
 
+#[rocket::catch(400)]
+async fn bad_request(request: &Request<'_>) -> PageResult {
+    let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
+    let me = request.guard::<User>().await.succeeded();
+    let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
+    page(pool.begin().await?, &me, &uri, PageStyle { chests: ChestAppearances::SMALL_KEYS, ..PageStyle::default() }, "Bad Request — Mido's House", html! {
+        h1 : "Error 400: Bad Request";
+        p : "Login failed. If you need help, contact Fenhl on Discord.";
+    }).await
+}
+
 #[rocket::catch(404)]
 async fn not_found(request: &Request<'_>) -> PageResult {
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
@@ -482,6 +493,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
     .mount("/seed", FileServer::new(seed::DIR, rocket::fs::Options::None))
     .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))
     .register("/", rocket::catchers![
+        bad_request,
         not_found,
         internal_server_error,
     ])
@@ -500,7 +512,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         }.to_string()),
     )))
     .attach(OAuth2::<auth::Discord>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
-        rocket_oauth2::StaticProvider {
+        rocket_oauth2::StaticProvider { //TODO use built-in constant once https://github.com/jebrosen/rocket_oauth2/pull/42 is merged and released
             auth_uri: "https://discord.com/api/oauth2/authorize".into(),
             token_uri: "https://discord.com/api/oauth2/token".into(),
         },

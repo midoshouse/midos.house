@@ -141,6 +141,11 @@ impl ChestAppearance {
         big: false,
     };
 
+    const SMALL_KEY: Self = Self {
+        texture: ChestTexture::SmallKey1751,
+        big: false,
+    };
+
     const TOKEN: Self = Self {
         texture: ChestTexture::Token,
         big: false,
@@ -422,6 +427,7 @@ pub(crate) struct ChestAppearances(pub(crate) [ChestAppearance; 4]);
 impl ChestAppearances {
     pub(crate) const VANILLA: Self = Self([ChestAppearance::VANILLA; 4]);
     pub(crate) const INVISIBLE: Self = Self([ChestAppearance::INVISIBLE; 4]);
+    pub(crate) const SMALL_KEYS: Self = Self([ChestAppearance::SMALL_KEY; 4]);
     pub(crate) const TOKENS: Self = Self([ChestAppearance::TOKEN; 4]);
 
     pub(crate) fn random() -> Self {
