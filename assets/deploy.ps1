@@ -12,10 +12,10 @@ ThrowOnNativeFailure
 wsl rsync --delete -av /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/ /home/fenhl/wslgit/github.com/midoshouse/midos.house/ --exclude target
 ThrowOnNativeFailure
 
-wsl env -C /home/fenhl/wslgit/github.com/midoshouse/midos.house cargo build --release
+wsl env -C /home/fenhl/wslgit/github.com/midoshouse/midos.house cargo build --release --target=x86_64-unknown-linux-musl
 ThrowOnNativeFailure
 
-wsl cp /home/fenhl/wslgit/github.com/midoshouse/midos.house/target/release/midos-house /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/target/wsl/release/midos-house
+wsl cp /home/fenhl/wslgit/github.com/midoshouse/midos.house/target/x86_64-unknown-linux-musl/release/midos-house /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/target/wsl/release/midos-house
 ThrowOnNativeFailure
 
 ssh midos.house 'if systemctl is-active midos-house; then sudo -u mido bin/midos-house prepare-stop; fi'

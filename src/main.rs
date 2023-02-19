@@ -10,6 +10,7 @@ use {
         time::Duration,
     },
     futures::future::FutureExt as _,
+    openssl as _, // `vendored` feature required to fix release build
     rocket::Rocket,
     sqlx::{
         PgPool,
