@@ -301,7 +301,9 @@ pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 #[rocket::get("/login/racetime?<redirect_to>")]
 pub(crate) fn racetime_login(oauth: OAuth2<RaceTime>, cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Result<Redirect, Error<rocket_oauth2::Error>> {
     if let Some(redirect_to) = redirect_to {
-        cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
+        if redirect_to.0.path() != uri!(racetime_callback).path() { // prevent showing login error page on login success
+            cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
+        }
     }
     oauth.get_redirect(cookies, &["read"]).map_err(Error)
 }
@@ -309,7 +311,9 @@ pub(crate) fn racetime_login(oauth: OAuth2<RaceTime>, cookies: &CookieJar<'_>, r
 #[rocket::get("/login/discord?<redirect_to>")]
 pub(crate) fn discord_login(oauth: OAuth2<Discord>, cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Result<Redirect, Error<rocket_oauth2::Error>> {
     if let Some(redirect_to) = redirect_to {
-        cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
+        if redirect_to.0.path() != uri!(racetime_callback).path() { // prevent showing login error page on login success
+            cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
+        }
     }
     oauth.get_redirect(cookies, &["identify"]).map_err(Error)
 }
