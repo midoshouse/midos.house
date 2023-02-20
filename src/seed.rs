@@ -14,6 +14,7 @@ use {
     },
     rocket::response::content::RawHtml,
     rocket_util::html,
+    serde::Deserialize,
     tokio::pin,
     wheel::fs,
     crate::http::static_url,
@@ -89,21 +90,32 @@ pub(crate) enum TableCellsError {
 }
 
 pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool) -> Result<RawHtml<String>, TableCellsError> {
-    let (spoiler_file_name, spoiler_path_exists, spoiler_contents) = if seed.file_hash.is_none() || seed.web.map_or(true, |web| web.gen_time <= now - chrono::Duration::days(90)) {
+    /// If some other part of the log like settings or version number can't be parsed, we may still be able to read the file hash from the log
+    #[derive(Deserialize)]
+    struct SparseSpoilerLog {
+        file_hash: [HashIcon; 5],
+    }
+
+    let (spoiler_file_name, spoiler_path_exists, file_hash, world_count) = if seed.file_hash.is_none() || seed.web.map_or(true, |web| web.gen_time <= now - chrono::Duration::days(90)) {
         let spoiler_file_name = format!("{}_Spoiler.json", seed.file_stem);
         let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
         let spoiler_path_exists = spoiler_path.exists();
-        (
-            Some(spoiler_file_name),
-            spoiler_path_exists,
-            if spoiler_path_exists && (seed.file_hash.is_none() || seed.web.map_or(true, |web| web.gen_time <= now - chrono::Duration::days(90))) {
-                Some(serde_json::from_str::<SpoilerLog>(&fs::read_to_string(&spoiler_path).await?)?)
+        let (file_hash, world_count) = if spoiler_path_exists {
+            let log = fs::read_to_string(&spoiler_path).await?;
+            if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
+                (Some(log.file_hash), Some(log.settings.world_count))
             } else {
-                None
-            },
-        )
+                (
+                    seed.file_hash.or_else(|| serde_json::from_str::<SparseSpoilerLog>(&log).ok().map(|log| log.file_hash)),
+                    None,
+                )
+            }
+        } else {
+            (seed.file_hash, None)
+        };
+        (Some(spoiler_file_name), spoiler_path_exists, file_hash, world_count)
     } else {
-        (None, false, None)
+        (None, false, seed.file_hash, None)
     };
     Ok(html! {
         @if let Some(file_hash) = seed.file_hash {
@@ -114,8 +126,10 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
             }
         } else {
             td {
-                @for hash_icon in spoiler_contents.as_ref().expect("should be present since file_hash is None").file_hash {
-                    : hash_icon.to_html();
+                @if let Some(file_hash) = file_hash {
+                    @for hash_icon in file_hash {
+                        : hash_icon.to_html();
+                    }
                 }
             }
         }
@@ -126,8 +140,8 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
             }
         } else {
             td {
-                a(href = format!("/seed/{}.{}", seed.file_stem, if let Some(ref spoiler) = spoiler_contents {
-                    if spoiler.settings.world_count.get() > 1 { "zpfz" } else { "zpf" }
+                a(href = format!("/seed/{}.{}", seed.file_stem, if let Some(world_count) = world_count {
+                    if world_count.get() > 1 { "zpfz" } else { "zpf" }
                 } else if Path::new(DIR).join(format!("{}.zpfz", seed.file_stem)).exists() {
                     "zpfz"
                 } else {
