@@ -320,6 +320,7 @@ impl Race {
                     slots: Some(slots),
                 }),
             } = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) }).await? {
+                sqlx::query!("UPDATE races SET startgg_event = $1 WHERE id = $2", startgg_event, i64::from(id)).execute(&mut *transaction).await?;
                 (Some(startgg_event), Some(startgg_set), Some(phase), Some(round), Some(slots))
             } else {
                 (None, None, row.phase, row.round, None)
