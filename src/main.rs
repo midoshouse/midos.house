@@ -68,6 +68,14 @@ impl Environment {
     }
 }
 
+fn parse_port(arg: &str) -> Result<u16, std::num::ParseIntError> {
+    match arg {
+        "production" => Ok(24812),
+        "dev" => Ok(24814),
+        _ => arg.parse(),
+    }
+}
+
 #[cfg(not(unix))]
 #[derive(clap::Subcommand)]
 enum Subcommand {}
@@ -76,7 +84,7 @@ enum Subcommand {}
 struct Args {
     #[clap(long, value_enum, default_value_t)]
     env: Environment,
-    #[clap(long)]
+    #[clap(long, value_parser = parse_port)]
     port: Option<u16>,
     #[clap(subcommand)]
     subcommand: Option<Subcommand>,

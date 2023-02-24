@@ -143,6 +143,7 @@ use {
                 ArcRwLock,
                 Mutex,
                 OwnedRwLockWriteGuard,
+                lock,
             },
         },
     },
@@ -397,7 +398,7 @@ impl GlobalState {
                     Err(TryAcquireError::Closed) => unreachable!(),
                     Err(TryAcquireError::NoPermits) => {
                         let (mut pos, mut pos_rx) = {
-                            let mut waiting = self.ootr_api_client.waiting.lock().await;
+                            let mut waiting = lock!(self.ootr_api_client.waiting);
                             let pos = waiting.len();
                             let (pos_tx, pos_rx) = mpsc::unbounded_channel();
                             waiting.push(pos_tx);
@@ -409,7 +410,7 @@ impl GlobalState {
                             pos -= 1;
                             update_tx.send(SeedRollUpdate::MovedForward(pos.try_into().unwrap())).await?;
                         }
-                        let mut waiting = self.ootr_api_client.waiting.lock().await;
+                        let mut waiting = lock!(self.ootr_api_client.waiting);
                         let permit = self.ootr_api_client.mw_seed_rollers.acquire().await.expect("seed queue semaphore closed");
                         waiting.remove(0);
                         for tx in &*waiting {
@@ -513,7 +514,7 @@ impl GlobalState {
                             Err(TryAcquireError::Closed) => unreachable!(),
                             Err(TryAcquireError::NoPermits) => {
                                 let (mut pos, mut pos_rx) = {
-                                    let mut waiting = self.ootr_api_client.waiting.lock().await;
+                                    let mut waiting = lock!(self.ootr_api_client.waiting);
                                     let pos = waiting.len();
                                     let (pos_tx, pos_rx) = mpsc::unbounded_channel();
                                     waiting.push(pos_tx);
@@ -525,7 +526,7 @@ impl GlobalState {
                                     pos -= 1;
                                     let _ = update_tx.send(SeedRollUpdate::MovedForward(pos.try_into().unwrap())).await;
                                 }
-                                let mut waiting = self.ootr_api_client.waiting.lock().await;
+                                let mut waiting = lock!(self.ootr_api_client.waiting);
                                 let permit = self.ootr_api_client.mw_seed_rollers.acquire().await.expect("seed queue semaphore closed");
                                 waiting.remove(0);
                                 for tx in &*waiting {
@@ -806,7 +807,7 @@ impl OotrApiClient {
     }
 
     async fn get(&self, uri: impl IntoUrl + Clone, query: Option<&(impl Serialize + ?Sized)>) -> reqwest::Result<reqwest::Response> {
-        let mut next_request = self.next_request.lock().await;
+        let mut next_request = lock!(self.next_request);
         sleep_until(*next_request).await;
         let mut builder = self.http_client.get(uri.clone());
         if let Some(query) = query {
@@ -819,7 +820,7 @@ impl OotrApiClient {
     }
 
     async fn post(&self, uri: impl IntoUrl + Clone, query: Option<&(impl Serialize + ?Sized)>, json: Option<&(impl Serialize + ?Sized)>) -> reqwest::Result<reqwest::Response> {
-        let mut next_request = self.next_request.lock().await;
+        let mut next_request = lock!(self.next_request);
         sleep_until(*next_request).await;
         let mut builder = self.http_client.post(uri.clone());
         if let Some(query) = query {
@@ -902,7 +903,7 @@ impl OotrApiClient {
         let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
         for _ in 0..3 {
             let next_seed = if is_mw {
-                let next_seed = self.next_mw_seed.lock().await;
+                let next_seed = lock!(self.next_mw_seed);
                 if let Some(duration) = next_seed.checked_duration_since(Instant::now()) {
                     update_tx.send(SeedRollUpdate::WaitRateLimit(duration)).await?;
                     sleep(duration).await;
@@ -1056,7 +1057,7 @@ struct Handler<B: Bot> {
 
 impl<B: Bot> Handler<B> {
     async fn should_handle_inner(race_data: &RaceData, global_state: Arc<GlobalState>, increment_num_rooms: bool) -> bool {
-        let mut clean_shutdown = global_state.clean_shutdown.lock().await;
+        let mut clean_shutdown = lock!(global_state.clean_shutdown);
         B::should_handle_goal(&race_data.goal)
         && !matches!(race_data.status.value, RaceStatusValue::Finished | RaceStatusValue::Cancelled)
         && if !clean_shutdown.requested || !clean_shutdown.open_rooms.is_empty() {
@@ -1219,7 +1220,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
         tokio::spawn(async move {
             println!("race handler for {} started", race_data.read().await.url);
             let res = join_handle.await;
-            let mut clean_shutdown = global_state.clean_shutdown.lock().await;
+            let mut clean_shutdown = lock!(global_state.clean_shutdown);
             assert!(clean_shutdown.open_rooms.remove(&race_data.read().await.url));
             if clean_shutdown.requested && clean_shutdown.open_rooms.is_empty() {
                 clean_shutdown.notifier.notify_waiters();
@@ -1233,7 +1234,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
     async fn new(ctx: &RaceContext<GlobalState>) -> Result<Self, Error> {
         let goal = ctx.data().await.goal.name.parse().to_racetime()?;
         let data = ctx.data().await;
-        let new_room_lock = ctx.global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
+        let new_room_lock = lock!(ctx.global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
         let (official_data, video_url, race_state, high_seed_name, low_seed_name) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
             let mut entrants = Vec::default();
@@ -2152,7 +2153,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                     let race = Race::from_id(&mut transaction, &global_state.http_client, &global_state.startgg_token, row.id).await.to_racetime()?;
                     match racetime::authorize_with_host(global_state.host, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.http_client).await {
                         Ok((access_token, _)) => {
-                            let new_room_lock = global_state.new_room_lock.lock().await; // make sure a new room isn't handled before it's added to the database
+                            let new_room_lock = lock!(global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
                             let info_prefix = match (&race.phase, &race.round) {
                                 (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
                                 (Some(phase), None) => Some(phase.to_owned()),

@@ -9,11 +9,13 @@ function ThrowOnNativeFailure {
 wsl rsync --delete -av /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/ /home/fenhl/wslgit/github.com/midoshouse/midos.house/ --exclude target
 ThrowOnNativeFailure
 
-wsl env -C /home/fenhl/wslgit/github.com/midoshouse/midos.house cargo build
+wsl env -C /home/fenhl/wslgit/github.com/midoshouse/midos.house cargo build --target=x86_64-unknown-linux-musl
 ThrowOnNativeFailure
 
-wsl cp /home/fenhl/wslgit/github.com/midoshouse/midos.house/target/debug/midos-house /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/target/wsl/debug/midos-house
+wsl cp /home/fenhl/wslgit/github.com/midoshouse/midos.house/target/x86_64-unknown-linux-musl/debug/midos-house /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/target/wsl/debug/midos-house
 ThrowOnNativeFailure
+
+ssh midos.house sudo -u mido killall -9 midos-house-dev
 
 scp .\target\wsl\debug\midos-house midos.house:bin/midos-house-dev
 ThrowOnNativeFailure

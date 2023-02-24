@@ -28,7 +28,10 @@ use {
             VersionedRslPreset,
         },
         seed,
-        util::sync::Mutex,
+        util::sync::{
+            Mutex,
+            lock,
+        },
     },
 };
 
@@ -71,7 +74,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                         match ClientMessage::read(&mut sock).await {
                             Ok(ClientMessage::PrepareStop) => {
                                 println!("preparing to stop Mido's House: acquiring clean shutdown mutex");
-                                let mut clean_shutdown = clean_shutdown.lock().await;
+                                let mut clean_shutdown = lock!(clean_shutdown);
                                 clean_shutdown.requested = true;
                                 if !clean_shutdown.open_rooms.is_empty() {
                                     println!("preparing to stop Mido's House: waiting for {} rooms to close:", clean_shutdown.open_rooms.len());

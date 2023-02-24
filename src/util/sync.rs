@@ -1,43 +1,53 @@
 #![allow(unused_qualifications)]
 
 use std::{
-    ops::Deref,
+    ops::{
+        Deref,
+        DerefMut,
+    },
     sync::Arc,
 };
-#[cfg(debug_assertions)] use std::ops::DerefMut;
-#[cfg(not(debug_assertions))] pub(crate) use tokio::sync::{
-    Mutex,
-    OwnedRwLockWriteGuard,
-};
+#[cfg(not(debug_assertions))] pub(crate) use tokio::sync::OwnedRwLockWriteGuard;
 
-#[cfg(debug_assertions)]
+macro_rules! lock {
+    ($mutex:expr) => {{
+        #[cfg(debug_assertions)] println!(
+            "[{} {}:{}] acquiring mutex guard",
+            file!(),
+            line!(),
+            column!(),
+        );
+        let guard = $mutex.0.lock().await;
+        #[cfg(debug_assertions)] println!(
+            "[{} {}:{}] mutex guard acquired",
+            file!(),
+            line!(),
+            column!(),
+        );
+        $crate::util::sync::MutexGuard(guard)
+    }};
+}
+
+pub(crate) use lock;
+
 #[derive(Default)]
-pub(crate) struct Mutex<T: ?Sized>(tokio::sync::Mutex<T>);
+pub(crate) struct Mutex<T: ?Sized>(pub(crate) tokio::sync::Mutex<T>);
 
-#[cfg(debug_assertions)] impl<T> Mutex<T> {
+impl<T> Mutex<T> {
     pub(crate) fn new(t: T) -> Self {
         Self(tokio::sync::Mutex::new(t))
     }
 }
 
-#[cfg(debug_assertions)] impl<T: ?Sized> Mutex<T> {
-    pub(crate) async fn lock(&self) -> MutexGuard<'_, T> {
-        println!("acquiring mutex guard");
-        let guard = self.0.lock().await;
-        println!("mutex guard acquired");
-        MutexGuard(guard)
-    }
-}
+pub(crate) struct MutexGuard<'a, T: ?Sized>(pub(crate) tokio::sync::MutexGuard<'a, T>);
 
-#[cfg(debug_assertions)] pub(crate) struct MutexGuard<'a, T: ?Sized>(tokio::sync::MutexGuard<'a, T>);
-
-#[cfg(debug_assertions)] impl<T: ?Sized> Deref for MutexGuard<'_, T> {
+impl<T: ?Sized> Deref for MutexGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T { &self.0 }
 }
 
-#[cfg(debug_assertions)] impl<T: ?Sized> DerefMut for MutexGuard<'_, T> {
+impl<T: ?Sized> DerefMut for MutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T { &mut self.0 }
 }
 

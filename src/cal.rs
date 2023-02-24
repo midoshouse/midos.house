@@ -272,6 +272,7 @@ impl Race {
         let row = sqlx::query!(r#"SELECT
             series AS "series: Series",
             event,
+            startgg_event,
             startgg_set,
             game,
             team1 AS "team1: Id",
@@ -303,7 +304,9 @@ impl Race {
             ignored
         FROM races WHERE id = $1"#, i64::from(id)).fetch_one(&mut *transaction).await?;
         let (startgg_event, startgg_set, phase, round, slots) = if let Some(startgg_set) = row.startgg_set {
-            if let startgg::set_query::ResponseData {
+            if row.startgg_event.is_some() && row.team1.is_some() && row.team2.is_some() {
+                (row.startgg_event, Some(startgg_set), row.phase, row.round, None)
+            } else if let startgg::set_query::ResponseData {
                 set: Some(startgg::set_query::SetQuerySet {
                     full_round_text: Some(round),
                     phase_group: Some(startgg::set_query::SetQuerySetPhaseGroup {
@@ -530,9 +533,10 @@ impl Race {
                     video_url,
                     phase,
                     round,
-                    p3
+                    p3,
+                    startgg_event
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)",
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)",
                     race.startgg_set,
                     start,
                     race.series as _,
@@ -564,6 +568,7 @@ impl Race {
                     race.phase,
                     race.round,
                     p3,
+                    race.startgg_event,
                 ).execute(transaction).await?;
                 race.id = Some(id);
                 races.push(race);

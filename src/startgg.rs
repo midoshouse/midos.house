@@ -23,7 +23,10 @@ use {
         TypeMapKey,
     },
     wheel::traits::ReqwestResponseExt as _,
-    crate::util::sync::Mutex,
+    crate::util::sync::{
+        Mutex,
+        lock,
+    },
 };
 
 static CACHE: Lazy<Mutex<(Instant, TypeMap)>> = Lazy::new(|| Mutex::new((Instant::now(), TypeMap::default())));
@@ -88,7 +91,7 @@ pub(crate) struct SetQuery;
 
 pub(crate) async fn query<T: GraphQLQuery + 'static>(client: &reqwest::Client, auth_token: &str, variables: T::Variables) -> Result<T::ResponseData, Error>
 where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Send + Sync {
-    let (ref mut next_request, ref mut cache) = *CACHE.lock().await;
+    let (ref mut next_request, ref mut cache) = *lock!(CACHE);
     Ok(match cache.entry::<QueryCache<T>>().or_default().entry(variables.clone()) {
         hash_map::Entry::Occupied(entry) => entry.get().clone(), //TODO expire cache after some amount of time?
         hash_map::Entry::Vacant(entry) => {
