@@ -606,47 +606,7 @@ impl Race {
             }
             Series::Rsl => match &*event.event {
                 "1" => {} // no match data available
-                "2" | "3" | "4" => {} // added to database
-                "5" => for row in sheet_values("1nz7XtNxKFTq_6bfjlUmIq0fCXKkQfDC848YmVcbaoQw", format!("Form responses 1!B2:H")).await? {
-                    if let [p1, p2, round, date_utc, time_utc, rest @ ..] = &*row {
-                        let mut rest = rest.into_iter().fuse();
-                        let _monitor = rest.next();
-                        let stream = rest.next();
-                        assert!(rest.next().is_none());
-                        let start = Utc.datetime_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S").expect(&format!("failed to parse {date_utc:?} at {time_utc:?}"));
-                        let (phase, round, game) = match &**round {
-                            "1/4 final" => ("Top 8", format!("Quarterfinal"), None),
-                            "1/2 final" => ("Top 8", format!("Semifinal"), None),
-                            "final game 1" => ("Top 8", format!("Finals"), Some(1)),
-                            "final game 2" => ("Top 8", format!("Finals"), Some(2)),
-                            "final game 3" => ("Top 8", format!("Finals"), Some(3)),
-                            _ => ("Swiss", format!("Round {round}"), None),
-                        };
-                        add_or_update_race(&mut *transaction, &mut races, false, Self {
-                            id: None,
-                            series: event.series,
-                            event: event.event.to_string(),
-                            startgg_event: None,
-                            startgg_set: None,
-                            entrants: Entrants::Two([
-                                Entrant::Named(p1.clone()),
-                                Entrant::Named(p2.clone()),
-                            ]),
-                            phase: Some(phase.to_owned()),
-                            round: Some(round),
-                            schedule: RaceSchedule::Live {
-                                start: start.with_timezone(&Utc),
-                                end: None,
-                                room: None,
-                            },
-                            draft: None,
-                            seed: None,
-                            video_url: stream.map(|stream| Url::parse(&format!("https://twitch.tv/{stream}"))).transpose()?,
-                            ignored: false,
-                            game,
-                        }).await?;
-                    }
-                },
+                "2" | "3" | "4" | "5" => {} // added to database
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {

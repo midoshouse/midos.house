@@ -208,6 +208,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
             p {
                 : "racetime.gg: ";
                 a(href = format!("https://racetime.gg/user/{racetime_id}")) : user.racetime_display_name; //TODO racetime.gg display name with discriminator
+                //TODO if this may be outdated, link to racetime.gg login page for refreshing
             }
         }
     } else if me.as_ref().map_or(false, |me| me.id == user.id) {
@@ -259,6 +260,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
             p {
                 : "Discord: ";
                 a(href = format!("https://discord.com/users/{discord_id}")) : user.discord_display_name; //TODO Discord display name with discriminator
+                //TODO if this may be outdated, link to racetime.gg login page for refreshing
             }
         }
     } else if me.as_ref().map_or(false, |me| me.id == user.id) {
