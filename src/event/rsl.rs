@@ -38,6 +38,7 @@ pub(crate) enum Preset {
     Ddr,
     CoOp,
     Multiworld,
+    S6Test,
 }
 
 impl Preset {
@@ -49,6 +50,7 @@ impl Preset {
             Self::Ddr => "ddr",
             Self::CoOp => "coop",
             Self::Multiworld => "multiworld",
+            Self::S6Test => "s6test",
         }
     }
 
@@ -60,6 +62,7 @@ impl Preset {
             Self::Ddr => "Random Settings DDR",
             Self::CoOp => "Random Settings Co-Op",
             Self::Multiworld => "Random Settings Multiworld",
+            Self::S6Test => "Random Settings Season 6 Test Weights",
         }
     }
 }
@@ -75,6 +78,7 @@ impl FromStr for Preset {
             "ddr" => Self::Ddr,
             "coop" | "co-op" => Self::CoOp,
             "multiworld" | "mw" => Self::Multiworld,
+            "s6test" => Self::S6Test,
             _ => return Err(()),
         })
     }

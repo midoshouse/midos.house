@@ -338,6 +338,7 @@ impl Goal {
                     rsl::Preset::Ddr => "League but always normal damage and with cutscenes useful for tricks in the DDR ruleset",
                     rsl::Preset::CoOp => "weights tuned for co-op play",
                     rsl::Preset::Multiworld => "weights tuned for multiworld",
+                    rsl::Preset::S6Test => "test settings for RSL season 6",
                 })).await?;
             },
         }
@@ -1955,6 +1956,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                     rsl::Preset::Ddr => format!("a random settings DDR seed"),
                                     rsl::Preset::CoOp => format!("a random settings co-op seed"),
                                     rsl::Preset::Multiworld => format!("a random settings multiworld seed for {world_count} players"),
+                                    rsl::Preset::S6Test => format!("an RSL season 6 test seed"),
                                 });
                             }
                         }
