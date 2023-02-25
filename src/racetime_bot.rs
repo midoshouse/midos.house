@@ -224,6 +224,13 @@ impl VersionedRslPreset {
         })
     }
 
+    fn base_version(&self) -> Option<&Version> {
+        match self {
+            Self::Xopar { version, .. } => version.as_ref(),
+            Self::Fenhl { version, .. } => version.as_ref().map(|(base, _)| base),
+        }
+    }
+
     fn name(&self) -> &'static str {
         match self {
             Self::Xopar { preset, .. } => preset.name(),
@@ -482,7 +489,11 @@ impl GlobalState {
                 rsl_cmd.arg("RandomSettingsGenerator.py");
                 rsl_cmd.arg("--no_log_errors");
                 if !matches!(preset, VersionedRslPreset::Xopar { preset: rsl::Preset::League, .. }) {
-                    rsl_cmd.arg(format!("--override={}_override.json", preset.name()));
+                    rsl_cmd.arg(format!(
+                        "--override={}{}_override.json",
+                        if preset.base_version().map_or(true, |version| *version >= Version::new(2, 3, 9)) { "weights/" } else { "" },
+                        preset.name(),
+                    ));
                 }
                 if world_count > 1 {
                     rsl_cmd.arg(format!("--worldcount={world_count}"));
