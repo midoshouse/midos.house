@@ -304,7 +304,7 @@ impl Race {
             ignored
         FROM races WHERE id = $1"#, i64::from(id)).fetch_one(&mut *transaction).await?;
         let (startgg_event, startgg_set, phase, round, slots) = if let Some(startgg_set) = row.startgg_set {
-            if row.startgg_event.is_some() && row.team1.is_some() && row.team2.is_some() {
+            if row.startgg_event.is_some() && row.phase.is_some() && row.round.is_some() && row.team1.is_some() && row.team2.is_some() {
                 (row.startgg_event, Some(startgg_set), row.phase, row.round, None)
             } else if let startgg::set_query::ResponseData {
                 set: Some(startgg::set_query::SetQuerySet {
@@ -320,7 +320,11 @@ impl Race {
                     slots: Some(slots),
                 }),
             } = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) }).await? {
-                sqlx::query!("UPDATE races SET startgg_event = $1 WHERE id = $2", startgg_event, i64::from(id)).execute(&mut *transaction).await?;
+                sqlx::query!("UPDATE races SET
+                    startgg_event = $1,
+                    phase = $2,
+                    round = $3
+                WHERE id = $4", startgg_event, phase, round, i64::from(id)).execute(&mut *transaction).await?;
                 (Some(startgg_event), Some(startgg_set), Some(phase), Some(round), Some(slots))
             } else {
                 (None, None, row.phase, row.round, None)
