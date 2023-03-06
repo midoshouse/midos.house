@@ -122,6 +122,7 @@ pub(crate) mod ndos;
 pub(crate) mod pic;
 pub(crate) mod rsl;
 mod s;
+mod tfb;
 
 #[derive(Debug, Clone, Copy, sqlx::Type)]
 #[sqlx(type_name = "signup_status", rename_all = "snake_case")]
@@ -185,6 +186,7 @@ pub(crate) enum Series {
     Pictionary,
     Rsl,
     Standard,
+    TriforceBlitz,
 }
 
 impl Series {
@@ -195,6 +197,7 @@ impl Series {
             Self::Pictionary => "pic",
             Self::Rsl => "rsl",
             Self::Standard => "s",
+            Self::TriforceBlitz => "tfb",
         }
     }
 }
@@ -209,6 +212,7 @@ impl FromStr for Series {
             "pic" => Ok(Self::Pictionary),
             "rsl" => Ok(Self::Rsl),
             "s" => Ok(Self::Standard),
+            "tfb" => Ok(Self::TriforceBlitz),
             _ => Err(()),
         }
     }
@@ -376,6 +380,7 @@ impl<'a> Data<'a> {
     }
 
     pub(crate) fn chests(&self) -> ChestAppearances {
+        //TODO parse weights at compile time
         match (self.series, &*self.event) {
             (Series::Multiworld, "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
             (Series::Multiworld, "3") => mw::S3Settings::random(&mut thread_rng()).chests(),
@@ -417,6 +422,12 @@ impl<'a> Data<'a> {
                 WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
             }
             (Series::Standard, _) => unimplemented!(),
+            (Series::TriforceBlitz, "2") => {
+                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/tfb/chests-2-7.1.3-blitz.42.json")).expect("failed to parse chest weights"));
+
+                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
+            }
+            (Series::TriforceBlitz, _) => unimplemented!(),
         }
     }
 
@@ -427,6 +438,7 @@ impl<'a> Data<'a> {
             Series::Pictionary => true,
             Series::Rsl => false,
             Series::Standard => false,
+            Series::TriforceBlitz => false,
         }
     }
 
@@ -437,6 +449,7 @@ impl<'a> Data<'a> {
             Series::Pictionary => EnterFlow::RaceTime,
             Series::Rsl => EnterFlow::Extern,
             Series::Standard => EnterFlow::Extern,
+            Series::TriforceBlitz => EnterFlow::Extern,
         }
     }
 
@@ -458,6 +471,7 @@ impl<'a> Data<'a> {
             Series::Pictionary => TeamConfig::Pictionary,
             Series::Rsl => TeamConfig::Solo,
             Series::Standard => TeamConfig::Solo,
+            Series::TriforceBlitz => TeamConfig::Solo,
         }
     }
 
@@ -716,6 +730,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
         Series::Pictionary => pic::info(&mut transaction, &data).await?,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
         Series::Standard => s::info(event),
+        Series::TriforceBlitz => tfb::info(&mut transaction, &data).await?,
     };
     page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
         : header;
@@ -1154,6 +1169,7 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
                         }
                         Series::Rsl => @unimplemented // no signups on Mido's House
                         Series::Standard => @unimplemented // no signups on Mido's House
+                        Series::TriforceBlitz => @unimplemented // no signups on Mido's House
                     }
                     h2 : "Options";
                     p : "More options coming soon"; //TODO options to change team name, swap roles, or opt in/out for restreaming
@@ -1267,6 +1283,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>
             Series::Pictionary => unimplemented!(),
             Series::Rsl => rsl::enter_form(transaction, me, uri, data).await?,
             Series::Standard => s::enter_form(transaction, me, uri, data).await?,
+            Series::TriforceBlitz => tfb::enter_form(transaction, me, uri, data).await?,
         },
     })
 }

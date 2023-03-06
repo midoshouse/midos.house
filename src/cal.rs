@@ -755,6 +755,7 @@ impl Race {
                 }
                 _ => unimplemented!(),
             },
+            Series::TriforceBlitz => {} //TODO waiting for technical details on scheduling from the organizers
         }
         races.retain(|race| !race.ignored);
         races.sort_unstable();
