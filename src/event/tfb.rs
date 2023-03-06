@@ -57,7 +57,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
                     p {
                         : "To enter this tournament, join ";
                         a(href = "https://discord.gg/nRWrZDesP8") : "the OoT Randomizer Discord server";
-                        : " and participate in the qualifier race, either live at ";
+                        : " and participate in the qualifier race, either live on ";
                         : format_datetime(America::Panama.with_ymd_and_hms(2023, 4, 8, 15, 0, 0).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
                         : " or async starting on April 2.";
                     }

@@ -1279,7 +1279,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
     if race.series != event.series || race.event != event.event {
         form.context.push_error(form::Error::validation("This race is not part of this event."));
     }
-    if !me.is_archivist {
+    if !me.is_archivist && !event.organizers(&mut transaction).await?.contains(&me) {
         form.context.push_error(form::Error::validation("You must be an archivist to edit this race. If you would like to become an archivist, please contact Fenhl on Discord."));
     }
     Ok(if let Some(ref value) = form.value {
