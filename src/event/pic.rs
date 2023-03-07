@@ -353,7 +353,7 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         : " These sample seeds were posted on February 11, replacing ";
                         a(href = "https://ootr.fenhl.net/static/pictionary5-sample-seeds.zip") : "the original batch";
                         : " which had a bug where the spoiler log would show the wrong prices for most right-side shop items. Special thanks to ShadowShine57 who found ";
-                        a(href = "https://github.com/TestRunnerSRL/OoT-Randomizer/pull/1505") : "the fix";
+                        a(href = "https://github.com/OoTRandomizer/OoT-Randomizer/pull/1505") : "the fix";
                         : " for that bug.";
                     }
                 }

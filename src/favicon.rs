@@ -49,14 +49,14 @@ use {
 
 #[derive(Clone, Copy)]
 enum CamcVersion {
-    /// The original “Chest Size Matches Contents” setting, added in [commit 9866777](https://github.com/TestRunnerSRL/OoT-Randomizer/tree/9866777f66083dfc8dde90fba5a71302b34459fb)
+    /// The original “Chest Size Matches Contents” setting, added in [commit 9866777](https://github.com/OoTRandomizer/OoT-Randomizer/tree/9866777f66083dfc8dde90fba5a71302b34459fb)
     Classic,
-    /// The initial iteration of “Chest Appearance Matches Contents”, added in [PR #1429](https://github.com/TestRunnerSRL/OoT-Randomizer/pull/1429), [version 6.2.4](https://github.com/TestRunnerSRL/OoT-Randomizer/tree/0e8c66a6a3b3a35df0920b220eb5188b1479cfa1)
+    /// The initial iteration of “Chest Appearance Matches Contents”, added in [PR #1429](https://github.com/OoTRandomizer/OoT-Randomizer/pull/1429), [version 6.2.4](https://github.com/OoTRandomizer/OoT-Randomizer/tree/0e8c66a6a3b3a35df0920b220eb5188b1479cfa1)
     Initial,
     /// The second iteration of “Chest Appearance Matches Contents” which updated the textures for major items and small keys to make them more distinctive, and reintroduced the classic behavior as an option.
-    /// Added in [PR #1500](https://github.com/TestRunnerSRL/OoT-Randomizer/pull/1500), [version 6.2.54](https://github.com/TestRunnerSRL/OoT-Randomizer/tree/1e39a95e8a4629e962634bd7e02f71d7d3602353)
+    /// Added in [PR #1500](https://github.com/OoTRandomizer/OoT-Randomizer/pull/1500), [version 6.2.54](https://github.com/OoTRandomizer/OoT-Randomizer/tree/1e39a95e8a4629e962634bd7e02f71d7d3602353)
     Pr1500,
-    /// The adjusted small key texture from [PR #1751](https://github.com/TestRunnerSRL/OoT-Randomizer/pull/1751), [version 6.2.233](https://github.com/TestRunnerSRL/OoT-Randomizer/tree/38334774503cd9a2c7389e222abe5884617830b7)
+    /// The adjusted small key texture from [PR #1751](https://github.com/OoTRandomizer/OoT-Randomizer/pull/1751), [version 6.2.233](https://github.com/OoTRandomizer/OoT-Randomizer/tree/38334774503cd9a2c7389e222abe5884617830b7)
     Pr1751,
 }
 
@@ -449,7 +449,7 @@ impl From<SpoilerLog> for ChestAppearances {
             CamcVersion::Classic => if settings.correct_chest_sizes { CorrectChestAppearances::Classic } else { CorrectChestAppearances::Off },
             CamcVersion::Initial | CamcVersion::Pr1500 | CamcVersion::Pr1751 => settings.correct_chest_appearances.unwrap_or_default(),
         };
-        let chus_in_major_chests = settings.bombchus_in_logic || settings.minor_items_as_major_chest.bombchus;
+        let chus_in_major_chests = settings.free_bombchu_drops || settings.minor_items_as_major_chest.bombchus;
         let shields_in_major_chests = settings.minor_items_as_major_chest.shields;
         let token_wincon = matches!(settings.bridge, Bridge::Tokens) || matches!(settings.lacs_condition, LacsCondition::Tokens) || matches!(settings.shuffle_ganon_bosskey, ShuffleGanonBosskey::Tokens);
         let heart_wincon = matches!(settings.bridge, Bridge::Hearts) || matches!(settings.lacs_condition, LacsCondition::Hearts) || matches!(settings.shuffle_ganon_bosskey, ShuffleGanonBosskey::Hearts);
