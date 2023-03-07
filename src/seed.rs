@@ -118,14 +118,12 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
         (None, false, seed.file_hash, None)
     };
     Ok(html! {
-        @if let Some(file_hash) = seed.file_hash {
-            td(class = "hash") {
+        td(class = "hash") {
+            @if let Some(file_hash) = seed.file_hash {
                 @for hash_icon in file_hash {
                     : hash_icon.to_html();
                 }
-            }
-        } else {
-            td {
+            } else {
                 @if let Some(file_hash) = file_hash {
                     @for hash_icon in file_hash {
                         : hash_icon.to_html();

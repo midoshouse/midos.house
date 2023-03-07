@@ -1042,14 +1042,16 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 }
                             }
                             td {
-                                @if let Some(ref video_url) = race.video_url {
-                                    a(class = "favicon", href = video_url.to_string()) : favicon(video_url);
-                                }
-                                @if let Some(startgg_url) = race.startgg_set_url()? {
-                                    a(class = "favicon", href = startgg_url.to_string()) : favicon(&startgg_url);
-                                }
-                                @for room in race.rooms() {
-                                    a(class = "favicon", href = room.to_string()) : favicon(&room);
+                                div(class = "favicon-container") {
+                                    @if let Some(ref video_url) = race.video_url {
+                                        a(class = "favicon", href = video_url.to_string()) : favicon(video_url);
+                                    }
+                                    @if let Some(startgg_url) = race.startgg_set_url()? {
+                                        a(class = "favicon", href = startgg_url.to_string()) : favicon(&startgg_url);
+                                    }
+                                    @for room in race.rooms() {
+                                        a(class = "favicon", href = room.to_string()) : favicon(&room);
+                                    }
                                 }
                             }
                             @if has_seeds {
