@@ -78,7 +78,7 @@ include!(concat!(env!("OUT_DIR"), "/static_files.rs"));
 
 /// Cache busting for static resources by including the git commit hash when the file was last modified in the URL
 pub(crate) fn static_url(path: &str) -> String {
-    let last_modified_commit = CACHE.get(path).expect("static file from last modification cache");
+    let last_modified_commit = CACHE.get(path).expect("static file from last modification cache"); //TODO check path at compile time or return Option
     format!("/static/{path}?v={last_modified_commit}")
 }
 
