@@ -87,6 +87,7 @@ use {
             RaceSchedule,
         },
         config::Config,
+        discord_bot::DraftKind,
         favicon::ChestAppearances,
         http::{
             PageError,
@@ -472,6 +473,14 @@ impl<'a> Data<'a> {
             Series::Rsl => TeamConfig::Solo,
             Series::Standard => TeamConfig::Solo,
             Series::TriforceBlitz => TeamConfig::Solo,
+        }
+    }
+
+    pub(crate) fn draft_kind(&self) -> DraftKind {
+        if self.series == Series::Multiworld && self.event == "3" {
+            DraftKind::MultiworldS3
+        } else {
+            DraftKind::None
         }
     }
 

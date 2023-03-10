@@ -120,7 +120,10 @@ use {
             Config,
             ConfigRaceTime,
         },
-        discord_bot::Draft,
+        discord_bot::{
+            Draft,
+            DraftKind,
+        },
         event::{
             self,
             Series,
@@ -302,6 +305,13 @@ impl Goal {
             Self::NineDaysOfSaws => "9 Days of SAWS",
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
             Self::Rsl => "Random settings league",
+        }
+    }
+
+    fn draft_kind(&self) -> DraftKind {
+        match self {
+            Self::MultiworldS3 => DraftKind::MultiworldS3,
+            Self::NineDaysOfSaws | Self::PicRs2 | Self::Rsl => DraftKind::None,
         }
     }
 
@@ -1397,9 +1407,9 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             "ban" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.race_state.write().await;
                 match *state {
-                    RaceState::Init => match goal {
-                        Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                    RaceState::Init => match goal.draft_kind() {
+                        DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
+                        DraftKind::None => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_none() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
@@ -1474,9 +1484,9 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             "draft" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.race_state.write().await;
                 match *state {
-                    RaceState::Init => match goal {
-                        Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                    RaceState::Init => match goal.draft_kind() {
+                        DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
+                        DraftKind::None => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_none() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
@@ -1542,9 +1552,9 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             "first" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.race_state.write().await;
                 match *state {
-                    RaceState::Init => match goal {
-                        Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                    RaceState::Init => match goal.draft_kind() {
+                        DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
+                        DraftKind::None => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_some() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick has already been chosen.")).await?;
@@ -1726,9 +1736,9 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             "second" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.race_state.write().await;
                 match *state {
-                    RaceState::Init => match goal {
-                        Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                    RaceState::Init => match goal.draft_kind() {
+                        DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
+                        DraftKind::None => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_some() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick has already been chosen.")).await?;
@@ -1983,9 +1993,9 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
             "skip" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let mut state = self.race_state.write().await;
                 match *state {
-                    RaceState::Init => match goal {
-                        Goal::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
+                    RaceState::Init => match goal.draft_kind() {
+                        DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
+                        DraftKind::None => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
                     },
                     RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_none() {
                         ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
