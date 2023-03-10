@@ -1,6 +1,4 @@
 use {
-    chrono::prelude::*,
-    chrono_tz::America,
     rocket::response::content::RawHtml,
     rocket_util::{
         Origin,
@@ -49,7 +47,7 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
 
 pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, data: Data<'_>) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
+    let content = html! {
         : header;
         article {
             @match &*data.event {
@@ -58,7 +56,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
                         : "To enter this tournament, join ";
                         a(href = "https://discord.gg/nRWrZDesP8") : "the OoT Randomizer Discord server";
                         : " and participate in the qualifier race, either live on ";
-                        : format_datetime(America::Panama.with_ymd_and_hms(2023, 4, 8, 15, 0, 0).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
+                        : format_datetime(data.start(&mut transaction).await?.expect("missing start time for tfb/2"), DateTimeFormat { long: true, running_text: true });
                         : " or async starting on April 2.";
                     }
                     p {
@@ -70,5 +68,6 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
                 _ => @unimplemented
             }
         }
-    }).await?)
+    };
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), content).await?)
 }
