@@ -56,6 +56,7 @@ use {
         ToHtml as _,
         html,
     },
+    serenity::model::prelude::*,
     sheets::Sheets,
     sqlx::{
         PgPool,
@@ -251,7 +252,7 @@ impl Ord for RaceSchedule {
 
 #[derive(Clone)]
 pub(crate) struct Race {
-    pub(crate) id: Option<Id>,
+    pub(crate) id: Option<Id>, //TODO make required?
     pub(crate) series: Series,
     pub(crate) event: String,
     pub(crate) startgg_event: Option<String>,
@@ -762,6 +763,16 @@ impl Race {
         Ok(races)
     }
 
+    pub(crate) async fn for_scheduling_channel(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, channel_id: ChannelId) -> Result<Vec<Self>, Error> {
+        let mut races = Vec::default();
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW())"#, i64::from(channel_id)).fetch_all(&mut *transaction).await? {
+            races.push(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?);
+        }
+        races.retain(|race| !race.ignored);
+        races.sort_unstable();
+        Ok(races)
+    }
+
     pub(crate) async fn event(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<event::Data<'static>, event::DataError> {
         event::Data::new(transaction, self.series, self.event.clone()).await?.ok_or(event::DataError::Missing)
     }
@@ -784,6 +795,37 @@ impl Race {
 
     pub(crate) fn rooms(&self) -> impl Iterator<Item = Url> + Send {
         self.cal_events().filter_map(|event| event.room().cloned())
+    }
+
+    pub(crate) fn teams(&self) -> impl Iterator<Item = &Team> + Send {
+        match self.entrants {
+            Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => Box::new(iter::empty()) as Box<dyn Iterator<Item = &Team> + Send>,
+            Entrants::Two([ref team1, ref team2]) => Box::new([team1, team2].into_iter().filter_map(as_variant!(Entrant::MidosHouseTeam))),
+            Entrants::Three([ref team1, ref team2, ref team3]) => Box::new([team1, team2, team3].into_iter().filter_map(as_variant!(Entrant::MidosHouseTeam))),
+        }
+    }
+
+    pub(crate) fn has_room_for(&self, team: &Team) -> bool {
+        match &self.schedule {
+            RaceSchedule::Unscheduled => false,
+            RaceSchedule::Live { room, .. } => room.is_some(),
+            RaceSchedule::Async { room1, room2, .. } => match &self.entrants {
+                Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) | Entrants::Three(_) => panic!("asynced race not with Entrants::Two"),
+                Entrants::Two([team1, team2]) => {
+                    if let Entrant::MidosHouseTeam(team1) = team1 {
+                        if team == team1 {
+                            return room1.is_some()
+                        }
+                    }
+                    if let Entrant::MidosHouseTeam(team2) = team2 {
+                        if team == team2 {
+                            return room2.is_some()
+                        }
+                    }
+                    false
+                }
+            },
+        }
     }
 }
 
