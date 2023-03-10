@@ -5,6 +5,7 @@ use {
         prelude::*,
     },
     enum_iterator::all,
+    itertools::Itertools as _,
     lazy_regex::regex_captures,
     serde::{
         Deserialize,
@@ -37,7 +38,12 @@ use {
     },
     crate::{
         Environment,
-        cal::Race,
+        cal::{
+            Entrant,
+            Entrants,
+            Race,
+            RaceSchedule,
+        },
         config::Config,
         event::{
             self,
@@ -82,6 +88,8 @@ struct CommandIds {
     post_status: CommandId,
     pronoun_roles: Option<CommandId>, //TODO control via event config
     schedule: CommandId,
+    schedule_async: CommandId,
+    schedule_remove: CommandId,
     second: Option<CommandId>,
     skip: Option<CommandId>,
     status: CommandId,
@@ -177,35 +185,48 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
             data.get::<StartggToken>().expect("start.gg auth token missing from Discord context").clone(),
         )
     };
-    Ok(if let Some(race) = Race::for_scheduling_channel(&mut transaction, &http_client, &startgg_token, interaction.channel_id).await?.into_iter().next() { //TODO handle multiple eligible races
-        let mut team = None;
-        for iter_team in race.teams() {
-            if iter_team.members(&mut transaction).await?.into_iter().any(|member| member.discord_id == Some(interaction.user.id)) {
-                team = Some(iter_team.clone());
-            }
+    Ok(match Race::for_scheduling_channel(&mut transaction, &http_client, &startgg_token, interaction.channel_id).await?.into_iter().at_most_one() {
+        Ok(None) => {
+            interaction.create_interaction_response(ctx, |r| r
+                .interaction_response_data(|d| d
+                    .ephemeral(true)
+                    .content("Sorry, this thread is not associated with any upcoming races. Please contact a tournament organizer to fix this.")
+                )
+            ).await?;
+            transaction.rollback().await?;
+            None
         }
-        if let Some(ref team) = team {
-            if race.has_room_for(team) {
-                interaction.create_interaction_response(ctx, |r| r
-                    .interaction_response_data(|d| d
-                        .ephemeral(true)
-                        .content("Sorry, this command can't be used since a race room is already open.")
-                    )
-                ).await?;
-                transaction.rollback().await?;
-                return Ok(None)
+        Ok(Some(race)) => {
+            let mut team = None;
+            for iter_team in race.teams() {
+                if iter_team.members(&mut transaction).await?.into_iter().any(|member| member.discord_id == Some(interaction.user.id)) {
+                    team = Some(iter_team.clone());
+                }
             }
+            if let Some(ref team) = team {
+                if race.has_room_for(team) {
+                    interaction.create_interaction_response(ctx, |r| r
+                        .interaction_response_data(|d| d
+                            .ephemeral(true)
+                            .content("Sorry, this command can't be used since a race room is already open.")
+                        )
+                    ).await?;
+                    transaction.rollback().await?;
+                    return Ok(None)
+                }
+            }
+            Some((transaction, race, team))
         }
-        Some((transaction, race, team))
-    } else {
-        interaction.create_interaction_response(ctx, |r| r
-            .interaction_response_data(|d| d
-                .ephemeral(true)
-                .content("Sorry, this thread is not associated with a match. Please contact a tournament organizer to fix this.")
-            )
-        ).await?;
-        transaction.rollback().await?;
-        None
+        Err(_) => {
+            interaction.create_interaction_response(ctx, |r| r
+                .interaction_response_data(|d| d
+                    .ephemeral(true)
+                    .content("Sorry, this thread is associated with multiple upcoming races. Please contact a tournament organizer to fix this.") //TODO allow selecting race via optional parameter
+                )
+            ).await?;
+            transaction.rollback().await?;
+            None
+        }
     })
 }
 
@@ -435,13 +456,31 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 .name("schedule")
                 .kind(serenity::model::application::command::CommandType::ChatInput)
                 .dm_permission(false)
-                .description("Submits a starting time for this match.")
+                .description("Submits a starting time for this race.")
                 .create_option(|o| o
                     .kind(CommandOptionType::String)
                     .name("start")
                     .description("The starting time as a Discord timestamp")
                     .required(true)
                 )
+            ).await?.id;
+            let schedule_async = guild.create_application_command(ctx, |c| c
+                .name("schedule-async")
+                .kind(serenity::model::application::command::CommandType::ChatInput)
+                .dm_permission(false)
+                .description("Submits a starting time for your half of this race.")
+                .create_option(|o| o
+                    .kind(CommandOptionType::String)
+                    .name("start")
+                    .description("The starting time as a Discord timestamp")
+                    .required(true)
+                )
+            ).await?.id;
+            let schedule_remove = guild.create_application_command(ctx, |c| c
+                .name("schedule-remove")
+                .kind(serenity::model::application::command::CommandType::ChatInput)
+                .dm_permission(false)
+                .description("Removes the starting time(s) for this race from the schedule.")
             ).await?.id;
             let second = if has_draft {
                 Some(guild.create_application_command(ctx, |c| c
@@ -497,7 +536,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             ctx.data.write().await
                 .entry::<CommandIds>()
                 .or_default()
-                .insert(guild.id, CommandIds { assign, ban, draft, first, post_status, pronoun_roles, schedule, second, skip, status, watch_roles });
+                .insert(guild.id, CommandIds { assign, ban, draft, first, post_status, pronoun_roles, schedule, schedule_async, schedule_remove, second, skip, status, watch_roles });
             transaction.commit().await?;
             Ok(())
         }))
@@ -567,7 +606,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 response_content.push_safe(startgg_set); //TODO linkify set page, use phase/round/identifier
                                 response_content.push(". Use ");
                                 response_content.mention_command(command_ids.schedule, "schedule");
-                                response_content.push(" to schedule as a regular race, or ping a tournament organizer to schedule as an async."); //TODO adjust message if asyncing is not allowed
+                                response_content.push(" to schedule as a live race or ");
+                                response_content.mention_command(command_ids.schedule_async, "schedule-async");
+                                response_content.push(" to schedule as an async."); //TODO adjust message if asyncing is not allowed
                                 if let (Some(high_seed), Some(first), Some(second)) = (high_seed, command_ids.first, command_ids.second) {
                                     response_content.push_line("");
                                     response_content.mention_team(&mut transaction, guild_id, &high_seed).await?;
@@ -958,7 +999,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             ).await?;
                                             transaction.rollback().await?;
                                         } else {
-                                            //TODO include previous time(s) in response if any
                                             sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
                                             transaction.commit().await?;
                                             interaction.create_interaction_response(ctx, |r| r
@@ -976,6 +1016,119 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             )
                                         ).await?;
                                         transaction.rollback().await?;
+                                    }
+                                } else {
+                                    interaction.create_interaction_response(ctx, |r| r
+                                        .interaction_response_data(|d| d
+                                            .ephemeral(true)
+                                            .content("Sorry, only participants in this race and administrators can use this command.")
+                                        )
+                                    ).await?;
+                                    transaction.rollback().await?;
+                                }
+                            }
+                        } else if interaction.data.id == command_ids.schedule_async {
+                            if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                                if team.is_some() || interaction.member.as_ref().expect("/schedule-async called outside of a guild").permissions.expect("permissions should be included in interaction response").administrator() {
+                                    let start = match interaction.data.options[0].resolved.as_ref().expect("missing slash command option") {
+                                        CommandDataOptionValue::String(start) => start,
+                                        _ => panic!("unexpected slash command option type"),
+                                    };
+                                    if let Some(start) = parse_timestamp(start) {
+                                        if start < Utc::now() + Duration::minutes(30) {
+                                            interaction.create_interaction_response(ctx, |r| r
+                                                .interaction_response_data(|d| d
+                                                    .ephemeral(true)
+                                                    .content("Sorry, races must be scheduled at least 30 minutes in advance.")
+                                                )
+                                            ).await?;
+                                            transaction.rollback().await?;
+                                        } else {
+                                            match race.entrants {
+                                                Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)]) => {
+                                                    if team.as_ref().map_or(false, |team| team1 == *team) {
+                                                        sqlx::query!("UPDATE races SET async_start1 = $1, start = NULL WHERE id = $2", start, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                                    } else if team.as_ref().map_or(false, |team| team2 == *team) {
+                                                        sqlx::query!("UPDATE races SET async_start2 = $1, start = NULL WHERE id = $2", start, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                                    } else {
+                                                        interaction.create_interaction_response(ctx, |r| r
+                                                            .interaction_response_data(|d| d
+                                                                .ephemeral(true)
+                                                                .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to schedule as async
+                                                            )
+                                                        ).await?;
+                                                        transaction.rollback().await?;
+                                                        return Ok(())
+                                                    }
+                                                }
+                                                _ => panic!("tried to schedule race with not two MH teams as async"),
+                                            }
+                                            transaction.commit().await?;
+                                            interaction.create_interaction_response(ctx, |r| r
+                                                .interaction_response_data(|d| d
+                                                    .ephemeral(false)
+                                                    .content(format!("Your half of this race is now scheduled for <t:{}:F>.", start.timestamp()))
+                                                )
+                                            ).await?;
+                                        }
+                                    } else {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one.")
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    }
+                                } else {
+                                    interaction.create_interaction_response(ctx, |r| r
+                                        .interaction_response_data(|d| d
+                                            .ephemeral(true)
+                                            .content("Sorry, only participants in this race and administrators can use this command.")
+                                        )
+                                    ).await?;
+                                    transaction.rollback().await?;
+                                }
+                            }
+                        } else if interaction.data.id == command_ids.schedule_remove {
+                            if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                                let is_admin = interaction.member.as_ref().expect("/schedule-remove called outside of a guild").permissions.expect("permissions should be included in interaction response").administrator();
+                                if team.is_some() || is_admin {
+                                    if !is_admin && race.has_room_for(team.as_ref().expect("checked above")) {
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(true)
+                                                .content("Sorry, the room for this race is already open. Please contact a tournament organizer if necessary.")
+                                            )
+                                        ).await?;
+                                        transaction.rollback().await?;
+                                    } else {
+                                        let had_multiple_times = match race.schedule {
+                                            RaceSchedule::Unscheduled => {
+                                                interaction.create_interaction_response(ctx, |r| r
+                                                    .interaction_response_data(|d| d
+                                                        .ephemeral(false)
+                                                        .content("Sorry, this race already doesn't have a starting time.")
+                                                    )
+                                                ).await?;
+                                                transaction.rollback().await?;
+                                                return Ok(())
+                                            }
+                                            RaceSchedule::Live { .. } => false,
+                                            RaceSchedule::Async { start1, start2, .. } => start1.is_some() && start2.is_some(),
+                                        };
+                                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL WHERE id = $1", i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                        transaction.commit().await?;
+                                        interaction.create_interaction_response(ctx, |r| r
+                                            .interaction_response_data(|d| d
+                                                .ephemeral(false)
+                                                .content(if had_multiple_times {
+                                                    "This race's starting times have been removed from the schedule."
+                                                } else {
+                                                    "This race's starting time has been removed from the schedule."
+                                                })
+                                            )
+                                        ).await?;
                                     }
                                 } else {
                                     interaction.create_interaction_response(ctx, |r| r
