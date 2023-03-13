@@ -114,6 +114,7 @@ impl Default for PageStyle {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum PageError {
+    #[error(transparent)] Event(#[from] event::DataError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("missing user data for Fenhl")]
     FenhlUserData,

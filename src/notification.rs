@@ -71,15 +71,18 @@ pub(crate) enum Notification {
 }
 
 impl Notification {
-    pub(crate) async fn get(transaction: &mut Transaction<'_, Postgres>, me: &User) -> sqlx::Result<Vec<Self>> {
+    pub(crate) async fn get(transaction: &mut Transaction<'_, Postgres>, me: &User) -> Result<Vec<Self>, event::DataError> {
         let mut notifications = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM notifications WHERE rcpt = $1"#, i64::from(me.id))
             .fetch(&mut *transaction)
             .map_ok(Self::Simple)
             .try_collect::<Vec<_>>().await?;
-        notifications.extend(sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM team_members WHERE member = $1 AND status = 'unconfirmed'"#, i64::from(me.id))
-            .fetch(&mut *transaction)
-            .map_ok(Self::TeamInvite)
-            .try_collect::<Vec<_>>().await?);
+        for team_id in sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM team_members WHERE member = $1 AND status = 'unconfirmed'"#, i64::from(me.id)).fetch_all(&mut *transaction).await? {
+            let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, i64::from(team_id)).fetch_one(&mut *transaction).await?;
+            let event = event::Data::new(&mut *transaction, team_row.series, team_row.event).await?.expect("enforced by database constraint");
+            if !event.is_started(&mut *transaction).await? {
+                notifications.push(Self::TeamInvite(team_id));
+            }
+        }
         Ok(notifications)
     }
 
