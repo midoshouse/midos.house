@@ -69,12 +69,13 @@ fn main() -> Result<(), Error> {
         }
     }
     let mut out_f = File::create(Path::new(&env::var_os("OUT_DIR").unwrap()).join("static_files.rs"))?;
-    writeln!(&mut out_f, "static CACHE: Lazy<HashMap<&str, &str>> = Lazy::new(|| {{")?;
-    writeln!(&mut out_f, "    let mut cache = HashMap::default();")?;
+    writeln!(&mut out_f, "macro_rules! static_url {{")?;
     for (path, commit_id) in cache {
-        writeln!(&mut out_f, "    cache.insert({path:?}, \"{commit_id:?}\");")?;
+        let unix_path = path.to_str().expect("non-UTF-8 static file path").replace('\\', "/");
+        writeln!(&mut out_f, "    ({unix_path:?}) => {{")?;
+        writeln!(&mut out_f, "        concat!(\"/static/\", {unix_path:?}, \"?v={commit_id:?}\")")?; //TODO build rocket_util::Origin values?
+        writeln!(&mut out_f, "    }};")?;
     }
-    writeln!(&mut out_f, "    cache")?;
-    writeln!(&mut out_f, "}});")?;
+    writeln!(&mut out_f, "}}")?;
     Ok(())
 }

@@ -1,14 +1,10 @@
 use {
-    std::{
-        collections::HashMap,
-        io,
-    },
+    std::io,
     base64::engine::{
         Engine as _,
         general_purpose::STANDARD as BASE64,
     },
     itertools::Itertools as _,
-    once_cell::sync::Lazy,
     ootr_utils::spoiler::SpoilerLog,
     rand::prelude::*,
     rocket::{
@@ -56,15 +52,29 @@ use {
     },
     tokio::process::Command,
     crate::{
-        *,
+        Environment,
         config::Config,
-        event::Series,
+        api,
+        auth,
+        cal,
+        event::{
+            self,
+            Series,
+        },
         favicon::{
+            self,
             ChestAppearances,
             ChestTextures,
         },
-        notification::Notification,
-        user::User,
+        notification::{
+            self,
+            Notification,
+        },
+        seed,
+        user::{
+            self,
+            User,
+        },
         util::{
             DateTimeFormat,
             Id,
@@ -76,11 +86,7 @@ use {
 
 include!(concat!(env!("OUT_DIR"), "/static_files.rs"));
 
-/// Cache busting for static resources by including the git commit hash when the file was last modified in the URL
-pub(crate) fn static_url(path: &str) -> String {
-    let last_modified_commit = CACHE.get(path).expect("static file from last modification cache"); //TODO check path at compile time or return Option
-    format!("/static/{path}?v={last_modified_commit}")
-}
+pub(crate) use static_url;
 
 pub(crate) enum PageKind {
     Index,
@@ -143,8 +149,8 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                 title : title;
                 meta(name = "viewport", content = "width=device-width, initial-scale=1, shrink-to-fit=no");
                 link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(style.chests.textures(), Suffix(1024, "png"))).to_string());
-                link(rel = "stylesheet", href = static_url("common.css"));
-                script(defer, src = static_url("common.js"));
+                link(rel = "stylesheet", href = static_url!("common.css"));
+                script(defer, src = static_url!("common.js"));
             }
             body(class = matches!(style.kind, PageKind::Banner).then(|| "fullscreen")) {
                 div {
@@ -152,7 +158,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                         a(class = "nav", href? = (!matches!(style.kind, PageKind::Index)).then(|| uri!(index).to_string())) {
                             div(class = "logo") {
                                 @for chest in style.chests.0 {
-                                    img(class = format!("chest chest-{}", char::from(chest.texture)), src = static_url(&format!("chest/{}512.png", char::from(chest.texture))));
+                                    : chest.texture;
                                 }
                             }
                             h1 : "Mido's House";
@@ -334,7 +340,7 @@ async fn mw(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResu
     let transaction = pool.begin().await?;
     page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::default() }, "Mido's House Multiworld", html! {
         h1 : "Mido's House Multiworld";
-        img(class = "banner icon", src = static_url("mw.png"));
+        img(class = "banner icon", src = static_url!("mw.png"));
         p {
             : "Mido's House Multiworld is a tool that can be used to play ";
             a(href = "https://wiki.ootrandomizer.com/index.php?title=Multiworld") : "multiworld";
@@ -439,7 +445,7 @@ impl Fairing for SeedDownloadFairing {
     }
 }
 
-pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: Config, env: Environment, port: u16) -> Result<Rocket<rocket::Ignite>, Error> {
+pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: Config, env: Environment, port: u16) -> Result<Rocket<rocket::Ignite>, crate::Error> {
     let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
     let racetime_config = if env.is_dev() { &config.racetime_oauth_dev } else { &config.racetime_oauth_production };
     Ok(rocket::custom(rocket::Config {

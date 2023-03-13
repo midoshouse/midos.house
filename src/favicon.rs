@@ -39,12 +39,16 @@ use {
             },
         },
         request::FromParam,
+        response::content::RawHtml,
     },
     rocket_util::{
         Response,
         Suffix,
+        ToHtml,
+        html,
     },
     serde::Deserialize,
+    crate::http::static_url,
 };
 
 #[derive(Clone, Copy)]
@@ -104,6 +108,24 @@ impl TryFrom<char> for ChestTexture {
             's' => Ok(Self::Token),
             'd' => Ok(Self::Invisible),
             _ => Err(c),
+        }
+    }
+}
+
+impl ToHtml for ChestTexture {
+    fn to_html(&self) -> RawHtml<String> {
+        html! {
+            img(class = format!("chest chest-{}", char::from(*self)), src = match self {
+                ChestTexture::Normal => static_url!("chest/n512.png"),
+                ChestTexture::OldMajor => static_url!("chest/m512.png"),
+                ChestTexture::Major => static_url!("chest/i512.png"),
+                ChestTexture::SmallKeyOld => static_url!("chest/k512.png"),
+                ChestTexture::SmallKey1500 => static_url!("chest/y512.png"),
+                ChestTexture::SmallKey1751 => static_url!("chest/a512.png"),
+                ChestTexture::BossKey => static_url!("chest/b512.png"),
+                ChestTexture::Token => static_url!("chest/s512.png"),
+                ChestTexture::Invisible => static_url!("chest/d512.png"),
+            });
         }
     }
 }
