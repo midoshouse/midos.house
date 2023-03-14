@@ -82,11 +82,16 @@ use {
         Environment,
         auth,
         config::Config,
-        discord_bot::Draft,
+        discord_bot::{
+            Draft,
+            DraftKind,
+        },
         event::{
             self,
+            MatchSource,
             Series,
             Tab,
+            TeamConfig,
         },
         http::{
             PageError,
@@ -468,115 +473,7 @@ impl Race {
                 }
             } else {
                 // add race to database to give it an ID
-                let (team1, team2, p1, p2, p3) = match race.entrants {
-                    Entrants::Open => (None, None, None, None, None),
-                    Entrants::Count { .. } => unimplemented!(), //TODO
-                    Entrants::Named(ref entrants) => (None, None, Some(entrants), None, None),
-                    Entrants::Two([ref p1, ref p2]) => {
-                        let (team1, p1) = match p1 {
-                            Entrant::MidosHouseTeam(team) => (Some(team.id), None),
-                            Entrant::Named(name) => (None, Some(name)),
-                        };
-                        let (team2, p2) = match p2 {
-                            Entrant::MidosHouseTeam(team) => (Some(team.id), None),
-                            Entrant::Named(name) => (None, Some(name)),
-                        };
-                        (team1, team2, p1, p2, None)
-                    }
-                    Entrants::Three([ref p1, ref p2, ref p3]) => {
-                        (
-                            None,
-                            None,
-                            Some(match p1 {
-                                Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
-                                Entrant::Named(name) => name,
-                            }),
-                            Some(match p2 {
-                                Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
-                                Entrant::Named(name) => name,
-                            }),
-                            Some(match p3 {
-                                Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
-                                Entrant::Named(name) => name,
-                            }),
-                        )
-                    }
-                };
-                let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match race.schedule {
-                    RaceSchedule::Unscheduled => (None, None, None, None, None, None, None, None, None),
-                    RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
-                    RaceSchedule::Async { start1, start2, end1, end2, ref room1, ref room2 } => (None, start1, start2, None, end1, end2, None, room1.as_ref(), room2.as_ref()),
-                };
-                let id = Id::new(&mut *transaction, IdTable::Races).await?;
-                sqlx::query!("INSERT INTO races (
-                    startgg_set,
-                    start,
-                    series,
-                    event,
-                    async_start2,
-                    async_start1,
-                    room,
-                    async_room1,
-                    async_room2,
-                    draft_state,
-                    async_end1,
-                    async_end2,
-                    end_time,
-                    team1,
-                    team2,
-                    web_id,
-                    web_gen_time,
-                    file_stem,
-                    hash1,
-                    hash2,
-                    hash3,
-                    hash4,
-                    hash5,
-                    game,
-                    id,
-                    p1,
-                    p2,
-                    video_url,
-                    phase,
-                    round,
-                    p3,
-                    startgg_event
-                )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)",
-                    race.startgg_set,
-                    start,
-                    race.series as _,
-                    race.event,
-                    async_start2,
-                    async_start1,
-                    room.map(|url| url.to_string()),
-                    async_room1.map(|url| url.to_string()),
-                    async_room2.map(|url| url.to_string()),
-                    race.draft.as_ref().map(Json) as _,
-                    async_end1,
-                    async_end2,
-                    end,
-                    team1.map(|id| i64::from(id)),
-                    team2.map(|id| i64::from(id)),
-                    race.seed.as_ref().and_then(|seed| seed.web).map(|web| web.id as i64),
-                    race.seed.as_ref().and_then(|seed| seed.web).map(|web| web.gen_time),
-                    race.seed.as_ref().map(|seed| &*seed.file_stem),
-                    race.seed.as_ref().and_then(|seed| seed.file_hash).map(|[hash1, _, _, _, _]| hash1) as _,
-                    race.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, hash2, _, _, _]| hash2) as _,
-                    race.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, hash3, _, _]| hash3) as _,
-                    race.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, _, hash4, _]| hash4) as _,
-                    race.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, _, _, hash5]| hash5) as _,
-                    race.game,
-                    id as _,
-                    p1,
-                    p2,
-                    race.video_url.as_ref().map(|url| url.to_string()),
-                    race.phase,
-                    race.round,
-                    p3,
-                    race.startgg_event,
-                ).execute(transaction).await?;
-                race.id = Some(id);
+                race.save(transaction).await?;
                 races.push(race);
             }
             Ok(())
@@ -826,6 +723,124 @@ impl Race {
                 }
             },
         }
+    }
+
+    async fn save(&mut self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
+        let id = if self.id.is_some() {
+            unimplemented!("updating existing races not yet implemented") //TODO
+        } else {
+            let id = Id::new(&mut *transaction, IdTable::Races).await?;
+            self.id = Some(id);
+            id
+        };
+        let (team1, team2, p1, p2, p3) = match self.entrants {
+            Entrants::Open => (None, None, None, None, None),
+            Entrants::Count { .. } => unimplemented!(), //TODO
+            Entrants::Named(ref entrants) => (None, None, Some(entrants), None, None),
+            Entrants::Two([ref p1, ref p2]) => {
+                let (team1, p1) = match p1 {
+                    Entrant::MidosHouseTeam(team) => (Some(team.id), None),
+                    Entrant::Named(name) => (None, Some(name)),
+                };
+                let (team2, p2) = match p2 {
+                    Entrant::MidosHouseTeam(team) => (Some(team.id), None),
+                    Entrant::Named(name) => (None, Some(name)),
+                };
+                (team1, team2, p1, p2, None)
+            }
+            Entrants::Three([ref p1, ref p2, ref p3]) => {
+                (
+                    None,
+                    None,
+                    Some(match p1 {
+                        Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
+                        Entrant::Named(name) => name,
+                    }),
+                    Some(match p2 {
+                        Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
+                        Entrant::Named(name) => name,
+                    }),
+                    Some(match p3 {
+                        Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
+                        Entrant::Named(name) => name,
+                    }),
+                )
+            }
+        };
+        let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match self.schedule {
+            RaceSchedule::Unscheduled => (None, None, None, None, None, None, None, None, None),
+            RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
+            RaceSchedule::Async { start1, start2, end1, end2, ref room1, ref room2 } => (None, start1, start2, None, end1, end2, None, room1.as_ref(), room2.as_ref()),
+        };
+        sqlx::query!("INSERT INTO races (
+            startgg_set,
+            start,
+            series,
+            event,
+            async_start2,
+            async_start1,
+            room,
+            async_room1,
+            async_room2,
+            draft_state,
+            async_end1,
+            async_end2,
+            end_time,
+            team1,
+            team2,
+            web_id,
+            web_gen_time,
+            file_stem,
+            hash1,
+            hash2,
+            hash3,
+            hash4,
+            hash5,
+            game,
+            id,
+            p1,
+            p2,
+            video_url,
+            phase,
+            round,
+            p3,
+            startgg_event
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)",
+            self.startgg_set,
+            start,
+            self.series as _,
+            self.event,
+            async_start2,
+            async_start1,
+            room.map(|url| url.to_string()),
+            async_room1.map(|url| url.to_string()),
+            async_room2.map(|url| url.to_string()),
+            self.draft.as_ref().map(Json) as _,
+            async_end1,
+            async_end2,
+            end,
+            team1.map(|id| i64::from(id)),
+            team2.map(|id| i64::from(id)),
+            self.seed.as_ref().and_then(|seed| seed.web).map(|web| web.id as i64),
+            self.seed.as_ref().and_then(|seed| seed.web).map(|web| web.gen_time),
+            self.seed.as_ref().map(|seed| &*seed.file_stem),
+            self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[hash1, _, _, _, _]| hash1) as _,
+            self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, hash2, _, _, _]| hash2) as _,
+            self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, hash3, _, _]| hash3) as _,
+            self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, _, hash4, _]| hash4) as _,
+            self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, _, _, hash5]| hash5) as _,
+            self.game,
+            id as _,
+            p1,
+            p2,
+            self.video_url.as_ref().map(|url| url.to_string()),
+            self.phase,
+            self.round,
+            p3,
+            self.startgg_event,
+        ).execute(transaction).await?;
+        Ok(())
     }
 }
 
@@ -1091,7 +1106,145 @@ pub(crate) async fn for_event(env: &State<Environment>, config: &State<Config>, 
     Ok(Response(cal))
 }
 
-pub(super) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, race: Race, context: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
+    let form = if me.is_some() {
+        let teams = html! {
+            @for team in Team::for_event(&mut transaction, event.series, &event.event).await? {
+                option(value = team.id.0) : team.name;
+            }
+        };
+        let mut errors = context.errors().collect_vec();
+        html! {
+            form(action = uri!(create_race_post(event.series, &*event.event)).to_string(), method = "post") {
+                : csrf;
+                : form_field("team1", &mut errors, html! {
+                    label(for = "team1") {
+                        @if let TeamConfig::Solo = event.team_config() {
+                            : "Player A:";
+                        } else {
+                            : "Team A:";
+                        }
+                    }
+                    select(name = "team1") : teams;
+                });
+                : form_field("team2", &mut errors, html! {
+                    label(for = "team2") {
+                        @if let TeamConfig::Solo = event.team_config() {
+                            : "Player B:";
+                        } else {
+                            : "Team B:";
+                        }
+                    }
+                    select(name = "team2") : teams;
+                });
+                fieldset {
+                    input(type = "submit", value = "Create");
+                }
+            }
+        }
+    } else {
+        html! {
+            article {
+                p {
+                    a(href = uri!(auth::login(Some(uri!(create_race(event.series, &*event.event))))).to_string()) : "Sign in or create a Mido's House account";
+                    : " to create a race.";
+                }
+            }
+        }
+    };
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(), ..PageStyle::default() }, &format!("New Race — {}", event.display_name), html! {
+        : header;
+        h2 : "Create race";
+        : form;
+    }).await?)
+}
+
+#[rocket::get("/event/<series>/<event>/races/new")]
+pub(crate) async fn create_race(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = pool.begin().await?;
+    let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    Ok(RedirectOrContent::Content(create_race_form(transaction, me, uri, csrf, event, Context::default()).await?))
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct CreateRaceForm {
+    #[field(default = String::new())]
+    csrf: String,
+    team1: Id,
+    team2: Id,
+    #[field(default = String::new())]
+    phase: String,
+    #[field(default = String::new())]
+    round: String,
+    multiple_games: bool,
+}
+
+#[rocket::post("/event/<series>/<event>/races/new", data = "<form>")]
+pub(crate) async fn create_race_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let mut transaction = pool.begin().await?;
+    let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    if !event.organizers(&mut transaction).await?.contains(&me) {
+        form.context.push_error(form::Error::validation("You must be an organizer of this event to add a race."));
+    }
+    match event.match_source() {
+        MatchSource::Manual => {}
+        MatchSource::StartGG => form.context.push_error(form::Error::validation("This event's races are generated automatically from start.gg and cannot be edited manually. Please contact Fenhl if a race needs to be added that's not represented by a start.gg match.")),
+    }
+    Ok(if let Some(ref value) = form.value {
+        let team1 = Team::from_id(&mut transaction, value.team1).await?;
+        if let Some(_) = team1 {
+            //TODO validate that this team is for this event
+        } else {
+            form.context.push_error(form::Error::validation("There is no team with this ID.").with_name("team1"));
+        }
+        let team2 = Team::from_id(&mut transaction, value.team2).await?;
+        if let Some(_) = team2 {
+            //TODO validate that this team is for this event
+        } else {
+            form.context.push_error(form::Error::validation("There is no team with this ID.").with_name("team2"));
+        }
+        if team1 == team2 {
+            form.context.push_error(form::Error::validation("Can't choose the same team twice.").with_name("team2"));
+        }
+        if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(create_race_form(transaction, Some(me), uri, csrf, event, form.context).await?)
+        } else {
+            let mut race = Race {
+                id: None,
+                series: event.series,
+                event: event.event.to_string(),
+                startgg_event: None,
+                startgg_set: None,
+                entrants: Entrants::Two([
+                    Entrant::MidosHouseTeam(team1.expect("validated")),
+                    Entrant::MidosHouseTeam(team2.expect("validated")),
+                ]),
+                phase: (!value.phase.is_empty()).then(|| value.phase.clone()),
+                round: (!value.round.is_empty()).then(|| value.round.clone()),
+                game: value.multiple_games.then_some(1),
+                schedule: RaceSchedule::Unscheduled,
+                draft: match event.draft_kind() {
+                    DraftKind::MultiworldS3 => unimplemented!(), //TODO
+                    DraftKind::None => None,
+                },
+                seed: None,
+                video_url: None,
+                ignored: false,
+            };
+            race.save(&mut transaction).await?;
+            transaction.commit().await?;
+            //TODO create scheduling thread
+            RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
+        }
+    } else {
+        RedirectOrContent::Content(create_race_form(transaction, Some(me), uri, csrf, event, form.context).await?)
+    })
+}
+
+pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, race: Race, context: Context<'_>) -> Result<RawHtml<String>, event::Error> {
     let id = race.id.expect("race being edited must have an ID");
     let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
@@ -1104,23 +1257,23 @@ pub(super) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, m
                     RaceSchedule::Unscheduled => {}
                     RaceSchedule::Live { ref room, .. } => : form_field("room", &mut errors, html! {
                         label(for = "room") : "racetime.gg room:";
-                        input(type = "text", name = "room", value? = room.as_ref().map(|room| room.as_ref().to_string()));
+                        input(type = "text", name = "room", value? = room.as_ref().map(|room| room.as_ref().to_string())); //TODO get from form context, fall back to current race data
                     });
                     RaceSchedule::Async { ref room1, ref room2, .. } => {
                         : form_field("async_room1", &mut errors, html! {
                             label(for = "async_room1") : "racetime.gg room (team A):";
-                            input(type = "text", name = "async_room1", value? = room1.as_ref().map(|room1| room1.to_string()));
+                            input(type = "text", name = "async_room1", value? = room1.as_ref().map(|room1| room1.to_string())); //TODO get from form context, fall back to current race data
                         });
                         : form_field("async_room2", &mut errors, html! {
                             label(for = "async_room2") : "racetime.gg room (team B):";
-                            input(type = "text", name = "async_room2", value? = room2.as_ref().map(|room2| room2.to_string()));
+                            input(type = "text", name = "async_room2", value? = room2.as_ref().map(|room2| room2.to_string())); //TODO get from form context, fall back to current race data
                         });
                     }
                 }
                 //TODO allow editing seed
                 : form_field("video_url", &mut errors, html! {
                     label(for = "video_url") : "Restream URL:";
-                    input(type = "text", name = "video_url", value? = race.video_url.map(|video_url| video_url.to_string()));
+                    input(type = "text", name = "video_url", value? = race.video_url.map(|video_url| video_url.to_string())); //TODO get from form context, fall back to current race data
                     label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
                 });
                 fieldset {

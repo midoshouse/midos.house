@@ -282,6 +282,11 @@ enum EnterFlow {
     Extern,
 }
 
+pub(crate) enum MatchSource {
+    Manual,
+    StartGG, //TODO automatically scan for new matches and create scheduling threads
+}
+
 pub(crate) enum TeamConfig {
     Solo,
     CoOp,
@@ -473,6 +478,14 @@ impl<'a> Data<'a> {
             Series::Rsl => TeamConfig::Solo,
             Series::Standard => TeamConfig::Solo,
             Series::TriforceBlitz => TeamConfig::Solo,
+        }
+    }
+
+    pub(crate) fn match_source(&self) -> MatchSource {
+        match self.url.as_ref().and_then(Url::host_str) {
+            //TODO challonge.com support? (waiting for reply from support regarding API errors)
+            Some("start.gg" | "www.start.gg") => MatchSource::StartGG,
+            _ => MatchSource::Manual,
         }
     }
 
@@ -969,10 +982,10 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 
 #[rocket::get("/event/<series>/<event>/races")]
 pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    async fn race_table(can_edit: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
+    async fn race_table(can_create: bool, can_edit: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
         let has_games = races.iter().any(|race| race.game.is_some());
         let has_seeds = races.iter().any(|race| race.seed.is_some());
-        let has_buttons = can_edit && races.iter().any(|race| race.id.is_some());
+        let has_buttons = (can_create || can_edit) && races.iter().any(|race| race.id.is_some());
         let now = Utc::now();
         Ok(html! {
             table {
@@ -989,7 +1002,11 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                             : seed::table_header_cells(true);
                         }
                         @if has_buttons {
-                            th;
+                            th {
+                                @if can_create {
+                                    a(class = "button", href = uri!(crate::cal::create_race(races[0].series, &*races[0].event)).to_string()) : "New Race";
+                                }
+                            }
                         }
                     }
                 }
@@ -1094,22 +1111,28 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
         .partition::<Vec<_>, _>(|race| race.schedule.is_ended());
     past_races.reverse();
     let any_races_ongoing_or_upcoming = !ongoing_and_upcoming_races.is_empty();
-    let can_edit = if let Some(ref me) = me {
-        me.is_archivist || data.organizers(&mut transaction).await?.contains(&me)
+    let can_create = if let Some(ref me) = me {
+        data.organizers(&mut transaction).await?.contains(me)
     } else {
         false
     };
+    let can_edit = can_create || me.as_ref().map_or(false, |me| me.is_archivist);
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Races — {}", data.display_name), html! {
         : header;
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
-            : race_table(can_edit, &ongoing_and_upcoming_races).await?;
+            //TODO split into ongoing and upcoming, show headers for both
+            : race_table(can_create, can_edit, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : race_table(can_edit, &past_races).await?;
+            : race_table(can_create && !any_races_ongoing_or_upcoming, can_edit, &past_races).await?;
+        } else if !any_races_ongoing_or_upcoming {
+            div(class = "button-row") {
+                a(class = "button", href = uri!(crate::cal::create_race(series, &event)).to_string()) : "New Race";
+            }
         }
     }).await?)
 }

@@ -84,6 +84,10 @@ span.button-row {
     padding: 0;
 }
 
+.button-row + .button-row {
+    margin-top: 8px;
+}
+
 .button-row form {
     padding-inline: 0;
 }

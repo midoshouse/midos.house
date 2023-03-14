@@ -1039,6 +1039,7 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
             if let Some(team_row) = sqlx::query!(r#"SELECT requested AS "requested!", submitted FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL"#, i64::from(team_id), async_kind as _).fetch_optional(&mut *transaction).await? {
                 if team_row.submitted.is_some() {
                     if data.is_started(transaction).await? {
+                        //TODO adjust for other match data sources?
                         //TODO get this team's known matchup(s) from start.gg
                         html! {
                             p : "Please schedule your matches using Discord threads in the scheduling channel.";

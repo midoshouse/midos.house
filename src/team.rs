@@ -39,6 +39,10 @@ impl Team {
         sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams WHERE startgg_id = $1"#, startgg_id).fetch_optional(transaction).await
     }
 
+    pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, series: Series, event: &str) -> sqlx::Result<Vec<Self>> {
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams WHERE series = $1 AND event = $2"#, series as _, event).fetch_all(transaction).await
+    }
+
     pub(crate) fn name_is_plural(&self) -> bool {
         self.plural_name.unwrap_or(false)
     }
