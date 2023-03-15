@@ -5,7 +5,10 @@ use {
         general_purpose::STANDARD as BASE64,
     },
     itertools::Itertools as _,
-    ootr_utils::spoiler::SpoilerLog,
+    ootr_utils::{
+        camc::ChestTexture,
+        spoiler::SpoilerLog,
+    },
     rand::prelude::*,
     rocket::{
         Request,
@@ -159,7 +162,17 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                         a(class = "nav", href? = (!matches!(style.kind, PageKind::Index)).then(|| uri!(index).to_string())) {
                             div(class = "logo") {
                                 @for chest in style.chests.0 {
-                                    : chest.texture;
+                                    img(class = format!("chest chest-{}", char::from(chest.texture)), src = match chest.texture {
+                                        ChestTexture::Normal => static_url!("chest/n512.png"),
+                                        ChestTexture::OldMajor => static_url!("chest/m512.png"),
+                                        ChestTexture::Major => static_url!("chest/i512.png"),
+                                        ChestTexture::SmallKeyOld => static_url!("chest/k512.png"),
+                                        ChestTexture::SmallKey1500 => static_url!("chest/y512.png"),
+                                        ChestTexture::SmallKey1751 => static_url!("chest/a512.png"),
+                                        ChestTexture::BossKey => static_url!("chest/b512.png"),
+                                        ChestTexture::Token => static_url!("chest/s512.png"),
+                                        ChestTexture::Invisible => static_url!("chest/d512.png"),
+                                    });
                                 }
                             }
                             h1 : "Mido's House";

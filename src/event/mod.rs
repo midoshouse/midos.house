@@ -58,9 +58,14 @@ use {
         html,
     },
     serenity::{
-        client::Context as DiscordCtx,
+        all::{
+            Context as DiscordCtx,
+            CreateMessage,
+            EditMember,
+            EditRole,
+            MessageBuilder,
+        },
         model::prelude::*,
-        utils::MessageBuilder,
     },
     serenity_utils::RwFuture,
     sqlx::{
@@ -334,6 +339,7 @@ pub(crate) struct Data<'a> {
     pub(crate) discord_race_room_channel: Option<ChannelId>,
     pub(crate) discord_race_results_channel: Option<ChannelId>,
     pub(crate) discord_organizer_channel: Option<ChannelId>,
+    pub(crate) discord_scheduling_channel: Option<ChannelId>,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -360,7 +366,8 @@ impl<'a> Data<'a> {
             discord_guild AS "discord_guild: Id",
             discord_race_room_channel AS "discord_race_room_channel: Id",
             discord_race_results_channel AS "discord_race_results_channel: Id",
-            discord_organizer_channel AS "discord_organizer_channel: Id"
+            discord_organizer_channel AS "discord_organizer_channel: Id",
+            discord_scheduling_channel AS "discord_scheduling_channel: Id"
         FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
                 display_name: row.display_name,
@@ -376,6 +383,7 @@ impl<'a> Data<'a> {
                 discord_race_room_channel: row.discord_race_room_channel.map(|Id(id)| id.into()),
                 discord_race_results_channel: row.discord_race_results_channel.map(|Id(id)| id.into()),
                 discord_organizer_channel: row.discord_organizer_channel.map(|Id(id)| id.into()),
+                discord_scheduling_channel: row.discord_scheduling_channel.map(|Id(id)| id.into()),
                 series, event,
             }))
             .transpose()
@@ -1137,7 +1145,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
     }).await?)
 }
 
-async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, context: Context<'_>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, ctx: Context<'_>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, me.as_ref(), Tab::MyStatus, false).await?;
@@ -1176,7 +1184,7 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
                     p : "You have resigned from this event.";
                 } else {
                     @match data.series {
-                        Series::Multiworld => : mw::status(&mut transaction, discord_ctx, csrf, &data, row.id, context).await?;
+                        Series::Multiworld => : mw::status(&mut transaction, discord_ctx, csrf, &data, row.id, ctx).await?;
                         Series::NineDaysOfSaws => @if data.is_ended() {
                             p : "This race has been completed."; //TODO ranking and finish time
                         } else if let Some(ref race_room) = data.url {
@@ -1763,7 +1771,7 @@ pub(crate) enum FindTeamError {
     UnknownUser,
 }
 
-async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     Ok(match data.team_config() {
         TeamConfig::Solo => {
             let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await.map_err(FindTeamError::Event)?;
@@ -1772,9 +1780,9 @@ async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<U
                 : "This is a solo event.";
             }).await.map_err(FindTeamError::Page)?
         }
-        TeamConfig::CoOp => ndos::coop_find_team_form(transaction, me, uri, csrf, data, context).await?,
-        TeamConfig::Pictionary => pic::find_team_form(transaction, me, uri, csrf, data, context).await?,
-        TeamConfig::Multiworld => mw::find_team_form(transaction, me, uri, csrf, data, context).await?,
+        TeamConfig::CoOp => ndos::coop_find_team_form(transaction, me, uri, csrf, data, ctx).await?,
+        TeamConfig::Pictionary => pic::find_team_form(transaction, me, uri, csrf, data, ctx).await?,
+        TeamConfig::Multiworld => mw::find_team_form(transaction, me, uri, csrf, data, ctx).await?,
     })
 }
 
@@ -1872,25 +1880,25 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
             if let Some(discord_guild) = data.discord_guild {
                 let discord_ctx = discord_ctx.read().await;
                 for row in sqlx::query!(r#"SELECT discord_id AS "discord_id!: Id", role AS "role: Role" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, i64::from(team)).fetch_all(&mut transaction).await.map_err(AcceptError::Sql)? {
-                    if let Ok(member) = discord_guild.member(&*discord_ctx, UserId(row.discord_id.0)).await {
+                    if let Ok(mut member) = discord_guild.member(&*discord_ctx, UserId::new(row.discord_id.0)).await {
                         let mut roles_to_assign = member.roles.iter().copied().collect::<HashSet<_>>();
                         if let Some(Id(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, i64::from(discord_guild), series as _, event).fetch_optional(&mut transaction).await.map_err(AcceptError::Sql)? {
-                            roles_to_assign.insert(RoleId(participant_role));
+                            roles_to_assign.insert(RoleId::new(participant_role));
                         }
                         if let Some(Id(role_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND role = $2"#, i64::from(discord_guild), row.role as _).fetch_optional(&mut transaction).await.map_err(AcceptError::Sql)? {
-                            roles_to_assign.insert(RoleId(role_role));
+                            roles_to_assign.insert(RoleId::new(role_role));
                         }
                         if let Some(racetime_slug) = sqlx::query_scalar!("SELECT racetime_slug FROM teams WHERE id = $1", i64::from(team)).fetch_one(&mut transaction).await.map_err(AcceptError::Sql)? {
                             if let Some(Id(team_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(discord_guild), racetime_slug).fetch_optional(&mut transaction).await.map_err(AcceptError::Sql)? {
-                                roles_to_assign.insert(RoleId(team_role));
+                                roles_to_assign.insert(RoleId::new(team_role));
                             } else {
                                 let team_name = sqlx::query_scalar!(r#"SELECT name AS "name!" FROM teams WHERE id = $1"#, i64::from(team)).fetch_one(&mut transaction).await.map_err(AcceptError::Sql)?;
-                                let team_role = discord_guild.create_role(&*discord_ctx, |r| r.hoist(false).mentionable(true).name(team_name).permissions(Permissions::empty())).await.map_err(AcceptError::Discord)?.id;
+                                let team_role = discord_guild.create_role(&*discord_ctx, EditRole::new().hoist(false).mentionable(true).name(team_name).permissions(Permissions::empty())).await.map_err(AcceptError::Discord)?.id;
                                 sqlx::query!("INSERT INTO discord_roles (id, guild, racetime_team) VALUES ($1, $2, $3)", i64::from(team_role), i64::from(discord_guild), racetime_slug).execute(&mut transaction).await.map_err(AcceptError::Sql)?;
                                 roles_to_assign.insert(team_role);
                             }
                         }
-                        member.edit(&*discord_ctx, |m| m.roles(roles_to_assign)).await.map_err(AcceptError::Discord)?;
+                        member.edit(&*discord_ctx, EditMember::new().roles(roles_to_assign)).await.map_err(AcceptError::Discord)?;
                     }
                 }
             }
@@ -2206,8 +2214,8 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                         message.quote_rest();
                         message.push_safe(&value.fpa);
                     }
-                    ChannelId(discord_channel).send_message(&*discord_ctx.read().await, |m| m
-                        .content(message)
+                    ChannelId::new(discord_channel).send_message(&*discord_ctx.read().await, CreateMessage::new()
+                        .content(message.build())
                         .flags(MessageFlags::SUPPRESS_EMBEDS)
                     ).await?;
                 }

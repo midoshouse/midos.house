@@ -555,7 +555,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
 }
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
-pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
@@ -566,7 +566,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
         looking_for_team.push((user, row.role, can_invite));
     }
     let form = if me.is_some() {
-        let mut errors = context.errors().collect_vec();
+        let mut errors = ctx.errors().collect_vec();
         if my_role.is_none() {
             let form_content = html! {
                 : csrf;
@@ -575,15 +575,15 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
                 }
                 : form_field("role", &mut errors, html! {
                     label(for = "role") : "Role:";
-                    input(id = "role-sheikah_only", class = "sheikah", type = "radio", name = "role", value = "sheikah_only", checked? = context.field_value("role") == Some("sheikah_only"));
+                    input(id = "role-sheikah_only", class = "sheikah", type = "radio", name = "role", value = "sheikah_only", checked? = ctx.field_value("role") == Some("sheikah_only"));
                     label(class = "sheikah", for = "role-sheikah_only") : "Runner only";
-                    input(id = "role-sheikah_preferred", class = "sheikah", type = "radio", name = "role", value = "sheikah_preferred", checked? = context.field_value("role") == Some("sheikah_preferred"));
+                    input(id = "role-sheikah_preferred", class = "sheikah", type = "radio", name = "role", value = "sheikah_preferred", checked? = ctx.field_value("role") == Some("sheikah_preferred"));
                     label(class = "sheikah", for = "role-sheikah_preferred") : "Runner preferred";
-                    input(id = "role-no_preference", type = "radio", name = "role", value = "no_preference", checked? = context.field_value("role").map_or(true, |role| role == "no_preference"));
+                    input(id = "role-no_preference", type = "radio", name = "role", value = "no_preference", checked? = ctx.field_value("role").map_or(true, |role| role == "no_preference"));
                     label(for = "role-no_preference") : "No preference";
-                    input(id = "role-gerudo_preferred", class = "gerudo", type = "radio", name = "role", value = "gerudo_preferred", checked? = context.field_value("role") == Some("gerudo_preferred"));
+                    input(id = "role-gerudo_preferred", class = "gerudo", type = "radio", name = "role", value = "gerudo_preferred", checked? = ctx.field_value("role") == Some("gerudo_preferred"));
                     label(class = "gerudo", for = "role-gerudo_preferred") : "Pilot preferred";
-                    input(id = "role-gerudo_only", class = "gerudo", type = "radio", name = "role", value = "gerudo_only", checked? = context.field_value("role") == Some("gerudo_only"));
+                    input(id = "role-gerudo_only", class = "gerudo", type = "radio", name = "role", value = "gerudo_only", checked? = ctx.field_value("role") == Some("gerudo_only"));
                     label(class = "gerudo", for = "role-gerudo_only") : "Pilot only";
                 });
                 fieldset {

@@ -157,7 +157,7 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
 }
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
-pub(super) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+pub(super) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
     let mut me_listed = false;
     let mut looking_for_team = Vec::default();
@@ -167,7 +167,7 @@ pub(super) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgre
         looking_for_team.push(user);
     }
     let form = if me.is_some() {
-        let mut errors = context.errors().collect_vec();
+        let mut errors = ctx.errors().collect_vec();
         if me_listed {
             None
         } else {
@@ -186,11 +186,11 @@ pub(super) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgre
                     }
                     : form_field("availability", &mut errors, html! {
                         label(for = "availability") : "Timezone/Availability/Commitment:";
-                        input(type = "text", name = "availability", value? = context.field_value("availability"));
+                        input(type = "text", name = "availability", value? = ctx.field_value("availability"));
                     });
                     : form_field("notes", &mut errors, html! {
                         label(for = "notes") : "Any Other Notes?";
-                        input(type = "text", name = "notes", value? = context.field_value("notes"));
+                        input(type = "text", name = "notes", value? = ctx.field_value("notes"));
                     });
                     fieldset {
                         input(type = "submit", value = "Submit");

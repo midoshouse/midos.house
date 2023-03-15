@@ -89,7 +89,7 @@ use {
     },
 };
 
-pub(crate) const GUILD_ID: GuildId = GuildId(826935332867276820);
+pub(crate) const GUILD_ID: GuildId = GuildId::new(826935332867276820);
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Wincon { #[default] Meds, Scrubs, Th }
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Dungeons { #[default] Tournament, Skulls, Keyrings }
@@ -792,7 +792,7 @@ pub(super) struct RaceTimeTeamMember {
     pub(super) name: String,
 }
 
-pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>, client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
+pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>, client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
         if let Some(ref racetime_id) = me.racetime_id {
@@ -800,7 +800,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
                 .send().await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error::<RaceTimeUser>().await?;
-            let mut errors = context.errors().collect_vec();
+            let mut errors = ctx.errors().collect_vec();
             if racetime_user.teams.is_empty() {
                 html! {
                     : header;
@@ -937,7 +937,7 @@ impl<'v> EnterFormStep2Defaults<'v> {
     }
 }
 
-pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
     let mut me_listed = false;
     let mut looking_for_team = Vec::default();
@@ -947,7 +947,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
         looking_for_team.push((user, row.availability, row.notes));
     }
     let form = if me.is_some() {
-        let mut errors = context.errors().collect_vec();
+        let mut errors = ctx.errors().collect_vec();
         if me_listed {
             None
         } else {
@@ -966,11 +966,11 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
                     }
                     : form_field("availability", &mut errors, html! {
                         label(for = "availability") : "Timezone/Availability/Commitment:";
-                        input(type = "text", name = "availability", value? = context.field_value("availability"));
+                        input(type = "text", name = "availability", value? = ctx.field_value("availability"));
                     });
                     : form_field("notes", &mut errors, html! {
                         label(for = "notes") : "Any Other Notes?";
-                        input(type = "text", name = "notes", value? = context.field_value("notes"));
+                        input(type = "text", name = "notes", value? = ctx.field_value("notes"));
                     });
                     fieldset {
                         input(type = "submit", value = "Submit");
@@ -1032,7 +1032,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
     }).await?)
 }
 
-pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, context: Context<'_>) -> Result<RawHtml<String>, Error> {
+pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, ctx: Context<'_>) -> Result<RawHtml<String>, Error> {
     Ok(if let Some(team) = crate::team::Team::from_id(&mut *transaction, team_id).await? {
         if let Some(async_kind) = data.active_async(&mut *transaction, &team).await? {
             let async_row = sqlx::query!(r#"SELECT discord_channel AS "discord_channel: Id", web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
@@ -1066,22 +1066,22 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                         file_stem: Cow::Owned(async_row.file_stem),
                     };
                     let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
-                    let mut errors = context.errors().collect_vec();
+                    let mut errors = ctx.errors().collect_vec();
                     let form_content = html! {
                         : csrf;
                         : form_field("time1", &mut errors, html! {
                             label(for = "time1", class = "power") : "Player 1 Finishing Time:";
-                            input(type = "text", name = "time1", value? = context.field_value("time1")); //TODO h:m:s fields?
+                            input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
                             label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
                         });
                         : form_field("vod1", &mut errors, html! {
                             label(for = "vod1", class = "power") : "Player 1 VoD:";
-                            input(type = "text", name = "vod1", value? = context.field_value("vod1"));
+                            input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
                             label(class = "help") {
                                 : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
                                 @if let Some(Id(discord_channel)) = async_row.discord_channel {
                                     : "post it in ";
-                                    @if let Some(discord_channel) = ChannelId(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                    @if let Some(discord_channel) = ChannelId::new(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
                                         : "#";
                                         : discord_channel.name;
                                     } else {
@@ -1096,17 +1096,17 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                         });
                         : form_field("time2", &mut errors, html! {
                             label(for = "time2", class = "wisdom") : "Player 2 Finishing Time:";
-                            input(type = "text", name = "time2", value? = context.field_value("time2")); //TODO h:m:s fields?
+                            input(type = "text", name = "time2", value? = ctx.field_value("time2")); //TODO h:m:s fields?
                             label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
                         });
                         : form_field("vod2", &mut errors, html! {
                             label(for = "vod2", class = "wisdom") : "Player 2 VoD:";
-                            input(type = "text", name = "vod2", value? = context.field_value("vod2"));
+                            input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
                             label(class = "help") {
                                 : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
                                 @if let Some(Id(discord_channel)) = async_row.discord_channel {
                                     : "post it in ";
-                                    @if let Some(discord_channel) = ChannelId(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                    @if let Some(discord_channel) = ChannelId::new(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
                                         : "#";
                                         : discord_channel.name;
                                     } else {
@@ -1121,17 +1121,17 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                         });
                         : form_field("time3", &mut errors, html! {
                             label(for = "time3", class = "courage") : "Player 3 Finishing Time:";
-                            input(type = "text", name = "time3", value? = context.field_value("time3")); //TODO h:m:s fields?
+                            input(type = "text", name = "time3", value? = ctx.field_value("time3")); //TODO h:m:s fields?
                             label(class = "help") : "(If player 3 did not finish, leave this field blank.)";
                         });
                         : form_field("vod3", &mut errors, html! {
                             label(for = "vod3", class = "courage") : "Player 3 VoD:";
-                            input(type = "text", name = "vod3", value? = context.field_value("vod3"));
+                            input(type = "text", name = "vod3", value? = ctx.field_value("vod3"));
                             label(class = "help") {
                                 : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
                                 @if let Some(Id(discord_channel)) = async_row.discord_channel {
                                     : "post it in ";
-                                    @if let Some(discord_channel) = ChannelId(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                    @if let Some(discord_channel) = ChannelId::new(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
                                         : "#";
                                         : discord_channel.name;
                                     } else {
@@ -1150,7 +1150,7 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                                 a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
                                 : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
                             }
-                            textarea(name = "fpa");
+                            textarea(name = "fpa"); //TODO fill from form context
                         });
                         fieldset {
                             input(type = "submit", value = "Submit");
@@ -1175,7 +1175,7 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                     }
                 }
             } else {
-                let mut errors = context.errors().collect_vec();
+                let mut errors = ctx.errors().collect_vec();
                 let form_content = html! {
                     : csrf;
                     : form_field("confirm", &mut errors, html! {

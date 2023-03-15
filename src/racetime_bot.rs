@@ -2075,6 +2075,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                     .push(ctx.global_state.host)
                                     .push(&ctx.data().await.url)
                                     .push('>')
+                                    .build()
                                 ).await.to_racetime()?;
                             }
                         } else {
@@ -2110,6 +2111,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                             .push(ctx.global_state.host)
                                             .push(&ctx.data().await.url)
                                             .push('>')
+                                            .build()
                                         ).await.to_racetime()?;
                                     } else {
                                         let winner = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
@@ -2117,7 +2119,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                         let mut msg = MessageBuilder::default();
                                         if let Some(game) = game {
                                             msg.push("game ");
-                                            msg.push(game);
+                                            msg.push(game.to_string());
                                             msg.push(": ");
                                         }
                                         results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg
@@ -2132,6 +2134,7 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                             .push(ctx.global_state.host)
                                             .push(&ctx.data().await.url)
                                             .push('>')
+                                            .build()
                                         ).await.to_racetime()?;
                                     }
                                 } else {
@@ -2268,12 +2271,13 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                     }
                                     if let Some(game) = race.game {
                                         msg.push(", game ");
-                                        msg.push(game);
+                                        msg.push(game.to_string());
                                     }
                                     channel.say(&*global_state.discord_ctx.read().await, msg
                                         .push(" <")
                                         .push(room_url)
                                         .push('>')
+                                        .build()
                                     ).await.to_racetime()?;
                                 }
                             }

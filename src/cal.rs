@@ -56,7 +56,16 @@ use {
         ToHtml as _,
         html,
     },
-    serenity::model::prelude::*,
+    serenity::{
+        all::{
+            CreateForumPost,
+            CreateMessage,
+            Context as DiscordCtx,
+            MessageBuilder,
+        },
+        model::prelude::*,
+    },
+    serenity_utils::RwFuture,
     sheets::Sheets,
     sqlx::{
         PgPool,
@@ -83,6 +92,7 @@ use {
         auth,
         config::Config,
         discord_bot::{
+            self,
             Draft,
             DraftKind,
         },
@@ -106,6 +116,7 @@ use {
             DateTimeFormat,
             Id,
             IdTable,
+            MessageBuilderExt as _,
             RedirectOrContent,
             StatusOrError,
             as_variant,
@@ -266,6 +277,7 @@ pub(crate) struct Race {
     pub(crate) phase: Option<String>,
     pub(crate) round: Option<String>,
     pub(crate) game: Option<i16>,
+    scheduling_thread: Option<ChannelId>,
     pub(crate) schedule: RaceSchedule,
     pub(crate) draft: Option<Draft>,
     pub(crate) seed: Option<seed::Data>,
@@ -288,6 +300,7 @@ impl Race {
             p3,
             phase,
             round,
+            scheduling_thread AS "scheduling_thread: Id",
             draft_state AS "draft_state: Json<Draft>",
             start,
             async_start1,
@@ -402,6 +415,7 @@ impl Race {
             series: row.series,
             event: row.event,
             game: row.game,
+            scheduling_thread: row.scheduling_thread.map(|Id(id)| id.into()),
             schedule: RaceSchedule::new(
                 row.start, row.async_start1, row.async_start2,
                 end_time, async_end1, async_end2,
@@ -497,6 +511,7 @@ impl Race {
                     phase: None,
                     round: None,
                     game: None,
+                    scheduling_thread: None,
                     schedule: if let Some(start) = event.start(transaction).await? {
                         RaceSchedule::Live {
                             end: event.end,
@@ -553,6 +568,7 @@ impl Race {
                             phase: Some(format!("Qualifier")),
                             round: Some(format!("{}{}", i + 1, if let Some(weekly) = weekly { format!(" ({weekly} Weekly)") } else { String::default() })),
                             game: None,
+                            scheduling_thread: None,
                             schedule: RaceSchedule::Live {
                                 end: Some(end),
                                 room: Some(Url::parse(room)?),
@@ -586,6 +602,7 @@ impl Race {
                                 phase: None, // main bracket
                                 round: Some(round.clone()),
                                 game: None,
+                                scheduling_thread: None,
                                 schedule: RaceSchedule::Live {
                                     start: start.with_timezone(&Utc),
                                     end: None,
@@ -627,6 +644,7 @@ impl Race {
                                 phase: Some(format!("Challenge Cup")),
                                 round: Some(round),
                                 game: None,
+                                scheduling_thread: None,
                                 schedule: if is_async {
                                     RaceSchedule::Async {
                                         start1: Some(start.with_timezone(&Utc)),
@@ -653,7 +671,7 @@ impl Race {
                 }
                 _ => unimplemented!(),
             },
-            Series::TriforceBlitz => {} //TODO waiting for technical details on scheduling from the organizers
+            Series::TriforceBlitz => {} // manually added by organizers pending reply from Challonge support
         }
         races.retain(|race| !race.ignored);
         races.sort_unstable();
@@ -804,9 +822,10 @@ impl Race {
             phase,
             round,
             p3,
-            startgg_event
+            startgg_event,
+            scheduling_thread
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)",
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)",
             self.startgg_set,
             start,
             self.series as _,
@@ -839,6 +858,7 @@ impl Race {
             self.round,
             p3,
             self.startgg_event,
+            self.scheduling_thread.map(|id| i64::from(id)),
         ).execute(transaction).await?;
         Ok(())
     }
@@ -1106,7 +1126,7 @@ pub(crate) async fn for_event(env: &State<Environment>, config: &State<Config>, 
     Ok(Response(cal))
 }
 
-pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, context: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
     let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let form = if me.is_some() {
         let teams = html! {
@@ -1114,7 +1134,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
                 option(value = team.id.0) : team.name;
             }
         };
-        let mut errors = context.errors().collect_vec();
+        let mut errors = ctx.errors().collect_vec();
         html! {
             form(action = uri!(create_race_post(event.series, &*event.event)).to_string(), method = "post") {
                 : csrf;
@@ -1137,6 +1157,22 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
                         }
                     }
                     select(name = "team2") : teams;
+                });
+                : form_field("phase", &mut errors, html! {
+                    label(for = "phase") : "Phase:";
+                    input(type = "text", name = "phase", value? = ctx.field_value("phase"));
+                });
+                : form_field("round", &mut errors, html! {
+                    label(for = "round") : "Round:";
+                    input(type = "text", name = "round", value? = ctx.field_value("round"));
+                });
+                : form_field("multiple_games", &mut errors, html! {
+                    input(type = "checkbox", id = "multiple_games", name = "multiple_games", checked? = ctx.field_value("multiple_games") == Some("on"));
+                    label(for = "multiple_games") {
+                        : "This is a multi-game match. (Create follow-up games using ";
+                        code : "/assign"; //TODO manual mode for /assign that only takes a game ID
+                        : " in the scheduling thread once game 1 has been played.)";
+                    }
                 });
                 fieldset {
                     input(type = "submit", value = "Create");
@@ -1181,7 +1217,7 @@ pub(crate) struct CreateRaceForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/new", data = "<form>")]
-pub(crate) async fn create_race_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1225,6 +1261,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, me: User, uri: Origin
                 phase: (!value.phase.is_empty()).then(|| value.phase.clone()),
                 round: (!value.round.is_empty()).then(|| value.round.clone()),
                 game: value.multiple_games.then_some(1),
+                scheduling_thread: None,
                 schedule: RaceSchedule::Unscheduled,
                 draft: match event.draft_kind() {
                     DraftKind::MultiworldS3 => unimplemented!(), //TODO
@@ -1234,9 +1271,66 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, me: User, uri: Origin
                 video_url: None,
                 ignored: false,
             };
+            if let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) {
+                let ctx = discord_ctx.read().await;
+                if let Some(command_ids) = ctx.data.read().await.get::<discord_bot::CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)) {
+                    if let Some(ChannelType::Forum) = scheduling_channel.to_channel(&*ctx).await?.guild().map(|c| c.kind) {
+                        let info_prefix = match (&race.phase, &race.round) {
+                            (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                            (Some(phase), None) => Some(phase.to_owned()),
+                            (None, Some(round)) => Some(round.to_owned()),
+                            (None, None) => None,
+                        };
+                        let title = match race.entrants {
+                            Entrants::Open | Entrants::Count { .. } => info_prefix.unwrap_or_default(),
+                            Entrants::Named(ref entrants) => format!("{}{}",
+                                info_prefix.map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                                entrants,
+                            ),
+                            Entrants::Two([ref team1, ref team2]) => format!("{}{team1} vs {team2}",
+                                info_prefix.map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                            ),
+                            Entrants::Three([ref team1, ref team2, ref team3]) => format!("{}{team1} vs {team2} vs {team3}",
+                                info_prefix.map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                            ),
+                        };
+                        let mut content = MessageBuilder::default();
+                        //TODO ping participants
+                        content.push("Welcome to ");
+                        if let Some(game) = race.game {
+                            content.push("game ");
+                            content.push(game.to_string());
+                            content.push(" of ");
+                        }
+                        content.push("your ");
+                        if let Some(ref phase) = race.phase {
+                            content.push_safe(phase);
+                            content.push(' ');
+                        }
+                        if let Some(ref round) = race.round {
+                            content.push_safe(round);
+                            content.push(' ');
+                        }
+                        content.push("match. Use ");
+                        content.mention_command(command_ids.schedule, "schedule");
+                        content.push(" to schedule as a live race or ");
+                        content.mention_command(command_ids.schedule_async, "schedule-async");
+                        content.push(" to schedule as an async."); //TODO adjust message if asyncing is not allowed
+                        match event.draft_kind() {
+                            DraftKind::MultiworldS3 => unimplemented!(), //TODO
+                            DraftKind::None => {}
+                        }
+                        race.scheduling_thread = Some(scheduling_channel.create_forum_post(&*ctx, CreateForumPost::new(
+                            title,
+                            CreateMessage::new().content(content.build()),
+                        ).auto_archive_duration(10080)).await?.id);
+                    } else {
+                        unimplemented!() //TODO create scheduling thread
+                    }
+                };
+            }
             race.save(&mut transaction).await?;
             transaction.commit().await?;
-            //TODO create scheduling thread
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
@@ -1244,12 +1338,12 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, me: User, uri: Origin
     })
 }
 
-pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, race: Race, context: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
     let id = race.id.expect("race being edited must have an ID");
     let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
     let form = if me.is_some() {
-        let mut errors = context.errors().collect_vec();
+        let mut errors = ctx.errors().collect_vec();
         html! {
             form(action = uri!(edit_race_post(event.series, &*event.event, id)).to_string(), method = "post") {
                 : csrf;
