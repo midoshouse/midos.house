@@ -45,6 +45,7 @@ use {
         config::Config,
         event::{
             self,
+            MatchSource,
             Series,
             mw,
         },
@@ -236,7 +237,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
         .data::<StartggToken>(if env.is_dev() { config.startgg_dev } else { config.startgg_production })
         .on_guild_create(false, |ctx, guild, _| Box::pin(async move {
             let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
-            let guild_event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1"#, i64::from(guild.id)).fetch_all(&mut transaction).await?;
+            let guild_event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1"#, i64::from(guild.id)).fetch_all(&mut transaction).await?; //TODO only use ongoing and upcoming events
             let mut guild_events = Vec::with_capacity(guild_event_rows.len());
             for row in guild_event_rows {
                 guild_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("just received from database"));
@@ -247,34 +248,54 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 DraftKind::MultiworldS3 => true,
                 DraftKind::None => false,
             });
-            let assign = guild.create_application_command(ctx, {
-                let mut c = CreateCommand::new("assign")
+            let match_source = all().find(|match_source| guild_events.iter().all(|event| event.match_source() == *match_source));
+            let assign = match match_source {
+                Some(MatchSource::Manual) => guild.create_application_command(ctx, CreateCommand::new("assign")
                     .kind(CommandType::ChatInput)
-                    .default_member_permissions(Permissions::ADMINISTRATOR)
+                    .default_member_permissions(Permissions::ADMINISTRATOR) //TODO allow TOs to use this
                     .dm_permission(false)
-                    .description("Marks this thread as the scheduling thread for the given start.gg set.")
+                    .description("Marks this thread as the scheduling thread for the given game of the match.")
                     .add_option(CreateCommandOption::new(
-                        CommandOptionType::String,
-                        "startgg-set", //TODO Challonge support?
-                        "The start.gg set (match) ID",
-                    ).required(true));
-                if has_draft {
-                    c = c.add_option(CreateCommandOption::new(
-                        CommandOptionType::Role,
-                        "high-seed",
-                        "The team that decides which team starts the settings draft. If the teams are tied, flip a coin.",
-                    ).required(true));
-                }
-                c.add_option(CreateCommandOption::new(
-                    CommandOptionType::Integer,
-                    "game",
-                    "The game number within the match, if this is a best-of-n-races match.",
-                )
-                    .min_int_value(1)
-                    .max_int_value(255)
-                    .required(false)
-                )
-            }).await?.id;
+                        CommandOptionType::Integer,
+                        "game",
+                        "The game number within the match.",
+                    )
+                        .min_int_value(1)
+                        .max_int_value(255)
+                        .required(true)
+                    )
+                    //TODO high-seed option
+                ).await?.id,
+                Some(MatchSource::StartGG) => guild.create_application_command(ctx, {
+                    let mut c = CreateCommand::new("assign")
+                        .kind(CommandType::ChatInput)
+                        .default_member_permissions(Permissions::ADMINISTRATOR) //TODO allow TOs to use this
+                        .dm_permission(false)
+                        .description("Marks this thread as the scheduling thread for the given start.gg set.")
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::String,
+                            "startgg-set", //TODO Challonge support?
+                            "The start.gg set (match) ID",
+                        ).required(true));
+                    if has_draft {
+                        c = c.add_option(CreateCommandOption::new(
+                            CommandOptionType::Role,
+                            "high-seed",
+                            "The team that decides which team starts the settings draft. If the teams are tied, flip a coin.",
+                        ).required(true));
+                    }
+                    c.add_option(CreateCommandOption::new(
+                        CommandOptionType::Integer,
+                        "game",
+                        "The game number within the match, if this is a best-of-n-races match.",
+                    )
+                        .min_int_value(1)
+                        .max_int_value(255)
+                        .required(false)
+                    )
+                }).await?.id,
+                None => unimplemented!("Discord guilds with mixed match sources not yet supported"),
+            };
             let ban = if has_draft {
                 Some(guild.create_application_command(ctx, CreateCommand::new("ban")
                     .kind(CommandType::ChatInput)
@@ -545,79 +566,83 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
                             if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
-                                let startgg_set = match interaction.data.options[0].value {
-                                    CommandDataOptionValue::String(ref startgg_set) => startgg_set.clone(),
-                                    _ => panic!("unexpected slash command option type"),
-                                };
-                                let high_seed = match event.draft_kind() {
-                                    DraftKind::MultiworldS3 => Some(match interaction.data.options[1].value {
-                                        CommandDataOptionValue::Role(discord_role) => discord_role,
-                                        _ => panic!("unexpected slash command option type"),
-                                    }),
-                                    DraftKind::None => None,
-                                };
-                                let game = interaction.data.options.get(2).map(|option| match option.value {
-                                    CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
-                                    _ => panic!("unexpected slash command option type"),
-                                });
-                                let high_seed = if let Some(high_seed) = high_seed {
-                                    if let Some(high_seed) = Team::from_discord(&mut transaction, high_seed).await? {
-                                        Some(high_seed)
-                                    } else {
+                                match event.match_source() {
+                                    MatchSource::Manual => unimplemented!(), //TODO
+                                    MatchSource::StartGG => {
+                                        let startgg_set = match interaction.data.options[0].value {
+                                            CommandDataOptionValue::String(ref startgg_set) => startgg_set.clone(),
+                                            _ => panic!("unexpected slash command option type"),
+                                        };
+                                        let high_seed = match event.draft_kind() {
+                                            DraftKind::MultiworldS3 => Some(match interaction.data.options[1].value {
+                                                CommandDataOptionValue::Role(discord_role) => discord_role,
+                                                _ => panic!("unexpected slash command option type"),
+                                            }),
+                                            DraftKind::None => None,
+                                        };
+                                        let game = interaction.data.options.get(2).map(|option| match option.value {
+                                            CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
+                                            _ => panic!("unexpected slash command option type"),
+                                        });
+                                        let high_seed = if let Some(high_seed) = high_seed {
+                                            if let Some(high_seed) = Team::from_discord(&mut transaction, high_seed).await? {
+                                                Some(high_seed)
+                                            } else {
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content("Sorry, that doesn't seem to be a team role.")
+                                                )).await?;
+                                                return Ok(())
+                                            }
+                                        } else {
+                                            None
+                                        };
+                                        let id = Id::new(&mut transaction, IdTable::Races).await?;
+                                        match event.draft_kind() {
+                                            DraftKind::MultiworldS3 => sqlx::query!("INSERT INTO races
+                                                (id, startgg_set, game, series, event, scheduling_thread, draft_state) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                                                ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread, draft_state = EXCLUDED.draft_state
+                                            ", i64::from(id), &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id), Json(Draft {
+                                                high_seed: high_seed.as_ref().unwrap().id,
+                                                state: mw::S3Draft::default(),
+                                            }) as _).execute(&mut transaction).await?,
+                                            DraftKind::None => sqlx::query!("INSERT INTO races
+                                                (id, startgg_set, game, series, event, scheduling_thread) VALUES ($1, $2, $3, $4, $5, $6)
+                                                ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread
+                                            ", i64::from(id), &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id)).execute(&mut transaction).await?,
+                                        };
+                                        let guild_id = interaction.guild_id.expect("/ban called outside of a guild");
+                                        let mut response_content = MessageBuilder::default();
+                                        response_content.push("This thread is now assigned to ");
+                                        if let Some(game) = game {
+                                            response_content.push("game ");
+                                            response_content.push(game.to_string());
+                                            response_content.push(" of ");
+                                        }
+                                        response_content.push("set ");
+                                        response_content.push_safe(startgg_set); //TODO linkify set page, use phase/round/identifier
+                                        response_content.push(". Use ");
+                                        response_content.mention_command(command_ids.schedule, "schedule");
+                                        response_content.push(" to schedule as a live race or ");
+                                        response_content.mention_command(command_ids.schedule_async, "schedule-async");
+                                        response_content.push(" to schedule as an async."); //TODO adjust message if asyncing is not allowed
+                                        if let (Some(high_seed), Some(first), Some(second)) = (high_seed, command_ids.first, command_ids.second) {
+                                            response_content.push_line("");
+                                            response_content.mention_team(&mut transaction, guild_id, &high_seed).await?;
+                                            response_content.push(": you have the higher seed. Choose whether you want to go ");
+                                            response_content.mention_command(first, "first");
+                                            response_content.push(" or ");
+                                            response_content.mention_command(second, "second");
+                                            response_content.push(" in the settings draft.");
+                                        }
+                                        let response_content = response_content.build();
+                                        transaction.commit().await?;
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                            .ephemeral(true)
-                                            .content("Sorry, that doesn't seem to be a team role.")
+                                            .ephemeral(false)
+                                            .content(response_content)
                                         )).await?;
-                                        return Ok(())
                                     }
-                                } else {
-                                    None
-                                };
-                                let id = Id::new(&mut transaction, IdTable::Races).await?;
-                                //TODO Challonge support?
-                                match event.draft_kind() {
-                                    DraftKind::MultiworldS3 => sqlx::query!("INSERT INTO races
-                                        (id, startgg_set, game, series, event, scheduling_thread, draft_state) VALUES ($1, $2, $3, $4, $5, $6, $7)
-                                        ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread, draft_state = EXCLUDED.draft_state
-                                    ", i64::from(id), &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id), Json(Draft {
-                                        high_seed: high_seed.as_ref().unwrap().id,
-                                        state: mw::S3Draft::default(),
-                                    }) as _).execute(&mut transaction).await?,
-                                    DraftKind::None => sqlx::query!("INSERT INTO races
-                                        (id, startgg_set, game, series, event, scheduling_thread) VALUES ($1, $2, $3, $4, $5, $6)
-                                        ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread
-                                    ", i64::from(id), &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id)).execute(&mut transaction).await?,
-                                };
-                                let guild_id = interaction.guild_id.expect("/ban called outside of a guild");
-                                let mut response_content = MessageBuilder::default();
-                                response_content.push("This thread is now assigned to ");
-                                if let Some(game) = game {
-                                    response_content.push("game ");
-                                    response_content.push(game.to_string());
-                                    response_content.push(" of ");
                                 }
-                                response_content.push("set ");
-                                response_content.push_safe(startgg_set); //TODO linkify set page, use phase/round/identifier
-                                response_content.push(". Use ");
-                                response_content.mention_command(command_ids.schedule, "schedule");
-                                response_content.push(" to schedule as a live race or ");
-                                response_content.mention_command(command_ids.schedule_async, "schedule-async");
-                                response_content.push(" to schedule as an async."); //TODO adjust message if asyncing is not allowed
-                                if let (Some(high_seed), Some(first), Some(second)) = (high_seed, command_ids.first, command_ids.second) {
-                                    response_content.push_line("");
-                                    response_content.mention_team(&mut transaction, guild_id, &high_seed).await?;
-                                    response_content.push(": you have the higher seed. Choose whether you want to go ");
-                                    response_content.mention_command(first, "first");
-                                    response_content.push(" or ");
-                                    response_content.mention_command(second, "second");
-                                    response_content.push(" in the settings draft.");
-                                }
-                                let response_content = response_content.build();
-                                transaction.commit().await?;
-                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                    .ephemeral(false)
-                                    .content(response_content)
-                                )).await?;
                             } else {
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                     .ephemeral(true)

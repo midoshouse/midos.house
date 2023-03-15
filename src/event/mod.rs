@@ -14,6 +14,7 @@ use {
     },
     anyhow::anyhow,
     chrono::prelude::*,
+    enum_iterator::Sequence,
     futures::{
         future::Future,
         stream::TryStreamExt as _,
@@ -287,6 +288,7 @@ enum EnterFlow {
     Extern,
 }
 
+#[derive(PartialEq, Eq, Sequence)]
 pub(crate) enum MatchSource {
     Manual,
     StartGG, //TODO automatically scan for new matches and create scheduling threads
@@ -789,7 +791,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     let show_qualifier_times =
         sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM async_teams, team_members WHERE async_teams.team = team_members.team AND member = $1 AND kind = 'qualifier'"#, me.as_ref().map(|me| i64::from(me.id))).fetch_optional(&mut *transaction).await.map_err(TeamsError::Sql)?.unwrap_or(false)
         || data.is_started(&mut transaction).await.map_err(TeamsError::Sql)?;
-    let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, submitted IS NOT NULL AS "qualified!" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+    let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
         series = $1
         AND event = $2
         AND NOT resigned
@@ -812,10 +814,10 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             let user = User::from_id(&mut transaction, row.id).await.map_err(TeamsError::Sql)?.ok_or(TeamsError::NonexistentUser)?;
             members.push((role, user, is_confirmed, row.time.map(decode_pginterval).transpose().map_err(TeamsError::PgInterval)?, row.vod));
         }
-        signups.push((team.id, team.name, team.racetime_slug, members, team.qualified));
+        signups.push((Team { id: team.id, name: team.name, racetime_slug: team.racetime_slug, plural_name: team.plural_name }, members, team.qualified));
     }
     if show_qualifier_times {
-        signups.sort_unstable_by(|(id1, name1, _, members1, qualified1), (id2, name2, _, members2, qualified2)| {
+        signups.sort_unstable_by(|(team1, members1, qualified1), (team2, members2, qualified2)| {
             #[derive(PartialEq, Eq, PartialOrd, Ord)]
             enum Qualification {
                 Finished(Duration),
@@ -838,19 +840,17 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             }
 
             Qualification::new(*qualified1, members1).cmp(&Qualification::new(*qualified2, members2))
-            .then_with(|| name1.cmp(name2))
-            .then_with(|| id1.cmp(id2))
+            .then_with(|| team1.cmp(team2))
         });
     } else {
-        signups.sort_unstable_by(|(id1, name1, _, _, qualified1), (id2, name2, _, _, qualified2)|
+        signups.sort_unstable_by(|(team1, _, qualified1), (team2, _, qualified2)|
             qualified2.cmp(qualified1) // reversed to list qualified teams first
-            .then_with(|| name1.cmp(name2))
-            .then_with(|| id1.cmp(id2))
+            .then_with(|| team1.cmp(team2))
         );
     }
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config() { "Entrants" } else { "Teams" };
-    page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), html! {
+    let content = html! {
         : header;
         table {
             thead {
@@ -874,22 +874,11 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                         }
                     }
                 } else {
-                    @for (team_id, team_name, racetime_slug, members, qualified) in signups {
+                    @for (team, members, qualified) in signups {
                         tr {
                             @if !matches!(data.team_config(), TeamConfig::Solo) {
                                 td {
-                                    //TODO use Team type
-                                    @if let Some(racetime_slug) = racetime_slug {
-                                        a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
-                                            @if let Some(team_name) = team_name {
-                                                : team_name;
-                                            } else {
-                                                i : "(unnamed)";
-                                            }
-                                        }
-                                    } else {
-                                        : team_name.unwrap_or_default();
-                                    }
+                                    : team.to_html(&mut transaction, false).await.map_err(TeamsError::Sql)?;
                                     @if show_qualifier_times && qualified {
                                         br;
                                         small {
@@ -909,7 +898,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                         @if me.as_ref().map_or(false, |me| me == user) && members.iter().any(|(_, _, is_confirmed, _, _)| !is_confirmed) {
                                             : " ";
                                             span(class = "button-row") {
-                                                form(action = uri!(resign_post(series, event, team_id)).to_string(), method = "post") {
+                                                form(action = uri!(resign_post(series, event, team.id)).to_string(), method = "post") {
                                                     : csrf;
                                                     input(type = "submit", value = "Retract");
                                                 }
@@ -919,11 +908,11 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                         : " ";
                                         @if me.as_ref().map_or(false, |me| me == user) {
                                             span(class = "button-row") {
-                                                form(action = uri!(confirm_signup(series, event, team_id)).to_string(), method = "post") {
+                                                form(action = uri!(confirm_signup(series, event, team.id)).to_string(), method = "post") {
                                                     : csrf;
                                                     input(type = "submit", value = "Accept");
                                                 }
-                                                form(action = uri!(resign_post(series, event, team_id)).to_string(), method = "post") {
+                                                form(action = uri!(resign_post(series, event, team.id)).to_string(), method = "post") {
                                                     : csrf;
                                                     input(type = "submit", value = "Decline");
                                                 }
@@ -985,12 +974,13 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                 }
             }
         }
-    }).await.map_err(|e| StatusOrError::Err(TeamsError::Page(e)))
+    };
+    page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), content).await.map_err(|e| StatusOrError::Err(TeamsError::Page(e)))
 }
 
 #[rocket::get("/event/<series>/<event>/races")]
 pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    async fn race_table(can_create: bool, can_edit: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
+    async fn race_table(transaction: &mut Transaction<'_, Postgres>, can_create: bool, can_edit: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
         let has_games = races.iter().any(|race| race.game.is_some());
         let has_seeds = races.iter().any(|race| race.seed.is_some());
         let has_buttons = (can_create || can_edit) && races.iter().any(|race| race.id.is_some());
@@ -1051,7 +1041,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 Entrants::Named(ref entrants) => td(colspan = "6") : entrants;
                                 Entrants::Two([ref team1, ref team2]) => {
                                     td(class = "vs1", colspan = "3") {
-                                        : team1.to_html(false);
+                                        : team1.to_html(&mut *transaction, false).await?;
                                         @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {
                                             br;
                                             small {
@@ -1060,7 +1050,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                         }
                                     }
                                     td(class = "vs2", colspan = "3") {
-                                        : team2.to_html(false);
+                                        : team2.to_html(&mut *transaction, false).await?;
                                         @if let RaceSchedule::Async { start2: Some(start), .. } = race.schedule {
                                             br;
                                             small {
@@ -1070,9 +1060,9 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                     }
                                 }
                                 Entrants::Three([ref team1, ref team2, ref team3]) => {
-                                    td(colspan = "2") : team1.to_html(false);
-                                    td(colspan = "2") : team2.to_html(false);
-                                    td(colspan = "2") : team3.to_html(false);
+                                    td(colspan = "2") : team1.to_html(&mut *transaction, false).await?;
+                                    td(colspan = "2") : team2.to_html(&mut *transaction, false).await?;
+                                    td(colspan = "2") : team3.to_html(&mut *transaction, false).await?;
                                 }
                             }
                             td {
@@ -1125,24 +1115,25 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
         false
     };
     let can_edit = can_create || me.as_ref().map_or(false, |me| me.is_archivist);
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Races — {}", data.display_name), html! {
+    let content = html! {
         : header;
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
             //TODO split into ongoing and upcoming, show headers for both
-            : race_table(can_create, can_edit, &ongoing_and_upcoming_races).await?;
+            : race_table(&mut transaction, can_create, can_edit, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : race_table(can_create && !any_races_ongoing_or_upcoming, can_edit, &past_races).await?;
+            : race_table(&mut transaction, can_create && !any_races_ongoing_or_upcoming, can_edit, &past_races).await?;
         } else if !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 a(class = "button", href = uri!(crate::cal::create_race(series, &event)).to_string()) : "New Race";
             }
         }
-    }).await?)
+    };
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Races — {}", data.display_name), content).await?)
 }
 
 async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, ctx: Context<'_>) -> Result<RawHtml<String>, StatusOrError<Error>> {

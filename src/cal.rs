@@ -4,7 +4,6 @@ use {
         cmp::Ordering,
         collections::HashMap,
         convert::identity,
-        fmt,
         iter,
         path::Path,
     },
@@ -135,20 +134,18 @@ pub(crate) enum Entrant {
 }
 
 impl Entrant {
-    pub(crate) fn to_html(&self, running_text: bool) -> RawHtml<String> {
-        match self {
-            Self::MidosHouseTeam(team) => team.to_html(running_text),
-            Self::Named(name) => name.to_html(),
-        }
+    pub(crate) async fn name(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Option<Cow<'_, str>>> {
+        Ok(match self {
+            Self::MidosHouseTeam(team) => team.name(transaction).await?,
+            Self::Named(name) => Some(Cow::Borrowed(name)),
+        })
     }
-}
 
-impl fmt::Display for Entrant {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::MidosHouseTeam(team) => team.fmt(f),
-            Self::Named(name) => name.fmt(f),
-        }
+    pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, running_text: bool) -> sqlx::Result<RawHtml<String>> {
+        Ok(match self {
+            Self::MidosHouseTeam(team) => team.to_html(transaction, running_text).await?,
+            Self::Named(name) => name.to_html(),
+        })
     }
 }
 
@@ -1060,12 +1057,29 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                         EventKind::Async1 | EventKind::Async2 => format!("{summary_prefix} (async): {entrants}"),
                     },
                     Entrants::Two([ref team1, ref team2]) => match race_event.kind {
-                        EventKind::Normal => format!("{summary_prefix}: {team1} vs {team2}"),
-                        EventKind::Async1 => format!("{summary_prefix} (async): {team1} vs {team2}"),
-                        EventKind::Async2 => format!("{summary_prefix} (async): {team2} vs {team1}"),
+                        EventKind::Normal => format!(
+                            "{summary_prefix}: {} vs {}",
+                            team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                        ),
+                        EventKind::Async1 => format!(
+                            "{summary_prefix} (async): {} vs {}",
+                            team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                        ),
+                        EventKind::Async2 => format!(
+                            "{summary_prefix} (async): {} vs {}",
+                            team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                        ),
                     },
                     Entrants::Three([ref team1, ref team2, ref team3]) => match race_event.kind {
-                        EventKind::Normal => format!("{summary_prefix}: {team1} vs {team2} vs {team3}"),
+                        EventKind::Normal => format!(
+                            "{summary_prefix}: {} vs {} vs {}",
+                            team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team3.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                        ),
                         EventKind::Async1 | EventKind::Async2 => unimplemented!(), //TODO
                     },
                 };
@@ -1131,7 +1145,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
     let form = if me.is_some() {
         let teams = html! {
             @for team in Team::for_event(&mut transaction, event.series, &event.event).await? {
-                option(value = team.id.0) : team.name;
+                option(value = team.id.0) : team.name(&mut transaction).await?; //TODO list members of unnamed teams
             }
         };
         let mut errors = ctx.errors().collect_vec();
@@ -1287,11 +1301,16 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
                                 info_prefix.map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
                                 entrants,
                             ),
-                            Entrants::Two([ref team1, ref team2]) => format!("{}{team1} vs {team2}",
+                            Entrants::Two([ref team1, ref team2]) => format!("{}{} vs {}",
                                 info_prefix.map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                                team1.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
-                            Entrants::Three([ref team1, ref team2, ref team3]) => format!("{}{team1} vs {team2} vs {team3}",
+                            Entrants::Three([ref team1, ref team2, ref team3]) => format!("{}{} vs {} vs {}",
                                 info_prefix.map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                                team1.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
                         };
                         let mut content = MessageBuilder::default();
@@ -1385,7 +1404,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, m
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(), ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), html! {
+    let content = html! {
         : header;
         h2 : "Edit race";
         @if let Some(startgg_event) = race.startgg_event {
@@ -1415,41 +1434,16 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, m
             Entrants::Two([p1, p2]) => {
                 p : "Entrants:";
                 ol {
-                    li {
-                        @match p1 {
-                            Entrant::MidosHouseTeam(team) => : team.to_html(false);
-                            Entrant::Named(name) => : name;
-                        }
-                    }
-                    li {
-                        @match p2 {
-                            Entrant::MidosHouseTeam(team) => : team.to_html(false);
-                            Entrant::Named(name) => : name;
-                        }
-                    }
+                    li : p1.to_html(&mut transaction, false).await?;
+                    li : p2.to_html(&mut transaction, false).await?;
                 }
             }
             Entrants::Three([p1, p2, p3]) => {
                 p : "Entrants:";
                 ol {
-                    li {
-                        @match p1 {
-                            Entrant::MidosHouseTeam(team) => : team.to_html(false);
-                            Entrant::Named(name) => : name;
-                        }
-                    }
-                    li {
-                        @match p2 {
-                            Entrant::MidosHouseTeam(team) => : team.to_html(false);
-                            Entrant::Named(name) => : name;
-                        }
-                    }
-                    li {
-                        @match p3 {
-                            Entrant::MidosHouseTeam(team) => : team.to_html(false);
-                            Entrant::Named(name) => : name;
-                        }
-                    }
+                    li : p1.to_html(&mut transaction, false).await?;
+                    li : p2.to_html(&mut transaction, false).await?;
+                    li : p3.to_html(&mut transaction, false).await?;
                 }
             }
         }
@@ -1528,7 +1522,8 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, m
             : " if you've spotted an error in it.";
         }
         : form;
-    }).await?)
+    };
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(), ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit")]

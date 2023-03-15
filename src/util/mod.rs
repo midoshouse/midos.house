@@ -94,19 +94,23 @@ impl MessageBuilderExt for MessageBuilder {
     }
 
     async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, team: &Team) -> sqlx::Result<&mut Self> {
-        let team_role = if let Some(ref racetime_slug) = team.racetime_slug {
-            sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(guild), racetime_slug).fetch_optional(transaction).await?
+        if let Ok(member) = team.members(&mut *transaction).await?.into_iter().exactly_one() {
+            self.mention_user(&member);
         } else {
-            None
-        };
-        if let Some(Id(team_role)) = team_role {
-            self.role(team_role);
-        } else if let Some(ref team_name) = team.name {
-            //TODO pothole if racetime slug exists?
-            self.push_italic_safe(team_name);
-        } else {
-            //TODO pothole if racetime slug exists?
-            self.push("an unnamed team");
+            let team_role = if let Some(ref racetime_slug) = team.racetime_slug {
+                sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(guild), racetime_slug).fetch_optional(&mut *transaction).await?
+            } else {
+                None
+            };
+            if let Some(Id(team_role)) = team_role {
+                self.role(team_role);
+            } else if let Some(team_name) = team.name(transaction).await? {
+                //TODO pothole if racetime slug exists?
+                self.push_italic_safe(team_name);
+            } else {
+                //TODO pothole if racetime slug exists?
+                self.push("an unnamed team");
+            }
         }
         Ok(self)
     }

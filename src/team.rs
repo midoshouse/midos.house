@@ -1,7 +1,11 @@
 use {
-    std::fmt,
+    std::borrow::Cow,
+    itertools::Itertools as _,
     rocket::response::content::RawHtml,
-    rocket_util::html,
+    rocket_util::{
+        ToHtml as _,
+        html,
+    },
     serenity::model::prelude::*,
     sqlx::{
         Postgres,
@@ -16,8 +20,8 @@ use {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Team {
-    pub(crate) id: Id,
     pub(crate) name: Option<String>,
+    pub(crate) id: Id,
     pub(crate) racetime_slug: Option<String>,
     pub(crate) plural_name: Option<bool>,
 }
@@ -43,33 +47,47 @@ impl Team {
         sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams WHERE series = $1 AND event = $2"#, series as _, event).fetch_all(transaction).await
     }
 
+    pub(crate) async fn name(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Option<Cow<'_, str>>> {
+        Ok(if let Some(ref name) = self.name {
+            Some(Cow::Borrowed(name))
+        } else if let Ok(member) = self.members(transaction).await?.into_iter().exactly_one() {
+            Some(Cow::Owned(member.display_name().to_owned()))
+        } else {
+            None
+        })
+    }
+
     pub(crate) fn name_is_plural(&self) -> bool {
         self.plural_name.unwrap_or(false)
     }
 
-    pub(crate) fn to_html(&self, running_text: bool) -> RawHtml<String> {
-        let inner = html! {
-            @if let Some(ref name) = self.name {
-                @if running_text {
-                    i : name;
+    pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, running_text: bool) -> sqlx::Result<RawHtml<String>> {
+        Ok(if let Ok(member) = self.members(transaction).await?.into_iter().exactly_one() {
+            member.to_html()
+        } else {
+            let inner = html! {
+                @if let Some(ref name) = self.name {
+                    @if running_text {
+                        i : name;
+                    } else {
+                        : name;
+                    }
                 } else {
-                    : name;
+                    @if running_text {
+                        : "an unnamed team";
+                    } else {
+                        i : "(unnamed)";
+                    }
                 }
-            } else {
-                @if running_text {
-                    : "an unnamed team";
+            };
+            html! {
+                @if let Some(ref racetime_slug) = self.racetime_slug {
+                    a(href = format!("https://racetime.gg/team/{racetime_slug}")) : inner;
                 } else {
-                    i : "(unnamed)";
+                    : inner;
                 }
             }
-        };
-        html! {
-            @if let Some(ref racetime_slug) = self.racetime_slug {
-                a(href = format!("https://racetime.gg/team/{racetime_slug}")) : inner;
-            } else {
-                : inner;
-            }
-        }
+        })
     }
 
     async fn member_ids(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<Id>> {
@@ -83,15 +101,5 @@ impl Team {
             members.push(User::from_id(&mut *transaction, user_id).await?.expect("database constraint violated: nonexistent team member"));
         }
         Ok(members)
-    }
-}
-
-impl fmt::Display for Team {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(ref name) = self.name {
-            name.fmt(f)
-        } else {
-            write!(f, "(unnamed)")
-        }
     }
 }

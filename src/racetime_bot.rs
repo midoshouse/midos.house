@@ -1298,9 +1298,15 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                     Entrants::Open | Entrants::Count { .. } => unimplemented!("open official race"), //TODO
                     Entrants::Named(_) => unimplemented!("official race with opaque participants text"), //TODO
                     Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)]) => if team1.id == high_seed {
-                        [team1.name.clone().unwrap_or_else(|| format!("Team A")), team2.name.clone().unwrap_or_else(|| format!("Team B"))]
+                        [
+                            team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
+                            team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
+                        ]
                     } else {
-                        [team2.name.clone().unwrap_or_else(|| format!("Team A")), team1.name.clone().unwrap_or_else(|| format!("Team B"))]
+                        [
+                            team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
+                            team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
+                        ]
                     },
                     Entrants::Two([_, _]) => unimplemented!("official race with non-MH teams"), //TODO
                     Entrants::Three([_, _, _]) => unimplemented!("official race with 3 teams"), //TODO
@@ -2195,8 +2201,19 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 info_user: match race.entrants {
                                     Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
                                     Entrants::Named(ref entrants) => format!("{}{entrants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
-                                    Entrants::Two([ref team1, ref team2]) => format!("{}{team1} vs {team2}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()), //TODO adjust for asyncs
-                                    Entrants::Three([ref team1, ref team2, ref team3]) => format!("{}{team1} vs {team2} vs {team3}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()), //TODO adjust for asyncs
+                                    Entrants::Two([ref team1, ref team2]) => format!(
+                                        "{}{} vs {}",
+                                        info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                                        team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                        team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                    ), //TODO adjust for asyncs
+                                    Entrants::Three([ref team1, ref team2, ref team3]) => format!(
+                                        "{}{} vs {} vs {}",
+                                        info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                                        team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                        team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                        team3.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                    ), //TODO adjust for asyncs
                                 },
                                 info_bot: String::default(),
                                 require_even_teams: true,
