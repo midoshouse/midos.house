@@ -3,6 +3,7 @@ use {
     rocket::{
         FromForm,
         form,
+        http::uri::Origin,
         response::content::RawHtml,
     },
     rocket_csrf::CsrfToken,
@@ -28,7 +29,7 @@ impl EmptyForm {
     }
 }
 
-pub(crate) fn render_form_error(error: &form::Error<'_>) -> RawHtml<String> {
+fn render_form_error(error: &form::Error<'_>) -> RawHtml<String> {
     html! {
         p(class = "error") : error.to_string();
     }
@@ -43,6 +44,21 @@ pub(crate) fn form_field(name: &str, errors: &mut Vec<&form::Error<'_>>, content
                 : render_form_error(error);
             }
             : content;
+        }
+    }
+}
+
+pub(crate) fn full_form(uri: Origin<'_>, csrf: Option<CsrfToken>, content: impl ToHtml, errors: Vec<&form::Error<'_>>, submit_text: &str) -> RawHtml<String> {
+    html! {
+        form(action = uri.to_string(), method = "post") {
+            : csrf;
+            @for error in errors {
+                : render_form_error(error);
+            }
+            : content;
+            fieldset {
+                input(type = "submit", value = submit_text);
+            }
         }
     }
 }

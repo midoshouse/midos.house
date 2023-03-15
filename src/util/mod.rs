@@ -40,8 +40,8 @@ use {
 pub(crate) use self::{
     form::{
         EmptyForm,
-        render_form_error,
         form_field,
+        full_form,
     },
     id::{
         Id,

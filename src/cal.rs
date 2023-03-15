@@ -121,6 +121,7 @@ use {
             as_variant,
             form_field,
             format_datetime,
+            full_form,
             io_error_from_reqwest,
             utc,
         },
@@ -1149,50 +1150,44 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
             }
         };
         let mut errors = ctx.errors().collect_vec();
-        html! {
-            form(action = uri!(create_race_post(event.series, &*event.event)).to_string(), method = "post") {
-                : csrf;
-                : form_field("team1", &mut errors, html! {
-                    label(for = "team1") {
-                        @if let TeamConfig::Solo = event.team_config() {
-                            : "Player A:";
-                        } else {
-                            : "Team A:";
-                        }
+        full_form(uri!(create_race_post(event.series, &*event.event)), csrf, html! {
+            : form_field("team1", &mut errors, html! {
+                label(for = "team1") {
+                    @if let TeamConfig::Solo = event.team_config() {
+                        : "Player A:";
+                    } else {
+                        : "Team A:";
                     }
-                    select(name = "team1") : teams;
-                });
-                : form_field("team2", &mut errors, html! {
-                    label(for = "team2") {
-                        @if let TeamConfig::Solo = event.team_config() {
-                            : "Player B:";
-                        } else {
-                            : "Team B:";
-                        }
-                    }
-                    select(name = "team2") : teams;
-                });
-                : form_field("phase", &mut errors, html! {
-                    label(for = "phase") : "Phase:";
-                    input(type = "text", name = "phase", value? = ctx.field_value("phase"));
-                });
-                : form_field("round", &mut errors, html! {
-                    label(for = "round") : "Round:";
-                    input(type = "text", name = "round", value? = ctx.field_value("round"));
-                });
-                : form_field("multiple_games", &mut errors, html! {
-                    input(type = "checkbox", id = "multiple_games", name = "multiple_games", checked? = ctx.field_value("multiple_games") == Some("on"));
-                    label(for = "multiple_games") {
-                        : "This is a multi-game match. (Create follow-up games using ";
-                        code : "/assign"; //TODO manual mode for /assign that only takes a game ID
-                        : " in the scheduling thread once game 1 has been played.)";
-                    }
-                });
-                fieldset {
-                    input(type = "submit", value = "Create");
                 }
-            }
-        }
+                select(name = "team1") : teams;
+            });
+            : form_field("team2", &mut errors, html! {
+                label(for = "team2") {
+                    @if let TeamConfig::Solo = event.team_config() {
+                        : "Player B:";
+                    } else {
+                        : "Team B:";
+                    }
+                }
+                select(name = "team2") : teams;
+            });
+            : form_field("phase", &mut errors, html! {
+                label(for = "phase") : "Phase:";
+                input(type = "text", name = "phase", value? = ctx.field_value("phase"));
+            });
+            : form_field("round", &mut errors, html! {
+                label(for = "round") : "Round:";
+                input(type = "text", name = "round", value? = ctx.field_value("round"));
+            });
+            : form_field("multiple_games", &mut errors, html! {
+                input(type = "checkbox", id = "multiple_games", name = "multiple_games", checked? = ctx.field_value("multiple_games") == Some("on"));
+                label(for = "multiple_games") {
+                    : "This is a multi-game match. (Create follow-up games using ";
+                    code : "/assign"; //TODO manual mode for /assign that only takes a game ID
+                    : " in the scheduling thread once game 1 has been played.)";
+                }
+            });
+        }, errors, "Create")
     } else {
         html! {
             article {
@@ -1363,37 +1358,31 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, m
     let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
     let form = if me.is_some() {
         let mut errors = ctx.errors().collect_vec();
-        html! {
-            form(action = uri!(edit_race_post(event.series, &*event.event, id)).to_string(), method = "post") {
-                : csrf;
-                @match race.schedule {
-                    RaceSchedule::Unscheduled => {}
-                    RaceSchedule::Live { ref room, .. } => : form_field("room", &mut errors, html! {
-                        label(for = "room") : "racetime.gg room:";
-                        input(type = "text", name = "room", value? = room.as_ref().map(|room| room.as_ref().to_string())); //TODO get from form context, fall back to current race data
-                    });
-                    RaceSchedule::Async { ref room1, ref room2, .. } => {
-                        : form_field("async_room1", &mut errors, html! {
-                            label(for = "async_room1") : "racetime.gg room (team A):";
-                            input(type = "text", name = "async_room1", value? = room1.as_ref().map(|room1| room1.to_string())); //TODO get from form context, fall back to current race data
-                        });
-                        : form_field("async_room2", &mut errors, html! {
-                            label(for = "async_room2") : "racetime.gg room (team B):";
-                            input(type = "text", name = "async_room2", value? = room2.as_ref().map(|room2| room2.to_string())); //TODO get from form context, fall back to current race data
-                        });
-                    }
-                }
-                //TODO allow editing seed
-                : form_field("video_url", &mut errors, html! {
-                    label(for = "video_url") : "Restream URL:";
-                    input(type = "text", name = "video_url", value? = race.video_url.map(|video_url| video_url.to_string())); //TODO get from form context, fall back to current race data
-                    label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
+        full_form(uri!(edit_race_post(event.series, &*event.event, id)), csrf, html! {
+            @match race.schedule {
+                RaceSchedule::Unscheduled => {}
+                RaceSchedule::Live { ref room, .. } => : form_field("room", &mut errors, html! {
+                    label(for = "room") : "racetime.gg room:";
+                    input(type = "text", name = "room", value? = room.as_ref().map(|room| room.as_ref().to_string())); //TODO get from form context, fall back to current race data
                 });
-                fieldset {
-                    input(type = "submit", value = "Save");
+                RaceSchedule::Async { ref room1, ref room2, .. } => {
+                    : form_field("async_room1", &mut errors, html! {
+                        label(for = "async_room1") : "racetime.gg room (team A):";
+                        input(type = "text", name = "async_room1", value? = room1.as_ref().map(|room1| room1.to_string())); //TODO get from form context, fall back to current race data
+                    });
+                    : form_field("async_room2", &mut errors, html! {
+                        label(for = "async_room2") : "racetime.gg room (team B):";
+                        input(type = "text", name = "async_room2", value? = room2.as_ref().map(|room2| room2.to_string())); //TODO get from form context, fall back to current race data
+                    });
                 }
             }
-        }
+            //TODO allow editing seed
+            : form_field("video_url", &mut errors, html! {
+                label(for = "video_url") : "Restream URL:";
+                input(type = "text", name = "video_url", value? = race.video_url.map(|video_url| video_url.to_string())); //TODO get from form context, fall back to current race data
+                label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
+            });
+        }, errors, "Save")
     } else {
         html! {
             article {

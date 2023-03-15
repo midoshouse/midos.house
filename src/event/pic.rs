@@ -45,8 +45,8 @@ use {
         util::{
             Id,
             form_field,
+            full_form,
             natjoin_html,
-            render_form_error,
         },
     },
 };
@@ -504,42 +504,32 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
         let mut errors = defaults.errors();
-        let form_content = html! {
-            : csrf;
-            legend {
-                : "Fill out this form to enter the race as a team. Your teammate will receive an invitation they have to accept to confirm the signup. If you don't have a team yet, you can ";
-                a(href = uri!(super::find_team(data.series, &*data.event)).to_string()) : "look for a teammate";
-                : " instead.";
-            }
-            : form_field("team_name", &mut errors, html! {
-                label(for = "team_name") : "Team Name:";
-                input(type = "text", name = "team_name", value? = defaults.team_name());
-                label(class = "help") : "(Optional unless you want to be on restream. Can be changed later. Organizers may remove inappropriate team names.)";
-            });
-            : form_field("my_role", &mut errors, html! {
-                label(for = "my_role") : "My Role:";
-                input(id = "my_role-sheikah", class = "sheikah", type = "radio", name = "my_role", value = "sheikah", checked? = defaults.my_role() == Some(Role::Sheikah));
-                label(class = "sheikah", for = "my_role-sheikah") : "Runner";
-                input(id = "my_role-gerudo", class = "gerudo", type = "radio", name = "my_role", value = "gerudo", checked? = defaults.my_role() == Some(Role::Gerudo));
-                label(class = "gerudo", for = "my_role-gerudo") : "Pilot";
-            });
-            : form_field("teammate", &mut errors, html! {
-                label(for = "teammate") : "Teammate:";
-                input(type = "text", name = "teammate", value? = defaults.teammate_text().as_deref());
-                label(class = "help") : "(Enter your teammate's Mido's House user ID. It can be found on their profile page.)"; //TODO add JS-based user search?
-            });
-            fieldset {
-                input(type = "submit", value = "Enter");
-            }
-        };
         html! {
             : header;
-            form(action = uri!(super::enter_post(data.series, &*data.event)).to_string(), method = "post") {
-                @for error in errors {
-                    : render_form_error(error);
+            : full_form(uri!(super::enter_post(data.series, &*data.event)), csrf, html! {
+                legend {
+                    : "Fill out this form to enter the race as a team. Your teammate will receive an invitation they have to accept to confirm the signup. If you don't have a team yet, you can ";
+                    a(href = uri!(super::find_team(data.series, &*data.event)).to_string()) : "look for a teammate";
+                    : " instead.";
                 }
-                : form_content;
-            }
+                : form_field("team_name", &mut errors, html! {
+                    label(for = "team_name") : "Team Name:";
+                    input(type = "text", name = "team_name", value? = defaults.team_name());
+                    label(class = "help") : "(Optional unless you want to be on restream. Can be changed later. Organizers may remove inappropriate team names.)";
+                });
+                : form_field("my_role", &mut errors, html! {
+                    label(for = "my_role") : "My Role:";
+                    input(id = "my_role-sheikah", class = "sheikah", type = "radio", name = "my_role", value = "sheikah", checked? = defaults.my_role() == Some(Role::Sheikah));
+                    label(class = "sheikah", for = "my_role-sheikah") : "Runner";
+                    input(id = "my_role-gerudo", class = "gerudo", type = "radio", name = "my_role", value = "gerudo", checked? = defaults.my_role() == Some(Role::Gerudo));
+                    label(class = "gerudo", for = "my_role-gerudo") : "Pilot";
+                });
+                : form_field("teammate", &mut errors, html! {
+                    label(for = "teammate") : "Teammate:";
+                    input(type = "text", name = "teammate", value? = defaults.teammate_text().as_deref());
+                    label(class = "help") : "(Enter your teammate's Mido's House user ID. It can be found on their profile page.)"; //TODO add JS-based user search?
+                });
+            }, errors, "Enter");
         }
     } else {
         html! {
@@ -568,8 +558,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
     let form = if me.is_some() {
         let mut errors = ctx.errors().collect_vec();
         if my_role.is_none() {
-            let form_content = html! {
-                : csrf;
+            Some(full_form(uri!(super::find_team_post(data.series, &*data.event)), csrf, html! {
                 legend {
                     : "Fill out this form to add yourself to the list below.";
                 }
@@ -586,18 +575,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
                     input(id = "role-gerudo_only", class = "gerudo", type = "radio", name = "role", value = "gerudo_only", checked? = ctx.field_value("role") == Some("gerudo_only"));
                     label(class = "gerudo", for = "role-gerudo_only") : "Pilot only";
                 });
-                fieldset {
-                    input(type = "submit", value = "Submit");
-                }
-            };
-            Some(html! {
-                form(action = uri!(super::find_team_post(data.series, &*data.event)).to_string(), method = "post") {
-                    @for error in errors {
-                        : render_form_error(error);
-                    }
-                    : form_content;
-                }
-            })
+            }, errors, "Submit"))
         } else {
             None
         }

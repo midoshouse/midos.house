@@ -82,9 +82,9 @@ use {
             Id,
             form_field,
             format_datetime,
+            full_form,
             natjoin_html,
             natjoin_str,
-            render_form_error,
         },
     },
 };
@@ -812,33 +812,23 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
                     }
                 }
             } else {
-                let form_content = html! {
-                    : csrf;
-                    : form_field("racetime_team", &mut errors, html! {
-                        label(for = "racetime_team") : "racetime.gg Team:";
-                        select(name = "racetime_team") {
-                            @for team in racetime_user.teams {
-                                option(value = team.slug) : team.name;
-                            }
-                        }
-                        label(class = "help") {
-                            : "(Or ";
-                            a(href = "https://racetime.gg/account/teams/create") : "create a new team";
-                            : ", then come back here.)";
-                        }
-                    });
-                    fieldset {
-                        input(type = "submit", value = "Next");
-                    }
-                };
                 html! {
                     : header;
-                    form(action = uri!(super::enter_post(data.series, &*data.event)).to_string(), method = "post") {
-                        @for error in errors {
-                            : render_form_error(error);
-                        }
-                        : form_content;
-                    }
+                    : full_form(uri!(super::enter_post(data.series, &*data.event)), csrf, html! {
+                        : form_field("racetime_team", &mut errors, html! {
+                            label(for = "racetime_team") : "racetime.gg Team:";
+                            select(name = "racetime_team") {
+                                @for team in racetime_user.teams {
+                                    option(value = team.slug) : team.name;
+                                }
+                            }
+                            label(class = "help") {
+                                : "(Or ";
+                                a(href = "https://racetime.gg/account/teams/create") : "create a new team";
+                                : ", then come back here.)";
+                            }
+                        });
+                    }, errors, "Next");
                 }
             }
         } else {
@@ -951,14 +941,10 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
         if me_listed {
             None
         } else {
-            let form_content = html! {
-                : csrf;
+            Some(full_form(uri!(super::find_team_post(data.series, &*data.event)), csrf, html! {
                 @if data.is_single_race() {
                     legend {
                         : "Click this button to add yourself to the list below.";
-                    }
-                    fieldset {
-                        input(type = "submit", value = "Looking for Team");
                     }
                 } else {
                     legend {
@@ -972,19 +958,8 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
                         label(for = "notes") : "Any Other Notes?";
                         input(type = "text", name = "notes", value? = ctx.field_value("notes"));
                     });
-                    fieldset {
-                        input(type = "submit", value = "Submit");
-                    }
                 }
-            };
-            Some(html! {
-                form(action = uri!(super::find_team_post(data.series, &*data.event)).to_string(), method = "post") {
-                    @for error in errors {
-                        : render_form_error(error);
-                    }
-                    : form_content;
-                }
-            })
+            }, errors, if data.is_single_race() { "Looking for Team" } else { "Submit" }))
         }
     } else {
         Some(html! {
@@ -1067,95 +1042,6 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                     };
                     let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
                     let mut errors = ctx.errors().collect_vec();
-                    let form_content = html! {
-                        : csrf;
-                        : form_field("time1", &mut errors, html! {
-                            label(for = "time1", class = "power") : "Player 1 Finishing Time:";
-                            input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
-                            label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
-                        });
-                        : form_field("vod1", &mut errors, html! {
-                            label(for = "vod1", class = "power") : "Player 1 VoD:";
-                            input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
-                            label(class = "help") {
-                                : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
-                                @if let Some(Id(discord_channel)) = async_row.discord_channel {
-                                    : "post it in ";
-                                    @if let Some(discord_channel) = ChannelId::new(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
-                                        : "#";
-                                        : discord_channel.name;
-                                    } else {
-                                        : "the results channel for this async";
-                                    }
-                                } else {
-                                    : "DM an admin";
-                                }
-                                : " once it is ready.)";
-                                //TODO form to submit vods later
-                            }
-                        });
-                        : form_field("time2", &mut errors, html! {
-                            label(for = "time2", class = "wisdom") : "Player 2 Finishing Time:";
-                            input(type = "text", name = "time2", value? = ctx.field_value("time2")); //TODO h:m:s fields?
-                            label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
-                        });
-                        : form_field("vod2", &mut errors, html! {
-                            label(for = "vod2", class = "wisdom") : "Player 2 VoD:";
-                            input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
-                            label(class = "help") {
-                                : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
-                                @if let Some(Id(discord_channel)) = async_row.discord_channel {
-                                    : "post it in ";
-                                    @if let Some(discord_channel) = ChannelId::new(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
-                                        : "#";
-                                        : discord_channel.name;
-                                    } else {
-                                        : "the results channel for this async";
-                                    }
-                                } else {
-                                    : "DM an admin";
-                                }
-                                : " once it is ready.)";
-                                //TODO form to submit vods later
-                            }
-                        });
-                        : form_field("time3", &mut errors, html! {
-                            label(for = "time3", class = "courage") : "Player 3 Finishing Time:";
-                            input(type = "text", name = "time3", value? = ctx.field_value("time3")); //TODO h:m:s fields?
-                            label(class = "help") : "(If player 3 did not finish, leave this field blank.)";
-                        });
-                        : form_field("vod3", &mut errors, html! {
-                            label(for = "vod3", class = "courage") : "Player 3 VoD:";
-                            input(type = "text", name = "vod3", value? = ctx.field_value("vod3"));
-                            label(class = "help") {
-                                : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
-                                @if let Some(Id(discord_channel)) = async_row.discord_channel {
-                                    : "post it in ";
-                                    @if let Some(discord_channel) = ChannelId::new(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
-                                        : "#";
-                                        : discord_channel.name;
-                                    } else {
-                                        : "the results channel for this async";
-                                    }
-                                } else {
-                                    : "DM an admin";
-                                }
-                                : " once it is ready.)";
-                                //TODO form to submit vods later
-                            }
-                        });
-                        : form_field("fpa", &mut errors, html! {
-                            label(for = "fpa") {
-                                : "If you would like to invoke the ";
-                                a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
-                                : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
-                            }
-                            textarea(name = "fpa"); //TODO fill from form context
-                        });
-                        fieldset {
-                            input(type = "submit", value = "Submit");
-                        }
-                    };
                     html! {
                         div(class = "info") {
                             p {
@@ -1165,27 +1051,96 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                             };
                             : seed_table;
                             p : "After playing the async, fill out the form below.";
-                            form(action = uri!(super::submit_async(data.series, &*data.event)).to_string(), method = "post") {
-                                @for error in errors {
-                                    : render_form_error(error);
-                                }
-                                : form_content;
-                            }
+                            : full_form(uri!(super::submit_async(data.series, &*data.event)), csrf, html! {
+                                : form_field("time1", &mut errors, html! {
+                                    label(for = "time1", class = "power") : "Player 1 Finishing Time:";
+                                    input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                    label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
+                                });
+                                : form_field("vod1", &mut errors, html! {
+                                    label(for = "vod1", class = "power") : "Player 1 VoD:";
+                                    input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
+                                    label(class = "help") {
+                                        : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
+                                        @if let Some(Id(discord_channel)) = async_row.discord_channel {
+                                            : "post it in ";
+                                            @if let Some(discord_channel) = ChannelId::new(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                                : "#";
+                                                : discord_channel.name;
+                                            } else {
+                                                : "the results channel for this async";
+                                            }
+                                        } else {
+                                            : "DM an admin";
+                                        }
+                                        : " once it is ready.)";
+                                        //TODO form to submit vods later
+                                    }
+                                });
+                                : form_field("time2", &mut errors, html! {
+                                    label(for = "time2", class = "wisdom") : "Player 2 Finishing Time:";
+                                    input(type = "text", name = "time2", value? = ctx.field_value("time2")); //TODO h:m:s fields?
+                                    label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
+                                });
+                                : form_field("vod2", &mut errors, html! {
+                                    label(for = "vod2", class = "wisdom") : "Player 2 VoD:";
+                                    input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
+                                    label(class = "help") {
+                                        : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
+                                        @if let Some(Id(discord_channel)) = async_row.discord_channel {
+                                            : "post it in ";
+                                            @if let Some(discord_channel) = ChannelId::new(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                                : "#";
+                                                : discord_channel.name;
+                                            } else {
+                                                : "the results channel for this async";
+                                            }
+                                        } else {
+                                            : "DM an admin";
+                                        }
+                                        : " once it is ready.)";
+                                        //TODO form to submit vods later
+                                    }
+                                });
+                                : form_field("time3", &mut errors, html! {
+                                    label(for = "time3", class = "courage") : "Player 3 Finishing Time:";
+                                    input(type = "text", name = "time3", value? = ctx.field_value("time3")); //TODO h:m:s fields?
+                                    label(class = "help") : "(If player 3 did not finish, leave this field blank.)";
+                                });
+                                : form_field("vod3", &mut errors, html! {
+                                    label(for = "vod3", class = "courage") : "Player 3 VoD:";
+                                    input(type = "text", name = "vod3", value? = ctx.field_value("vod3"));
+                                    label(class = "help") {
+                                        : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
+                                        @if let Some(Id(discord_channel)) = async_row.discord_channel {
+                                            : "post it in ";
+                                            @if let Some(discord_channel) = ChannelId::new(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                                : "#";
+                                                : discord_channel.name;
+                                            } else {
+                                                : "the results channel for this async";
+                                            }
+                                        } else {
+                                            : "DM an admin";
+                                        }
+                                        : " once it is ready.)";
+                                        //TODO form to submit vods later
+                                    }
+                                });
+                                : form_field("fpa", &mut errors, html! {
+                                    label(for = "fpa") {
+                                        : "If you would like to invoke the ";
+                                        a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
+                                        : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
+                                    }
+                                    textarea(name = "fpa"); //TODO fill from form context
+                                });
+                            }, errors, "Submit");
                         }
                     }
                 }
             } else {
                 let mut errors = ctx.errors().collect_vec();
-                let form_content = html! {
-                    : csrf;
-                    : form_field("confirm", &mut errors, html! {
-                        input(type = "checkbox", id = "confirm", name = "confirm");
-                        label(for = "confirm") : "We have read the above and are ready to play the seed";
-                    });
-                    fieldset {
-                        input(type = "submit", value = "Request Now");
-                    }
-                };
                 html! {
                     div(class = "info") {
                         @match async_kind {
@@ -1233,12 +1188,12 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                                 : " and have up to a 15 minute time where the affected runner can try to catch back up. If you do this, you must fill out the appropriate field when submitting your time so it can be authenticated.";
                             }
                         }
-                        form(action = uri!(super::request_async(data.series, &*data.event)).to_string(), method = "post") {
-                            @for error in errors {
-                                : render_form_error(error);
-                            }
-                            : form_content;
-                        }
+                        : full_form(uri!(super::request_async(data.series, &*data.event)), csrf, html! {
+                            : form_field("confirm", &mut errors, html! {
+                                input(type = "checkbox", id = "confirm", name = "confirm");
+                                label(for = "confirm") : "We have read the above and are ready to play the seed";
+                            });
+                        }, errors, "Request Now");
                     }
                 }
             }

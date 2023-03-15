@@ -37,8 +37,8 @@ use {
         util::{
             Id,
             form_field,
+            full_form,
             natjoin_html,
-            render_form_error,
         },
     },
 };
@@ -171,14 +171,10 @@ pub(super) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgre
         if me_listed {
             None
         } else {
-            let form_content = html! {
-                : csrf;
+            Some(full_form(uri!(super::find_team_post(data.series, &*data.event)), csrf, html! {
                 @if data.is_single_race() {
                     legend {
                         : "Click this button to add yourself to the list below.";
-                    }
-                    fieldset {
-                        input(type = "submit", value = "Looking for Team");
                     }
                 } else {
                     legend {
@@ -192,19 +188,8 @@ pub(super) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgre
                         label(for = "notes") : "Any Other Notes?";
                         input(type = "text", name = "notes", value? = ctx.field_value("notes"));
                     });
-                    fieldset {
-                        input(type = "submit", value = "Submit");
-                    }
                 }
-            };
-            Some(html! {
-                form(action = uri!(super::find_team_post(data.series, &*data.event)).to_string(), method = "post") {
-                    @for error in errors {
-                        : render_form_error(error);
-                    }
-                    : form_content;
-                }
-            })
+            }, errors, if data.is_single_race() { "Looking for Team" } else { "Submit" }))
         }
     } else {
         Some(html! {

@@ -118,8 +118,8 @@ use {
             form_field,
             format_datetime,
             format_duration,
+            full_form,
             parse_duration,
-            render_form_error,
         },
     },
 };
@@ -1333,62 +1333,52 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
         let page_content = {
             let team_members = team_members.await?;
             let mut errors = defaults.errors();
-            let form_content = html! {
-                : csrf;
-                input(type = "hidden", name = "step2", value = "true");
-                : form_field("racetime_team", &mut errors, html! {
-                    label(for = "racetime_team") {
-                        : "racetime.gg Team: ";
-                        a(href = format!("https://racetime.gg/team/{}", defaults.racetime_team_slug().expect("missing racetime team slug"))) : defaults.racetime_team_name().expect("missing racetime team name");
-                        : " • ";
-                        a(href = uri!(enter(data.series, &*data.event, _, _)).to_string()) : "Change";
-                    }
-                    input(type = "hidden", name = "racetime_team", value = defaults.racetime_team_slug());
-                    input(type = "hidden", name = "racetime_team_name", value = defaults.racetime_team_name());
-                });
-                @for team_member in team_members {
-                    : form_field(&format!("roles[{}]", team_member.id), &mut errors, html! {
-                        label(for = &format!("roles[{}]", team_member.id)) : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
-                        @for (role, display_name) in data.team_config().roles() {
-                            @let css_class = role.css_class().expect("tried to render enter_form_step2 for a solo event");
-                            input(id = &format!("roles[{}]-{css_class}", team_member.id), class = css_class, type = "radio", name = &format!("roles[{}]", team_member.id), value = css_class, checked? = defaults.role(&team_member.id) == Some(*role));
-                            label(class = css_class, for = &format!("roles[{}]-{css_class}", team_member.id)) : display_name;
-                        }
-                    });
-                    : form_field(&format!("startgg_id[{}]", team_member.id), &mut errors, html! {
-                        label(for = &format!("startgg_id[{}]", team_member.id)) : "start.gg User ID:";
-                        input(type = "text", name = &format!("startgg_id[{}]", team_member.id), value? = defaults.startgg_id(&team_member.id));
-                        label(class = "help") {
-                            : "(Optional. Can be found by going to your ";
-                            a(href = "https://start.gg/") : "start.gg";
-                            : " profile and clicking your name.)";
-                        }
-                    });
-                }
-                : form_field("restream_consent", &mut errors, html! {
-                    input(type = "checkbox", id = "restream_consent", name = "restream_consent", checked? = defaults.restream_consent());
-                    label(for = "restream_consent") {
-                        @if data.is_single_race() {
-                            : "We are okay with being restreamed. (Optional. Can be changed later.)";
-                        } else {
-                            //TODO allow changing on Status page during Swiss, except revoking while a restream is planned
-                            //TODO change text depending on tournament structure
-                            : "We are okay with being restreamed. (Optional for Swiss, required for top 8. Can be changed later.)";
-                        }
-                    }
-                });
-                fieldset {
-                    input(type = "submit", value = "Enter");
-                }
-            };
             html! {
                 : header;
-                form(action = uri!(enter_post(data.series, &*data.event)).to_string(), method = "post") {
-                    @for error in errors {
-                        : render_form_error(error);
+                : full_form(uri!(enter_post(data.series, &*data.event)), csrf, html! {
+                    input(type = "hidden", name = "step2", value = "true");
+                    : form_field("racetime_team", &mut errors, html! {
+                        label(for = "racetime_team") {
+                            : "racetime.gg Team: ";
+                            a(href = format!("https://racetime.gg/team/{}", defaults.racetime_team_slug().expect("missing racetime team slug"))) : defaults.racetime_team_name().expect("missing racetime team name");
+                            : " • ";
+                            a(href = uri!(enter(data.series, &*data.event, _, _)).to_string()) : "Change";
+                        }
+                        input(type = "hidden", name = "racetime_team", value = defaults.racetime_team_slug());
+                        input(type = "hidden", name = "racetime_team_name", value = defaults.racetime_team_name());
+                    });
+                    @for team_member in team_members {
+                        : form_field(&format!("roles[{}]", team_member.id), &mut errors, html! {
+                            label(for = &format!("roles[{}]", team_member.id)) : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
+                            @for (role, display_name) in data.team_config().roles() {
+                                @let css_class = role.css_class().expect("tried to render enter_form_step2 for a solo event");
+                                input(id = &format!("roles[{}]-{css_class}", team_member.id), class = css_class, type = "radio", name = &format!("roles[{}]", team_member.id), value = css_class, checked? = defaults.role(&team_member.id) == Some(*role));
+                                label(class = css_class, for = &format!("roles[{}]-{css_class}", team_member.id)) : display_name;
+                            }
+                        });
+                        : form_field(&format!("startgg_id[{}]", team_member.id), &mut errors, html! {
+                            label(for = &format!("startgg_id[{}]", team_member.id)) : "start.gg User ID:";
+                            input(type = "text", name = &format!("startgg_id[{}]", team_member.id), value? = defaults.startgg_id(&team_member.id));
+                            label(class = "help") {
+                                : "(Optional. Can be found by going to your ";
+                                a(href = "https://start.gg/") : "start.gg";
+                                : " profile and clicking your name.)";
+                            }
+                        });
                     }
-                    : form_content;
-                }
+                    : form_field("restream_consent", &mut errors, html! {
+                        input(type = "checkbox", id = "restream_consent", name = "restream_consent", checked? = defaults.restream_consent());
+                        label(for = "restream_consent") {
+                            @if data.is_single_race() {
+                                : "We are okay with being restreamed. (Optional. Can be changed later.)";
+                            } else {
+                                //TODO allow changing on Status page during Swiss, except revoking while a restream is planned
+                                //TODO change text depending on tournament structure
+                                : "We are okay with being restreamed. (Optional for Swiss, required for top 8. Can be changed later.)";
+                            }
+                        }
+                    });
+                }, errors, "Enter");
             }
         };
         Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), page_content).await?)
