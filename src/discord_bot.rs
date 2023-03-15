@@ -294,7 +294,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .required(false)
                     )
                 }).await?.id,
-                None => unimplemented!("Discord guilds with mixed match sources not yet supported"),
+                None => unimplemented!("Discord guilds with mixed match sources not yet supported (guild ID: {}, events: {})", guild.id, guild_events.iter().map(|event| format!("{}/{}", event.series, event.event)).format(", ")),
             };
             let ban = if has_draft {
                 Some(guild.create_application_command(ctx, CreateCommand::new("ban")
@@ -563,11 +563,55 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     let guild_id = interaction.guild_id.expect("/assign called outside of a guild");
                     if let Some(&command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)) {
                         if interaction.data.id == command_ids.assign {
-                            let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
+                            let (http_client, mut transaction, startgg_token) = {
+                                let data = ctx.data.read().await;
+                                (
+                                    data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
+                                    data.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?,
+                                    data.get::<StartggToken>().expect("start.gg auth token missing from Discord context").clone(),
+                                )
+                            };
                             if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
                                 match event.match_source() {
-                                    MatchSource::Manual => unimplemented!(), //TODO
+                                    MatchSource::Manual => {
+                                        let game = match interaction.data.options[0].value {
+                                            CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
+                                            _ => panic!("unexpected slash command option type"),
+                                        };
+                                        if let Some(mut race) = {
+                                            let mut races = Vec::default();
+                                            for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE scheduling_thread = $1"#, i64::from(interaction.channel_id)).fetch_all(&mut transaction).await? {
+                                                races.push(Race::from_id(&mut transaction, &http_client, &startgg_token, id).await?);
+                                            }
+                                            races.retain(|race| !race.ignored);
+                                            races.sort_unstable();
+                                            races
+                                        }.pop() {
+                                            race.id = None; // copy this race
+                                            race.game = Some(game);
+                                            race.save(&mut transaction).await?;
+                                            let mut response_content = MessageBuilder::default();
+                                            response_content.push("This thread is now assigned to game ");
+                                            response_content.push(game.to_string());
+                                            response_content.push(". Use ");
+                                            response_content.mention_command(command_ids.schedule, "schedule");
+                                            response_content.push(" to schedule as a live race or ");
+                                            response_content.mention_command(command_ids.schedule_async, "schedule-async");
+                                            response_content.push(" to schedule as an async."); //TODO adjust message if asyncing is not allowed
+                                            let response_content = response_content.build();
+                                            transaction.commit().await?;
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(false)
+                                                .content(response_content)
+                                            )).await?;
+                                        } else {
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(true)
+                                                .content("Sorry, this thread isn't assigned to any races.")
+                                            )).await?;
+                                        }
+                                    }
                                     MatchSource::StartGG => {
                                         let startgg_set = match interaction.data.options[0].value {
                                             CommandDataOptionValue::String(ref startgg_set) => startgg_set.clone(),

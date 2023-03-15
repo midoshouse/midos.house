@@ -279,7 +279,7 @@ pub(crate) struct Race {
     pub(crate) draft: Option<Draft>,
     pub(crate) seed: Option<seed::Data>,
     pub(crate) video_url: Option<Url>,
-    ignored: bool,
+    pub(crate) ignored: bool,
 }
 
 impl Race {
@@ -740,7 +740,7 @@ impl Race {
         }
     }
 
-    async fn save(&mut self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
+    pub(crate) async fn save(&mut self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
         let id = if self.id.is_some() {
             unimplemented!("updating existing races not yet implemented") //TODO
         } else {
