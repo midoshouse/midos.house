@@ -237,7 +237,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
         .data::<StartggToken>(if env.is_dev() { config.startgg_dev } else { config.startgg_production })
         .on_guild_create(false, |ctx, guild, _| Box::pin(async move {
             let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
-            let guild_event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1"#, i64::from(guild.id)).fetch_all(&mut transaction).await?; //TODO only use ongoing and upcoming events
+            let guild_event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND (end_time IS NULL OR end_time > NOW())"#, i64::from(guild.id)).fetch_all(&mut transaction).await?;
             let mut guild_events = Vec::with_capacity(guild_event_rows.len());
             for row in guild_event_rows {
                 guild_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("just received from database"));
