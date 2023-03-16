@@ -37,6 +37,7 @@ serde_plain = "1"
 #sheets = "0.5" # can't upgrade to this due to https://github.com/dekellum/hyperx/issues/39 — attempted fix at https://github.com/fenhl/oxidecomputer-third-party-api-clients/tree/fix-sheets-compilation
 thiserror = "1"
 typemap_rev = "0.3"
+uuid = "1"
 yup-oauth2 = "5" # dependency of `sheets`
 
 [dependencies.chrono]
@@ -115,7 +116,7 @@ branch = "tokio1"
 [dependencies.sqlx]
 version = "0.6"
 default-features = false
-features = ["chrono", "json", "macros", "postgres", "runtime-tokio-rustls"]
+features = ["chrono", "json", "macros", "postgres", "runtime-tokio-rustls", "uuid"]
 
 [dependencies.tokio]
 version = "1"

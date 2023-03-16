@@ -1838,6 +1838,7 @@ dependencies = [
  "tokio-util",
  "typemap_rev",
  "url",
+ "uuid",
  "wheel",
  "xdg",
  "yup-oauth2",
@@ -3168,6 +3169,7 @@ dependencies = [
  "thiserror",
  "tokio-stream",
  "url",
+ "uuid",
  "webpki-roots",
  "whoami",
 ]

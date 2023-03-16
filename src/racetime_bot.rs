@@ -69,9 +69,9 @@ use {
         json::JsonString,
         serde_as,
     },
-    serenity::{
-        client::Context as DiscordCtx,
-        utils::MessageBuilder,
+    serenity::all::{
+        Context as DiscordCtx,
+        MessageBuilder,
     },
     serenity_utils::RwFuture,
     sqlx::PgPool,

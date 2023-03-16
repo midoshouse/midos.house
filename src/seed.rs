@@ -16,6 +16,7 @@ use {
     rocket_util::html,
     serde::Deserialize,
     tokio::pin,
+    uuid::Uuid,
     wheel::fs,
     crate::http::static_url,
 };
@@ -70,15 +71,23 @@ impl HashIconExt for HashIcon {
 
 #[derive(Clone)]
 pub(crate) struct Data {
-    pub(crate) web: Option<OotrWebData>,
     pub(crate) file_hash: Option<[HashIcon; 5]>,
-    pub(crate) file_stem: Cow<'static, str>,
+    pub(crate) files: Files,
 }
 
-#[derive(Clone, Copy)]
-pub(crate) struct OotrWebData {
-    pub(crate) id: u64,
-    pub(crate) gen_time: DateTime<Utc>,
+#[derive(Clone)]
+pub(crate) enum Files {
+    MidosHouse {
+        file_stem: Cow<'static, str>,
+    },
+    OotrWeb {
+        id: u64,
+        gen_time: DateTime<Utc>,
+        file_stem: Cow<'static, str>,
+    },
+    TriforceBlitz {
+        uuid: Uuid,
+    },
 }
 
 pub(crate) fn table_header_cells(spoiler_logs: bool) -> RawHtml<String> {
@@ -114,64 +123,71 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
         file_hash: [HashIcon; 5],
     }
 
-    let (spoiler_file_name, spoiler_path_exists, file_hash, world_count) = if seed.file_hash.is_none() || seed.web.map_or(true, |web| web.gen_time <= now - chrono::Duration::days(90)) {
-        let spoiler_file_name = format!("{}_Spoiler.json", seed.file_stem);
-        let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
-        let spoiler_path_exists = spoiler_path.exists();
-        let (file_hash, world_count) = if spoiler_path_exists {
-            let log = fs::read_to_string(&spoiler_path).await?;
-            if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
-                (Some(log.file_hash), Some(log.settings.world_count))
+    let check_local_log = seed.file_hash.is_none() || match seed.files {
+        Files::MidosHouse { .. } => true,
+        Files::OotrWeb { gen_time, .. } => gen_time <= now - chrono::Duration::days(90),
+        Files::TriforceBlitz { .. } => false,
+    };
+    let (spoiler_file_name, spoiler_path_exists, file_hash, world_count) = if check_local_log {
+        if let Files::MidosHouse { ref file_stem } | Files::OotrWeb { ref file_stem, .. } = seed.files {
+            let spoiler_file_name = format!("{file_stem}_Spoiler.json");
+            let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
+            let spoiler_path_exists = spoiler_path.exists();
+            let (file_hash, world_count) = if spoiler_path_exists {
+                let log = fs::read_to_string(&spoiler_path).await?;
+                if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
+                    (Some(log.file_hash), Some(log.settings.world_count))
+                } else {
+                    (
+                        seed.file_hash.or_else(|| serde_json::from_str::<SparseSpoilerLog>(&log).ok().map(|log| log.file_hash)),
+                        None,
+                    )
+                }
             } else {
-                (
-                    seed.file_hash.or_else(|| serde_json::from_str::<SparseSpoilerLog>(&log).ok().map(|log| log.file_hash)),
-                    None,
-                )
-            }
+                (seed.file_hash, None)
+            };
+            (Some(spoiler_file_name), spoiler_path_exists, file_hash, world_count)
         } else {
-            (seed.file_hash, None)
-        };
-        (Some(spoiler_file_name), spoiler_path_exists, file_hash, world_count)
+            (None, false, seed.file_hash, None)
+        }
     } else {
         (None, false, seed.file_hash, None)
     };
     Ok(html! {
         td(class = "hash") {
-            @if let Some(file_hash) = seed.file_hash {
+            @if let Some(file_hash) = file_hash {
                 @for hash_icon in file_hash {
                     : hash_icon.to_html();
-                }
-            } else {
-                @if let Some(file_hash) = file_hash {
-                    @for hash_icon in file_hash {
-                        : hash_icon.to_html();
-                    }
                 }
             }
         }
         // ootrandomizer.com seeds are deleted after 90 days
-        @if let Some(web) = seed.web.and_then(|web| (web.gen_time > now - chrono::Duration::days(90)).then_some(web)) {
-            td(colspan? = spoiler_logs.then(|| "2")) {
-                a(href = format!("https://ootrandomizer.com/seed/get?id={}", web.id)) : "View";
+        @match seed.files {
+            Files::OotrWeb { id, gen_time, .. } if gen_time > now - chrono::Duration::days(90) => td(colspan? = spoiler_logs.then_some("2")) {
+                a(href = format!("https://ootrandomizer.com/seed/get?id={id}")) : "View";
             }
-        } else {
-            td {
-                a(href = format!("/seed/{}.{}", seed.file_stem, if let Some(world_count) = world_count {
-                    if world_count.get() > 1 { "zpfz" } else { "zpf" }
-                } else if Path::new(DIR).join(format!("{}.zpfz", seed.file_stem)).exists() {
-                    "zpfz"
-                } else {
-                    "zpf"
-                })) : "Download";
-            }
-            @if spoiler_logs {
+            (Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem }) => {
                 td {
-                    @if spoiler_path_exists {
-                        a(href = format!("/seed/{}", spoiler_file_name.expect("should be present since web seed missing or expired"))) : "View";
+                    a(href = format!("/seed/{file_stem}.{}", if let Some(world_count) = world_count {
+                        if world_count.get() > 1 { "zpfz" } else { "zpf" }
+                    } else if Path::new(DIR).join(format!("{file_stem}.zpfz")).exists() {
+                        "zpfz"
                     } else {
-                        : "not found"; //TODO different message if the race is still in progress
+                        "zpf"
+                    })) : "Download";
+                }
+                @if spoiler_logs {
+                    td {
+                        @if spoiler_path_exists {
+                            a(href = format!("/seed/{}", spoiler_file_name.expect("should be present since web seed missing or expired"))) : "View";
+                        } else {
+                            : "not found"; //TODO different message if the race is still in progress
+                        }
                     }
                 }
+            }
+            Files::TriforceBlitz { uuid } => td(colspan? = spoiler_logs.then_some("2")) {
+                a(href = format!("https://www.triforceblitz.com/seed/{uuid}")) : "View";
             }
         }
     })

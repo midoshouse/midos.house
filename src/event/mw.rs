@@ -50,7 +50,7 @@ use {
         derive_fromstr_from_deserialize,
     },
     serenity::{
-        client::Context as DiscordCtx,
+        all::Context as DiscordCtx,
         model::prelude::*,
     },
     sqlx::{
@@ -1028,17 +1028,19 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                     }
                 } else {
                     let seed = seed::Data {
-                        web: match (async_row.web_id, async_row.web_gen_time) {
-                            (Some(Id(id)), Some(gen_time)) => Some(seed::OotrWebData { id, gen_time }),
-                            (None, None) => None,
-                            _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
-                        },
                         file_hash: match (async_row.hash1, async_row.hash2, async_row.hash3, async_row.hash4, async_row.hash5) {
                             (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
                             (None, None, None, None, None) => None,
                             _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
                         },
-                        file_stem: Cow::Owned(async_row.file_stem),
+                        files: match (async_row.web_id, async_row.web_gen_time) {
+                            (Some(Id(id)), Some(gen_time)) => seed::Files::OotrWeb {
+                                file_stem: Cow::Owned(async_row.file_stem),
+                                id, gen_time,
+                            },
+                            (None, None) => seed::Files::MidosHouse { file_stem: Cow::Owned(async_row.file_stem) },
+                            _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
+                        },
                     };
                     let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
                     let mut errors = ctx.errors().collect_vec();

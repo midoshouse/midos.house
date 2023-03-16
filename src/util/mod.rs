@@ -20,8 +20,8 @@ use {
         html,
     },
     serenity::{
+        all::MessageBuilder,
         model::prelude::*,
-        utils::MessageBuilder,
     },
     sqlx::{
         Postgres,

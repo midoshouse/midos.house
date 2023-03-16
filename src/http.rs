@@ -46,7 +46,7 @@ use {
         ToHtml,
         html,
     },
-    serenity::client::Context as DiscordCtx,
+    serenity::all::Context as DiscordCtx,
     serenity_utils::RwFuture,
     sqlx::{
         PgPool,

@@ -346,6 +346,7 @@ pub(crate) struct Data<'a> {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum DataError {
+    #[error(transparent)] PgInterval(#[from] crate::util::PgIntervalDecodeError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error("no event with this series and identifier")]
@@ -465,7 +466,7 @@ impl<'a> Data<'a> {
             Series::Pictionary => EnterFlow::RaceTime,
             Series::Rsl => EnterFlow::Extern,
             Series::Standard => EnterFlow::Extern,
-            Series::TriforceBlitz => EnterFlow::Extern,
+            Series::TriforceBlitz => EnterFlow::RaceTimeDiscord,
         }
     }
 
@@ -507,9 +508,9 @@ impl<'a> Data<'a> {
         }
     }
 
-    pub(crate) async fn start(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Option<DateTime<Utc>>> {
+    pub(crate) async fn start(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<DateTime<Utc>>, DataError> {
         Ok(if let Some(mut start) = self.base_start {
-            if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier') AS "exists!""#, self.series as _, &self.event).fetch_one(&mut *transaction).await? {
+            if let Some(max_delay) = sqlx::query_scalar!("SELECT max_delay FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier'", self.series as _, &self.event).fetch_optional(&mut *transaction).await? {
                 let mut num_qualified_teams = 0;
                 let mut last_submission_time = None::<DateTime<Utc>>;
                 let mut teams = sqlx::query_scalar!(r#"SELECT submitted AS "submitted!" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
@@ -533,7 +534,7 @@ impl<'a> Data<'a> {
                     }
                 } else {
                     if start <= Utc::now() {
-                        start += chrono::Duration::days(1);
+                        start += chrono::Duration::from_std(decode_pginterval(max_delay)?).expect("max delay on async too long");
                     }
                 }
             }
@@ -543,7 +544,7 @@ impl<'a> Data<'a> {
         })
     }
 
-    pub(crate) async fn is_started(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<bool> {
+    pub(crate) async fn is_started(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<bool, DataError> {
         Ok(self.start(transaction).await?.map_or(false, |start| start <= Utc::now()))
     }
 
@@ -561,7 +562,7 @@ impl<'a> Data<'a> {
         Ok(buf)
     }
 
-    async fn active_async(&self, transaction: &mut Transaction<'_, Postgres>, team: &Team) -> sqlx::Result<Option<AsyncKind>> {
+    async fn active_async(&self, transaction: &mut Transaction<'_, Postgres>, team: &Team) -> Result<Option<AsyncKind>, DataError> {
         for kind in sqlx::query_scalar!(r#"SELECT kind AS "kind: AsyncKind" FROM asyncs WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut *transaction).await? {
             match kind {
                 AsyncKind::Qualifier => if !self.is_started(&mut *transaction).await? {
@@ -790,7 +791,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     let has_qualifier = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier') AS "exists!""#, series as _, event).fetch_one(&mut transaction).await.map_err(TeamsError::Sql)?;
     let show_qualifier_times =
         sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM async_teams, team_members WHERE async_teams.team = team_members.team AND member = $1 AND kind = 'qualifier'"#, me.as_ref().map(|me| i64::from(me.id))).fetch_optional(&mut *transaction).await.map_err(TeamsError::Sql)?.unwrap_or(false)
-        || data.is_started(&mut transaction).await.map_err(TeamsError::Sql)?;
+        || data.is_started(&mut transaction).await.map_err(TeamsError::Data)?;
     let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
         series = $1
         AND event = $2
@@ -1207,7 +1208,7 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
                         }
                         Series::Rsl => @unimplemented // no signups on Mido's House
                         Series::Standard => @unimplemented // no signups on Mido's House
-                        Series::TriforceBlitz => @unimplemented // no signups on Mido's House
+                        Series::TriforceBlitz => : tfb::status(&mut transaction, csrf, &data, row.id, ctx).await?;
                     }
                     h2 : "Options";
                     p : "More options coming soon"; //TODO options to change team name, swap roles, or opt in/out for restreaming
@@ -1321,7 +1322,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>
             Series::Pictionary => unimplemented!(),
             Series::Rsl => rsl::enter_form(transaction, me, uri, data).await?,
             Series::Standard => s::enter_form(transaction, me, uri, data).await?,
-            Series::TriforceBlitz => tfb::enter_form(transaction, me, uri, data).await?,
+            Series::TriforceBlitz => unimplemented!(),
         },
     })
 }
@@ -1791,7 +1792,7 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
     let data = Data::new(&mut transaction, series, event).await.map_err(FindTeamError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
-    if data.is_started(&mut transaction).await.map_err(FindTeamError::Sql)? {
+    if data.is_started(&mut transaction).await.map_err(FindTeamError::Data)? {
         form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
     }
     Ok(if let Some(ref value) = form.value {
@@ -1842,7 +1843,7 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
     let mut transaction = pool.begin().await.map_err(AcceptError::Sql)?;
     let data = Data::new(&mut transaction, series, event).await.map_err(AcceptError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     form.verify(&csrf).map_err(AcceptError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
-    if data.is_started(&mut transaction).await.map_err(AcceptError::Sql)? { return Err(AcceptError::EventStarted.into()) }
+    if data.is_started(&mut transaction).await.map_err(AcceptError::Data)? { return Err(AcceptError::EventStarted.into()) }
     if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, i64::from(team), i64::from(me.id)).fetch_optional(&mut transaction).await.map_err(AcceptError::Sql)? {
         if role == Role::Sheikah && me.racetime_id.is_none() {
             return Err(AcceptError::RaceTimeAccountRequired.into())
@@ -1932,7 +1933,7 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<Csr
     let data = Data::new(&mut transaction, series, event).await.map_err(ResignError::Data)?.ok_or(StatusOrError::Status(Status::NotFound))?;
     form.verify(&csrf).map_err(ResignError::Csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_ended() { return Err(ResignError::EventEnded.into()) }
-    let is_started = data.is_started(&mut transaction).await.map_err(ResignError::Sql)?;
+    let is_started = data.is_started(&mut transaction).await.map_err(ResignError::Data)?;
     let members = if is_started {
         sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, i64::from(team)).execute(&mut transaction).await.map_err(ResignError::Sql)?;
         sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, i64::from(team)).fetch(&mut transaction)
