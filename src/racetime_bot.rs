@@ -2254,15 +2254,9 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                                 //TODO adjust for asyncs
                                                 msg.push(": ");
                                             }
-                                            match team1 {
-                                                Entrant::MidosHouseTeam(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
-                                                Entrant::Named(name) => { msg.push_safe(name); }
-                                            }
+                                            msg.mention_entrant(&mut transaction, guild, team1).await.to_racetime()?;
                                             msg.push(" vs ");
-                                            match team2 {
-                                                Entrant::MidosHouseTeam(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
-                                                Entrant::Named(name) => { msg.push_safe(name); }
-                                            }
+                                            msg.mention_entrant(&mut transaction, guild, team2).await.to_racetime()?;
                                         }
                                         Entrants::Three([ref team1, ref team2, ref team3]) => {
                                             if let Some(prefix) = info_prefix {
@@ -2270,20 +2264,11 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                                 //TODO adjust for asyncs
                                                 msg.push(": ");
                                             }
-                                            match team1 {
-                                                Entrant::MidosHouseTeam(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
-                                                Entrant::Named(name) => { msg.push_safe(name); }
-                                            }
+                                            msg.mention_entrant(&mut transaction, guild, team1).await.to_racetime()?;
                                             msg.push(" vs ");
-                                            match team2 {
-                                                Entrant::MidosHouseTeam(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
-                                                Entrant::Named(name) => { msg.push_safe(name); }
-                                            }
+                                            msg.mention_entrant(&mut transaction, guild, team2).await.to_racetime()?;
                                             msg.push(" vs ");
-                                            match team3 {
-                                                Entrant::MidosHouseTeam(team) => { msg.mention_team(&mut transaction, guild, team).await.to_racetime()?; }
-                                                Entrant::Named(name) => { msg.push_safe(name); }
-                                            }
+                                            msg.mention_entrant(&mut transaction, guild, team3).await.to_racetime()?;
                                         }
                                     }
                                     if let Some(game) = race.game {

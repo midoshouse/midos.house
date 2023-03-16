@@ -1309,7 +1309,27 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
                             ),
                         };
                         let mut content = MessageBuilder::default();
-                        //TODO ping participants
+                        match race.entrants { //TODO better formatting for non-Discord mentions
+                            Entrants::Open | Entrants::Count { .. } => {}
+                            Entrants::Named(ref entrants) => {
+                                content.push_safe(entrants);
+                                content.push(": ");
+                            }
+                            Entrants::Two([ref team1, ref team2]) => {
+                                content.mention_entrant(&mut transaction, guild_id, team1).await?;
+                                content.push(' ');
+                                content.mention_entrant(&mut transaction, guild_id, team2).await?;
+                                content.push(' ');
+                            }
+                            Entrants::Three([ref team1, ref team2, ref team3]) => {
+                                content.mention_entrant(&mut transaction, guild_id, team1).await?;
+                                content.push(' ');
+                                content.mention_entrant(&mut transaction, guild_id, team2).await?;
+                                content.push(' ');
+                                content.mention_entrant(&mut transaction, guild_id, team3).await?;
+                                content.push(' ');
+                            }
+                        }
                         content.push("Welcome to ");
                         if let Some(game) = race.game {
                             content.push("game ");

@@ -1127,7 +1127,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                 h2 : "Past races";
             }
             : race_table(&mut transaction, can_create && !any_races_ongoing_or_upcoming, can_edit, &past_races).await?;
-        } else if !any_races_ongoing_or_upcoming {
+        } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 a(class = "button", href = uri!(crate::cal::create_race(series, &event)).to_string()) : "New Race";
             }

@@ -29,6 +29,7 @@ use {
     },
     url::Url,
     crate::{
+        cal::Entrant,
         http::{
             PageError,
             static_url,
@@ -83,6 +84,7 @@ pub(crate) use as_variant;
 #[async_trait]
 pub(crate) trait MessageBuilderExt {
     fn mention_command(&mut self, command_id: CommandId, name: &str) -> &mut Self;
+    async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, entrant: &Entrant) -> sqlx::Result<&mut Self>;
     async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, team: &Team) -> sqlx::Result<&mut Self>;
     fn mention_user(&mut self, user: &User) -> &mut Self;
 }
@@ -91,6 +93,14 @@ pub(crate) trait MessageBuilderExt {
 impl MessageBuilderExt for MessageBuilder {
     fn mention_command(&mut self, command_id: CommandId, name: &str) -> &mut Self {
         self.push("</").push(name).push(':').push(command_id.to_string()).push('>')
+    }
+
+    async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, entrant: &Entrant) -> sqlx::Result<&mut Self> {
+        match entrant {
+            Entrant::MidosHouseTeam(team) => { self.mention_team(transaction, guild, team).await?; }
+            Entrant::Named(name) => { self.push_safe(name); }
+        }
+        Ok(self)
     }
 
     async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, team: &Team) -> sqlx::Result<&mut Self> {
