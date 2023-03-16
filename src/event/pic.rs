@@ -44,6 +44,7 @@ use {
         user::User,
         util::{
             Id,
+            as_variant,
             form_field,
             full_form,
             natjoin_html,
@@ -453,8 +454,8 @@ impl ToHtml for RolePreference {
     }
 }
 
-pub(super) enum EnterFormDefaults<'a> {
-    Context(Context<'a>),
+pub(super) enum EnterFormDefaults<'v> {
+    Context(Context<'v>),
     Values {
         my_role: Option<Role>,
         teammate: Option<Id>,
@@ -462,7 +463,11 @@ pub(super) enum EnterFormDefaults<'a> {
 }
 
 impl<'v> EnterFormDefaults<'v> {
-    fn errors(&self) -> Vec<&form::Error<'v>> {
+    pub(crate) fn into_context(self) -> Context<'v> {
+        as_variant!(self, Self::Context).unwrap_or_default()
+    }
+
+    pub(crate) fn errors(&self) -> Vec<&form::Error<'v>> {
         match self {
             Self::Context(ctx) => ctx.errors().collect(),
             Self::Values { .. } => Vec::default(),

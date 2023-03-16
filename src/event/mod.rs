@@ -562,15 +562,17 @@ impl<'a> Data<'a> {
         Ok(buf)
     }
 
-    async fn active_async(&self, transaction: &mut Transaction<'_, Postgres>, team: &Team) -> Result<Option<AsyncKind>, DataError> {
+    async fn active_async(&self, transaction: &mut Transaction<'_, Postgres>, team_id: Option<Id>) -> Result<Option<AsyncKind>, DataError> {
         for kind in sqlx::query_scalar!(r#"SELECT kind AS "kind: AsyncKind" FROM asyncs WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut *transaction).await? {
             match kind {
                 AsyncKind::Qualifier => if !self.is_started(&mut *transaction).await? {
                     return Ok(Some(kind))
                 },
-                AsyncKind::Tiebreaker1 | AsyncKind::Tiebreaker2 => if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1 AND kind = $2) AS "exists!""#, i64::from(team.id), kind as _).fetch_one(&mut *transaction).await? {
-                    return Ok(Some(kind))
-                }
+                AsyncKind::Tiebreaker1 | AsyncKind::Tiebreaker2 => if let Some(team_id) = team_id {
+                    if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1 AND kind = $2) AS "exists!""#, i64::from(team_id), kind as _).fetch_one(&mut *transaction).await? {
+                        return Ok(Some(kind))
+                    }
+                },
             }
         }
         Ok(None)
@@ -1208,7 +1210,7 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
                         }
                         Series::Rsl => @unimplemented // no signups on Mido's House
                         Series::Standard => @unimplemented // no signups on Mido's House
-                        Series::TriforceBlitz => : tfb::status(&mut transaction, csrf, &data, row.id, ctx).await?;
+                        Series::TriforceBlitz => : tfb::status(&mut transaction, csrf, &data, Some(row.id), ctx).await?;
                     }
                     h2 : "Options";
                     p : "More options coming soon"; //TODO options to change team name, swap roles, or opt in/out for restreaming
@@ -1300,19 +1302,30 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>
                         }
                     }
                 } else {
-                    form(action = uri!(enter_post(data.series, &*data.event)).to_string(), method = "post") {
-                        : csrf;
-                        fieldset {
-                            input(type = "submit", value = "Enter");
-                        }
-                    }
+                    //TODO show link to connect racetime.gg account if not already present
+                    : full_form(uri!(enter_post(data.series, &*data.event)), csrf, html! {}, defaults.errors(), "Enter");
                 }
             }).await?,
             TeamConfig::Pictionary => pic::enter_form(transaction, me, uri, csrf, data, defaults).await?,
             TeamConfig::CoOp | TeamConfig::Multiworld => mw::enter_form(transaction, me, uri, csrf, data, Context::default(), client).await?,
         },
         EnterFlow::RaceTimeDiscord => match data.team_config() {
-            TeamConfig::Solo => unimplemented!(), //TODO like EnterFlow::RaceTime but also check to make sure the user has a Discord account connected
+            TeamConfig::Solo => if data.is_ended() {
+                unimplemented!() //TODO like EnterFlow::RaceTime but also check to make sure the user has a Discord account connected
+            } else if let Some(AsyncKind::Qualifier) = data.active_async(&mut transaction, None).await? {
+                match data.series {
+                    Series::TriforceBlitz => {
+                        let content = html! {
+                            : header;
+                            : tfb::status(&mut transaction, csrf, &data, None, defaults.into_context()).await?;
+                        };
+                        page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), content).await?
+                    }
+                    _ => unimplemented!(), //TODO
+                }
+            } else {
+                unimplemented!() //TODO like EnterFlow::RaceTime but also check to make sure the user has a Discord account connected
+            },
             TeamConfig::Pictionary => unimplemented!(), //TODO like EnterFlow::RaceTime/TeamConfig::Pictionary but with Discord account check (for both or only the pilot?)
             TeamConfig::CoOp | TeamConfig::Multiworld => mw::enter_form(transaction, me, uri, csrf, data, Context::default(), client).await?,
         },
@@ -2004,7 +2017,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, discord_ctx: &State<RwFu
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
         "#, series as _, event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
         let async_kind = if let Some(ref team) = team {
-            if let Some(async_kind) = data.active_async(&mut transaction, team).await? {
+            if let Some(async_kind) = data.active_async(&mut transaction, Some(team.id)).await? {
                 let requested = sqlx::query_scalar!(r#"SELECT requested IS NOT NULL AS "requested!" FROM async_teams WHERE team = $1 AND kind = $2"#, i64::from(team.id), async_kind as _).fetch_optional(&mut transaction).await?;
                 if requested.map_or(false, identity) {
                     form.context.push_error(form::Error::validation("Your team has already requested this async."));
@@ -2066,7 +2079,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
         "#, series as _, event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
         let async_kind = if let Some(ref team) = team {
-            if let Some(async_kind) = data.active_async(&mut transaction, team).await? {
+            if let Some(async_kind) = data.active_async(&mut transaction, Some(team.id)).await? {
                 let row = sqlx::query!(r#"SELECT requested IS NOT NULL AS "requested!", submitted IS NOT NULL AS "submitted!" FROM async_teams WHERE team = $1 AND kind = $2"#, i64::from(team.id), async_kind as _).fetch_optional(&mut transaction).await?;
                 if row.as_ref().map_or(false, |row| row.submitted) {
                     form.context.push_error(form::Error::validation("You have already submitted times for this async. To make a correction or add vods, please contact the tournament organizers.")); //TODO allow adding vods via form but no other edits
