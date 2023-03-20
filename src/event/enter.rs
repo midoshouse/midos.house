@@ -160,9 +160,9 @@ impl Requirement {
                     : "Play the qualifier seed, either live on ";
                     : format_datetime(*live_start, DateTimeFormat { long: true, running_text: true });
                     : " or async between ";
-                    : format_datetime(*async_start, DateTimeFormat { long: true, running_text: true });
+                    : format_datetime(*async_start, DateTimeFormat { long: false, running_text: true });
                     : " and ";
-                    : format_datetime(*async_end, DateTimeFormat { long: true, running_text: true });
+                    : format_datetime(*async_end, DateTimeFormat { long: false, running_text: true });
                 },
                 "The qualifier seed is not yet available.", //TODO no error if qualifier is available
             ),
