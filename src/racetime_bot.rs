@@ -1282,29 +1282,36 @@ impl RaceHandler<GlobalState> for Handler {
                 (None, None) => event.display_name.clone(),
             }, event.series, event.event)).await?;
             ctx.send_message("Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat.").await?; //TODO different message for monitorless FPA?
-            let [high_seed_name, low_seed_name] = if let Some(Draft { ref state, high_seed }) = cal_event.race.draft {
-                if let mw::DraftStep::Done(settings) = state.next_step() {
-                    ctx.send_message(&format!("Your seed with {settings} will be posted in 15 minutes.")).await?;
+            let (race_state, high_seed_name, low_seed_name) = match event.draft_kind() {
+                DraftKind::MultiworldS3 => {
+                    let Draft { state, high_seed } = cal_event.race.draft.as_ref().expect("missing draft state");
+                    if let mw::DraftStep::Done(settings) = state.next_step() {
+                        ctx.send_message(&format!("Your seed with {settings} will be posted in 15 minutes.")).await?;
+                    }
+                    let [high_seed_name, low_seed_name] = match cal_event.race.entrants {
+                        Entrants::Open | Entrants::Count { .. } => unimplemented!("open official race"), //TODO
+                        Entrants::Named(_) => unimplemented!("official race with opaque participants text"), //TODO
+                        Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)]) => if team1.id == *high_seed {
+                            [
+                                team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
+                                team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
+                            ]
+                        } else {
+                            [
+                                team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
+                                team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
+                            ]
+                        },
+                        Entrants::Two([_, _]) => unimplemented!("official race with non-MH teams"), //TODO
+                        Entrants::Three([_, _, _]) => unimplemented!("official race with 3 teams"), //TODO
+                    };
+                    (RaceState::Draft {
+                        state: cal_event.race.draft.map(|draft| draft.state).unwrap_or_default(),
+                        spoiler_log: false,
+                        //TODO restrict draft picks
+                    }, high_seed_name, low_seed_name)
                 }
-                match cal_event.race.entrants {
-                    Entrants::Open | Entrants::Count { .. } => unimplemented!("open official race"), //TODO
-                    Entrants::Named(_) => unimplemented!("official race with opaque participants text"), //TODO
-                    Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)]) => if team1.id == high_seed {
-                        [
-                            team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
-                            team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
-                        ]
-                    } else {
-                        [
-                            team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
-                            team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
-                        ]
-                    },
-                    Entrants::Two([_, _]) => unimplemented!("official race with non-MH teams"), //TODO
-                    Entrants::Three([_, _, _]) => unimplemented!("official race with 3 teams"), //TODO
-                }
-            } else {
-                [format!("Team A"), format!("Team B")]
+                DraftKind::None => (RaceState::Init, format!("Team A"), format!("Team B")),
             };
             (
                 cal_event.race.startgg_set.clone().map(|startgg_set| OfficialRaceData {
@@ -1313,11 +1320,7 @@ impl RaceHandler<GlobalState> for Handler {
                     event, startgg_set, entrants, start,
                 }),
                 cal_event.race.video_url.clone(),
-                RaceState::Draft {
-                    state: cal_event.race.draft.map(|draft| draft.state).unwrap_or_default(),
-                    spoiler_log: false,
-                    //TODO restrict draft picks
-                },
+                race_state,
                 high_seed_name,
                 low_seed_name,
             )
@@ -1391,11 +1394,26 @@ impl RaceHandler<GlobalState> for Handler {
             race_state: ArcRwLock::new(race_state),
             official_data, high_seed_name, low_seed_name,
         };
-        {
-            let state = this.race_state.read().await;
-            if let RaceState::Draft { .. } = *state {
-                drop(state);
-                this.advance_draft(ctx).await?;
+        if let Some(OfficialRaceData { ref event, .. }) = this.official_data {
+            match event.draft_kind() {
+                DraftKind::MultiworldS3 => {
+                    let state = this.race_state.read().await;
+                    if let RaceState::Draft { .. } = *state {
+                        drop(state);
+                        this.advance_draft(ctx).await?;
+                    }
+                }
+                DraftKind::None => {
+                    let state = this.race_state.read().await;
+                    if let RaceState::Init = *state {
+                        drop(state);
+                        match goal {
+                            Goal::MultiworldS3 => unreachable!(), // uses DraftKind::MultiworldS3
+                            Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => {} //TODO roll seed
+                            Goal::TriforceBlitz => goal.send_presets(ctx).await?,
+                        }
+                    }
+                }
             }
         }
         Ok(this)
@@ -2210,7 +2228,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 goal_is_custom: goal.is_custom(),
                                 team_race: !matches!(race.event(&mut transaction).await.to_racetime()?.team_config(), TeamConfig::Solo),
                                 invitational: !matches!(race.entrants, Entrants::Open),
-                                unlisted: false,
+                                unlisted: false, //TODO get permission to open unlisted rooms for asyncs
                                 info_user: match race.entrants {
                                     Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
                                     Entrants::Named(ref entrants) => format!("{}{entrants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
@@ -2231,7 +2249,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 info_bot: String::default(),
                                 require_even_teams: true,
                                 start_delay: 15,
-                                time_limit: 24,
+                                time_limit: if let Series::TriforceBlitz = row.series { 2 } else { 24 },
                                 time_limit_auto_complete: false,
                                 streaming_required: None,
                                 auto_start: race.video_url.is_none(),
@@ -2239,16 +2257,16 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 hide_comments: true,
                                 allow_prerace_chat: true,
                                 allow_midrace_chat: true,
-                                allow_non_entrant_chat: true,
+                                allow_non_entrant_chat: true, // needs to be true for all races so the !monitor command can work
                                 chat_message_delay: 0,
                             }.start_with_host(global_state.host, &access_token, &global_state.http_client, CATEGORY).await?;
                             let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", global_state.host))?;
-                            sqlx::query!("UPDATE races SET room = $1 WHERE startgg_set = $2 AND game IS NOT DISTINCT FROM $3", room_url.to_string(), race.startgg_set, race.game).execute(&mut transaction).await.to_racetime()?;
+                            sqlx::query!("UPDATE races SET room = $1 WHERE id = $2", room_url.to_string(), i64::from(race.id.expect("created from ID"))).execute(&mut transaction).await.to_racetime()?;
                             transaction.commit().await.to_racetime()?;
                             drop(new_room_lock);
                             transaction = global_state.db_pool.begin().await.to_racetime()?;
                             if let Some(event) = event::Data::new(&mut transaction, row.series, row.event).await.to_racetime()? {
-                                if let (Some(guild), Some(channel)) = (event.discord_guild, event.discord_race_room_channel) {
+                                if let (Some(guild), Some(channel)) = (event.discord_guild, event.discord_race_room_channel) { //TODO post in scheduling thread instead if there is no race room channel
                                     let mut msg = MessageBuilder::default();
                                     match race.entrants {
                                         Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {

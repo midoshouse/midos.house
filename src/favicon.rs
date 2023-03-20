@@ -59,7 +59,7 @@ impl ChestAppearances {
 
     pub(crate) fn random() -> Self {
         //TODO automatically keep up to date with the dev-fenhl branch of the RSL script
-        static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../assets/chests-rsl-d813e60.json")).expect("failed to parse chest weights"));
+        static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../assets/chests-rsl-9c9e7ca.json")).expect("failed to parse chest weights"));
 
         WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
     }
