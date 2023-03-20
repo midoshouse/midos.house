@@ -15,17 +15,6 @@ use {
     super::natjoin_str,
 };
 
-macro_rules! utc {
-    ($year:expr, $month:expr, $day:expr, $hour:expr, $minute:expr, $second:expr) => {
-        Utc.with_ymd_and_hms($year, $month, $day, $hour, $minute, $second).single().expect("wrong hardcoded datetime")
-    };
-    ($year:expr, $month:expr, $day:expr, $hour:expr, $minute:expr, $second:expr, $milli:expr) => {
-        utc!($year, $month, $day, $hour, $minute, $second).with_nanosecond($milli * 1_000_000).expect("wrong hardcoded datetime")
-    };
-}
-
-pub(crate) use utc;
-
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum PgIntervalDecodeError {
     #[error(transparent)] TryFromInt(#[from] std::num::TryFromIntError),

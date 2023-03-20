@@ -53,7 +53,6 @@ pub(crate) use self::{
         format_datetime,
         format_duration,
         parse_duration,
-        utc,
     },
 };
 

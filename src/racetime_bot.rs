@@ -7,7 +7,6 @@ use {
         },
         fmt,
         io::prelude::*,
-        marker::PhantomData,
         path::{
             Path,
             PathBuf,
@@ -276,6 +275,7 @@ pub(crate) enum Goal {
     NineDaysOfSaws,
     PicRs2,
     Rsl,
+    TriforceBlitz,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -289,6 +289,7 @@ impl Goal {
             Self::NineDaysOfSaws => series == Series::NineDaysOfSaws,
             Self::PicRs2 => series == Series::Pictionary && event == "rs2",
             Self::Rsl => series == Series::Rsl,
+            Self::TriforceBlitz => series == Series::TriforceBlitz,
         }
     }
 
@@ -298,6 +299,7 @@ impl Goal {
             Self::NineDaysOfSaws => true,
             Self::PicRs2 => true,
             Self::Rsl => false,
+            Self::TriforceBlitz => false,
         }
     }
 
@@ -307,13 +309,14 @@ impl Goal {
             Self::NineDaysOfSaws => "9 Days of SAWS",
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
             Self::Rsl => "Random settings league",
+            Self::TriforceBlitz => "Triforce Blitz",
         }
     }
 
     fn draft_kind(&self) -> DraftKind {
         match self {
             Self::MultiworldS3 => DraftKind::MultiworldS3,
-            Self::NineDaysOfSaws | Self::PicRs2 | Self::Rsl => DraftKind::None,
+            Self::NineDaysOfSaws | Self::PicRs2 | Self::Rsl | Self::TriforceBlitz => DraftKind::None,
         }
     }
 
@@ -322,6 +325,7 @@ impl Goal {
             Self::MultiworldS3 => rando::Version::from_dev(6, 2, 205),
             Self::NineDaysOfSaws => rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2),
             Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
+            Self::TriforceBlitz => panic!("seeds for this goal must be rolled manually on the Triforce Blitz website"),
         }
     }
 
@@ -360,6 +364,14 @@ impl Goal {
                     rsl::Preset::S6Test => "test settings for RSL season 6",
                 })).await?;
             },
+            Self::TriforceBlitz => {
+                let room_url = format!("https://{}{}", ctx.global_state.host, ctx.data().await.url);
+                let seed_url = Url::parse_with_params("https://www.triforceblitz.com/generator", &[
+                    ("unlockSetting", "RACETIME"),
+                    ("racetimeRoom", &room_url),
+                ])?;
+                ctx.send_message(&format!("Generate a seed at {seed_url} then use “!seed <seed-link>” to update the race info.")).await?;
+            }
         }
         Ok(())
     }
@@ -1043,30 +1055,7 @@ struct RestreamState {
     ready: bool,
 }
 
-trait Bot: Send + Sync + 'static {
-    fn should_handle_goal(goal: &racetime::model::Goal) -> bool;
-}
-
-enum Mido {}
-
-impl Bot for Mido {
-    fn should_handle_goal(racetime_goal: &racetime::model::Goal) -> bool {
-        let Ok(bot_goal) = racetime_goal.name.parse::<Goal>() else { return false };
-        racetime_goal.custom == bot_goal.is_custom() && !matches!(bot_goal, Goal::Rsl)
-    }
-}
-
-enum RslBot {}
-
-impl Bot for RslBot {
-    fn should_handle_goal(racetime_goal: &racetime::model::Goal) -> bool {
-        let Ok(bot_goal) = racetime_goal.name.parse::<Goal>() else { return false };
-        racetime_goal.custom == bot_goal.is_custom() && matches!(bot_goal, Goal::Rsl)
-    }
-}
-
-struct Handler<B: Bot> {
-    _phantom: PhantomData<B>,
+struct Handler {
     official_data: Option<OfficialRaceData>,
     high_seed_name: String,
     low_seed_name: String,
@@ -1079,10 +1068,11 @@ struct Handler<B: Bot> {
     race_state: ArcRwLock<RaceState>,
 }
 
-impl<B: Bot> Handler<B> {
+impl Handler {
     async fn should_handle_inner(race_data: &RaceData, global_state: Arc<GlobalState>, increment_num_rooms: bool) -> bool {
         let mut clean_shutdown = lock!(global_state.clean_shutdown);
-        B::should_handle_goal(&race_data.goal)
+        let Ok(bot_goal) = race_data.goal.name.parse::<Goal>() else { return false };
+        race_data.goal.custom == bot_goal.is_custom()
         && !matches!(race_data.status.value, RaceStatusValue::Finished | RaceStatusValue::Cancelled)
         && if !clean_shutdown.requested || !clean_shutdown.open_rooms.is_empty() {
             if increment_num_rooms { assert!(clean_shutdown.open_rooms.insert(race_data.url.clone())) }
@@ -1230,7 +1220,7 @@ impl<B: Bot> Handler<B> {
 }
 
 #[async_trait]
-impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
+impl RaceHandler<GlobalState> for Handler {
     async fn should_handle(race_data: &RaceData, global_state: Arc<GlobalState>) -> Result<bool, Error> {
         Ok(Self::should_handle_inner(race_data, global_state, true).await)
     }
@@ -1371,6 +1361,10 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                             ctx.send_message("Welcome to the OoTR Random Settings League! Create a seed with !seed <preset>").await?;
                             ctx.send_message("If no preset is selected, default RSL settings will be used. For a list of presets, use !presets").await?;
                         }
+                        Goal::TriforceBlitz => {
+                            ctx.send_message("Welcome to Triforce Blitz!").await?;
+                            goal.send_presets(ctx).await?;
+                        }
                     },
                     RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } => ctx.send_message("@entrants I just restarted. You may have to reconfigure !breaks and !fpa. Sorry about that.").await?,
                     RaceState::Draft { .. } | RaceState::Rolling | RaceState::SpoilerSent => unreachable!(),
@@ -1388,7 +1382,6 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
         drop(new_room_lock);
         let is_official = official_data.is_some();
         let this = Self {
-            _phantom: PhantomData,
             restreams: HashMap::from_iter(video_url.map(|url| (url, None))),
             breaks: None, //TODO default breaks for restreamed matches?
             break_notifications: None,
@@ -1584,8 +1577,8 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                         if let Some(OfficialRaceData { ref mut fpa_invoked, .. }) = self.official_data {
                             *fpa_invoked = true;
                             if self.restreams.is_empty() {
-                                let player_team = match goal {
-                                    Goal::Rsl => "player",
+                                let player_team = match goal { //TODO check whether this is a team race instead
+                                    Goal::Rsl | Goal::TriforceBlitz => "player",
                                     Goal::MultiworldS3 | Goal::PicRs2 => "team",
                                     Goal::NineDaysOfSaws => "player/team",
                                 };
@@ -1988,6 +1981,24 @@ impl<B: Bot> RaceHandler<GlobalState> for Handler<B> {
                                     rsl::Preset::S6Test => format!("an RSL season 6 test seed"),
                                 });
                             }
+                            Goal::TriforceBlitz => match args[..] {
+                                [] => goal.send_presets(ctx).await?,
+                                [ref seed] => if let Ok(seed) = Url::parse(seed) {
+                                    if let Some("triforceblitz.com" | "www.triforceblitz.com") = seed.host_str() {
+                                        //TODO validate rest of URL?
+                                        //TODO prevent overriding existing seed URL?
+                                        ctx.set_bot_raceinfo(&seed.to_string()).await?; //TODO get file hash from TFB API?
+                                    } else {
+                                        ctx.send_message(&format!("Sorry {reply_to}, that doesn't seem to be a Triforce Blitz seed link.")).await?;
+                                    }
+                                } else {
+                                    ctx.send_message(&format!("Sorry {reply_to}, that doesn't seem to be a valid link.")).await?;
+                                },
+                                [_, _, ..] => {
+                                    ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that.")).await?;
+                                    goal.send_presets(ctx).await?;
+                                }
+                            },
                         }
                     },
                     RaceState::Draft { .. } => ctx.send_message(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
@@ -2300,13 +2311,13 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
     Ok(())
 }
 
-async fn handle_rooms<B: Bot>(global_state: Arc<GlobalState>, env: Environment, racetime_config: &ConfigRaceTime, shutdown: rocket::Shutdown) -> Result<(), Error> {
+async fn handle_rooms(global_state: Arc<GlobalState>, env: Environment, racetime_config: &ConfigRaceTime, shutdown: rocket::Shutdown) -> Result<(), Error> {
     let mut last_crash = Instant::now();
     let mut wait_time = Duration::from_secs(1);
     loop {
         match racetime::Bot::new_with_host(env.racetime_host(), CATEGORY, &racetime_config.client_id, &racetime_config.client_secret, global_state.clone()).await {
             Ok(bot) => {
-                let () = bot.run_until::<Handler<B>, _, _>(shutdown).await?;
+                let () = bot.run_until::<Handler, _, _>(shutdown).await?;
                 break Ok(())
             }
             Err(Error::Reqwest(e)) if e.status().map_or(false, |status| status.is_server_error()) => {
@@ -2326,10 +2337,9 @@ async fn handle_rooms<B: Bot>(global_state: Arc<GlobalState>, env: Environment, 
 }
 
 pub(crate) async fn main(env: Environment, config: Config, shutdown: rocket::Shutdown, global_state: Arc<GlobalState>) -> Result<(), Error> {
-    let ((), (), ()) = tokio::try_join!(
+    let ((), ()) = tokio::try_join!(
         create_rooms(global_state.clone(), shutdown.clone()),
-        handle_rooms::<Mido>(global_state.clone(), env, if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }, shutdown.clone()),
-        handle_rooms::<RslBot>(global_state, env, if env.is_dev() { &config.racetime_bot_rsl_dev } else { &config.racetime_bot_rsl_production }, shutdown),
+        handle_rooms(global_state, env, if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }, shutdown),
     )?;
     Ok(())
 }

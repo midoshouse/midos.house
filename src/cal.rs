@@ -123,7 +123,6 @@ use {
             format_datetime,
             full_form,
             io_error_from_reqwest,
-            utc,
         },
     },
 };
@@ -537,52 +536,6 @@ impl Race {
             },
             Series::Standard => match &*event.event {
                 "6" => {
-                    // qualifiers
-                    for (i, (start, end, weekly, room, total, finished, vod, seed)) in [
-                        // source: https://docs.google.com/document/d/1fyNO82G2D0Z7J9wobxEbjDjGnomTaIRdKgETGV_ufmc/edit
-                        (utc!(2022, 11, 19, 23, 0, 0), utc!(2022, 11, 20, 3, 39, 27, 694), Some("NA"), "https://racetime.gg/ootr/neutral-bongobongo-4042", 127, 105, "https://www.youtube.com/watch?v=uuMVHppi8Uk", None),
-                        (utc!(2022, 11, 20, 14, 0, 0), utc!(2022, 11, 20, 17, 55, 28, 500), Some("EU"), "https://racetime.gg/ootr/trusty-volvagia-2022", 109, 89, "https://www.youtube.com/watch?v=7eQB379leVo", None),
-                        (utc!(2022, 11, 23, 3, 0, 0), utc!(2022, 11, 23, 9, 53, 31, 278), None, "https://racetime.gg/ootr/chaotic-wolfos-5287", 82, 74, "https://www.youtube.com/watch?v=tQQyq6x76yw", Some(seed::Data { file_hash: Some([HashIcon::BottledFish, HashIcon::MirrorShield, HashIcon::Mushroom, HashIcon::BigMagic, HashIcon::Compass]), files: seed::Files::OotrWeb { id: 1262335, gen_time: utc!(2022, 11, 23, 2, 46, 48), file_stem: Cow::Borrowed("OoTR_1262335_BZDNTLI1IE") } })),
-                        (utc!(2022, 11, 26, 23, 0, 0), utc!(2022, 11, 27, 4, 54, 15, 67), Some("NA"), "https://racetime.gg/ootr/smart-darunia-4679", 113, 96, "https://www.youtube.com/watch?v=jaVoVsw7PqE", Some(seed::Data { file_hash: Some([HashIcon::MegatonHammer, HashIcon::Saw, HashIcon::Longshot, HashIcon::MirrorShield, HashIcon::BottledMilk]), files: seed::Files::OotrWeb { id: 1265302, gen_time: utc!(2022, 11, 26, 22, 45, 47), file_stem: Cow::Borrowed("OoTR_1265302_4RNJWBU8GE") } })),
-                        (utc!(2022, 11, 27, 14, 0, 0), utc!(2022, 11, 27, 18, 41, 28, 265), Some("EU"), "https://racetime.gg/ootr/comic-sheik-2973", 98, 93, "https://www.youtube.com/watch?v=D6SWuCmuYRM", Some(seed::Data { file_hash: Some([HashIcon::MaskOfTruth, HashIcon::Bombchu, HashIcon::SoldOut, HashIcon::DekuStick, HashIcon::SoldOut]), files: seed::Files::OotrWeb { id: 1265745, gen_time: utc!(2022, 11, 27, 13, 45, 36), file_stem: Cow::Borrowed("OoTR_1265745_IY1CK1DMJX") } })),
-                        (utc!(2022, 11, 29, 19, 0, 0), utc!(2022, 11, 29, 23, 20, 27, 920), None, "https://racetime.gg/ootr/eager-jabu-1097", 92, 83, "https://twitch.tv/videos/1666092237", Some(seed::Data { file_hash: Some([HashIcon::MaskOfTruth, HashIcon::Bombchu, HashIcon::Bombchu, HashIcon::Compass, HashIcon::HeartContainer]), files: seed::Files::OotrWeb { id: 1267442, gen_time: utc!(2022, 11, 29, 18, 46, 39), file_stem: Cow::Borrowed("OoTR_1267442_KHLKWX7GGO") } })),
-                        (utc!(2022, 12, 2, 1, 0, 0), utc!(2022, 12, 2, 4, 51, 0, 313), None, "https://racetime.gg/ootr/dazzling-bigocto-7483", 91, 84, "https://www.youtube.com/watch?v=k7_2gAHZOfk", Some(seed::Data { file_hash: Some([HashIcon::BottledFish, HashIcon::Mushroom, HashIcon::Bombchu, HashIcon::SilverGauntlets, HashIcon::FairyOcarina]), files: seed::Files::OotrWeb { id: 1269079, gen_time: utc!(2022, 12, 2, 0, 45, 11), file_stem: Cow::Borrowed("OoTR_1269079_UA0S3MDBWJ") } })),
-                        (utc!(2022, 12, 3, 23, 0, 0), utc!(2022, 12, 4, 4, 55, 29, 700), Some("NA"), "https://racetime.gg/ootr/secret-dampe-4738", 131, 104, "https://www.youtube.com/watch?v=mWNNMG9UIa4", Some(seed::Data { file_hash: Some([HashIcon::Compass, HashIcon::Bow, HashIcon::SkullToken, HashIcon::SkullToken, HashIcon::MaskOfTruth]), files: seed::Files::OotrWeb { id: 1270728, gen_time: utc!(2022, 12, 3, 22, 46, 18), file_stem: Cow::Borrowed("OoTR_1270728_N5RSVBP64P") } })),
-                        (utc!(2022, 12, 4, 14, 0, 0), utc!(2022, 12, 4, 19, 36, 40, 94), Some("EU"), "https://racetime.gg/ootr/clumsy-mido-8938", 105, 99, "https://www.youtube.com/watch?v=yuvVxgYawCk", Some(seed::Data { file_hash: Some([HashIcon::Bombchu, HashIcon::Map, HashIcon::Saw, HashIcon::SoldOut, HashIcon::BottledMilk]), files: seed::Files::OotrWeb { id: 1271256, gen_time: utc!(2022, 12, 4, 13, 45, 22), file_stem: Cow::Borrowed("OoTR_1271256_XZYKYQ01Q1") } })),
-                        (utc!(2022, 12, 6, 1, 0, 0), utc!(2022, 12, 6, 5, 52, 45, 974), None, "https://racetime.gg/ootr/good-bigocto-9887", 86, 69, "https://www.youtube.com/watch?v=yTOC4ArmC6g", Some(seed::Data { file_hash: Some([HashIcon::MegatonHammer, HashIcon::Cucco, HashIcon::SoldOut, HashIcon::BottledMilk, HashIcon::Slingshot]), files: seed::Files::OotrWeb { id: 1272732, gen_time: utc!(2022, 12, 6, 0, 45, 17), file_stem: Cow::Borrowed("OoTR_1272732_FUP20778J4") } })),
-                        (utc!(2022, 12, 8, 19, 0, 0), utc!(2022, 12, 9, 1, 11, 51, 557), None, "https://racetime.gg/ootr/artful-barinade-9952", 80, 65, "https://www.youtube.com/watch?v=PxYEh63lvr4", Some(seed::Data { file_hash: Some([HashIcon::MaskOfTruth, HashIcon::BottledFish, HashIcon::MaskOfTruth, HashIcon::Beans, HashIcon::HeartContainer]), files: seed::Files::OotrWeb { id: 1274699, gen_time: utc!(2022, 12, 8, 18, 45, 51), file_stem: Cow::Borrowed("OoTR_1274699_XJA87DO91V") } })),
-                        (utc!(2022, 12, 10, 23, 0, 0), utc!(2022, 12, 11, 3, 35, 44, 300), Some("NA"), "https://racetime.gg/ootr/trusty-ingo-2577", 113, 80, "https://www.youtube.com/watch?v=zcSfvGAyGh0", Some(seed::Data { file_hash: Some([HashIcon::MirrorShield, HashIcon::DekuStick, HashIcon::MaskOfTruth, HashIcon::Cucco, HashIcon::Map]), files: seed::Files::OotrWeb { id: 1276441, gen_time: utc!(2022, 12, 10, 22, 45, 2), file_stem: Cow::Borrowed("OoTR_1276441_OBLJGB7Y83") } })),
-                        (utc!(2022, 12, 11, 14, 0, 0), utc!(2022, 12, 11, 18, 37, 19, 31), Some("EU"), "https://racetime.gg/ootr/speedy-jiro-3637", 113, 90, "https://www.twitch.tv/videos/1676628321", Some(seed::Data { file_hash: Some([HashIcon::Longshot, HashIcon::Map, HashIcon::SilverGauntlets, HashIcon::MegatonHammer, HashIcon::Map]), files: seed::Files::OotrWeb { id: 1276935, gen_time: utc!(2022, 12, 11, 13, 47, 26), file_stem: Cow::Borrowed("OoTR_1276935_0XPIIY36Q7") } })),
-                        (utc!(2022, 12, 12, 19, 0, 0), utc!(2022, 12, 13, 0, 13, 10, 597), None, "https://racetime.gg/ootr/sleepy-talon-9258", 87, 59, "https://www.youtube.com/watch?v=ZtT4f7w24-4", Some(seed::Data { file_hash: Some([HashIcon::BossKey, HashIcon::KokiriTunic, HashIcon::SkullToken, HashIcon::Frog, HashIcon::Beans]), files: seed::Files::OotrWeb { id: 1277918, gen_time: utc!(2022, 12, 12, 18, 45, 33), file_stem: Cow::Borrowed("OoTR_1277918_GFH8F88GIT") } })),
-                        (utc!(2022, 12, 15, 1, 0, 0), utc!(2022, 12, 15, 6, 3, 30, 579), None, "https://racetime.gg/ootr/hungry-gohma-3413", 69, 55, "https://www.twitch.tv/videos/1679558638", Some(seed::Data { file_hash: Some([HashIcon::Frog, HashIcon::FairyOcarina, HashIcon::MegatonHammer, HashIcon::FairyOcarina, HashIcon::MirrorShield]), files: seed::Files::OotrWeb { id: 1279608, gen_time: utc!(2022, 12, 15, 0, 45, 3), file_stem: Cow::Borrowed("OoTR_1279608_HXOIQ25MV3") } })),
-                        (utc!(2022, 12, 17, 23, 0, 0), utc!(2022, 12, 18, 3, 22, 37, 317), Some("NA"), "https://racetime.gg/ootr/trusty-wolfos-6723", 92, 70, "https://www.youtube.com/watch?v=6BBQ7VGUSZE", Some(seed::Data { file_hash: Some([HashIcon::Longshot, HashIcon::Saw, HashIcon::LensOfTruth, HashIcon::MegatonHammer, HashIcon::MasterSword]), files: seed::Files::OotrWeb { id: 1281942, gen_time: utc!(2022, 12, 17, 22, 45, 58), file_stem: Cow::Borrowed("OoTR_1281942_CKYJSQ7YS9") } })),
-                        (utc!(2022, 12, 18, 14, 0, 0), utc!(2022, 12, 18, 19, 44, 27, 758), Some("EU"), "https://racetime.gg/ootr/banzai-medigoron-2895", 69, 51, "https://www.youtube.com/watch?v=JAxNet4zeuk", Some(seed::Data { file_hash: Some([HashIcon::GoldScale, HashIcon::MegatonHammer, HashIcon::DekuStick, HashIcon::Frog, HashIcon::Map]), files: seed::Files::OotrWeb { id: 1282394, gen_time: utc!(2022, 12, 18, 13, 45, 7), file_stem: Cow::Borrowed("OoTR_1282394_K0OJIAVDCX") } })),
-                        (utc!(2022, 12, 21, 19, 0, 0), utc!(2022, 12, 22, 3, 56, 57, 266), None, "https://racetime.gg/ootr/overpowered-zora-1013", 68, 43, "https://www.youtube.com/watch?v=zUw7vwS96HU", Some(seed::Data { file_hash: Some([HashIcon::Boomerang, HashIcon::BossKey, HashIcon::BottledMilk, HashIcon::MasterSword, HashIcon::LensOfTruth]), files: seed::Files::OotrWeb { id: 1285036, gen_time: utc!(2022, 12, 21, 18, 45, 29), file_stem: Cow::Borrowed("OoTR_1285036_5ZGU6QBS9B") } })),
-                        (utc!(2022, 12, 23, 3, 0, 0), utc!(2022, 12, 23, 7, 41, 05, 441), None, "https://racetime.gg/ootr/sleepy-stalfos-1734", 56, 37, "https://www.youtube.com/watch?v=iALvni6vFoA", Some(seed::Data { file_hash: Some([HashIcon::HeartContainer, HashIcon::StoneOfAgony, HashIcon::MirrorShield, HashIcon::Mushroom, HashIcon::BottledMilk]), files: seed::Files::OotrWeb { id: 1286215, gen_time: utc!(2022, 12, 23, 2, 45, 18), file_stem: Cow::Borrowed("OoTR_1286215_LNKWY5APAY") } })),
-                    ].into_iter().enumerate() {
-                        add_or_update_race(&mut *transaction, &mut races, Self {
-                            id: None,
-                            series: event.series,
-                            event: event.event.to_string(),
-                            //TODO keep race IDs? (qN, cc)
-                            startgg_event: None,
-                            startgg_set: None,
-                            entrants: Entrants::Count { total, finished },
-                            phase: Some(format!("Qualifier")),
-                            round: Some(format!("{}{}", i + 1, if let Some(weekly) = weekly { format!(" ({weekly} Weekly)") } else { String::default() })),
-                            game: None,
-                            scheduling_thread: None,
-                            schedule: RaceSchedule::Live {
-                                end: Some(end),
-                                room: Some(Url::parse(room)?),
-                                start,
-                            },
-                            draft: None,
-                            video_url: Some(Url::parse(vod)?),
-                            ignored: false,
-                            seed,
-                        }).await?;
-                    }
                     // bracket matches
                     for row in sheet_values(&config.zsr_volunteer_signups, format!("Scheduled Races!B2:D")).await? {
                         if let [datetime_et, matchup, round] = &*row {
