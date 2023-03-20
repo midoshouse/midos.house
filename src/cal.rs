@@ -1142,11 +1142,11 @@ pub(crate) async fn for_series(env: &State<Environment>, config: &State<Config>,
 
 #[rocket::get("/event/<series>/<event>/calendar.ics")]
 pub(crate) async fn for_event(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series, event: &str) -> Result<Response<ICalendar<'static>>, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await.map_err(Error::Sql)?;
-    let event = event::Data::new(&mut transaction, series, event).await.map_err(Error::Event)?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut transaction = pool.begin().await?;
+    let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     add_event_races(&mut transaction, http_client, env, config, &mut cal, &event).await?;
-    transaction.commit().await.map_err(Error::Sql)?;
+    transaction.commit().await?;
     Ok(Response(cal))
 }
 

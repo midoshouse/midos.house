@@ -229,21 +229,21 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_F35CF_3PT90NK69D") } },
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_F35CF_I7BN7K3S2Z") } },
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_F35CF_99YI7I0K6O") } },
-        ]), true).await.map_err(InfoError::TableCells)?),
+        ]), true).await?),
         "rs1" => Some(seed::table(stream::iter(vec![
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoTR_1079630_V6516H22IW") } },
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoTR_1079637_HAH75EOAHQ") } },
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoTR_1079645_6XZJOSDCRW") } },
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoTR_1079646_AJZWAB1X3U") } },
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoTR_1079648_1DHCCQB5AC") } },
-        ]), true).await.map_err(InfoError::TableCells)?),
+        ]), true).await?),
         "rs2" => Some(seed::table(stream::iter(vec![
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_5ADE7_1S6GBQNP8R") } },
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_5ADE7_IIPBIQ4XAB") } },
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_5ADE7_LBZIZMD75C") } },
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_5ADE7_3OBW74243M") } },
             seed::Data { file_hash: None, files: seed::Files::MidosHouse { file_stem: Cow::Borrowed("OoT_5ADE7_E18HE17UKF") } },
-        ]), true).await.map_err(InfoError::TableCells)?),
+        ]), true).await?),
         _ => None,
     };
     Ok(html! {

@@ -93,7 +93,7 @@ enum Requirement {
     /// Must either request and submit the qualifier seed as an async, or participate in the live qualifier
     #[serde(rename_all = "camelCase")]
     Qualifier {
-        async_start: NaiveDate,
+        async_start: DateTime<Utc>,
         async_end: DateTime<Utc>,
         live_start: DateTime<Utc>,
     },
@@ -160,7 +160,7 @@ impl Requirement {
                     : "Play the qualifier seed, either live on ";
                     : format_datetime(*live_start, DateTimeFormat { long: true, running_text: true });
                     : " or async between ";
-                    : async_start.format("%B %-d, %Y").to_string();
+                    : format_datetime(*async_start, DateTimeFormat { long: true, running_text: true });
                     : " and ";
                     : format_datetime(*async_end, DateTimeFormat { long: true, running_text: true });
                 },
@@ -639,7 +639,7 @@ pub(crate) async fn post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Disc
                                 id as _, user.id as _, if user == me { SignupStatus::Created } else { SignupStatus::Unconfirmed } as _, role as _, startgg_id,
                             ).execute(&mut transaction).await?;
                         }
-                        transaction.commit().await.map_err(Error::Sql)?;
+                        transaction.commit().await?;
                         RedirectOrContent::Redirect(Redirect::to(uri!(super::status(series, event))))
                     } else {
                         RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, client, csrf, data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?)
