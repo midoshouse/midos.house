@@ -620,7 +620,13 @@ impl<'a> Data<'a> {
                         }
                     }
                 }
-                //a(class = "button") : "Volunteer"; //TODO
+                @if let Series::TriforceBlitz = self.series {
+                    @if let Tab::Volunteer = tab {
+                        a(class = "button selected", href? = is_subpage.then(|| uri!(volunteer(self.series, &*self.event)).to_string())) : "Volunteer";
+                    } else {
+                        a(class = "button", href = uri!(volunteer(self.series, &*self.event)).to_string()) : "Volunteer";
+                    }
+                }
                 @if let Some(ref video_url) = self.video_url {
                     a(class = "button", href = video_url.to_string()) {
                         : favicon(video_url);
@@ -657,6 +663,7 @@ pub(crate) enum Tab {
     MyStatus,
     Enter,
     FindTeam,
+    Volunteer,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -1682,4 +1689,28 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         transaction.rollback().await?;
         RedirectOrContent::Content(status_page(pool, &*discord_ctx.read().await, Some(me), uri, csrf, series, event, form.context).await?)
     })
+}
+
+#[rocket::get("/event/<series>/<event>/volunteer")]
+pub(crate) async fn volunteer(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Volunteer, false).await?;
+    let content = match data.series {
+        Series::TriforceBlitz => html! {
+            article {
+                p {
+                    : "If you are interested in restreaming, commentating, or tracking a race for this tournament, please contact ";
+                    : User::from_id(&mut transaction, Id(13528320435736334110)).await?.ok_or(Error::OrganizerUserData)?;
+                    : ".";
+                }
+                p : "If a race already has a restream, you can volunteer through that channel's Discord.";
+            }
+        },
+        _ => unimplemented!(),
+    };
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
+        : header;
+        : content;
+    }).await?)
 }

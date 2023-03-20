@@ -514,6 +514,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         event::submit_async,
         event::enter::get,
         event::enter::post,
+        event::volunteer,
         favicon::favicon_ico,
         favicon::favicon_png,
         notification::notifications,
