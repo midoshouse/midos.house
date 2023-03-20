@@ -40,7 +40,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "2" => html! {
             article {
                 p {
-                    : "This is the 2nd season of the Triforce Blitz tournament, organized by Miraba, ";
+                    : "This is the 2nd season of the Triforce Blitz tournament, organized by ";
                     : natjoin_html(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1p8HAwWsjsLW7tjfDl2SK-yQ35pVqbAS9GB72bkOIDFI/edit") : "the official document";

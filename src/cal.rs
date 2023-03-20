@@ -296,6 +296,8 @@ impl Race {
             p1,
             p2,
             p3,
+            total,
+            finished,
             phase,
             round,
             scheduling_thread AS "scheduling_thread: Id",
@@ -354,6 +356,11 @@ impl Race {
                 Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?),
                 Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?),
             ])
+        } else if let (Some(total), Some(finished)) = (row.total, row.finished) {
+            Entrants::Count {
+                total: total as u32,
+                finished: finished as u32,
+            }
         } else {
             match [row.p1, row.p2, row.p3] {
                 [Some(p1), Some(p2), Some(p3)] => Entrants::Three([
@@ -380,7 +387,7 @@ impl Race {
                         return Err(Error::StartggTeams { startgg_set: startgg_set.clone() })
                     }
                 } else {
-                    return Err(Error::MissingTeams)
+                    Entrants::Open
                 },
             }
         };
@@ -553,7 +560,7 @@ impl Race {
                         (utc!(2022, 12, 21, 19, 0, 0), utc!(2022, 12, 22, 3, 56, 57, 266), None, "https://racetime.gg/ootr/overpowered-zora-1013", 68, 43, "https://www.youtube.com/watch?v=zUw7vwS96HU", Some(seed::Data { file_hash: Some([HashIcon::Boomerang, HashIcon::BossKey, HashIcon::BottledMilk, HashIcon::MasterSword, HashIcon::LensOfTruth]), files: seed::Files::OotrWeb { id: 1285036, gen_time: utc!(2022, 12, 21, 18, 45, 29), file_stem: Cow::Borrowed("OoTR_1285036_5ZGU6QBS9B") } })),
                         (utc!(2022, 12, 23, 3, 0, 0), utc!(2022, 12, 23, 7, 41, 05, 441), None, "https://racetime.gg/ootr/sleepy-stalfos-1734", 56, 37, "https://www.youtube.com/watch?v=iALvni6vFoA", Some(seed::Data { file_hash: Some([HashIcon::HeartContainer, HashIcon::StoneOfAgony, HashIcon::MirrorShield, HashIcon::Mushroom, HashIcon::BottledMilk]), files: seed::Files::OotrWeb { id: 1286215, gen_time: utc!(2022, 12, 23, 2, 45, 18), file_stem: Cow::Borrowed("OoTR_1286215_LNKWY5APAY") } })),
                     ].into_iter().enumerate() {
-                        races.push(Self {
+                        add_or_update_race(&mut *transaction, &mut races, Self {
                             id: None,
                             series: event.series,
                             event: event.event.to_string(),
@@ -574,7 +581,7 @@ impl Race {
                             video_url: Some(Url::parse(vod)?),
                             ignored: false,
                             seed,
-                        });
+                        }).await?;
                     }
                     // bracket matches
                     for row in sheet_values(&config.zsr_volunteer_signups, format!("Scheduled Races!B2:D")).await? {
@@ -747,10 +754,10 @@ impl Race {
             self.id = Some(id);
             id
         };
-        let (team1, team2, p1, p2, p3) = match self.entrants {
-            Entrants::Open => (None, None, None, None, None),
-            Entrants::Count { .. } => unimplemented!(), //TODO
-            Entrants::Named(ref entrants) => (None, None, Some(entrants), None, None),
+        let ([team1, team2], [p1, p2, p3], [total, finished]) = match self.entrants {
+            Entrants::Open => ([None; 2], [None; 3], [None; 2]),
+            Entrants::Count { total, finished } => ([None; 2], [None; 3], [Some(total), Some(finished)]),
+            Entrants::Named(ref entrants) => ([None; 2], [Some(entrants), None, None], [None; 2]),
             Entrants::Two([ref p1, ref p2]) => {
                 let (team1, p1) = match p1 {
                     Entrant::MidosHouseTeam(team) => (Some(team.id), None),
@@ -760,13 +767,12 @@ impl Race {
                     Entrant::MidosHouseTeam(team) => (Some(team.id), None),
                     Entrant::Named(name) => (None, Some(name)),
                 };
-                (team1, team2, p1, p2, None)
+                ([team1, team2], [p1, p2, None], [None; 2])
             }
             Entrants::Three([ref p1, ref p2, ref p3]) => {
                 (
-                    None,
-                    None,
-                    Some(match p1 {
+                    [None; 2],
+                    [Some(match p1 {
                         Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
                         Entrant::Named(name) => name,
                     }),
@@ -777,7 +783,8 @@ impl Race {
                     Some(match p3 {
                         Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
                         Entrant::Named(name) => name,
-                    }),
+                    })],
+                    [None; 2],
                 )
             }
         };
@@ -824,9 +831,11 @@ impl Race {
             round,
             p3,
             startgg_event,
-            scheduling_thread
+            scheduling_thread,
+            total,
+            finished
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)",
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)",
             self.startgg_set,
             start,
             self.series as _,
@@ -860,6 +869,8 @@ impl Race {
             p3,
             self.startgg_event,
             self.scheduling_thread.map(|id| i64::from(id)),
+            total.map(|total| total as i32),
+            finished.map(|finished| finished as i32),
         ).execute(transaction).await?;
         Ok(())
     }
@@ -987,8 +998,6 @@ pub(crate) enum Error {
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
-    #[error("missing teams data in race")]
-    MissingTeams,
     #[error("wrong number of teams in start.gg set {startgg_set}")]
     StartggTeams {
         startgg_set: String,
