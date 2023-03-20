@@ -29,12 +29,14 @@ use {
     crate::{
         auth,
         event::{
+            self,
             Data,
             Error,
             FindTeamError,
             InfoError,
             Series,
             Tab,
+            enter,
         },
         http::{
             PageStyle,
@@ -52,7 +54,7 @@ use {
     },
 };
 
-pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
     let is_random_settings = data.event.starts_with("rs");
     let settings = match &*data.event {
         "5" => html! {
@@ -259,7 +261,7 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         a(href = "https://magma.com/") : "magma.com";
                         : " (formerly known as aggie.io)";
                     }
-                    (Some(2024..) | None) => a(href = "https://magma.com/") : "magma.com";
+                    Some(2024..) | None => a(href = "https://magma.com/") : "magma.com";
                 }
                 : " to each team. The canvas will be set to 660×460 for restream purposes.";
             }
@@ -395,19 +397,19 @@ impl ToHtml for Role {
     }
 }
 
-impl TryFrom<super::Role> for Role {
+impl TryFrom<crate::event::Role> for Role {
     type Error = ();
 
-    fn try_from(role: super::Role) -> Result<Self, ()> {
+    fn try_from(role: crate::event::Role) -> Result<Self, ()> {
         match role {
-            super::Role::Sheikah => Ok(Self::Sheikah),
-            super::Role::Gerudo => Ok(Self::Gerudo),
+            crate::event::Role::Sheikah => Ok(Self::Sheikah),
+            crate::event::Role::Gerudo => Ok(Self::Gerudo),
             _ => Err(()),
         }
     }
 }
 
-impl From<Role> for super::Role {
+impl From<Role> for crate::event::Role {
     fn from(role: Role) -> Self {
         match role {
             Role::Sheikah => Self::Sheikah,
@@ -454,7 +456,7 @@ impl ToHtml for RolePreference {
     }
 }
 
-pub(super) enum EnterFormDefaults<'v> {
+pub(crate) enum EnterFormDefaults<'v> { //TODO move to crate::event::enter
     Context(Context<'v>),
     Values {
         my_role: Option<Role>,
@@ -481,7 +483,7 @@ impl<'v> EnterFormDefaults<'v> {
         }
     }
 
-    fn my_role(&self) -> Option<Role> {
+    pub(crate) fn my_role(&self) -> Option<Role> {
         match self {
             Self::Context(ctx) => match ctx.field_value("my_role") {
                 Some("sheikah") => Some(Role::Sheikah),
@@ -492,7 +494,7 @@ impl<'v> EnterFormDefaults<'v> {
         }
     }
 
-    fn teammate(&self) -> Option<Id> {
+    pub(crate) fn teammate(&self) -> Option<Id> {
         self.teammate_text().and_then(|text| text.parse().ok())
     }
 
@@ -505,16 +507,16 @@ impl<'v> EnterFormDefaults<'v> {
 }
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
-pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, defaults: EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, defaults: EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
         let mut errors = defaults.errors();
         html! {
             : header;
-            : full_form(uri!(super::enter_post(data.series, &*data.event)), csrf, html! {
+            : full_form(uri!(enter::post(data.series, &*data.event)), csrf, html! {
                 legend {
                     : "Fill out this form to enter the race as a team. Your teammate will receive an invitation they have to accept to confirm the signup. If you don't have a team yet, you can ";
-                    a(href = uri!(super::find_team(data.series, &*data.event)).to_string()) : "look for a teammate";
+                    a(href = uri!(event::find_team(data.series, &*data.event)).to_string()) : "look for a teammate";
                     : " instead.";
                 }
                 : form_field("team_name", &mut errors, html! {
@@ -541,7 +543,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
             : header;
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(super::enter(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(enter::get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to enter this race.";
                 }
             }
@@ -550,7 +552,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
 }
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
-pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
@@ -563,7 +565,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
     let form = if me.is_some() {
         let mut errors = ctx.errors().collect_vec();
         if my_role.is_none() {
-            Some(full_form(uri!(super::find_team_post(data.series, &*data.event)), csrf, html! {
+            Some(full_form(uri!(event::find_team_post(data.series, &*data.event)), csrf, html! {
                 legend {
                     : "Fill out this form to add yourself to the list below.";
                 }
@@ -588,7 +590,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
         Some(html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(super::find_team(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(event::find_team(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to add yourself to this list.";
                 }
             }
@@ -637,7 +639,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
                             @if can_invite_any {
                                 td {
                                     @if let Some(my_role) = invite {
-                                        a(class = "button", href = uri!(super::enter(data.series, &*data.event, my_role, Some(user.id))).to_string()) : "Invite";
+                                        a(class = "button", href = uri!(enter::get(data.series, &*data.event, my_role, Some(user.id))).to_string()) : "Invite";
                                     }
                                 }
                             }

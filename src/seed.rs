@@ -166,7 +166,7 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
             Files::OotrWeb { id, gen_time, .. } if gen_time > now - chrono::Duration::days(90) => td(colspan? = spoiler_logs.then_some("2")) {
                 a(href = format!("https://ootrandomizer.com/seed/get?id={id}")) : "View";
             }
-            (Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem }) => {
+            Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem } => {
                 td {
                     a(href = format!("/seed/{file_stem}.{}", if let Some(world_count) = world_count {
                         if world_count.get() > 1 { "zpfz" } else { "zpf" }

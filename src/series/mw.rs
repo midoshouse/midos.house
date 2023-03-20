@@ -61,6 +61,7 @@ use {
     crate::{
         auth,
         event::{
+            self,
             AsyncKind,
             Data,
             Error,
@@ -68,6 +69,7 @@ use {
             InfoError,
             Series,
             Tab,
+            enter,
         },
         favicon::ChestAppearances,
         http::{
@@ -451,7 +453,7 @@ impl fmt::Display for S3Settings {
     }
 }
 
-pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
     Ok(match &*data.event {
         "2" => html! {
             article {
@@ -745,20 +747,20 @@ impl ToHtml for Role {
     }
 }
 
-impl TryFrom<super::Role> for Role {
+impl TryFrom<crate::event::Role> for Role {
     type Error = ();
 
-    fn try_from(role: super::Role) -> Result<Self, ()> {
+    fn try_from(role: crate::event::Role) -> Result<Self, ()> {
         match role {
-            super::Role::Power => Ok(Self::Power),
-            super::Role::Wisdom => Ok(Self::Wisdom),
-            super::Role::Courage => Ok(Self::Courage),
+            crate::event::Role::Power => Ok(Self::Power),
+            crate::event::Role::Wisdom => Ok(Self::Wisdom),
+            crate::event::Role::Courage => Ok(Self::Courage),
             _ => Err(()),
         }
     }
 }
 
-impl From<Role> for super::Role {
+impl From<Role> for crate::event::Role {
     fn from(role: Role) -> Self {
         match role {
             Role::Power => Self::Power,
@@ -769,30 +771,30 @@ impl From<Role> for super::Role {
 }
 
 #[derive(Deserialize)]
-pub(super) struct RaceTimeUser {
-    pub(super) teams: Vec<RaceTimeTeam>,
+pub(crate) struct RaceTimeUser {
+    pub(crate) teams: Vec<RaceTimeTeam>,
 }
 
 #[derive(Deserialize)]
-pub(super) struct RaceTimeTeam {
+pub(crate) struct RaceTimeTeam {
     name: String,
-    pub(super) slug: String,
+    pub(crate) slug: String,
 }
 
 #[derive(Deserialize)]
-pub(super) struct RaceTimeTeamData {
-    pub(super) name: String,
-    pub(super) slug: String,
-    pub(super) members: Vec<RaceTimeTeamMember>,
+pub(crate) struct RaceTimeTeamData {
+    pub(crate) name: String,
+    pub(crate) slug: String,
+    pub(crate) members: Vec<RaceTimeTeamMember>,
 }
 
 #[derive(Clone, Deserialize)]
-pub(super) struct RaceTimeTeamMember {
-    pub(super) id: String,
-    pub(super) name: String,
+pub(crate) struct RaceTimeTeamMember {
+    pub(crate) id: String,
+    pub(crate) name: String,
 }
 
-pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>, client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>, client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
         if let Some(ref racetime_id) = me.racetime_id {
@@ -814,7 +816,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
             } else {
                 html! {
                     : header;
-                    : full_form(uri!(super::enter_post(data.series, &*data.event)), csrf, html! {
+                    : full_form(uri!(enter::post(data.series, &*data.event)), csrf, html! {
                         : form_field("racetime_team", &mut errors, html! {
                             label(for = "racetime_team") : "racetime.gg Team:";
                             select(name = "racetime_team") {
@@ -836,7 +838,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
                 : header;
                 article {
                     p {
-                        a(href = uri!(crate::auth::racetime_login(Some(uri!(super::enter(data.series, &*data.event, _, _))))).to_string()) : "Connect a racetime.gg account to your Mido's House account";
+                        a(href = uri!(crate::auth::racetime_login(Some(uri!(enter::get(data.series, &*data.event, _, _))))).to_string()) : "Connect a racetime.gg account to your Mido's House account";
                         : " to enter this event.";
                     }
                 }
@@ -847,7 +849,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
             : header;
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(super::enter(data.series, &*data.event, _, _))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(enter::get(data.series, &*data.event, _, _))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to enter this event.";
                 }
             }
@@ -856,7 +858,7 @@ pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
 }
 
 //TODO this is no longer needed since the forms have been merged
-pub(super) enum EnterFormStep2Defaults<'a> {
+pub(crate) enum EnterFormStep2Defaults<'a> {
     Context(Context<'a>),
     Values {
         racetime_team: RaceTimeTeamData,
@@ -864,28 +866,28 @@ pub(super) enum EnterFormStep2Defaults<'a> {
 }
 
 impl<'v> EnterFormStep2Defaults<'v> {
-    pub(super) fn errors(&self) -> Vec<&form::Error<'v>> {
+    pub(crate) fn errors(&self) -> Vec<&form::Error<'v>> {
         match self {
             Self::Context(ctx) => ctx.errors().collect(),
             Self::Values { .. } => Vec::default(),
         }
     }
 
-    pub(super) fn racetime_team_name(&self) -> Option<&str> {
+    pub(crate) fn racetime_team_name(&self) -> Option<&str> {
         match self {
             Self::Context(ctx) => ctx.field_value("racetime_team_name"),
             Self::Values { racetime_team: RaceTimeTeamData { name, .. } } => Some(name),
         }
     }
 
-    pub(super) fn racetime_team_slug(&self) -> Option<&str> {
+    pub(crate) fn racetime_team_slug(&self) -> Option<&str> {
         match self {
             Self::Context(ctx) => ctx.field_value("racetime_team"),
             Self::Values { racetime_team: RaceTimeTeamData { slug, .. } } => Some(slug),
         }
     }
 
-    pub(super) fn racetime_members(&self, client: &reqwest::Client) -> impl Future<Output = Result<Vec<RaceTimeTeamMember>, Error>> {
+    pub(crate) fn racetime_members(&self, client: &reqwest::Client) -> impl Future<Output = Result<Vec<RaceTimeTeamMember>, Error>> {
         match self {
             Self::Context(ctx) => if let Some(team_slug) = ctx.field_value("racetime_team") {
                 let client = client.clone();
@@ -905,21 +907,21 @@ impl<'v> EnterFormStep2Defaults<'v> {
         }
     }
 
-    pub(super) fn role(&self, racetime_id: &str) -> Option<super::Role> {
+    pub(crate) fn role(&self, racetime_id: &str) -> Option<crate::event::Role> {
         match self {
-            Self::Context(ctx) => ctx.field_value(&*format!("roles[{racetime_id}]")).and_then(super::Role::from_css_class),
+            Self::Context(ctx) => ctx.field_value(&*format!("roles[{racetime_id}]")).and_then(crate::event::Role::from_css_class),
             Self::Values { .. } => None,
         }
     }
 
-    pub(super) fn startgg_id(&self, racetime_id: &str) -> Option<&str> {
+    pub(crate) fn startgg_id(&self, racetime_id: &str) -> Option<&str> {
         match self {
             Self::Context(ctx) => ctx.field_value(&*format!("startgg_id[{racetime_id}]")),
             Self::Values { .. } => None,
         }
     }
 
-    pub(super) fn restream_consent(&self) -> bool {
+    pub(crate) fn restream_consent(&self) -> bool {
         match self {
             Self::Context(ctx) => ctx.field_value("restream_consent") == Some("on"),
             Self::Values { .. } => false,
@@ -927,7 +929,7 @@ impl<'v> EnterFormStep2Defaults<'v> {
     }
 }
 
-pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
     let mut me_listed = false;
     let mut looking_for_team = Vec::default();
@@ -941,7 +943,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
         if me_listed {
             None
         } else {
-            Some(full_form(uri!(super::find_team_post(data.series, &*data.event)), csrf, html! {
+            Some(full_form(uri!(event::find_team_post(data.series, &*data.event)), csrf, html! {
                 @if data.is_single_race() {
                     legend {
                         : "Click this button to add yourself to the list below.";
@@ -965,7 +967,7 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
         Some(html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(super::find_team(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(event::find_team(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to add yourself to this list.";
                 }
             }
@@ -1007,9 +1009,9 @@ pub(super) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
     }).await?)
 }
 
-pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, ctx: Context<'_>) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, ctx: Context<'_>) -> Result<RawHtml<String>, Error> {
     Ok(if let Some(async_kind) = data.active_async(&mut *transaction, Some(team_id)).await? {
-        let async_row = sqlx::query!(r#"SELECT discord_channel AS "discord_channel: Id", web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
+        let async_row = sqlx::query!(r#"SELECT discord_channel AS "discord_channel: Id", tfb_uuid, web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
         if let Some(team_row) = sqlx::query!(r#"SELECT requested AS "requested!", submitted FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL"#, i64::from(team_id), async_kind as _).fetch_optional(&mut *transaction).await? {
             if team_row.submitted.is_some() {
                 if data.is_started(transaction).await? {
@@ -1032,12 +1034,13 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                         (None, None, None, None, None) => None,
                         _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
                     },
-                    files: match (async_row.web_id, async_row.web_gen_time) {
-                        (Some(Id(id)), Some(gen_time)) => seed::Files::OotrWeb {
-                            file_stem: Cow::Owned(async_row.file_stem),
+                    files: match (async_row.tfb_uuid, async_row.web_id, async_row.web_gen_time, async_row.file_stem.as_ref()) {
+                        (Some(uuid), _, _, _) => seed::Files::TriforceBlitz { uuid },
+                        (None, Some(Id(id)), Some(gen_time), Some(file_stem)) => seed::Files::OotrWeb {
+                            file_stem: Cow::Owned(file_stem.clone()),
                             id, gen_time,
                         },
-                        (None, None) => seed::Files::MidosHouse { file_stem: Cow::Owned(async_row.file_stem) },
+                        (None, None, None, Some(file_stem)) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem.clone()) },
                         _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
                     },
                 };
@@ -1052,7 +1055,7 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                         };
                         : seed_table;
                         p : "After playing the async, fill out the form below.";
-                        : full_form(uri!(super::submit_async(data.series, &*data.event)), csrf, html! {
+                        : full_form(uri!(event::submit_async(data.series, &*data.event)), csrf, html! {
                             : form_field("time1", &mut errors, html! {
                                 label(for = "time1", class = "power") : "Player 1 Finishing Time:";
                                 input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
@@ -1146,7 +1149,7 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                 div(class = "info") {
                     @match async_kind {
                         AsyncKind::Qualifier => p : "Play the qualifier async to qualify for the tournament.";
-                        (AsyncKind::Tiebreaker1 | AsyncKind::Tiebreaker2) => p : "Play the tiebreaker async to qualify for the bracket stage of the tournament.";
+                        AsyncKind::Tiebreaker1 | AsyncKind::Tiebreaker2 => p : "Play the tiebreaker async to qualify for the bracket stage of the tournament.";
                     }
                     p : "Rules:";
                     ol {
@@ -1189,7 +1192,7 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                             : " and have up to a 15 minute time where the affected runner can try to catch back up. If you do this, you must fill out the appropriate field when submitting your time so it can be authenticated.";
                         }
                     }
-                    : full_form(uri!(super::request_async(data.series, &*data.event)), csrf, html! {
+                    : full_form(uri!(event::request_async(data.series, &*data.event)), csrf, html! {
                         : form_field("confirm", &mut errors, html! {
                             input(type = "checkbox", id = "confirm", name = "confirm");
                             label(for = "confirm") : "We have read the above and are ready to play the seed";

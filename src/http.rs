@@ -81,6 +81,7 @@ use {
         util::{
             DateTimeFormat,
             Id,
+            StatusOrError,
             format_date_range,
             format_datetime,
         },
@@ -123,6 +124,12 @@ pub(crate) enum PageError {
     FenhlUserData,
     #[error("missing user data for Xopar")]
     XoparUserData,
+}
+
+impl<E: Into<PageError>> From<E> for StatusOrError<PageError> {
+    fn from(e: E) -> Self {
+        Self::Err(e.into())
+    }
 }
 
 pub(crate) type PageResult = Result<RawHtml<String>, PageError>;
@@ -172,6 +179,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                                         ChestTexture::BossKey => static_url!("chest/b512.png"),
                                         ChestTexture::Token => static_url!("chest/s512.png"),
                                         ChestTexture::Invisible => static_url!("chest/d512.png"),
+                                        ChestTexture::Heart => static_url!("chest/h512.png"),
                                     });
                                 }
                             }
@@ -497,8 +505,6 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         event::teams,
         event::races,
         event::status,
-        event::enter,
-        event::enter_post,
         event::find_team,
         event::find_team_post,
         event::confirm_signup,
@@ -506,6 +512,8 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         event::resign_post,
         event::request_async,
         event::submit_async,
+        event::enter::get,
+        event::enter::post,
         favicon::favicon_ico,
         favicon::favicon_png,
         notification::notifications,

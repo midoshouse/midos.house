@@ -128,11 +128,13 @@ use {
             self,
             Series,
             TeamConfig,
+        },
+        seed,
+        series::{
             mw,
             ndos,
             rsl,
         },
-        seed,
         team::Team,
         user::User,
         util::{

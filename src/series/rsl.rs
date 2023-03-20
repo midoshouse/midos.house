@@ -2,10 +2,7 @@ use {
     std::str::FromStr,
     enum_iterator::Sequence,
     rocket::response::content::RawHtml,
-    rocket_util::{
-        Origin,
-        html,
-    },
+    rocket_util::html,
     sqlx::{
         Postgres,
         Transaction,
@@ -13,15 +10,8 @@ use {
     crate::{
         event::{
             Data,
-            Error,
             InfoError,
-            Tab,
         },
-        http::{
-            PageStyle,
-            page,
-        },
-        user::User,
         util::natjoin_html,
     },
 };
@@ -84,7 +74,7 @@ impl FromStr for Preset {
     }
 }
 
-pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
     Ok(match &*data.event {
         "1" => html! {
             article {
@@ -158,27 +148,4 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         },
         _ => unimplemented!(),
     })
-}
-
-pub(super) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, data: Data<'_>) -> Result<RawHtml<String>, Error> {
-    let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
-        : header;
-        article {
-            @match &*data.event {
-                "5" => {
-                    p {
-                        a(href = "https://docs.google.com/forms/d/e/1FAIpQLSei3qjXA7DOHskgIOBSBObQXH3Y-qXynrsxY8rXbobFOkjdYA/viewform") : "Opt in using the official form";
-                        : ".";
-                    }
-                    p {
-                        : "Note: This page is not official. See ";
-                        a(href = "https://docs.google.com/document/d/1Js03yFcMw_mWx4UO_3UJB39CNCKa0bsxlBEYrHPq5Os/edit") : "the official document";
-                        : " for details.";
-                    }
-                }
-                _ => @unimplemented
-            }
-        }
-    }).await?)
 }

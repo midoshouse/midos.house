@@ -22,6 +22,7 @@ use {
     crate::{
         auth,
         event::{
+            self,
             Data,
             FindTeamError,
             InfoError,
@@ -43,7 +44,7 @@ use {
     },
 };
 
-pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
     Ok(html! {
         article {
             p {
@@ -56,8 +57,8 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 : ", will be a ";
                 a(href = "https://docs.google.com/document/d/1sbL6Zju943F5qyx4QbTLUsqZqOTMmvqKVbDwJl08SGc/edit") : "Standard Anti-Weekly Settings";
                 @match &*data.event {
-                    ("1" | "9") => : " (S6)";
-                    ("2" | "6" | "7") => : " (Beginner)";
+                    "1" | "9" => : " (S6)";
+                    "2" | "6" | "7" => : " (Beginner)";
                     "3" => : " (Advanced)";
                     "4" => : " (S5) + one bonk KO";
                     "5" => : " (Beginner) + mixed pools";
@@ -66,8 +67,8 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
                 : " race";
                 @match &*data.event {
-                    ("1" | "3" | "4" | "5" | "7" | "9") => {}
-                    ("2" | "8") => : " with 2-player co-op teams";
+                    "1" | "3" | "4" | "5" | "7" | "9" => {}
+                    "2" | "8" => : " with 2-player co-op teams";
                     "6" => : " with 3-player multiworld teams";
                     _ => @unimplemented
                 }
@@ -108,19 +109,19 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 a(href = "https://ootrandomizer.com/generatorDev?version=devFenhl_6.9.14") : "version 6.9.14 Fenhl-2";
                 : " of the randomizer using the ";
                 @match &*data.event {
-                    ("1" | "4" | "8" | "9") => : "Standard Anti-Weekly Settings (S6)";
-                    ("2" | "5" | "6" | "7") => : "Standard Anti-Weekly Settings (Beginner)";
+                    "1" | "4" | "8" | "9" => : "Standard Anti-Weekly Settings (S6)";
+                    "2" | "5" | "6" | "7" => : "Standard Anti-Weekly Settings (Beginner)";
                     "3" => : "Standard Anti-Weekly Settings (Advanced)";
                     _ => @unimplemented
                 }
                 @match &*data.event {
-                    ("1" | "2" | "3" | "6" | "7" | "9") => : " preset.";
-                    ("4" | "5" | "8") => : " preset, with the following changes:";
+                    "1" | "2" | "3" | "6" | "7" | "9" => : " preset.";
+                    "4" | "5" | "8" => : " preset, with the following changes:";
                     _ => @unimplemented
                 }
             }
             @match &*data.event {
-                ("1" | "2" | "3" | "6" | "7" | "9") => {}
+                "1" | "2" | "3" | "6" | "7" | "9" => {}
                 "4" => ul {
                     li : "No dungeon boss shortcuts";
                     li : "Spawn shuffled for both ages";
@@ -157,7 +158,7 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
 }
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
-pub(super) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+pub(crate) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
     let mut me_listed = false;
     let mut looking_for_team = Vec::default();
@@ -171,7 +172,7 @@ pub(super) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgre
         if me_listed {
             None
         } else {
-            Some(full_form(uri!(super::find_team_post(data.series, &*data.event)), csrf, html! {
+            Some(full_form(uri!(event::find_team_post(data.series, &*data.event)), csrf, html! {
                 @if data.is_single_race() {
                     legend {
                         : "Click this button to add yourself to the list below.";
@@ -195,7 +196,7 @@ pub(super) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgre
         Some(html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(super::find_team(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(event::find_team(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to add yourself to this list.";
                 }
             }

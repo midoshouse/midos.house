@@ -5,7 +5,6 @@ use {
         iter,
     },
     async_trait::async_trait,
-    derive_more::From,
     itertools::Itertools as _,
     rocket::{
         Responder,
@@ -30,10 +29,7 @@ use {
     url::Url,
     crate::{
         cal::Entrant,
-        http::{
-            PageError,
-            static_url,
-        },
+        http::static_url,
         team::Team,
         user::User,
     },
@@ -184,17 +180,10 @@ pub(crate) enum RedirectOrContent {
     Content(RawHtml<String>),
 }
 
-#[derive(Responder, From)]
+#[derive(Responder)]
 pub(crate) enum StatusOrError<E> {
     Status(Status),
-    #[from]
     Err(E),
-}
-
-impl From<sqlx::Error> for StatusOrError<PageError> {
-    fn from(e: sqlx::Error) -> Self {
-        Self::Err(PageError::Sql(e))
-    }
 }
 
 pub(crate) fn favicon(url: &Url) -> RawHtml<String> {

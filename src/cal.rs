@@ -443,7 +443,7 @@ impl Race {
     }
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: &Environment, config: &Config, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
-        async fn add_or_update_race(transaction: &mut Transaction<'_, Postgres>, races: &mut Vec<Race>, require_matching_start_time: bool, mut race: Race) -> sqlx::Result<()> {
+        async fn add_or_update_race(transaction: &mut Transaction<'_, Postgres>, races: &mut Vec<Race>, mut race: Race) -> sqlx::Result<()> {
             if let Some(found_race) = races.iter_mut().find(|iter_race|
                 iter_race.series == race.series
                 && iter_race.event == race.event
@@ -451,7 +451,6 @@ impl Race {
                 && iter_race.round == race.round
                 && iter_race.game == race.game
                 && iter_race.entrants == race.entrants
-                && (!require_matching_start_time || iter_race.schedule.start_matches(&race.schedule))
             ) {
                 if let Some(id) = found_race.id {
                     if !found_race.schedule.start_matches(&race.schedule) {
@@ -582,7 +581,7 @@ impl Race {
                         if let [datetime_et, matchup, round] = &*row {
                             let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
                             if start < America::New_York.with_ymd_and_hms(2022, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue } //TODO also add an upper bound
-                            add_or_update_race(&mut *transaction, &mut races, false, Self {
+                            add_or_update_race(&mut *transaction, &mut races, Self {
                                 id: None,
                                 series: event.series,
                                 event: event.event.to_string(),
@@ -632,7 +631,7 @@ impl Race {
                                     Entrant::Named(p3.clone()),
                                 ]))
                             };
-                            add_or_update_race(&mut *transaction, &mut races, false, Self {
+                            add_or_update_race(&mut *transaction, &mut races, Self {
                                 id: None,
                                 series: event.series,
                                 event: event.event.to_string(),
@@ -996,6 +995,12 @@ pub(crate) enum Error {
     },
     #[error("this start.gg team ID is not associated with a Mido's House team")]
     UnknownTeam,
+}
+
+impl<E: Into<Error>> From<E> for StatusOrError<Error> {
+    fn from(e: E) -> Self {
+        Self::Err(e.into())
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

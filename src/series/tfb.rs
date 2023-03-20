@@ -16,6 +16,7 @@ use {
     },
     crate::{
         event::{
+            self,
             AsyncKind,
             Data,
             Error,
@@ -34,7 +35,7 @@ use {
     },
 };
 
-pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
     Ok(match &*data.event {
         "2" => html! {
             article {
@@ -51,7 +52,7 @@ pub(super) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
     })
 }
 
-pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Option<Id>, ctx: Context<'_>) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Option<Id>, ctx: Context<'_>) -> Result<RawHtml<String>, Error> {
     Ok(if let Some(async_kind) = data.active_async(&mut *transaction, team_id).await? {
         let async_row = sqlx::query!(r#"SELECT tfb_uuid AS "tfb_uuid!", hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
         let team_row = if let Some(team_id) = team_id {
@@ -92,7 +93,7 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                         };
                         : seed_table;
                         p : "After playing the async, fill out the form below.";
-                        : full_form(uri!(super::submit_async(data.series, &*data.event)), csrf, html! {
+                        : full_form(uri!(event::submit_async(data.series, &*data.event)), csrf, html! {
                             : form_field("pieces", &mut errors, html! {
                                 label(for = "pieces") : "Number of Triforce Pieces found:";
                                 input(type = "number", min = "0", max = "3", name = "pieces", value? = ctx.field_value("pieces"));
@@ -153,7 +154,7 @@ pub(super) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                         }
                     }
                     @let mut errors = ctx.errors().collect_vec();
-                    : full_form(uri!(super::request_async(data.series, &*data.event)), csrf, html! {
+                    : full_form(uri!(event::request_async(data.series, &*data.event)), csrf, html! {
                         : form_field("confirm", &mut errors, html! {
                             input(type = "checkbox", id = "confirm", name = "confirm");
                             label(for = "confirm") : "I have read the above and am ready to play the seed";

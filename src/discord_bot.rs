@@ -47,8 +47,8 @@ use {
             self,
             MatchSource,
             Series,
-            mw,
         },
+        series::mw,
         team::Team,
         util::{
             Id,

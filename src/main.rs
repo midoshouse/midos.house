@@ -39,6 +39,7 @@ mod favicon;
 mod notification;
 mod racetime_bot;
 mod seed;
+mod series;
 mod startgg;
 mod team;
 #[cfg(unix)] mod unix_socket;

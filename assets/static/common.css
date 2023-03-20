@@ -157,7 +157,7 @@ input[type="submit"] {
 
 article,
 form {
-    border: 1px solid black;
+    border: 1px solid;
     margin: 8px;
     padding: 8px;
     background-color: white;
@@ -220,6 +220,23 @@ table td {
 
 .courage {
     color: #008000;
+}
+
+.check-item {
+    display: flex;
+    flex-flow: row;
+    align-items: center;
+}
+
+.checkmark {
+    border: 1px solid;
+    width: 24px;
+    height: 24px;
+    border-radius: 24px;
+    text-align: center;
+    margin-inline: 6px;
+    margin-block: 3px;
+    flex-shrink: 0;
 }
 
 .vs1 {
@@ -361,7 +378,6 @@ footer,
 
     article,
     form {
-        border-color: white;
         background-color: black;
     }
 

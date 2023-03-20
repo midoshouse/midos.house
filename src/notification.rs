@@ -27,14 +27,16 @@ use {
             Series,
             SignupStatus,
             TeamConfig,
-            mw,
-            pic,
         },
         http::{
             PageError,
             PageKind,
             PageStyle,
             page,
+        },
+        series::{
+            mw,
+            pic,
         },
         user::User,
         util::{
