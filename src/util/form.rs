@@ -8,25 +8,17 @@ use {
     },
     rocket_csrf::CsrfToken,
     rocket_util::{
+        CsrfForm,
         ToHtml,
         html,
     },
 };
 
 /// A form that only holds a CSRF token
-#[derive(FromForm)]
+#[derive(FromForm, CsrfForm)]
 pub(crate) struct EmptyForm {
+    #[field(default = String::new())]
     csrf: String,
-}
-
-impl EmptyForm {
-    pub(crate) fn verify(&self, token: &Option<CsrfToken>) -> Result<(), rocket_csrf::VerificationFailure> {
-        if let Some(token) = token {
-            token.verify(&self.csrf)
-        } else {
-            Err(rocket_csrf::VerificationFailure)
-        }
-    }
 }
 
 fn render_form_error(error: &form::Error<'_>) -> RawHtml<String> {

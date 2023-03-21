@@ -418,6 +418,8 @@ async fn not_found(request: &Request<'_>) -> PageResult {
     }).await
 }
 
+//TODO catcher for 422 Unprocessable Entity (thrown when a submitted form does not match the required type, treat as a server error)
+
 #[rocket::catch(500)]
 async fn internal_server_error(request: &Request<'_>) -> PageResult {
     let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report

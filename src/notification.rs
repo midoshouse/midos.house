@@ -2,7 +2,10 @@ use {
     futures::stream::TryStreamExt as _,
     rocket::{
         State,
-        form::Form,
+        form::{
+            Contextual,
+            Form,
+        },
         response::{
             Redirect,
             content::RawHtml,
@@ -11,6 +14,7 @@ use {
     },
     rocket_csrf::CsrfToken,
     rocket_util::{
+        ContextualExt as _,
         Origin,
         html,
     },
@@ -291,15 +295,12 @@ pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, uri: O
     })
 }
 
-#[derive(Debug, thiserror::Error, rocket_util::Error)]
-pub(crate) enum DismissError {
-    #[error(transparent)] Csrf(#[from] rocket_csrf::VerificationFailure),
-    #[error(transparent)] Sql(#[from] sqlx::Error),
-}
-
 #[rocket::post("/notifications/dismiss/<id>", data = "<form>")]
-pub(crate) async fn dismiss(pool: &State<PgPool>, me: User, id: Id, csrf: Option<CsrfToken>, form: Form<EmptyForm>) -> Result<Redirect, DismissError> {
-    form.verify(&csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
-    sqlx::query!("DELETE FROM notifications WHERE id = $1 AND rcpt = $2", i64::from(id), i64::from(me.id)).execute(&**pool).await?;
+pub(crate) async fn dismiss(pool: &State<PgPool>, me: User, id: Id, csrf: Option<CsrfToken>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, rocket_util::Error<sqlx::Error>> {
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    if form.context.errors().next().is_none() {
+        sqlx::query!("DELETE FROM notifications WHERE id = $1 AND rcpt = $2", i64::from(id), i64::from(me.id)).execute(&**pool).await?;
+    }
     Ok(Redirect::to(uri!(notifications)))
 }

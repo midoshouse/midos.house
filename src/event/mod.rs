@@ -1293,10 +1293,11 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum AcceptError {
-    #[error(transparent)] Csrf(#[from] rocket_csrf::VerificationFailure),
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Discord(#[from] serenity::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("failed to verify CSRF token")]
+    Csrf,
     #[error("you can no longer enter this event since it has already started")]
     EventStarted,
     #[error("you haven't been invited to this team")]
@@ -1312,10 +1313,12 @@ impl<E: Into<AcceptError>> From<E> for StatusOrError<AcceptError> {
 }
 
 #[rocket::post("/event/<series>/<event>/confirm/<team>", data = "<form>")]
-pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, team: Id, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<EmptyForm>) -> Result<Redirect, StatusOrError<AcceptError>> {
+pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, team: Id, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, StatusOrError<AcceptError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    form.verify(&csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    if form.context.errors().next().is_some() { return Err(AcceptError::Csrf.into()) }
     if data.is_started(&mut transaction).await? { return Err(AcceptError::EventStarted.into()) }
     if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, i64::from(team), i64::from(me.id)).fetch_optional(&mut transaction).await? {
         if role == Role::Sheikah && me.racetime_id.is_none() {
@@ -1407,10 +1410,11 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
 }
 
 #[rocket::post("/event/<series>/<event>/resign/<team>", data = "<form>")]
-pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id, form: Form<EmptyForm>) -> Result<Redirect, StatusOrError<ResignError>> {
+pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, StatusOrError<ResignError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    form.verify(&csrf)?; //TODO option to resubmit on error page (with some “are you sure?” wording)
+    let mut form = form.into_inner();
+    form.verify(&csrf); //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_ended() { return Err(ResignError::EventEnded.into()) }
     let is_started = data.is_started(&mut transaction).await?;
     let members = if is_started {
