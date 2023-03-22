@@ -1251,7 +1251,7 @@ impl RaceHandler<GlobalState> for Handler {
         let data = ctx.data().await;
         let new_room_lock = lock!(ctx.global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-        let (official_data, video_url, race_state, high_seed_name, low_seed_name) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
+        let (official_data, video_url, race_state, high_seed_name, low_seed_name, fpa_enabled) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
             let mut entrants = Vec::default();
             let start = cal_event.start().expect("handling room for official race without start time");
             for team in cal_event.active_teams() {
@@ -1276,21 +1276,26 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             }
             let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
-            ctx.send_message(&format!("Welcome to this {} race! Learn more about the tournament at https://midos.house/event/{}/{}", match (cal_event.race.phase, cal_event.race.round) {
-                (Some(phase), Some(round)) => format!("{phase} {round}"),
-                (Some(phase), None) => phase,
-                (None, Some(round)) => round,
-                (None, None) => event.display_name.clone(),
-            }, event.series, event.event)).await?;
-            ctx.send_message("Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat.").await?; //TODO different message for monitorless FPA?
+            ctx.send_message(&format!(
+                "Welcome to {}! Learn more about the event at https://midos.house/event/{}/{}",
+                if event.is_single_race() {
+                    format!("the {}", event.display_name) //TODO remove “the” depending on event name
+                } else {
+                    format!("this {} race", match (cal_event.race.phase, cal_event.race.round) {
+                        (Some(phase), Some(round)) => format!("{phase} {round}"),
+                        (Some(phase), None) => phase,
+                        (None, Some(round)) => round,
+                        (None, None) => event.display_name.clone(),
+                    })
+                },
+                event.series,
+                event.event,
+            )).await?;
             let (race_state, high_seed_name, low_seed_name) = match event.draft_kind() {
                 DraftKind::MultiworldS3 => {
-                    let Draft { state, high_seed } = cal_event.race.draft.as_ref().expect("missing draft state");
-                    if let mw::DraftStep::Done(settings) = state.next_step() {
-                        ctx.send_message(&format!("Your seed with {settings} will be posted in 15 minutes.")).await?;
-                    }
+                    let Draft { high_seed, .. } = cal_event.race.draft.as_ref().expect("missing draft state");
                     let [high_seed_name, low_seed_name] = match cal_event.race.entrants {
-                        Entrants::Open | Entrants::Count { .. } => unimplemented!("open official race"), //TODO
+                        Entrants::Open | Entrants::Count { .. } => [format!("Team A"), format!("Team B")],
                         Entrants::Named(_) => unimplemented!("official race with opaque participants text"), //TODO
                         Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)]) => if team1.id == *high_seed {
                             [
@@ -1315,15 +1320,22 @@ impl RaceHandler<GlobalState> for Handler {
                 DraftKind::None => (RaceState::Init, format!("Team A"), format!("Team B")),
             };
             (
-                cal_event.race.id.map(|id| OfficialRaceData {
+                Some(OfficialRaceData {
+                    id: cal_event.race.id.expect("race loaded from database has ID"),
                     game: cal_event.race.game,
                     fpa_invoked: false,
-                    id, event, entrants, start,
+                    event, entrants, start,
                 }),
                 cal_event.race.video_url.clone(),
                 race_state,
                 high_seed_name,
                 low_seed_name,
+                if let RaceStatusValue::Invitational = data.status.value {
+                    ctx.send_message("Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat.").await?; //TODO different message for monitorless FPA?
+                    true
+                } else {
+                    false
+                },
             )
         } else {
             let mut race_state = RaceState::Init;
@@ -1380,39 +1392,52 @@ impl RaceHandler<GlobalState> for Handler {
                 RaceState::default(),
                 format!("Team A"),
                 format!("Team B"),
+                false,
             )
         };
         transaction.commit().await.to_racetime()?;
         drop(new_room_lock);
-        let is_official = official_data.is_some();
         let this = Self {
             restreams: HashMap::from_iter(video_url.map(|url| (url, None))),
             breaks: None, //TODO default breaks for restreamed matches?
             break_notifications: None,
             goal_notifications: None,
             start_saved: false,
-            fpa_enabled: is_official,
             locked: false,
             race_state: ArcRwLock::new(race_state),
-            official_data, high_seed_name, low_seed_name,
+            official_data, high_seed_name, low_seed_name, fpa_enabled,
         };
         if let Some(OfficialRaceData { ref event, .. }) = this.official_data {
             match event.draft_kind() {
                 DraftKind::MultiworldS3 => {
                     let state = this.race_state.read().await;
-                    if let RaceState::Draft { .. } = *state {
+                    if let RaceState::Draft { state: ref draft_state, .. } = *state {
+                        if let mw::DraftStep::Done(settings) = draft_state.next_step() {
+                            ctx.send_message(&format!("Your seed with {settings} will be posted in 15 minutes.")).await?;
+                        }
                         drop(state);
                         this.advance_draft(ctx).await?;
                     }
                 }
                 DraftKind::None => {
-                    let state = this.race_state.read().await;
+                    let state = this.race_state.clone().write_owned().await;
                     if let RaceState::Init = *state {
-                        drop(state);
                         match goal {
                             Goal::MultiworldS3 => unreachable!(), // uses DraftKind::MultiworldS3
-                            Goal::NineDaysOfSaws | Goal::PicRs2 | Goal::Rsl => {} //TODO roll seed
-                            Goal::TriforceBlitz => goal.send_presets(ctx).await?,
+                            Goal::PicRs2 => {
+                                ctx.send_message("Your random settings Pictionary seed will be posted in 15 minutes.").await?;
+                                this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
+                                    version: Some((Version::new(2, 3, 8), 10)),
+                                    preset: RslDevFenhlPreset::Pictionary,
+                                }, 1, true, format!("a random settings Pictionary seed"));
+                            }
+                            Goal::TriforceBlitz => {
+                                drop(state);
+                                goal.send_presets(ctx).await?;
+                            }
+                            Goal::NineDaysOfSaws | Goal::Rsl => {
+                                drop(state); //TODO roll seed
+                            }
                         }
                     }
                 }

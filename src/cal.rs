@@ -503,7 +503,16 @@ impl Race {
         match event.series {
             Series::Multiworld => {} // added to database
             Series::NineDaysOfSaws | Series::Pictionary => {
-                races.push(Self {
+                let schedule = if let Some(start) = event.start(&mut *transaction).await? {
+                    RaceSchedule::Live {
+                        end: event.end,
+                        room: event.url.clone(),
+                        start,
+                    }
+                } else {
+                    RaceSchedule::Unscheduled
+                };
+                add_or_update_race(&mut *transaction, &mut races, Self {
                     id: None,
                     series: event.series,
                     event: event.event.to_string(),
@@ -514,20 +523,12 @@ impl Race {
                     round: None,
                     game: None,
                     scheduling_thread: None,
-                    schedule: if let Some(start) = event.start(transaction).await? {
-                        RaceSchedule::Live {
-                            end: event.end,
-                            room: event.url.clone(),
-                            start,
-                        }
-                    } else {
-                        RaceSchedule::Unscheduled
-                    },
                     draft: None,
                     seed: None, //TODO
                     video_url: event.video_url.clone(),
                     ignored: false,
-                });
+                    schedule,
+                }).await?;
             }
             Series::Rsl => match &*event.event {
                 "1" => {} // no match data available
