@@ -1062,6 +1062,7 @@ struct Handler {
     restreams: HashMap<Url, Option<RestreamState>>,
     breaks: Option<Breaks>,
     break_notifications: Option<tokio::task::JoinHandle<()>>,
+    goal_notifications: Option<tokio::task::JoinHandle<()>>,
     start_saved: bool,
     fpa_enabled: bool,
     locked: bool,
@@ -1388,6 +1389,7 @@ impl RaceHandler<GlobalState> for Handler {
             restreams: HashMap::from_iter(video_url.map(|url| (url, None))),
             breaks: None, //TODO default breaks for restreamed matches?
             break_notifications: None,
+            goal_notifications: None,
             start_saved: false,
             fpa_enabled: is_official,
             locked: false,
@@ -2075,31 +2077,68 @@ impl RaceHandler<GlobalState> for Handler {
             }
         }
         match data.status.value {
-            RaceStatusValue::InProgress => if let Some(breaks) = self.breaks {
-                self.break_notifications.get_or_insert_with(|| {
-                    let ctx = ctx.clone();
-                    tokio::spawn(async move {
-                        sleep(breaks.interval - Duration::from_secs(5 * 60)).await;
-                        while Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await {
-                            let (_, ()) = tokio::join!(
-                                ctx.send_message("@entrants Reminder: Next break in 5 minutes."),
-                                sleep(Duration::from_secs(5 * 60)),
-                            );
-                            if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
-                            let msg = format!("@entrants Break time! Please pause for {}.", format_duration(breaks.duration, true));
-                            let (_, ()) = tokio::join!(
-                                ctx.send_message(&msg),
-                                sleep(breaks.duration),
-                            );
-                            if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
-                            let (_, ()) = tokio::join!(
-                                ctx.send_message("@entrants Break ended. You may resume playing."),
-                                sleep(breaks.interval - breaks.duration - Duration::from_secs(5 * 60)),
-                            );
-                        }
-                    })
-                });
-            },
+            RaceStatusValue::InProgress => {
+                if let Some(breaks) = self.breaks {
+                    self.break_notifications.get_or_insert_with(|| {
+                        let ctx = ctx.clone();
+                        tokio::spawn(async move {
+                            sleep(breaks.interval - Duration::from_secs(5 * 60)).await;
+                            while Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await {
+                                let (_, ()) = tokio::join!(
+                                    ctx.send_message("@entrants Reminder: Next break in 5 minutes."),
+                                    sleep(Duration::from_secs(5 * 60)),
+                                );
+                                if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
+                                let msg = format!("@entrants Break time! Please pause for {}.", format_duration(breaks.duration, true));
+                                let (_, ()) = tokio::join!(
+                                    ctx.send_message(&msg),
+                                    sleep(breaks.duration),
+                                );
+                                if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
+                                let (_, ()) = tokio::join!(
+                                    ctx.send_message("@entrants Break ended. You may resume playing."),
+                                    sleep(breaks.interval - breaks.duration - Duration::from_secs(5 * 60)),
+                                );
+                            }
+                        })
+                    });
+                }
+                match self.goal(&ctx).await {
+                    Goal::PicRs2 => {
+                        self.goal_notifications.get_or_insert_with(|| {
+                            let ctx = ctx.clone();
+                            tokio::spawn(async move {
+                                sleep(Duration::from_secs(25 * 60)).await;
+                                if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
+                                let (_, ()) = tokio::join!(
+                                    ctx.send_message("@entrants Reminder: 5 minutes until you can start drawing/playing."),
+                                    sleep(Duration::from_secs(5 * 60)),
+                                );
+                                let _ = ctx.send_message("@entrants You may now start drawing/playing.").await;
+                            })
+                        });
+                    }
+                    Goal::TriforceBlitz => {
+                        self.goal_notifications.get_or_insert_with(|| {
+                            let ctx = ctx.clone();
+                            tokio::spawn(async move {
+                                sleep(Duration::from_secs(2 * 60 * 60)).await;
+                                let is_1v1 = {
+                                    let data = ctx.data().await;
+                                    if !Self::should_handle_inner(&*data, ctx.global_state.clone(), false).await { return }
+                                    data.entrants_count == 2
+                                };
+                                let _ = ctx.send_message(if is_1v1 {
+                                    "@entrants Time limit reached. If anyone has found at least 1 Triforce piece, please .done. If neither player has any pieces, please continue and .done when one is found."
+                                } else {
+                                    "@entrants Time limit reached. If you've found at least 1 Triforce piece, please mark yourself as done. If you haven't, you may continue playing until you find one."
+                                }).await;
+                            })
+                        });
+                    }
+                    Goal::MultiworldS3 | Goal::NineDaysOfSaws | Goal::Rsl => {}
+                }
+            }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx).await? {
                 if let Some(OfficialRaceData { ref event, fpa_invoked, game, .. }) = self.official_data {
                     if let Some(discord_guild) = event.discord_guild {

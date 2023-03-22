@@ -1447,6 +1447,7 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<Csr
             sqlx::query!("DELETE FROM teams WHERE id = $1", i64::from(team)).execute(&mut transaction).await?;
         }
         transaction.commit().await?;
+        //TODO notify organizer Discord channel if any
         Ok(Redirect::to(uri!(teams(series, event))))
     } else {
         transaction.rollback().await?;
