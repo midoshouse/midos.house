@@ -99,6 +99,13 @@ enum Requirement {
     },
 }
 
+struct RequirementStatus {
+    is_checked: bool,
+    blocks_submit: bool,
+    html_content: RawHtml<String>,
+    form_error_message: &'static str,
+}
+
 impl Requirement {
     fn requires_sign_in(&self) -> bool {
         match self {
@@ -109,63 +116,78 @@ impl Requirement {
         }
     }
 
-    async fn check(&self, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>, redirect_uri: rocket::http::uri::Origin<'_>) -> Result<(bool, RawHtml<String>, &'static str), Error> {
+    async fn check(&self, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>, redirect_uri: rocket::http::uri::Origin<'_>) -> Result<RequirementStatus, Error> {
         Ok(match self {
             Requirement::RaceTime => {
-                let is_connected = me.expect("this check requires sign-in").racetime_id.is_some();
-                let mut content = html! {
+                let is_checked = me.expect("this check requires sign-in").racetime_id.is_some();
+                let mut html_content = html! {
                     : "Connect a racetime.gg account to your Mido's House account";
                 };
-                if !is_connected {
+                if !is_checked {
                     //TODO offer to merge accounts like on profile
-                    content = html! {
-                        a(href = uri!(crate::auth::racetime_login(Some(redirect_uri))).to_string()) : content;
+                    html_content = html! {
+                        a(href = uri!(crate::auth::racetime_login(Some(redirect_uri))).to_string()) : html_content;
                     };
                 }
-                (is_connected, content, "A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.") //TODO direct link?
+                RequirementStatus {
+                    blocks_submit: !is_checked,
+                    form_error_message: "A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.", //TODO direct link?
+                    is_checked, html_content,
+                }
             }
             Requirement::Discord => {
-                let is_connected = me.expect("this check requires sign-in").discord_id.is_some();
-                let mut content = html! {
+                let is_checked = me.expect("this check requires sign-in").discord_id.is_some();
+                let mut html_content = html! {
                     : "Connect a Discord account to your Mido's House account";
                 };
-                if !is_connected {
+                if !is_checked {
                     //TODO offer to merge accounts like on profile
-                    content = html! {
-                        a(href = uri!(crate::auth::discord_login(Some(redirect_uri))).to_string()) : content;
+                    html_content = html! {
+                        a(href = uri!(crate::auth::discord_login(Some(redirect_uri))).to_string()) : html_content;
                     };
                 }
-                (is_connected, content, "A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.") //TODO direct link?
+                RequirementStatus {
+                    blocks_submit: !is_checked,
+                    form_error_message: "A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.", //TODO direct link?
+                    is_checked, html_content,
+                }
             }
             Requirement::DiscordGuild { name } => {
                 let discord_guild = data.discord_guild.ok_or(Error::DiscordGuild)?;
-                let is_joined = if let Some(discord_id) = me.expect("this check requires sign-in").discord_id {
+                let is_checked = if let Some(discord_id) = me.expect("this check requires sign-in").discord_id {
                     discord_guild.member(&*discord_ctx.read().await, discord_id).await.is_ok()
                 } else {
                     false
                 };
-                (
-                    is_joined,
-                    html! {
+                RequirementStatus {
+                    blocks_submit: !is_checked,
+                    html_content: html! {
                         : "Join the ";
                         : name; //TODO invite link if not joined
                         : " Discord server";
                     },
-                    "You must join the event's Discord server to enter.", //TODO invite link?
-                )
+                    form_error_message: "You must join the event's Discord server to enter.", //TODO invite link?
+                    is_checked,
+                }
             }
-            Requirement::Qualifier { async_start, async_end, live_start } => ( //TODO qualifier request form if available
-                false, //TODO
-                html! {
-                    : "Play the qualifier seed, either live on ";
-                    : format_datetime(*live_start, DateTimeFormat { long: true, running_text: true });
-                    : " or async between ";
-                    : format_datetime(*async_start, DateTimeFormat { long: false, running_text: true });
-                    : " and ";
-                    : format_datetime(*async_end, DateTimeFormat { long: false, running_text: true });
-                },
-                "The qualifier seed is not yet available.", //TODO no error if qualifier is available
-            ),
+            Requirement::Qualifier { async_start, async_end, live_start } => {
+                let now = Utc::now();
+                RequirementStatus { //TODO qualifier request form if available
+                    is_checked: false, //TODO
+                    blocks_submit: now < *async_start || now > *async_end, //TODO or is_checked
+                    html_content: html! {
+                        : "Play the qualifier seed, either live on ";
+                        : format_datetime(*live_start, DateTimeFormat { long: true, running_text: true });
+                        : " or async between ";
+                        : format_datetime(*async_start, DateTimeFormat { long: false, running_text: true });
+                        : " and ";
+                        : format_datetime(*async_end, DateTimeFormat { long: false, running_text: true });
+                        //TODO if async is live, include async rules and checkbox to confirm them
+                        //TODO if async already requested, include submission form
+                    },
+                    form_error_message: "The qualifier seed is not yet available.", //TODO no error if qualifier is available
+                }
+            }
         })
     }
 }
@@ -291,19 +313,30 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &Rw
                             }
                         }
                     } else {
+                        let mut can_submit = true;
+                        let mut requirements_display = Vec::with_capacity(requirements.len());
+                        for requirement in requirements {
+                            let status = requirement.check(discord_ctx, me.as_ref(), &data, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))).await?;
+                            if status.blocks_submit { can_submit = false }
+                            requirements_display.push(html! {
+                                div(class = "check-item") {
+                                    div(class = "checkmark") {
+                                        @if status.is_checked {
+                                            : "✓";
+                                        }
+                                    }
+                                    div : status.html_content;
+                                }
+                            });
+                        }
                         html! {
                             article {
                                 p : "To enter this event:";
-                                @for requirement in requirements {
-                                    @let (is_checked, content, _) = requirement.check(discord_ctx, me.as_ref(), &data, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))).await?;
-                                    div(class = "check-item") {
-                                        div(class = "checkmark") {
-                                            @if is_checked {
-                                                : "✓";
-                                            }
-                                        }
-                                        div : content;
-                                    }
+                                @for requirement in requirements_display {
+                                    : requirement;
+                                }
+                                @if can_submit {
+                                    //TODO submit button
                                 }
                             }
                         }
@@ -412,12 +445,12 @@ pub(crate) async fn post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Disc
                         }
                     } else {
                         for requirement in requirements {
-                            let (is_checked, _, error_message) = {
+                            let status = {
                                 let defaults = FormDefaultsRef::Context(&form.context);
                                 requirement.check(discord_ctx, Some(&me), &data, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())))
                             }.await?;
-                            if !is_checked {
-                                form.context.push_error(form::Error::validation(error_message));
+                            if !status.is_checked {
+                                form.context.push_error(form::Error::validation(status.form_error_message));
                             }
                         }
                     }

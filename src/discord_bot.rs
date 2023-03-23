@@ -126,7 +126,7 @@ impl Draft {
         let low_seed = low_seed.remove(0);
         Ok(match self.state.next_step() {
             mw::DraftStep::GoFirst => MessageBuilder::default()
-                .mention_team(transaction, guild, high_seed).await?
+                .mention_team(transaction, Some(guild), high_seed).await?
                 .push(": you have the higher seed. Choose whether you want to go ")
                 .mention_command(command_ids.first.unwrap(), "first")
                 .push(" or ")
@@ -134,7 +134,7 @@ impl Draft {
                 .push(" in the settings draft.")
                 .build(),
             mw::DraftStep::Ban { team, .. } => MessageBuilder::default()
-                .mention_team(transaction, guild, team.choose(high_seed, low_seed)).await?
+                .mention_team(transaction, Some(guild), team.choose(high_seed, low_seed)).await?
                 .push(": lock a setting to its default using ")
                 .mention_command(command_ids.ban.unwrap(), "ban")
                 .push(", or use ")
@@ -143,25 +143,25 @@ impl Draft {
                 .build(),
             mw::DraftStep::Pick { prev_picks, team } => match prev_picks {
                 0 => MessageBuilder::default()
-                    .mention_team(transaction, guild, team.choose(high_seed, low_seed)).await?
+                    .mention_team(transaction, Some(guild), team.choose(high_seed, low_seed)).await?
                     .push(": pick a setting using ")
                     .mention_command(command_ids.draft.unwrap(), "draft")
                     .push('.')
                     .build(),
                 1 => MessageBuilder::default()
-                    .mention_team(transaction, guild, team.choose(high_seed, low_seed)).await?
+                    .mention_team(transaction, Some(guild), team.choose(high_seed, low_seed)).await?
                     .push(": pick a setting using ")
                     .mention_command(command_ids.draft.unwrap(), "draft")
                     .push(". You will have another pick after this.")
                     .build(),
                 2 => MessageBuilder::default()
-                    .mention_team(transaction, guild, team.choose(high_seed, low_seed)).await?
+                    .mention_team(transaction, Some(guild), team.choose(high_seed, low_seed)).await?
                     .push(": pick your second setting using ")
                     .mention_command(command_ids.draft.unwrap(), "draft")
                     .push('.')
                     .build(),
                 3 => MessageBuilder::default()
-                    .mention_team(transaction, guild, team.choose(high_seed, low_seed)).await?
+                    .mention_team(transaction, Some(guild), team.choose(high_seed, low_seed)).await?
                     .push(": pick a setting using ")
                     .mention_command(command_ids.draft.unwrap(), "draft")
                     .push(". You can also use ")
@@ -672,7 +672,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         response_content.push(" to schedule as an async."); //TODO adjust message if asyncing is not allowed
                                         if let (Some(high_seed), Some(first), Some(second)) = (high_seed, command_ids.first, command_ids.second) {
                                             response_content.push_line("");
-                                            response_content.mention_team(&mut transaction, guild_id, &high_seed).await?;
+                                            response_content.mention_team(&mut transaction, Some(guild_id), &high_seed).await?;
                                             response_content.push(": you have the higher seed. Choose whether you want to go ");
                                             response_content.mention_command(first, "first");
                                             response_content.push(" or ");
@@ -735,7 +735,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
                                                 let guild_id = interaction.guild_id.expect("/ban called outside of a guild");
                                                 let response_content = MessageBuilder::default()
-                                                    .mention_team(&mut transaction, guild_id, &team).await?
+                                                    .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                     .push(if team.name_is_plural() { " have locked in " } else { " has locked in " })
                                                     .push(match setting {
                                                         mw::S3Setting::Wincon => "default wincons",
@@ -838,7 +838,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
                                                 let guild_id = interaction.guild_id.expect("/draft called outside of a guild");
                                                 let response_content = MessageBuilder::default()
-                                                    .mention_team(&mut transaction, guild_id, &team).await?
+                                                    .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                     .push(if team.name_is_plural() { " have picked " } else { " has picked " })
                                                     .push(value)
                                                     .push_line('.')
@@ -901,7 +901,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
                                             let guild_id = interaction.guild_id.expect("/first called outside of a guild");
                                             let response_content = MessageBuilder::default()
-                                                .mention_team(&mut transaction, guild_id, &team).await?
+                                                .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                 .push(if team.name_is_plural() { " have" } else { " has" })
                                                 .push_line(" chosen to go first in the settings draft.")
                                                 .push(draft.next_step(&mut transaction, guild_id, &command_ids, race.teams()).await?)
@@ -1135,7 +1135,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
                                             let guild_id = interaction.guild_id.expect("/second called outside of a guild");
                                             let response_content = MessageBuilder::default()
-                                                .mention_team(&mut transaction, guild_id, &team).await?
+                                                .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                 .push(if team.name_is_plural() { " have" } else { " has" })
                                                 .push_line(" chosen to go second in the settings draft.")
                                                 .push(draft.next_step(&mut transaction, guild_id, &command_ids, race.teams()).await?)
@@ -1199,7 +1199,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
                                             let guild_id = interaction.guild_id.expect("/skip called outside of a guild");
                                             let response_content = MessageBuilder::default()
-                                                .mention_team(&mut transaction, guild_id, &team).await?
+                                                .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                 .push(if team.name_is_plural() { " have skipped their " } else { " has skipped their " })
                                                 .push(skip_kind)
                                                 .push_line('.')

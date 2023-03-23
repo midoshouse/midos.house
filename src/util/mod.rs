@@ -79,8 +79,8 @@ pub(crate) use as_variant;
 #[async_trait]
 pub(crate) trait MessageBuilderExt {
     fn mention_command(&mut self, command_id: CommandId, name: &str) -> &mut Self;
-    async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, entrant: &Entrant) -> sqlx::Result<&mut Self>;
-    async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, team: &Team) -> sqlx::Result<&mut Self>;
+    async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self>;
+    async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, team: &Team) -> sqlx::Result<&mut Self>;
     fn mention_user(&mut self, user: &User) -> &mut Self;
 }
 
@@ -90,7 +90,7 @@ impl MessageBuilderExt for MessageBuilder {
         self.push("</").push(name).push(':').push(command_id.to_string()).push('>')
     }
 
-    async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, entrant: &Entrant) -> sqlx::Result<&mut Self> {
+    async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self> {
         match entrant {
             Entrant::MidosHouseTeam(team) => { self.mention_team(transaction, guild, team).await?; }
             Entrant::Named(name) => { self.push_safe(name); }
@@ -98,11 +98,11 @@ impl MessageBuilderExt for MessageBuilder {
         Ok(self)
     }
 
-    async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, team: &Team) -> sqlx::Result<&mut Self> {
+    async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, team: &Team) -> sqlx::Result<&mut Self> {
         if let Ok(member) = team.members(&mut *transaction).await?.into_iter().exactly_one() {
             self.mention_user(&member);
         } else {
-            let team_role = if let Some(ref racetime_slug) = team.racetime_slug {
+            let team_role = if let (Some(guild), Some(racetime_slug)) = (guild, &team.racetime_slug) {
                 sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(guild), racetime_slug).fetch_optional(&mut *transaction).await?
             } else {
                 None

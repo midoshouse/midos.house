@@ -106,7 +106,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                     }
                                 }
                             } else {
-                                SeedRollUpdate::Error(RollError::NonObjectSettings).write(&mut sock).await.expect("error writing to UNIX socket");
+                                Some(SeedRollUpdate::Error(RollError::NonObjectSettings)).write(&mut sock).await.expect("error writing to UNIX socket");
                             },
                             Ok(ClientMessage::RollRsl { preset, branch, rsl_version, worlds, spoiler_log }) => {
                                 let preset = if let Some(rsl_version) = rsl_version {
@@ -130,7 +130,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                         }
                                     }
                                 } else {
-                                    SeedRollUpdate::Error(RollError::RslVersion).write(&mut sock).await.expect("error writing to UNIX socket");
+                                    Some(SeedRollUpdate::Error(RollError::RslVersion)).write(&mut sock).await.expect("error writing to UNIX socket");
                                 }
                             }
                             Err(ReadError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => break,

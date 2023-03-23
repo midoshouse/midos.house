@@ -1618,7 +1618,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                 if let Some(Id(discord_channel)) = asyncs_row.discord_channel {
                     let mut message = MessageBuilder::default();
                     message.push("Please welcome ");
-                    message.mention_team(&mut transaction, discord_guild, &team).await?;
+                    message.mention_team(&mut transaction, Some(discord_guild), &team).await?;
                     if let (Some(time1), Some(time2), Some(time3)) = (time1, time2, time3) {
                         message.push(" who finished with a time of ");
                         message.push(format_duration((time1 + time2 + time3) / 3, true));

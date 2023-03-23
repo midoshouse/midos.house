@@ -274,7 +274,7 @@ pub(crate) struct Race {
     pub(crate) phase: Option<String>,
     pub(crate) round: Option<String>,
     pub(crate) game: Option<i16>,
-    scheduling_thread: Option<ChannelId>,
+    pub(crate) scheduling_thread: Option<ChannelId>,
     pub(crate) schedule: RaceSchedule,
     pub(crate) draft: Option<Draft>,
     pub(crate) seed: Option<seed::Data>,
@@ -1288,17 +1288,17 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
                                 content.push(": ");
                             }
                             Entrants::Two([ref team1, ref team2]) => {
-                                content.mention_entrant(&mut transaction, guild_id, team1).await?;
+                                content.mention_entrant(&mut transaction, Some(guild_id), team1).await?;
                                 content.push(' ');
-                                content.mention_entrant(&mut transaction, guild_id, team2).await?;
+                                content.mention_entrant(&mut transaction, Some(guild_id), team2).await?;
                                 content.push(' ');
                             }
                             Entrants::Three([ref team1, ref team2, ref team3]) => {
-                                content.mention_entrant(&mut transaction, guild_id, team1).await?;
+                                content.mention_entrant(&mut transaction, Some(guild_id), team1).await?;
                                 content.push(' ');
-                                content.mention_entrant(&mut transaction, guild_id, team2).await?;
+                                content.mention_entrant(&mut transaction, Some(guild_id), team2).await?;
                                 content.push(' ');
-                                content.mention_entrant(&mut transaction, guild_id, team3).await?;
+                                content.mention_entrant(&mut transaction, Some(guild_id), team3).await?;
                                 content.push(' ');
                             }
                         }
