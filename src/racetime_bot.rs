@@ -2354,7 +2354,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                             let race_slug = racetime::StartRace {
                                 goal: goal.as_str().to_owned(),
                                 goal_is_custom: goal.is_custom(),
-                                team_race: !matches!(race.event(&mut transaction).await.to_racetime()?.team_config(), TeamConfig::Solo),
+                                team_race: !matches!(race.event(&mut transaction).await.to_racetime()?.team_config(), TeamConfig::Solo | TeamConfig::Pictionary),
                                 invitational: !matches!(race.entrants, Entrants::Open),
                                 unlisted: false, //TODO get permission to open unlisted rooms for asyncs
                                 info_user: match race.entrants {

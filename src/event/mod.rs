@@ -1512,7 +1512,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, discord_ctx: &State<RwFu
         } else {
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
-            sqlx::query!("INSERT INTO async_teams (team, kind, requested) VALUES ($1, $2, $3) ON CONFLICT (team, kind) DO UPDATE SET requested = EXCLUDED.requested", team.id as _, async_kind as _, Utc::now()).execute(&mut transaction).await?;
+            sqlx::query!("INSERT INTO async_teams (team, kind, requested) VALUES ($1, $2, NOW()) ON CONFLICT (team, kind) DO UPDATE SET requested = EXCLUDED.requested", team.id as _, async_kind as _).execute(&mut transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(status(series, event))))
         }
@@ -1598,7 +1598,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         } else {
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
-            sqlx::query!("UPDATE async_teams SET submitted = $1, fpa = $2 WHERE team = $3 AND kind = $4", Utc::now(), (!value.fpa.is_empty()).then(|| &value.fpa), i64::from(team.id), async_kind as _).execute(&mut transaction).await?;
+            sqlx::query!("UPDATE async_teams SET submitted = NOW(), fpa = $1 WHERE team = $2 AND kind = $3", (!value.fpa.is_empty()).then(|| &value.fpa), i64::from(team.id), async_kind as _).execute(&mut transaction).await?;
             let player1 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'power'"#, i64::from(team.id)).fetch_one(&mut transaction).await?;
             sqlx::query!("INSERT INTO async_players (series, event, player, kind, time, vod) VALUES ($1, $2, $3, $4, $5, $6)", series as _, event, player1 as _, async_kind as _, time1 as _, (!value.vod1.is_empty()).then(|| &value.vod1)).execute(&mut transaction).await?;
             let player2 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'wisdom'"#, i64::from(team.id)).fetch_one(&mut transaction).await?;

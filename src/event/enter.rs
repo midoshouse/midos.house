@@ -1,6 +1,5 @@
 use {
     std::{
-        borrow::Cow,
         collections::HashMap,
         pin::Pin,
     },
@@ -58,6 +57,7 @@ use {
         series::{
             mw,
             pic,
+            tfb,
         },
         user::User,
         util::{
@@ -100,10 +100,8 @@ enum Requirement {
 }
 
 struct RequirementStatus {
-    is_checked: bool,
     blocks_submit: bool,
-    html_content: RawHtml<String>,
-    form_error_message: &'static str,
+    html_content: Box<dyn FnOnce(&mut Vec<&form::Error<'_>>) -> RawHtml<String> + Send>,
 }
 
 impl Requirement {
@@ -116,10 +114,26 @@ impl Requirement {
         }
     }
 
-    async fn check(&self, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>, redirect_uri: rocket::http::uri::Origin<'_>) -> Result<RequirementStatus, Error> {
+    async fn is_checked(&self, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>) -> Result<bool, Error> {
         Ok(match self {
-            Requirement::RaceTime => {
-                let is_checked = me.expect("this check requires sign-in").racetime_id.is_some();
+            Self::RaceTime => me.map_or(false, |me| me.racetime_id.is_some()),
+            Self::Discord => me.map_or(false, |me| me.discord_id.is_some()),
+            Self::DiscordGuild { .. } => {
+                let discord_guild = data.discord_guild.ok_or(Error::DiscordGuild)?;
+                if let Some(discord_id) = me.and_then(|me| me.discord_id) {
+                    discord_guild.member(&*discord_ctx.read().await, discord_id).await.is_ok()
+                } else {
+                    false
+                }
+            }
+            Self::Qualifier { .. } => false,
+        })
+    }
+
+    async fn check_get(&self, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>, redirect_uri: rocket::http::uri::Origin<'_>) -> Result<RequirementStatus, Error> {
+        Ok(match self {
+            Self::RaceTime => {
+                let is_checked = self.is_checked(discord_ctx, me, data).await?;
                 let mut html_content = html! {
                     : "Connect a racetime.gg account to your Mido's House account";
                 };
@@ -131,12 +145,11 @@ impl Requirement {
                 }
                 RequirementStatus {
                     blocks_submit: !is_checked,
-                    form_error_message: "A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.", //TODO direct link?
-                    is_checked, html_content,
+                    html_content: Box::new(move |_| html_content),
                 }
             }
-            Requirement::Discord => {
-                let is_checked = me.expect("this check requires sign-in").discord_id.is_some();
+            Self::Discord => {
+                let is_checked = self.is_checked(discord_ctx, me, data).await?;
                 let mut html_content = html! {
                     : "Connect a Discord account to your Mido's House account";
                 };
@@ -148,47 +161,81 @@ impl Requirement {
                 }
                 RequirementStatus {
                     blocks_submit: !is_checked,
-                    form_error_message: "A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.", //TODO direct link?
-                    is_checked, html_content,
+                    html_content: Box::new(move |_| html_content),
                 }
             }
-            Requirement::DiscordGuild { name } => {
-                let discord_guild = data.discord_guild.ok_or(Error::DiscordGuild)?;
-                let is_checked = if let Some(discord_id) = me.expect("this check requires sign-in").discord_id {
-                    discord_guild.member(&*discord_ctx.read().await, discord_id).await.is_ok()
-                } else {
-                    false
-                };
+            Self::DiscordGuild { name } => {
+                let name = name.clone();
+                let is_checked = self.is_checked(discord_ctx, me, data).await?;
                 RequirementStatus {
                     blocks_submit: !is_checked,
-                    html_content: html! {
+                    html_content: Box::new(move |_| html! {
                         : "Join the ";
                         : name; //TODO invite link if not joined
                         : " Discord server";
-                    },
-                    form_error_message: "You must join the event's Discord server to enter.", //TODO invite link?
-                    is_checked,
+                    }),
                 }
             }
-            Requirement::Qualifier { async_start, async_end, live_start } => {
+            &Self::Qualifier { async_start, async_end, live_start } => {
                 let now = Utc::now();
-                RequirementStatus { //TODO qualifier request form if available
-                    is_checked: false, //TODO
-                    blocks_submit: now < *async_start || now > *async_end, //TODO or is_checked
-                    html_content: html! {
-                        : "Play the qualifier seed, either live on ";
-                        : format_datetime(*live_start, DateTimeFormat { long: true, running_text: true });
-                        : " or async between ";
-                        : format_datetime(*async_start, DateTimeFormat { long: false, running_text: true });
-                        : " and ";
-                        : format_datetime(*async_end, DateTimeFormat { long: false, running_text: true });
-                        //TODO if async is live, include async rules and checkbox to confirm them
-                        //TODO if async already requested, include submission form
-                    },
-                    form_error_message: "The qualifier seed is not yet available.", //TODO no error if qualifier is available
+                let async_available = now >= async_start && now < async_end;
+                let series = data.series;
+                RequirementStatus {
+                    blocks_submit: !async_available || self.is_checked(discord_ctx, me, data).await?,
+                    html_content: Box::new(move |errors| html! {
+                        @if async_available {
+                            : "Play the qualifier seed, either live on ";
+                            : format_datetime(live_start, DateTimeFormat { long: true, running_text: true });
+                            : " or request it as an async using this form by ";
+                            : format_datetime(async_end, DateTimeFormat { long: true, running_text: true });
+                            : ".";
+                            @match series {
+                                Series::TriforceBlitz => : tfb::qualifier_async_rules();
+                                _ => @unimplemented
+                            }
+                            : form_field("confirm", errors, html! {
+                                input(type = "checkbox", id = "confirm", name = "confirm");
+                                label(for = "confirm") : "I have read the above and am ready to play the seed";
+                            });
+                        } else {
+                            : "Play the qualifier seed, either live on ";
+                            : format_datetime(live_start, DateTimeFormat { long: true, running_text: true });
+                            : " or async between ";
+                            : format_datetime(async_start, DateTimeFormat { long: false, running_text: true });
+                            : " and ";
+                            : format_datetime(async_end, DateTimeFormat { long: false, running_text: true });
+                            @if now < async_start {
+                                : ". The form to request the async will appear on this page.";
+                            }
+                        }
+                    }),
                 }
             }
         })
+    }
+
+    async fn check_form(&self, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
+        match self {
+            Self::Qualifier { async_start, async_end, .. } => {
+                let now = Utc::now();
+                if now >= *async_start && now < *async_end {
+                    if !value.confirm {
+                        form_ctx.push_error(form::Error::validation("This field is required.").with_name("confirm"));
+                    }
+                } else {
+                    form_ctx.push_error(form::Error::validation("The qualifier seed is not yet available."));
+                }
+            }
+            _ => if !self.is_checked(discord_ctx, Some(me), data).await? {
+                form_ctx.push_error(form::Error::validation(match self {
+                    Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.", //TODO direct link?
+                    Self::Discord => "A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.", //TODO direct link?
+                    Self::DiscordGuild { .. } => "You must join the event's Discord server to enter.", //TODO invite link?
+                    Self::Qualifier { .. } => unreachable!(),
+                }));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -210,51 +257,11 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     }
 }
 
-enum FormDefaultsRef<'a, 'c> {
-    Context(&'a Context<'c>),
-    Values {
-        my_role: Option<pic::Role>,
-        teammate: Option<Id>,
-    },
-}
-
-impl FormDefaultsRef<'_, '_> {
-    fn my_role(&self) -> Option<pic::Role> {
-        match self {
-            Self::Context(ctx) => match ctx.field_value("my_role") {
-                Some("sheikah") => Some(pic::Role::Sheikah),
-                Some("gerudo") => Some(pic::Role::Gerudo),
-                _ => None,
-            },
-            &Self::Values { my_role, .. } => my_role,
-        }
-    }
-
-    pub(crate) fn teammate(&self) -> Option<Id> {
-        self.teammate_text().and_then(|text| text.parse().ok())
-    }
-
-    fn teammate_text(&self) -> Option<Cow<'_, str>> {
-        match self {
-            Self::Context(ctx) => ctx.field_value("teammate").map(Cow::Borrowed),
-            &Self::Values { teammate, .. } => teammate.map(|id| Cow::Owned(id.0.to_string())),
-        }
-    }
-}
-
-impl<'a, 'c> From<&'a pic::EnterFormDefaults<'c>> for FormDefaultsRef<'a, 'c> {
-    fn from(defaults: &'a pic::EnterFormDefaults<'c>) -> Self {
-        match defaults {
-            pic::EnterFormDefaults::Context(ctx) => Self::Context(ctx),
-            &pic::EnterFormDefaults::Values { my_role, teammate } => Self::Values { my_role, teammate },
-        }
-    }
-}
-
 #[derive(FromForm, CsrfForm)]
 pub(crate) struct EnterForm {
     #[field(default = String::new())]
     csrf: String,
+    confirm: bool,
     racetime_team: Option<String>,
     #[field(default = String::new())]
     team_name: String,
@@ -316,27 +323,39 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &Rw
                         let mut can_submit = true;
                         let mut requirements_display = Vec::with_capacity(requirements.len());
                         for requirement in requirements {
-                            let status = requirement.check(discord_ctx, me.as_ref(), &data, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))).await?;
+                            let status = requirement.check_get(discord_ctx, me.as_ref(), &data, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))).await?;
                             if status.blocks_submit { can_submit = false }
-                            requirements_display.push(html! {
-                                div(class = "check-item") {
-                                    div(class = "checkmark") {
-                                        @if status.is_checked {
-                                            : "✓";
+                            requirements_display.push((requirement.is_checked(discord_ctx, me.as_ref(), &data).await?, status.html_content));
+                        }
+                        if can_submit {
+                            let mut errors = defaults.errors();
+                            full_form(uri!(post(data.series, &*data.event)), csrf, html! {
+                                p : "To enter this event:";
+                                @for (is_checked, html_content) in requirements_display {
+                                    div(class = "check-item") {
+                                        div(class = "checkmark") {
+                                            @if is_checked {
+                                                : "✓";
+                                            }
+                                        }
+                                        div : html_content(&mut errors);
+                                    }
+                                }
+                            }, errors, "Enter")
+                        } else {
+                            html! {
+                                article {
+                                    p : "To enter this event:";
+                                    @for (is_checked, html_content) in requirements_display {
+                                        div(class = "check-item") {
+                                            div(class = "checkmark") {
+                                                @if is_checked {
+                                                    : "✓";
+                                                }
+                                            }
+                                            div : html_content(&mut Vec::default());
                                         }
                                     }
-                                    div : status.html_content;
-                                }
-                            });
-                        }
-                        html! {
-                            article {
-                                p : "To enter this event:";
-                                @for requirement in requirements_display {
-                                    : requirement;
-                                }
-                                @if can_submit {
-                                    //TODO submit button
                                 }
                             }
                         }
@@ -438,6 +457,7 @@ pub(crate) async fn post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Disc
         }
         match data.team_config() {
             TeamConfig::Solo => {
+                let mut request_qualifier = false;
                 if let Some(Flow { ref requirements }) = data.enter_flow {
                     if requirements.is_empty() {
                         if data.is_single_race() {
@@ -445,12 +465,9 @@ pub(crate) async fn post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Disc
                         }
                     } else {
                         for requirement in requirements {
-                            let status = {
-                                let defaults = FormDefaultsRef::Context(&form.context);
-                                requirement.check(discord_ctx, Some(&me), &data, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())))
-                            }.await?;
-                            if !status.is_checked {
-                                form.context.push_error(form::Error::validation(status.form_error_message));
+                            requirement.check_form(discord_ctx, &me, &data, &mut form.context, value).await?;
+                            if let Requirement::Qualifier { .. } = requirement {
+                                request_qualifier = true;
                             }
                         }
                     }
@@ -461,6 +478,9 @@ pub(crate) async fn post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Disc
                     let id = Id::new(&mut transaction, IdTable::Teams).await?;
                     sqlx::query!("INSERT INTO teams (id, series, event, plural_name) VALUES ($1, $2, $3, FALSE)", id as _, series as _, event).execute(&mut transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', 'none')", id as _, me.id as _).execute(&mut transaction).await?;
+                    if request_qualifier {
+                        sqlx::query!("INSERT INTO async_teams (team, kind, requested) VALUES ($1, 'qualifier', NOW())", id as _).execute(&mut transaction).await?;
+                    }
                     transaction.commit().await?;
                     return Ok(RedirectOrContent::Redirect(Redirect::to(uri!(super::status(series, event)))))
                 }

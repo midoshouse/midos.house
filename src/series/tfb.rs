@@ -17,7 +17,6 @@ use {
     crate::{
         event::{
             self,
-            AsyncKind,
             Data,
             Error,
             InfoError,
@@ -50,6 +49,31 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         },
         _ => unimplemented!(),
     })
+}
+
+pub(crate) fn qualifier_async_rules() -> RawHtml<String> {
+    html! {
+        p : "Rules:";
+        ol {
+            li : "You must start the seed within 15 minutes of obtaining it and submit your time within 10 minutes of finishing. Any additional time taken will be added to your final time. If technical difficulties arise with obtaining the seed/submitting your time, please DM one of the Triforce Blitz Tournament Organizers to get it sorted out. (Discord role “Triforce Blitz Organisation” for pings)";
+            li : "If you obtain a seed but do not submit a finish time before submissions close, it will count as a forfeit.";
+            li {
+                : "Requesting the seed for async will make you ";
+                strong : "ineligible";
+                : " to participate in the live qualifier on April 8th.";
+            }
+            li {
+                : "To avoid accidental spoilers, the qualifier async ";
+                strong : "CANNOT";
+                : " be streamed. You must local record and upload to YouTube as an unlisted video.";
+            }
+            li {
+                : "This should be run like an actual race. In the event of a technical issue, you are allowed to invoke the ";
+                a(href = "https://docs.google.com/document/d/1BbvHJF8vtyrte76jpoCVQBTy9MYStpN3vr2PLdiCIMk/edit") : "Fair Play Agreement";
+                : " and have up to a 15 minute time where you can try to catch back up. If you do this, you must fill out the appropriate field when submitting your time so it can be authenticated.";
+            }
+        }
+    }
 }
 
 pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Option<Id>, ctx: Context<'_>) -> Result<RawHtml<String>, Error> {
@@ -121,47 +145,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                 }
             }
         } else {
-            html! {
-                div(class = "info") {
-                    @match async_kind {
-                        AsyncKind::Qualifier => p {
-                            : "To enter this tournament, play the qualifier, either live on ";
-                            : format_datetime(data.start(&mut *transaction).await?.expect("missing start time for tfb/2"), DateTimeFormat { long: true, running_text: true });
-                            : " or request it as an async using this form by ";
-                            : format_datetime(data.start(&mut *transaction).await?.expect("missing start time for tfb/2") - chrono::Duration::hours(3), DateTimeFormat { long: true, running_text: true });
-                            : ".";
-                        }
-                        _ => @unimplemented
-                    }
-                    p : "Rules:";
-                    ol {
-                        li : "You must start the seed within 15 minutes of obtaining it and submit your time within 10 minutes of finishing. Any additional time taken will be added to your final time. If technical difficulties arise with obtaining the seed/submitting your time, please DM one of the Triforce Blitz Tournament Organizers to get it sorted out. (Discord role “Triforce Blitz Organisation” for pings)";
-                        li : "If you obtain a seed but do not submit a finish time before submissions close, it will count as a forfeit.";
-                        li {
-                            : "Requesting the seed for async will make you ";
-                            strong : "ineligible";
-                            : " to participate in the live qualifier on April 8th.";
-                        }
-                        li {
-                            : "To avoid accidental spoilers, the qualifier async ";
-                            strong : "CANNOT";
-                            : " be streamed. You must local record and upload to YouTube as an unlisted video.";
-                        }
-                        li {
-                            : "This should be run like an actual race. In the event of a technical issue, you are allowed to invoke the ";
-                            a(href = "https://docs.google.com/document/d/1BbvHJF8vtyrte76jpoCVQBTy9MYStpN3vr2PLdiCIMk/edit") : "Fair Play Agreement";
-                            : " and have up to a 15 minute time where you can try to catch back up. If you do this, you must fill out the appropriate field when submitting your time so it can be authenticated.";
-                        }
-                    }
-                    @let mut errors = ctx.errors().collect_vec();
-                    : full_form(uri!(event::request_async(data.series, &*data.event)), csrf, html! {
-                        : form_field("confirm", &mut errors, html! {
-                            input(type = "checkbox", id = "confirm", name = "confirm");
-                            label(for = "confirm") : "I have read the above and am ready to play the seed";
-                        });
-                    }, errors, "Request Now");
-                }
-            }
+            unimplemented!() //TODO redirect to enter page
         }
     } else {
         html! {
