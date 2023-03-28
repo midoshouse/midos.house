@@ -131,7 +131,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                                 label(class = "help") : "(If you did not find any, leave this field blank.)";
                             });
                             : form_field("vod1", &mut errors, html! {
-                                label(for = "vod1", class = "power") : "VoD:";
+                                label(for = "vod1") : "VoD:";
                                 input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
                                 label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
                             });

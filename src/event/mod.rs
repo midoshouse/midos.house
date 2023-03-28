@@ -1526,12 +1526,20 @@ pub(crate) async fn request_async(pool: &State<PgPool>, discord_ctx: &State<RwFu
 pub(crate) struct SubmitAsyncForm {
     #[field(default = String::new())]
     csrf: String,
+    pieces: Option<i16>,
+    #[field(default = String::new())]
     time1: String,
+    #[field(default = String::new())]
     vod1: String,
+    #[field(default = String::new())]
     time2: String,
+    #[field(default = String::new())]
     vod2: String,
+    #[field(default = String::new())]
     time3: String,
+    #[field(default = String::new())]
     vod3: String,
+    #[field(default = String::new())]
     fpa: String,
 }
 
@@ -1568,6 +1576,15 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
             form.context.push_error(form::Error::validation("You are not signed up for this event."));
             None
         };
+        if let Series::TriforceBlitz = series {
+            if let Some(pieces) = value.pieces {
+                if pieces < 0 || pieces > 3 {
+                    form.context.push_error(form::Error::validation("Must be a number from 0 to 3.").with_name("pieces"));
+                }
+            } else {
+                form.context.push_error(form::Error::validation("This field is required.").with_name("pieces"));
+            }
+        }
         let times = vec![
             if value.time1.is_empty() {
                 None
@@ -1605,7 +1622,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         } else {
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
-            sqlx::query!("UPDATE async_teams SET submitted = NOW(), fpa = $1 WHERE team = $2 AND kind = $3", (!value.fpa.is_empty()).then(|| &value.fpa), i64::from(team.id), async_kind as _).execute(&mut transaction).await?;
+            sqlx::query!("UPDATE async_teams SET submitted = NOW(), pieces = $1, fpa = $2 WHERE team = $3 AND kind = $4", value.pieces, (!value.fpa.is_empty()).then(|| &value.fpa), i64::from(team.id), async_kind as _).execute(&mut transaction).await?;
             let mut players = Vec::default();
             for (((role, _), time), vod) in data.team_config().roles().iter().zip(&times).zip(&vods) {
                 let player = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = $2"#, i64::from(team.id), role as _).fetch_one(&mut transaction).await?;

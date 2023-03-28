@@ -225,7 +225,6 @@ table td {
 .check-item {
     display: flex;
     flex-flow: row;
-    align-items: center;
 }
 
 .checkmark {
