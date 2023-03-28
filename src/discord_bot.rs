@@ -252,7 +252,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let assign = match match_source {
                 Some(MatchSource::Manual) => guild.create_application_command(ctx, CreateCommand::new("assign")
                     .kind(CommandType::ChatInput)
-                    .default_member_permissions(Permissions::ADMINISTRATOR) //TODO allow TOs to use this
                     .dm_permission(false)
                     .description("Marks this thread as the scheduling thread for the given game of the match.")
                     .add_option(CreateCommandOption::new(
@@ -269,7 +268,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 Some(MatchSource::StartGG) => guild.create_application_command(ctx, {
                     let mut c = CreateCommand::new("assign")
                         .kind(CommandType::ChatInput)
-                        .default_member_permissions(Permissions::ADMINISTRATOR) //TODO allow TOs to use this
                         .dm_permission(false)
                         .description("Marks this thread as the scheduling thread for the given start.gg set.")
                         .add_option(CreateCommandOption::new(
@@ -573,6 +571,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             };
                             if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
+                                if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id)) {
+                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                        .ephemeral(true)
+                                        .content("Sorry, only event organizers can use this command.")
+                                    )).await?;
+                                    return Ok(())
+                                }
                                 match event.match_source() {
                                     MatchSource::Manual => {
                                         let game = match interaction.data.options[0].value {
@@ -990,7 +995,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             )).await?;
                         } else if interaction.data.id == command_ids.schedule {
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
-                                if team.is_some() || interaction.member.as_ref().expect("/schedule called outside of a guild").permissions.expect("permissions should be included in interaction response").administrator() {
+                                if team.is_some() || race.event(&mut transaction).await?.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id)) {
                                     let start = match interaction.data.options[0].value {
                                         CommandDataOptionValue::String(ref start) => start,
                                         _ => panic!("unexpected slash command option type"),
@@ -1027,7 +1032,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             }
                         } else if interaction.data.id == command_ids.schedule_async {
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
-                                if team.is_some() || interaction.member.as_ref().expect("/schedule-async called outside of a guild").permissions.expect("permissions should be included in interaction response").administrator() {
+                                if team.is_some() || race.event(&mut transaction).await?.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id)) {
                                     let start = match interaction.data.options[0].value {
                                         CommandDataOptionValue::String(ref start) => start,
                                         _ => panic!("unexpected slash command option type"),
@@ -1080,9 +1085,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             }
                         } else if interaction.data.id == command_ids.schedule_remove {
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
-                                let is_admin = interaction.member.as_ref().expect("/schedule-remove called outside of a guild").permissions.expect("permissions should be included in interaction response").administrator();
-                                if team.is_some() || is_admin {
-                                    if !is_admin && race.has_room_for(team.as_ref().expect("checked above")) {
+                                let is_organizer = race.event(&mut transaction).await?.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id));
+                                if team.is_some() || is_organizer {
+                                    if !is_organizer && race.has_room_for(team.as_ref().expect("checked above")) {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
                                             .content("Sorry, the room for this race is already open. Please contact a tournament organizer if necessary.")

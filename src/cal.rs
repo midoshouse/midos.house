@@ -525,7 +525,7 @@ impl Race {
                     scheduling_thread: None,
                     draft: None,
                     seed: None, //TODO
-                    video_url: event.video_url.clone(),
+                    video_url: event.video_url.clone(), //TODO sync between event and race?
                     ignored: false,
                     schedule,
                 }).await?;
@@ -1155,7 +1155,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
                 input(type = "checkbox", id = "multiple_games", name = "multiple_games", checked? = ctx.field_value("multiple_games") == Some("on"));
                 label(for = "multiple_games") {
                     : "This is a multi-game match. (Create follow-up games using ";
-                    code : "/assign"; //TODO manual mode for /assign that only takes a game ID
+                    code : "/assign";
                     : " in the scheduling thread once game 1 has been played.)";
                 }
             });
