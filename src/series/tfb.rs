@@ -1,5 +1,8 @@
 use {
-    std::iter,
+    std::{
+        borrow::Cow,
+        iter,
+    },
     futures::stream,
     itertools::Itertools as _,
     ootr_utils::spoiler::HashIcon,
@@ -78,7 +81,7 @@ pub(crate) fn qualifier_async_rules() -> RawHtml<String> {
 
 pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Option<Id>, ctx: Context<'_>) -> Result<RawHtml<String>, Error> {
     Ok(if let Some(async_kind) = data.active_async(&mut *transaction, team_id).await? {
-        let async_row = sqlx::query!(r#"SELECT tfb_uuid AS "tfb_uuid!", hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
+        let async_row = sqlx::query!(r#"SELECT file_stem AS "file_stem!", hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
         let team_row = if let Some(team_id) = team_id {
             sqlx::query!(r#"SELECT requested AS "requested!", submitted FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL"#, i64::from(team_id), async_kind as _).fetch_optional(&mut *transaction).await?
         } else {
@@ -104,7 +107,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                         (None, None, None, None, None) => None,
                         _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
                     },
-                    files: seed::Files::TriforceBlitz { uuid: async_row.tfb_uuid },
+                    files: seed::Files::MidosHouse { file_stem: Cow::Owned(async_row.file_stem) },
                 };
                 let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
                 let mut errors = ctx.errors().collect_vec();

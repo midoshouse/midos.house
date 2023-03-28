@@ -968,7 +968,7 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum SheetsError {
-    #[error(transparent)] Api(#[from] sheets::APIError),
+    #[error(transparent)] Api(#[from] sheets::APIError), //TODO adjust status codes, e.g. 502 Bad Gateway for 503 Service Unavailable
     #[error(transparent)] Io(#[from] tokio::io::Error),
     #[error(transparent)] OAuth(#[from] yup_oauth2::Error),
     #[error("empty token is not valid")]
