@@ -1344,34 +1344,50 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
     })
 }
 
-pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
     let id = race.id.expect("race being edited must have an ID");
     let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
     let form = if me.is_some() {
-        let mut errors = ctx.errors().collect_vec();
+        let mut errors = ctx.as_ref().map(|ctx| ctx.errors().collect()).unwrap_or_default();
         full_form(uri!(edit_race_post(event.series, &*event.event, id)), csrf, html! {
             @match race.schedule {
                 RaceSchedule::Unscheduled => {}
                 RaceSchedule::Live { ref room, .. } => : form_field("room", &mut errors, html! {
                     label(for = "room") : "racetime.gg room:";
-                    input(type = "text", name = "room", value? = room.as_ref().map(|room| room.as_ref().to_string())); //TODO get from form context, fall back to current race data
+                    input(type = "text", name = "room", value? = if let Some(ref ctx) = ctx {
+                        ctx.field_value("room").map(|room| room.to_string())
+                    } else {
+                        room.as_ref().map(|room| room.to_string())
+                    });
                 });
                 RaceSchedule::Async { ref room1, ref room2, .. } => {
                     : form_field("async_room1", &mut errors, html! {
                         label(for = "async_room1") : "racetime.gg room (team A):";
-                        input(type = "text", name = "async_room1", value? = room1.as_ref().map(|room1| room1.to_string())); //TODO get from form context, fall back to current race data
+                        input(type = "text", name = "async_room1", value? = if let Some(ref ctx) = ctx {
+                            ctx.field_value("async_room1").map(|room| room.to_string())
+                        } else {
+                            room1.as_ref().map(|room| room.to_string())
+                        });
                     });
                     : form_field("async_room2", &mut errors, html! {
                         label(for = "async_room2") : "racetime.gg room (team B):";
-                        input(type = "text", name = "async_room2", value? = room2.as_ref().map(|room2| room2.to_string())); //TODO get from form context, fall back to current race data
+                        input(type = "text", name = "async_room2", value? = if let Some(ref ctx) = ctx {
+                            ctx.field_value("async_room2").map(|room| room.to_string())
+                        } else {
+                            room2.as_ref().map(|room| room.to_string())
+                        });
                     });
                 }
             }
             //TODO allow editing seed
             : form_field("video_url", &mut errors, html! {
                 label(for = "video_url") : "Restream URL:";
-                input(type = "text", name = "video_url", value? = race.video_url.map(|video_url| video_url.to_string())); //TODO get from form context, fall back to current race data
+                input(type = "text", name = "video_url", value? = if let Some(ref ctx) = ctx {
+                    ctx.field_value("video_url").map(|room| room.to_string())
+                } else {
+                    race.video_url.map(|video_url| video_url.to_string())
+                });
                 label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
             });
         }, errors, "Save")
@@ -1516,7 +1532,7 @@ pub(crate) async fn edit_race(env: &State<Environment>, config: &State<Config>, 
     if race.series != event.series || race.event != event.event {
         return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(edit_race(race.series, race.event, id)))))
     }
-    Ok(RedirectOrContent::Content(edit_race_form(transaction, me, uri, csrf, event, race, Context::default()).await?))
+    Ok(RedirectOrContent::Content(edit_race_form(transaction, me, uri, csrf, event, race, None).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1723,7 +1739,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
             }
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf, event, race, form.context).await?)
+            RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf, event, race, Some(form.context)).await?)
         } else {
             sqlx::query!(
                 "UPDATE races SET room = $1, async_room1 = $2, async_room2 = $3, video_url = $4, last_edited_by = $5, last_edited_at = NOW() WHERE id = $6",
@@ -1753,6 +1769,6 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf, event, race, form.context).await?)
+        RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf, event, race, Some(form.context)).await?)
     })
 }
