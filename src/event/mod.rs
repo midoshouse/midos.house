@@ -1568,30 +1568,37 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
             form.context.push_error(form::Error::validation("You are not signed up for this event."));
             None
         };
-        let time1 = if value.time1.is_empty() {
-            None
-        } else if let Some(time) = parse_duration(&value.time1, DurationUnit::Hours) {
-            Some(time)
-        } else {
-            form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("time1"));
-            None
-        };
-        let time2 = if value.time2.is_empty() {
-            None
-        } else if let Some(time) = parse_duration(&value.time2, DurationUnit::Hours) {
-            Some(time)
-        } else {
-            form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("time2"));
-            None
-        };
-        let time3 = if value.time3.is_empty() {
-            None
-        } else if let Some(time) = parse_duration(&value.time3, DurationUnit::Hours) {
-            Some(time)
-        } else {
-            form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("time3"));
-            None
-        };
+        let times = vec![
+            if value.time1.is_empty() {
+                None
+            } else if let Some(time) = parse_duration(&value.time1, DurationUnit::Hours) {
+                Some(time)
+            } else {
+                form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("time1"));
+                None
+            },
+            if value.time2.is_empty() {
+                None
+            } else if let Some(time) = parse_duration(&value.time2, DurationUnit::Hours) {
+                Some(time)
+            } else {
+                form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("time2"));
+                None
+            },
+            if value.time3.is_empty() {
+                None
+            } else if let Some(time) = parse_duration(&value.time3, DurationUnit::Hours) {
+                Some(time)
+            } else {
+                form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("time3"));
+                None
+            },
+        ];
+        let vods = vec![
+            value.vod1.clone(),
+            value.vod2.clone(),
+            value.vod3.clone(),
+        ];
         if form.context.errors().next().is_some() {
             transaction.rollback().await?;
             RedirectOrContent::Content(status_page(pool, &*discord_ctx.read().await, Some(me), uri, csrf, series, event, form.context).await?)
@@ -1599,12 +1606,12 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
             sqlx::query!("UPDATE async_teams SET submitted = NOW(), fpa = $1 WHERE team = $2 AND kind = $3", (!value.fpa.is_empty()).then(|| &value.fpa), i64::from(team.id), async_kind as _).execute(&mut transaction).await?;
-            let player1 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'power'"#, i64::from(team.id)).fetch_one(&mut transaction).await?;
-            sqlx::query!("INSERT INTO async_players (series, event, player, kind, time, vod) VALUES ($1, $2, $3, $4, $5, $6)", series as _, event, player1 as _, async_kind as _, time1 as _, (!value.vod1.is_empty()).then(|| &value.vod1)).execute(&mut transaction).await?;
-            let player2 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'wisdom'"#, i64::from(team.id)).fetch_one(&mut transaction).await?;
-            sqlx::query!("INSERT INTO async_players (series, event, player, kind, time, vod) VALUES ($1, $2, $3, $4, $5, $6)", series as _, event, player2 as _, async_kind as _, time2 as _, (!value.vod2.is_empty()).then(|| &value.vod2)).execute(&mut transaction).await?;
-            let player3 = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = 'courage'"#, i64::from(team.id)).fetch_one(&mut transaction).await?;
-            sqlx::query!("INSERT INTO async_players (series, event, player, kind, time, vod) VALUES ($1, $2, $3, $4, $5, $6)", series as _, event, player3 as _, async_kind as _, time3 as _, (!value.vod3.is_empty()).then(|| &value.vod3)).execute(&mut transaction).await?;
+            let mut players = Vec::default();
+            for (((role, _), time), vod) in data.team_config().roles().iter().zip(&times).zip(&vods) {
+                let player = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = $2"#, i64::from(team.id), role as _).fetch_one(&mut transaction).await?;
+                sqlx::query!("INSERT INTO async_players (series, event, player, kind, time, vod) VALUES ($1, $2, $3, $4, $5, $6)", series as _, event, player as _, async_kind as _, time as _, (!vod.is_empty()).then_some(vod)).execute(&mut transaction).await?;
+                players.push(player);
+            }
             if let Some(discord_guild) = data.discord_guild {
                 let asyncs_row = sqlx::query!(r#"SELECT discord_role AS "discord_role: Id", discord_channel AS "discord_channel: Id" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, series as _, event, async_kind as _).fetch_one(&mut transaction).await?;
                 let members = sqlx::query_scalar!(r#"SELECT discord_id AS "discord_id!: Id" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, i64::from(team.id)).fetch_all(&mut transaction).await?;
@@ -1619,64 +1626,36 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                     let mut message = MessageBuilder::default();
                     message.push("Please welcome ");
                     message.mention_team(&mut transaction, Some(discord_guild), &team).await?;
-                    if let (Some(time1), Some(time2), Some(time3)) = (time1, time2, time3) {
+                    if let Some(sum) = times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
                         message.push(" who finished with a time of ");
-                        message.push(format_duration((time1 + time2 + time3) / 3, true));
+                        message.push(format_duration(sum / u32::try_from(times.len()).expect("too many players in team"), true));
                         message.push_line('!');
                     } else {
                         message.push_line(" who did not finish.");
-                    };
-                    if let Some(player1) = User::from_id(&mut transaction, player1).await? {
-                        message.mention_user(&player1);
-                    } else {
-                        message.push("player 1");
                     }
-                    message.push(": ");
-                    if let Some(time1) = time1 {
-                        message.push(format_duration(time1, false));
-                    } else {
-                        message.push("DNF");
-                    }
-                    if value.vod1.is_empty() {
-                        message.push_line("");
-                    } else {
-                        message.push(' ');
-                        message.push_line_safe(&value.vod1);
-                    }
-                    if let Some(player2) = User::from_id(&mut transaction, player2).await? {
-                        message.mention_user(&player2);
-                    } else {
-                        message.push("player 2");
-                    }
-                    message.push(": ");
-                    if let Some(time2) = time2 {
-                        message.push(format_duration(time2, false));
-                    } else {
-                        message.push("DNF");
-                    }
-                    if value.vod2.is_empty() {
-                        message.push_line("");
-                    } else {
-                        message.push(' ');
-                        message.push_line_safe(&value.vod2);
-                    }
-                    if let Some(player3) = User::from_id(&mut transaction, player3).await? {
-                        message.mention_user(&player3);
-                    } else {
-                        message.push("player 3");
-                    }
-                    message.push(": ");
-                    if let Some(time3) = time3 {
-                        message.push(format_duration(time3, false));
-                    } else {
-                        message.push("DNF");
-                    }
-                    if !value.vod3.is_empty() {
-                        message.push(' ');
-                        message.push_safe(&value.vod3);
+                    if players.len() > 1 {
+                        for (i, ((player, time), vod)) in players.into_iter().zip(&times).zip(&vods).enumerate() {
+                            if let Some(player) = User::from_id(&mut transaction, player).await? {
+                                message.mention_user(&player);
+                            } else {
+                                message.push("player ");
+                                message.push((i + 1).to_string());
+                            }
+                            message.push(": ");
+                            if let Some(time) = *time {
+                                message.push(format_duration(time, false));
+                            } else {
+                                message.push("DNF");
+                            }
+                            if vod.is_empty() {
+                                message.push_line("");
+                            } else {
+                                message.push(' ');
+                                message.push_line_safe(vod);
+                            }
+                        }
                     }
                     if !value.fpa.is_empty() {
-                        message.push_line("");
                         message.push("FPA call:");
                         message.quote_rest();
                         message.push_safe(&value.fpa);
