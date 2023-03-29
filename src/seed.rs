@@ -154,10 +154,12 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
         (None, false, seed.file_hash, None)
     };
     Ok(html! {
-        td(class = "hash") {
+        td {
             @if let Some(file_hash) = file_hash {
-                @for hash_icon in file_hash {
-                    : hash_icon.to_html();
+                div(class = "hash") {
+                    @for hash_icon in file_hash {
+                        : hash_icon.to_html();
+                    }
                 }
             }
         }
