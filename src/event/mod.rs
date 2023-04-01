@@ -770,7 +770,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             let row = sqlx::query!(r#"
                 SELECT member AS "id: Id", status AS "status: SignupStatus", time, vod
                 FROM team_members LEFT OUTER JOIN async_players ON (member = player)
-                WHERE series = $1 AND event = $2 AND team = $3 AND role = $4 AND (kind = 'qualifier' OR kind IS NULL)
+                WHERE team = $3 AND role = $4 AND (series = $1 OR series IS NULL) AND (event = $2 OR event IS NULL) AND (kind = 'qualifier' OR kind IS NULL)
             "#, series as _, event, i64::from(team.id), role as _).fetch_one(&mut transaction).await?;
             let is_confirmed = row.status.is_confirmed();
             let user = User::from_id(&mut transaction, row.id).await?.ok_or(TeamsError::NonexistentUser)?;
