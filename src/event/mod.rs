@@ -1112,26 +1112,28 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
         "#, series as _, event, i64::from(me.id)).fetch_optional(&mut transaction).await? {
             html! {
                 : header;
-                p {
-                    : "You are signed up as part of ";
-                    //TODO use Team type
-                    @if let Some(racetime_slug) = row.racetime_slug {
-                        a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
+                @if !matches!(data.team_config(), TeamConfig::Solo) {
+                    p {
+                        : "You are signed up as part of ";
+                        //TODO use Team type
+                        @if let Some(racetime_slug) = row.racetime_slug {
+                            a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
+                                @if let Some(name) = row.name {
+                                    i : name;
+                                } else {
+                                    : "an unnamed team";
+                                }
+                            }
+                        } else {
                             @if let Some(name) = row.name {
                                 i : name;
                             } else {
                                 : "an unnamed team";
                             }
                         }
-                    } else {
-                        @if let Some(name) = row.name {
-                            i : name;
-                        } else {
-                            : "an unnamed team";
-                        }
+                        //TODO list teammates
+                        : ".";
                     }
-                    //TODO list teammates
-                    : ".";
                 }
                 @if row.resigned {
                     p : "You have resigned from this event.";
