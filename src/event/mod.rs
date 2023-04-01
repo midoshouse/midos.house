@@ -323,6 +323,7 @@ pub(crate) struct Data<'a> {
     pub(crate) discord_organizer_channel: Option<ChannelId>,
     pub(crate) discord_scheduling_channel: Option<ChannelId>,
     enter_flow: Option<enter::Flow>,
+    show_qualifier_times: bool,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -352,7 +353,8 @@ impl<'a> Data<'a> {
             discord_race_results_channel AS "discord_race_results_channel: Id",
             discord_organizer_channel AS "discord_organizer_channel: Id",
             discord_scheduling_channel AS "discord_scheduling_channel: Id",
-            enter_flow AS "enter_flow: Json<enter::Flow>"
+            enter_flow AS "enter_flow: Json<enter::Flow>",
+            show_qualifier_times
         FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
                 display_name: row.display_name,
@@ -370,6 +372,7 @@ impl<'a> Data<'a> {
                 discord_organizer_channel: row.discord_organizer_channel.map(|Id(id)| id.into()),
                 discord_scheduling_channel: row.discord_scheduling_channel.map(|Id(id)| id.into()),
                 enter_flow: row.enter_flow.map(|Json(flow)| flow),
+                show_qualifier_times: row.show_qualifier_times,
                 series, event,
             }))
             .transpose()
@@ -746,9 +749,10 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     let header = data.header(&mut transaction, me.as_ref(), Tab::Teams, false).await?;
     let mut signups = Vec::default();
     let has_qualifier = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier') AS "exists!""#, series as _, event).fetch_one(&mut transaction).await?;
-    let show_qualifier_times =
+    let show_qualifier_times = data.show_qualifier_times && (
         sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM async_teams, team_members WHERE async_teams.team = team_members.team AND member = $1 AND kind = 'qualifier'"#, me.as_ref().map(|me| i64::from(me.id))).fetch_optional(&mut *transaction).await?.unwrap_or(false)
-        || data.is_started(&mut transaction).await?;
+        || data.is_started(&mut transaction).await?
+    );
     let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
         series = $1
         AND event = $2
