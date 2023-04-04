@@ -1189,7 +1189,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
                 }
             });
             : form_field("multiple_games", &mut errors, html! {
-                input(type = "checkbox", id = "multiple_games", name = "multiple_games", checked? = ctx.field_value("multiple_games") == Some("on"));
+                input(type = "checkbox", id = "multiple_games", name = "multiple_games", checked? = ctx.field_value("multiple_games").map_or(event.default_multiple_games, |value| value == "on"));
                 label(for = "multiple_games") {
                     : "This is a multi-game match. (Create follow-up games using ";
                     code : "/assign";
