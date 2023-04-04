@@ -753,7 +753,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
         sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM async_teams, team_members WHERE async_teams.team = team_members.team AND member = $1 AND kind = 'qualifier'"#, me.as_ref().map(|me| i64::from(me.id))).fetch_optional(&mut *transaction).await?.unwrap_or(false)
         || data.is_started(&mut transaction).await?
     );
-    let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+    let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!", pieces FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
         series = $1
         AND event = $2
         AND NOT resigned
@@ -776,22 +776,25 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             let user = User::from_id(&mut transaction, row.id).await?.ok_or(TeamsError::NonexistentUser)?;
             members.push((role, user, is_confirmed, row.time.map(decode_pginterval).transpose()?, row.vod));
         }
-        signups.push((Team { id: team.id, name: team.name, racetime_slug: team.racetime_slug, plural_name: team.plural_name }, members, team.qualified));
+        signups.push((Team { id: team.id, name: team.name, racetime_slug: team.racetime_slug, plural_name: team.plural_name }, members, team.qualified, team.pieces));
     }
     if show_qualifier_times {
-        signups.sort_unstable_by(|(team1, members1, qualified1), (team2, members2, qualified2)| {
+        signups.sort_unstable_by(|(team1, members1, qualified1, pieces1), (team2, members2, qualified2, pieces2)| {
             #[derive(PartialEq, Eq, PartialOrd, Ord)]
             enum Qualification {
-                Finished(Duration),
+                Finished(Option<i16>, Duration),
                 DidNotFinish,
                 NotYetQualified,
             }
 
             impl Qualification {
-                fn new(qualified: bool, members: &[(Role, User, bool, Option<Duration>, Option<String>)]) -> Self {
+                fn new(qualified: bool, pieces: Option<i16>, members: &[(Role, User, bool, Option<Duration>, Option<String>)]) -> Self {
                     if qualified {
                         if let Some(time) = members.iter().try_fold(Duration::default(), |acc, &(_, _, _, time, _)| Some(acc + time?)) {
-                            Self::Finished(time)
+                            Self::Finished(
+                                pieces.map(|pieces| -pieces), // list teams with more pieces first
+                                time,
+                            )
                         } else {
                             Self::DidNotFinish
                         }
@@ -801,11 +804,11 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                 }
             }
 
-            Qualification::new(*qualified1, members1).cmp(&Qualification::new(*qualified2, members2))
+            Qualification::new(*qualified1, *pieces1, members1).cmp(&Qualification::new(*qualified2, *pieces2, members2))
             .then_with(|| team1.cmp(team2))
         });
     } else {
-        signups.sort_unstable_by(|(team1, _, qualified1), (team2, _, qualified2)|
+        signups.sort_unstable_by(|(team1, _, qualified1, _), (team2, _, qualified2, _)|
             qualified2.cmp(qualified1) // reversed to list qualified teams first
             .then_with(|| team1.cmp(team2))
         );
@@ -823,20 +826,29 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                     @for &(role, display_name) in roles {
                         th(class = role.css_class()) : display_name;
                     }
-                    @if has_qualifier && !show_qualifier_times {
-                        th : "Qualified";
+                    @if has_qualifier {
+                        @if show_qualifier_times {
+                            @if series == Series::TriforceBlitz {
+                                th : "Pieces Found";
+                            }
+                        } else {
+                            th : "Qualified";
+                        }
                     }
                 }
             }
             tbody {
                 @if signups.is_empty() {
                     tr {
-                        td(colspan = if let TeamConfig::Solo = data.team_config() { 0 } else { 1 } + roles.len() + if has_qualifier && !show_qualifier_times { 1 } else { 0 }) {
+                        td(colspan =
+                            if let TeamConfig::Solo = data.team_config() { 0 } else { 1 } + roles.len()
+                            + if has_qualifier { if show_qualifier_times { if series == Series::TriforceBlitz { 1 } else { 0 } } else { 1 } } else { 0 }
+                        ) {
                             i : "(no signups yet)";
                         }
                     }
                 } else {
-                    @for (team, members, qualified) in signups {
+                    @for (team, members, qualified, pieces) in signups {
                         tr {
                             @if !matches!(data.team_config(), TeamConfig::Solo) {
                                 td {
@@ -887,7 +899,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                     @if show_qualifier_times && qualified {
                                         br;
                                         small {
-                                            @let time = if let Some(time) = qualifier_time { format_duration(*time, false) } else { format!("DNF") };
+                                            @let time = if let Some(time) = qualifier_time { format_duration(*time, false) } else { format!("DNF") }; //TODO include number of pieces found in Triforce Blitz
                                             @if let Some(vod) = qualifier_vod {
                                                 @if let Some(Ok(vod_url)) = (!vod.contains(' ')).then(|| Url::parse(vod)) {
                                                     a(href = vod_url.to_string()) : time;
@@ -909,10 +921,16 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                     }
                                 }
                             }
-                            @if has_qualifier && !show_qualifier_times {
-                                td {
-                                    @if qualified {
-                                        : "✓";
+                            @if has_qualifier {
+                                @if show_qualifier_times {
+                                    @if series == Series::TriforceBlitz {
+                                        : pieces;
+                                    }
+                                } else {
+                                    td {
+                                        @if qualified {
+                                            : "✓";
+                                        }
                                     }
                                 }
                             }
@@ -1422,8 +1440,8 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<Csr
     let mut form = form.into_inner();
     form.verify(&csrf); //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_ended() { return Err(ResignError::EventEnded.into()) }
-    let is_started = data.is_started(&mut transaction).await?;
-    let members = if is_started {
+    let keep_record = data.is_started(&mut transaction).await?; //TODO or team has requested any asyncs
+    let members = if keep_record {
         sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, i64::from(team)).execute(&mut transaction).await?;
         sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, i64::from(team)).fetch(&mut transaction)
             .map_ok(|row| (row.id, row.status))
@@ -1449,7 +1467,7 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<Csr
                 sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", notification_id as _, member_id as _, notification_kind as _, series as _, event, me.id as _).execute(&mut transaction).await?;
             }
         }
-        if !is_started {
+        if !keep_record {
             sqlx::query!("DELETE FROM teams WHERE id = $1", i64::from(team)).execute(&mut transaction).await?;
         }
         transaction.commit().await?;

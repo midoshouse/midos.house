@@ -368,7 +368,7 @@ async fn mw(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResu
             a(href = "https://wiki.ootrandomizer.com/index.php?title=Multiworld") : "multiworld";
             : " seeds of the ";
             a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
-            : ". It supports both ";
+            : ". It supports both "; //TODO clarify that cross-platform rooms are possible; how to word concisely?
             a(href = "https://tasvideos.org/BizHawk") : "BizHawk";
             : " and ";
             a(href = "https://pj64-emu.com/") : "Project64";
@@ -378,7 +378,7 @@ async fn mw(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResu
             a(class = "button", href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "Download";
         }
         p {
-            : "If you can't or don't want to use the installer, you can follow the ";
+            : "If you can't or don't want to use the installer, you can follow the "; //TODO clarify that this is intended to circumvent rogue antivirus filters and preface with ways to get support
             a(href = "https://github.com/midoshouse/ootr-multiworld#manual") : "manual install instructions";
             : " instead.";
         }
