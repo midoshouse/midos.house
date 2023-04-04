@@ -1,4 +1,5 @@
 use {
+    std::fmt,
     convert_case::{
         Case,
         Casing as _,
@@ -176,6 +177,12 @@ impl User {
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "her",
             Some(RaceTimePronouns::They | RaceTimePronouns::Other) | None => "their",
         }
+    }
+}
+
+impl fmt::Display for User {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.display_name())
     }
 }
 

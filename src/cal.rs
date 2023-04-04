@@ -123,6 +123,7 @@ use {
             format_datetime,
             full_form,
             io_error_from_reqwest,
+            natjoin_str,
         },
     },
 };
@@ -1121,11 +1122,18 @@ pub(crate) async fn for_event(env: &State<Environment>, config: &State<Config>, 
 pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
     let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let form = if me.is_some() {
-        let teams = html! {
-            @for team in Team::for_event(&mut transaction, event.series, &event.event).await? {
-                option(value = team.id.0) : team.name(&mut transaction).await?; //TODO list members of unnamed teams
-            }
-        };
+        let teams = Team::for_event(&mut transaction, event.series, &event.event).await?;
+        let mut team_data = Vec::with_capacity(teams.len());
+        for team in teams {
+            let name = if let Some(name) = team.name(&mut transaction).await? {
+                name.into_owned()
+            } else {
+                format!("unnamed team ({})", natjoin_str(team.members(&mut transaction).await?).unwrap_or_else(|| format!("no members")))
+            };
+            team_data.push((team.id.to_string(), name));
+        }
+        let phase_options = sqlx::query_scalar!("SELECT option FROM phase_options WHERE series = $1 AND event = $2", event.series as _, &event.event).fetch_all(&mut transaction).await?;
+        let round_options = sqlx::query_scalar!("SELECT option FROM round_options WHERE series = $1 AND event = $2", event.series as _, &event.event).fetch_all(&mut transaction).await?;
         let mut errors = ctx.errors().collect_vec();
         full_form(uri!(create_race_post(event.series, &*event.event)), csrf, html! {
             : form_field("team1", &mut errors, html! {
@@ -1136,7 +1144,11 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
                         : "Team A:";
                     }
                 }
-                select(name = "team1") : teams;
+                select(name = "team1") {
+                    @for (id, name) in &team_data {
+                        option(value = id, selected? = ctx.field_value("team1") == Some(id)) : name;
+                    }
+                }
             });
             : form_field("team2", &mut errors, html! {
                 label(for = "team2") {
@@ -1146,15 +1158,35 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
                         : "Team B:";
                     }
                 }
-                select(name = "team2") : teams;
+                select(name = "team2") {
+                    @for (id, name) in team_data {
+                        option(value = id, selected? = ctx.field_value("team2") == Some(&id)) : name;
+                    }
+                }
             });
             : form_field("phase", &mut errors, html! {
                 label(for = "phase") : "Phase:";
-                input(type = "text", name = "phase", value? = ctx.field_value("phase"));
+                @if phase_options.is_empty() {
+                    input(type = "text", name = "phase", value? = ctx.field_value("phase"));
+                } else {
+                    select(name = "phase") {
+                        @for option in phase_options {
+                            option(value = option, selected? = ctx.field_value("phase") == Some(&option)) : option;
+                        }
+                    }
+                }
             });
             : form_field("round", &mut errors, html! {
                 label(for = "round") : "Round:";
-                input(type = "text", name = "round", value? = ctx.field_value("round"));
+                @if round_options.is_empty() {
+                    input(type = "text", name = "round", value? = ctx.field_value("round"));
+                } else {
+                    select(name = "round") {
+                        @for option in round_options {
+                            option(value = option, selected? = ctx.field_value("round") == Some(&option)) : option;
+                        }
+                    }
+                }
             });
             : form_field("multiple_games", &mut errors, html! {
                 input(type = "checkbox", id = "multiple_games", name = "multiple_games", checked? = ctx.field_value("multiple_games") == Some("on"));
