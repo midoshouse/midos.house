@@ -29,6 +29,10 @@ use {
         html,
     },
     serde::Deserialize,
+    serde_with::{
+        DisplayFromStr,
+        serde_as,
+    },
     serenity::model::prelude::*,
     sqlx::PgPool,
     wheel::traits::ReqwestResponseExt as _,
@@ -124,19 +128,23 @@ async fn handle_discord_token_response(client: &reqwest::Client, cookies: &Cooki
         .json_with_text_in_error().await?)
 }
 
+#[serde_as]
 #[derive(Deserialize)]
 pub(crate) struct RaceTimeUser {
     pub(crate) id: String,
     pub(crate) name: String,
-    pub(crate) discriminator: Option<String>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    pub(crate) discriminator: Option<i16>,
     pronouns: Option<RaceTimePronouns>,
 }
 
+#[serde_as]
 #[derive(Deserialize)]
 pub(crate) struct DiscordUser {
     pub(crate) id: UserId,
     pub(crate) username: String,
-    pub(crate) discriminator: String,
+    #[serde_as(as = "DisplayFromStr")]
+    pub(crate) discriminator: i16,
 }
 
 #[rocket::async_trait]
@@ -382,7 +390,7 @@ async fn register_racetime_inner(pool: &State<PgPool>, me: Option<User>, racetim
             Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(me.id))))
         } else {
             let id = Id::new(&mut transaction, IdTable::Users).await?;
-            sqlx::query!("INSERT INTO users (id, display_source, racetime_id, racetime_display_name, racetime_pronouns) VALUES ($1, 'racetime', $2, $3, $4)", id as _, racetime_user.id, racetime_user.name, racetime_user.pronouns as _).execute(&mut transaction).await?;
+            sqlx::query!("INSERT INTO users (id, display_source, racetime_id, racetime_display_name, racetime_discriminator, racetime_pronouns) VALUES ($1, 'racetime', $2, $3, $4, $5)", id as _, racetime_user.id, racetime_user.name, racetime_user.discriminator, racetime_user.pronouns as _).execute(&mut transaction).await?;
             transaction.commit().await?;
             Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(id))))
         }
@@ -402,7 +410,7 @@ async fn register_discord_inner(pool: &State<PgPool>, me: Option<User>, discord_
             Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(me.id))))
         } else {
             let id = Id::new(&mut transaction, IdTable::Users).await?;
-            sqlx::query!("INSERT INTO users (id, display_source, discord_id, discord_display_name) VALUES ($1, 'discord', $2, $3)", id as _, i64::from(discord_user.id), discord_user.username).execute(&mut transaction).await?;
+            sqlx::query!("INSERT INTO users (id, display_source, discord_id, discord_display_name, discord_discriminator) VALUES ($1, 'discord', $2, $3, $4)", id as _, i64::from(discord_user.id), discord_user.username, discord_user.discriminator).execute(&mut transaction).await?;
             transaction.commit().await?;
             Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(id))))
         }

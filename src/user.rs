@@ -69,9 +69,11 @@ pub(crate) struct User {
     display_source: DisplaySource, //TODO allow users with both accounts connected to set this in their preferences
     pub(crate) racetime_id: Option<String>,
     pub(crate) racetime_display_name: Option<String>,
+    racetime_discriminator: Option<i16>,
     pub(crate) racetime_pronouns: Option<RaceTimePronouns>,
     pub(crate) discord_id: Option<UserId>,
     pub(crate) discord_display_name: Option<String>,
+    discord_discriminator: Option<i16>, //TODO fill in database then make non-optional
     pub(crate) is_archivist: bool,
 }
 
@@ -82,18 +84,22 @@ impl User {
                 display_source AS "display_source: DisplaySource",
                 racetime_id,
                 racetime_display_name,
+                racetime_discriminator,
                 racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
                 discord_id AS "discord_id: Id",
                 discord_display_name,
+                discord_discriminator,
                 is_archivist
             FROM users WHERE id = $1"#, i64::from(id)).fetch_optional(pool).await?
                 .map(|row| Self {
                     display_source: row.display_source,
                     racetime_id: row.racetime_id,
                     racetime_display_name: row.racetime_display_name,
+                    racetime_discriminator: row.racetime_discriminator,
                     racetime_pronouns: row.racetime_pronouns,
                     discord_id: row.discord_id.map(|Id(id)| id.into()),
                     discord_display_name: row.discord_display_name,
+                    discord_discriminator: row.discord_discriminator,
                     is_archivist: row.is_archivist,
                     id,
                 })
@@ -106,9 +112,11 @@ impl User {
                 id AS "id: Id",
                 display_source AS "display_source: DisplaySource",
                 racetime_display_name,
+                racetime_discriminator,
                 racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
                 discord_id AS "discord_id: Id",
                 discord_display_name,
+                discord_discriminator,
                 is_archivist
             FROM users WHERE racetime_id = $1"#, racetime_id).fetch_optional(pool).await?
                 .map(|row| Self {
@@ -116,9 +124,11 @@ impl User {
                     display_source: row.display_source,
                     racetime_id: Some(racetime_id.to_owned()),
                     racetime_display_name: row.racetime_display_name,
+                    racetime_discriminator: row.racetime_discriminator,
                     racetime_pronouns: row.racetime_pronouns,
                     discord_id: row.discord_id.map(|Id(id)| id.into()),
                     discord_display_name: row.discord_display_name,
+                    discord_discriminator: row.discord_discriminator,
                     is_archivist: row.is_archivist,
                 })
         )
@@ -131,8 +141,10 @@ impl User {
                 display_source AS "display_source: DisplaySource",
                 racetime_id,
                 racetime_display_name,
+                racetime_discriminator,
                 racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
                 discord_display_name,
+                discord_discriminator,
                 is_archivist
             FROM users WHERE discord_id = $1"#, i64::from(discord_id)).fetch_optional(pool).await?
                 .map(|row| Self {
@@ -140,9 +152,11 @@ impl User {
                     display_source: row.display_source,
                     racetime_id: row.racetime_id,
                     racetime_display_name: row.racetime_display_name,
+                    racetime_discriminator: row.racetime_discriminator,
                     racetime_pronouns: row.racetime_pronouns,
                     discord_id: Some(discord_id),
                     discord_display_name: row.discord_display_name,
+                    discord_discriminator: row.discord_discriminator,
                     is_archivist: row.is_archivist,
                 })
         )
@@ -214,7 +228,13 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
         html! {
             p {
                 : "racetime.gg: ";
-                a(href = format!("https://racetime.gg/user/{racetime_id}")) : user.racetime_display_name; //TODO racetime.gg display name with discriminator
+                a(href = format!("https://racetime.gg/user/{racetime_id}")) {
+                    : user.racetime_display_name;
+                    @if let Some(discriminator) = user.racetime_discriminator {
+                        : "#";
+                        : discriminator;
+                    }
+                }
                 //TODO if this may be outdated, link to racetime.gg login page for refreshing
             }
         }
@@ -225,7 +245,13 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                 html! {
                     p {
                         : "You are also signed in via racetime.gg as ";
-                        a(href = format!("https://racetime.gg/user/{}", racetime_user.racetime_id.expect("racetime.gg user without racetime.gg ID"))) : racetime_user.racetime_display_name; //TODO racetime.gg display name with discriminator
+                        a(href = format!("https://racetime.gg/user/{}", racetime_user.racetime_id.expect("racetime.gg user without racetime.gg ID"))) {
+                            : racetime_user.racetime_display_name;
+                            @if let Some(discriminator) = racetime_user.racetime_discriminator {
+                                : "#";
+                                : discriminator;
+                            }
+                        }
                         : " which belongs to a different Mido's House account. ";
                         @if racetime_user.discord_id.is_some() {
                             : "That Mido's House account is also connected to a Discord account. If you would like to merge your accounts, please contact ";
@@ -266,7 +292,13 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
         html! {
             p {
                 : "Discord: ";
-                a(href = format!("https://discord.com/users/{discord_id}")) : user.discord_display_name; //TODO Discord display name with discriminator
+                a(href = format!("https://discord.com/users/{discord_id}")) {
+                    : user.discord_display_name;
+                    @if let Some(discriminator) = user.discord_discriminator {
+                        : "#";
+                        : discriminator;
+                    }
+                }
                 //TODO if this may be outdated, link to racetime.gg login page for refreshing
             }
         }
@@ -277,7 +309,13 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                 html! {
                     p {
                         : "You are also signed in via Discord as ";
-                        a(href = format!("https://discord.com/users/{}", discord_user.discord_id.expect("Discord user without Discord ID"))) : discord_user.discord_display_name; //TODO Discord display name with discriminator
+                        a(href = format!("https://discord.com/users/{}", discord_user.discord_id.expect("Discord user without Discord ID"))) {
+                            : discord_user.discord_display_name;
+                            @if let Some(discriminator) = discord_user.discord_discriminator {
+                                : "#";
+                                : discriminator;
+                            }
+                        }
                         : " which belongs to a different Mido's House account. ";
                         @if discord_user.racetime_id.is_some() {
                             : "That Mido's House account is also connected to a raceitme.gg account. If you would like to merge your accounts, please contact ";
