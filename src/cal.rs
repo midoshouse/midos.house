@@ -1775,6 +1775,11 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                 }
             }
         }
+        if !value.video_url.is_empty() {
+            if let Err(e) = Url::parse(&value.video_url) {
+                form.context.push_error(form::Error::validation(format!("Failed to parse URL: {e}")).with_name("video_url"));
+            }
+        }
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf, event, race, Some(form.context)).await?)
         } else {
