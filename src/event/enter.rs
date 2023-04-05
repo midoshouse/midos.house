@@ -474,6 +474,15 @@ pub(crate) async fn post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Disc
                 } else {
                     form.context.push_error(form::Error::validation("Signups for this event aren't open yet."));
                 }
+                if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+                    id = team
+                    AND series = $1
+                    AND event = $2
+                    AND member = $3
+                    AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+                ) AS "exists!""#, series as _, event, i64::from(me.id)).fetch_one(&mut transaction).await? {
+                    form.context.push_error(form::Error::validation("You are already signed up for this event."));
+                }
                 if form.context.errors().next().is_none() {
                     let id = Id::new(&mut transaction, IdTable::Teams).await?;
                     sqlx::query!("INSERT INTO teams (id, series, event, plural_name) VALUES ($1, $2, $3, FALSE)", id as _, series as _, event).execute(&mut transaction).await?;
@@ -490,28 +499,28 @@ pub(crate) async fn post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Disc
                     (Some(my_role), Some(teammate)) => {
                         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
                             id = team
-                            AND series = 'pic'
-                            AND event = $1
-                            AND member = $2
-                            AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
-                        ) AS "exists!""#, event, i64::from(me.id), i64::from(teammate)).fetch_one(&mut transaction).await? {
+                            AND series = $1
+                            AND event = $2
+                            AND member = $3
+                            AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)
+                        ) AS "exists!""#, series as _, event, i64::from(me.id), i64::from(teammate)).fetch_one(&mut transaction).await? {
                             form.context.push_error(form::Error::validation("A team with these members is already proposed for this race. Check your notifications to accept the invite, or ask your teammate to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
                         }
                         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
                             id = team
-                            AND series = 'pic'
-                            AND event = $1
-                            AND member = $2
+                            AND series = $1
+                            AND event = $2
+                            AND member = $3
                             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                        ) AS "exists!""#, event, i64::from(me.id)).fetch_one(&mut transaction).await? {
+                        ) AS "exists!""#, series as _, event, i64::from(me.id)).fetch_one(&mut transaction).await? {
                             form.context.push_error(form::Error::validation("You are already signed up for this race."));
                         }
                         if !value.team_name.is_empty() && sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
-                            series = 'pic'
-                            AND event = $1
-                            AND name = $2
+                            series = $1
+                            AND event = $2
+                            AND name = $3
                             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                        ) AS "exists!""#, event, value.team_name).fetch_one(&mut transaction).await? {
+                        ) AS "exists!""#, series as _, event, value.team_name).fetch_one(&mut transaction).await? {
                             form.context.push_error(form::Error::validation("A team with this name is already signed up for this race.").with_name("team_name"));
                         }
                         if my_role == pic::Role::Sheikah && me.racetime_id.is_none() {
@@ -525,11 +534,11 @@ pub(crate) async fn post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Disc
                         }
                         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
                             id = team
-                            AND series = 'pic'
-                            AND event = $1
-                            AND member = $2
+                            AND series = $1
+                            AND event = $2
+                            AND member = $3
                             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                        ) AS "exists!""#, event, i64::from(teammate)).fetch_one(&mut transaction).await? {
+                        ) AS "exists!""#, series as _, event, i64::from(teammate)).fetch_one(&mut transaction).await? {
                             form.context.push_error(form::Error::validation("This user is already signed up for this race.").with_name("teammate"));
                         }
                         //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
@@ -551,7 +560,7 @@ pub(crate) async fn post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Disc
                 };
                 if form.context.errors().next().is_none() {
                     let id = Id::new(&mut transaction, IdTable::Teams).await?;
-                    sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, 'pic', $2, $3)", id as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
+                    sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, $2, $3, $4)", id as _, series as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, Role::from(my_role.expect("validated")) as _).execute(&mut transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", id as _, teammate.expect("validated") as _, match my_role.expect("validated") { pic::Role::Sheikah => Role::Gerudo, pic::Role::Gerudo => Role::Sheikah } as _).execute(&mut transaction).await?;
                     transaction.commit().await?;
