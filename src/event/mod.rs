@@ -1443,14 +1443,14 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<Csr
     let mut form = form.into_inner();
     form.verify(&csrf); //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_ended() { return Err(ResignError::EventEnded.into()) }
-    let keep_record = data.is_started(&mut transaction).await?; //TODO or team has requested any asyncs
+    let keep_record = data.is_started(&mut transaction).await? || sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1) AS "exists!""#, team as _).fetch_one(&mut transaction).await?;
     let members = if keep_record {
-        sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, i64::from(team)).execute(&mut transaction).await?;
-        sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, i64::from(team)).fetch(&mut transaction)
+        sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, team as _).execute(&mut transaction).await?;
+        sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, team as _).fetch(&mut transaction)
             .map_ok(|row| (row.id, row.status))
             .try_collect::<Vec<_>>().await?
     } else {
-        sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id", status AS "status: SignupStatus""#, i64::from(team)).fetch(&mut transaction)
+        sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id", status AS "status: SignupStatus""#, team as _).fetch(&mut transaction)
             .map_ok(|row| (row.id, row.status))
             .try_collect().await?
     };
