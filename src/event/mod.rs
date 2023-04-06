@@ -1400,6 +1400,7 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
 pub(crate) enum ResignError {
     #[error(transparent)] Csrf(#[from] rocket_csrf::VerificationFailure),
     #[error(transparent)] Data(#[from] DataError),
+    #[error(transparent)] Discord(#[from] serenity::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("you can no longer resign from this event since it has already ended")]
     EventEnded,
@@ -1437,20 +1438,21 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
 }
 
 #[rocket::post("/event/<series>/<event>/resign/<team>", data = "<form>")]
-pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, StatusOrError<ResignError>> {
+pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, StatusOrError<ResignError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let team = Team::from_id(&mut transaction, team).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf); //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_ended() { return Err(ResignError::EventEnded.into()) }
-    let keep_record = data.is_started(&mut transaction).await? || sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1) AS "exists!""#, team as _).fetch_one(&mut transaction).await?;
+    let keep_record = data.is_started(&mut transaction).await? || sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1) AS "exists!""#, team.id as _).fetch_one(&mut transaction).await?;
     let members = if keep_record {
-        sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, team as _).execute(&mut transaction).await?;
-        sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, team as _).fetch(&mut transaction)
+        sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, team.id as _).execute(&mut transaction).await?;
+        sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, team.id as _).fetch(&mut transaction)
             .map_ok(|row| (row.id, row.status))
             .try_collect::<Vec<_>>().await?
     } else {
-        sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id", status AS "status: SignupStatus""#, team as _).fetch(&mut transaction)
+        sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id", status AS "status: SignupStatus""#, team.id as _).fetch(&mut transaction)
             .map_ok(|row| (row.id, row.status))
             .try_collect().await?
     };
@@ -1471,10 +1473,18 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, me: User, csrf: Option<Csr
             }
         }
         if !keep_record {
-            sqlx::query!("DELETE FROM teams WHERE id = $1", i64::from(team)).execute(&mut transaction).await?;
+            sqlx::query!("DELETE FROM teams WHERE id = $1", team.id as _).execute(&mut transaction).await?;
+        }
+        if let Some(organizer_channel) = data.discord_organizer_channel {
+            organizer_channel.say(&*discord_ctx.read().await, MessageBuilder::default()
+                .mention_team(&mut transaction, data.discord_guild, &team).await?
+                .push(if team.name_is_plural() { " have resigned from " } else { " has resigned from " })
+                .push_safe(data.display_name)
+                .push(".")
+                .build(),
+            ).await?;
         }
         transaction.commit().await?;
-        //TODO notify organizer Discord channel if any
         Ok(Redirect::to(uri!(teams(series, event))))
     } else {
         transaction.rollback().await?;
