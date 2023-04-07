@@ -1421,12 +1421,30 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
     if data.is_ended() {
         return Err(StatusOrError::Status(Status::Forbidden))
     }
+    let is_started = data.is_started(&mut transaction).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
-        //TODO different wording if the event has started
         p {
-            : "Are you sure you want to retract your team's registration from ";
-            : data;
-            : "? If you change your mind later, you will need to invite your teammates again.";
+            @if is_started {
+                @if let TeamConfig::Solo = data.team_config() {
+                    : "Are you sure you want to resign from ";
+                    : data;
+                    : "?";
+                } else {
+                    : "Are you sure you want to remove your team from ";
+                    : data;
+                    : "?";
+                }
+            } else {
+                @if let TeamConfig::Solo = data.team_config() {
+                    : "Are you sure you want to retract your registration from ";
+                    : data;
+                    : "?";
+                } else {
+                    : "Are you sure you want to retract your team's registration from ";
+                    : data;
+                    : "? If you change your mind later, you will need to invite your teammates again.";
+                }
+            }
         }
         div(class = "button-row") {
             form(action = uri!(crate::event::resign_post(series, event, team)).to_string(), method = "post") {
