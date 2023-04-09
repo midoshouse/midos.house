@@ -927,7 +927,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                             @if has_qualifier {
                                 @if show_qualifier_times {
                                     @if series == Series::TriforceBlitz {
-                                        : pieces;
+                                        td : pieces;
                                     }
                                 } else {
                                     td {
