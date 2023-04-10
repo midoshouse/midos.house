@@ -233,7 +233,7 @@ impl<'r> FromRequest<'r> for User {
                 let mut found_user = Err((Status::Unauthorized, UserFromRequestError::Cookie));
                 match req.guard::<RaceTimeUser>().await {
                     Outcome::Success(racetime_user) => if let Some(user) = guard_try!(User::from_racetime(&**pool, &racetime_user.id).await) {
-                        guard_try!(sqlx::query!("UPDATE users SET racetime_display_name = $1, racetime_pronouns = $2 WHERE id = $3", racetime_user.name, racetime_user.pronouns as _, i64::from(user.id)).execute(&**pool).await);
+                        guard_try!(sqlx::query!("UPDATE users SET racetime_display_name = $1, racetime_discriminator = $2, racetime_pronouns = $3 WHERE id = $4", racetime_user.name, racetime_user.discriminator, racetime_user.pronouns as _, i64::from(user.id)).execute(&**pool).await);
                         found_user = found_user.or(Ok(user));
                     },
                     Outcome::Forward(()) => {}
@@ -241,7 +241,7 @@ impl<'r> FromRequest<'r> for User {
                 }
                 match req.guard::<DiscordUser>().await {
                     Outcome::Success(discord_user) => if let Some(user) = guard_try!(User::from_discord(&**pool, discord_user.id).await) {
-                        guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1 WHERE id = $2", discord_user.username, i64::from(user.id)).execute(&**pool).await);
+                        guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1, discord_discriminator = $2 WHERE id = $3", discord_user.username, discord_user.discriminator, i64::from(user.id)).execute(&**pool).await);
                         found_user = found_user.or(Ok(user));
                     },
                     Outcome::Forward(()) => {},
@@ -385,7 +385,7 @@ async fn register_racetime_inner(pool: &State<PgPool>, me: Option<User>, racetim
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE racetime_id = $1) AS "exists!""#, racetime_user.id).fetch_one(&mut transaction).await? {
             return Err(RegisterError::ExistsRaceTime) //TODO user-facing error message
         } else if let Some(me) = me {
-            sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2, racetime_pronouns = $3 WHERE id = $4", racetime_user.id, racetime_user.name, racetime_user.pronouns as _, i64::from(me.id)).execute(&mut transaction).await?;
+            sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2, racetime_discriminator = $3, racetime_pronouns = $4 WHERE id = $5", racetime_user.id, racetime_user.name, racetime_user.discriminator, racetime_user.pronouns as _, i64::from(me.id)).execute(&mut transaction).await?;
             transaction.commit().await?;
             Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(me.id))))
         } else {
@@ -405,7 +405,7 @@ async fn register_discord_inner(pool: &State<PgPool>, me: Option<User>, discord_
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE discord_id = $1) AS "exists!""#, i64::from(discord_user.id)).fetch_one(&mut transaction).await? {
             return Err(RegisterError::ExistsDiscord) //TODO user-facing error message
         } else if let Some(me) = me {
-            sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2 WHERE id = $3", i64::from(discord_user.id), discord_user.username, i64::from(me.id)).execute(&mut transaction).await?;
+            sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3 WHERE id = $4", i64::from(discord_user.id), discord_user.username, discord_user.discriminator, i64::from(me.id)).execute(&mut transaction).await?;
             transaction.commit().await?;
             Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(me.id))))
         } else {
@@ -446,7 +446,7 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, racetime_user
         (Some(_), None) => if let Some(discord_user) = discord_user {
             if let Ok(Some(discord_user)) = User::from_discord(&mut transaction, discord_user.id).await {
                 if discord_user.racetime_id.is_none() {
-                    sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2 WHERE id = $3", i64::from(discord_user.discord_id.expect("Discord user without Discord ID")), discord_user.discord_display_name, i64::from(me.id)).execute(&mut transaction).await?;
+                    sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3 WHERE id = $4", i64::from(discord_user.discord_id.expect("Discord user without Discord ID")), discord_user.discord_display_name, discord_user.discord_discriminator, i64::from(me.id)).execute(&mut transaction).await?;
                     sqlx::query!("DELETE FROM users WHERE id = $1", i64::from(discord_user.id)).execute(&mut transaction).await?;
                     transaction.commit().await?;
                     return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
@@ -456,7 +456,7 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, racetime_user
         (None, Some(_)) => if let Some(racetime_user) = racetime_user {
             if let Ok(Some(racetime_user)) = User::from_racetime(&mut transaction, &racetime_user.id).await {
                 if racetime_user.discord_id.is_none() {
-                    sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2, racetime_pronouns = $3 WHERE id = $4", racetime_user.racetime_id, racetime_user.racetime_display_name, racetime_user.racetime_pronouns as _, i64::from(me.id)).execute(&mut transaction).await?;
+                    sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2, racetime_discriminator = $3, racetime_pronouns = $4 WHERE id = $5", racetime_user.racetime_id, racetime_user.racetime_display_name, racetime_user.racetime_discriminator, racetime_user.racetime_pronouns as _, i64::from(me.id)).execute(&mut transaction).await?;
                     sqlx::query!("DELETE FROM users WHERE id = $1", i64::from(racetime_user.id)).execute(&mut transaction).await?;
                     transaction.commit().await?;
                     return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
