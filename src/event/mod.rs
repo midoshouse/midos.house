@@ -760,7 +760,12 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
         sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM async_teams, team_members WHERE async_teams.team = team_members.team AND member = $1 AND kind = 'qualifier'"#, me.as_ref().map(|me| i64::from(me.id))).fetch_optional(&mut *transaction).await?.unwrap_or(false)
         || data.is_started(&mut transaction).await?
     );
-    let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!", pieces FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+    let show_restream_consent = if let Some(ref me) = me {
+        data.organizers(&mut transaction).await?.contains(me) //TODO or user is a restreamer for this event
+    } else {
+        false
+    };
+    let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!", pieces, restream_consent FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
         series = $1
         AND event = $2
         AND NOT resigned
@@ -783,10 +788,10 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             let user = User::from_id(&mut transaction, row.id).await?.ok_or(TeamsError::NonexistentUser)?;
             members.push((role, user, is_confirmed, row.time.map(decode_pginterval).transpose()?, row.vod));
         }
-        signups.push((Team { id: team.id, name: team.name, racetime_slug: team.racetime_slug, plural_name: team.plural_name }, members, team.qualified, team.pieces));
+        signups.push((Team { id: team.id, name: team.name, racetime_slug: team.racetime_slug, plural_name: team.plural_name }, members, team.qualified, team.pieces, team.restream_consent));
     }
     if show_qualifier_times {
-        signups.sort_unstable_by(|(team1, members1, qualified1, pieces1), (team2, members2, qualified2, pieces2)| {
+        signups.sort_unstable_by(|(team1, members1, qualified1, pieces1, _), (team2, members2, qualified2, pieces2, _)| {
             #[derive(PartialEq, Eq, PartialOrd, Ord)]
             enum Qualification {
                 Finished(Option<i16>, Duration),
@@ -815,7 +820,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             .then_with(|| team1.cmp(team2))
         });
     } else {
-        signups.sort_unstable_by(|(team1, _, qualified1, _), (team2, _, qualified2, _)|
+        signups.sort_unstable_by(|(team1, _, qualified1, _, _), (team2, _, qualified2, _, _)|
             qualified2.cmp(qualified1) // reversed to list qualified teams first
             .then_with(|| team1.cmp(team2))
         );
@@ -842,6 +847,9 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                             th : "Qualified";
                         }
                     }
+                    @if show_restream_consent {
+                        th : "Restream Consent";
+                    }
                 }
             }
             tbody {
@@ -855,7 +863,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                         }
                     }
                 } else {
-                    @for (team, members, qualified, pieces) in signups {
+                    @for (team, members, qualified, pieces, restream_consent) in signups {
                         tr {
                             @if !matches!(data.team_config(), TeamConfig::Solo) {
                                 td {
@@ -938,6 +946,13 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                                         @if qualified {
                                             : "✓";
                                         }
+                                    }
+                                }
+                            }
+                            @if show_restream_consent {
+                                td {
+                                    @if restream_consent {
+                                        : "✓";
                                     }
                                 }
                             }
