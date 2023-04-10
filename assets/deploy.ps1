@@ -33,5 +33,8 @@ ThrowOnNativeFailure
 ssh midos.house mv bin/midos-house-next bin/midos-house
 ThrowOnNativeFailure
 
+ssh midos.house chmod +x bin/midos-house
+ThrowOnNativeFailure
+
 ssh midos.house sudo systemctl start midos-house
 ThrowOnNativeFailure
