@@ -68,6 +68,7 @@ use {
             FindTeamError,
             InfoError,
             Series,
+            StatusContext,
             Tab,
             enter,
         },
@@ -794,7 +795,7 @@ pub(crate) struct RaceTimeTeamMember {
     pub(crate) name: String,
 }
 
-pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>, client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>, client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
         if let Some(ref racetime_id) = me.racetime_id {
@@ -929,7 +930,7 @@ impl<'v> EnterFormStep2Defaults<'v> {
     }
 }
 
-pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
     let mut me_listed = false;
     let mut looking_for_team = Vec::default();
@@ -1009,7 +1010,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
     }).await?)
 }
 
-pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<CsrfToken>, data: &Data<'_>, team_id: Id, ctx: Context<'_>) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<&CsrfToken>, data: &Data<'_>, team_id: Id, ctx: &mut StatusContext<'_>) -> Result<RawHtml<String>, Error> {
     Ok(if let Some(async_kind) = data.active_async(&mut *transaction, Some(team_id)).await? {
         let async_row = sqlx::query!(r#"SELECT discord_channel AS "discord_channel: Id", tfb_uuid, web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
         if let Some(team_row) = sqlx::query!(r#"SELECT requested AS "requested!", submitted FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL"#, i64::from(team_id), async_kind as _).fetch_optional(&mut *transaction).await? {
@@ -1045,6 +1046,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                     },
                 };
                 let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
+                let ctx = ctx.take_submit_async();
                 let mut errors = ctx.errors().collect_vec();
                 html! {
                     div(class = "info") {
@@ -1144,6 +1146,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                 }
             }
         } else {
+            let ctx = ctx.take_request_async();
             let mut errors = ctx.errors().collect_vec();
             html! {
                 div(class = "info") {

@@ -1119,7 +1119,7 @@ pub(crate) async fn for_event(env: &State<Environment>, config: &State<Config>, 
     Ok(Response(cal))
 }
 
-pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
     let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let form = if me.is_some() {
         let teams = Team::for_event(&mut transaction, event.series, &event.event).await?;
@@ -1218,7 +1218,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
 pub(crate) async fn create_race(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(RedirectOrContent::Content(create_race_form(transaction, me, uri, csrf, event, Context::default()).await?))
+    Ok(RedirectOrContent::Content(create_race_form(transaction, me, uri, csrf.as_ref(), event, Context::default()).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1264,7 +1264,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
             form.context.push_error(form::Error::validation("Can't choose the same team twice.").with_name("team2"));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(create_race_form(transaction, Some(me), uri, csrf, event, form.context).await?)
+            RedirectOrContent::Content(create_race_form(transaction, Some(me), uri, csrf.as_ref(), event, form.context).await?)
         } else {
             let mut race = Race {
                 id: None,
@@ -1377,11 +1377,11 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(create_race_form(transaction, Some(me), uri, csrf, event, form.context).await?)
+        RedirectOrContent::Content(create_race_form(transaction, Some(me), uri, csrf.as_ref(), event, form.context).await?)
     })
 }
 
-pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
+pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
     let id = race.id.expect("race being edited must have an ID");
     let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
@@ -1569,7 +1569,7 @@ pub(crate) async fn edit_race(env: &State<Environment>, config: &State<Config>, 
     if race.series != event.series || race.event != event.event {
         return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(edit_race(race.series, race.event, id)))))
     }
-    Ok(RedirectOrContent::Content(edit_race_form(transaction, me, uri, csrf, event, race, None).await?))
+    Ok(RedirectOrContent::Content(edit_race_form(transaction, me, uri, csrf.as_ref(), event, race, None).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1781,7 +1781,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
             }
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf, event, race, Some(form.context)).await?)
+            RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
         } else {
             sqlx::query!(
                 "UPDATE races SET room = $1, async_room1 = $2, async_room2 = $3, video_url = $4, last_edited_by = $5, last_edited_at = NOW() WHERE id = $6",
@@ -1811,6 +1811,6 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf, event, race, Some(form.context)).await?)
+        RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
     })
 }

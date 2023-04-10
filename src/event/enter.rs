@@ -273,7 +273,7 @@ pub(crate) struct EnterForm {
     restream_consent: bool,
 }
 
-async fn enter_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &RwFuture<DiscordCtx>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &reqwest::Client, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
+async fn enter_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &RwFuture<DiscordCtx>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, client: &reqwest::Client, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
     //TODO if already entered, redirect to status page
     let content = if data.is_started(&mut transaction).await? {
         html! {
@@ -379,7 +379,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &Rw
     }).await?)
 }
 
-fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, me: Option<User>, uri: Origin<'b>, client: &reqwest::Client, csrf: Option<CsrfToken>, data: Data<'c>, defaults: mw::EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
+fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, me: Option<User>, uri: Origin<'b>, client: &reqwest::Client, csrf: Option<&'a CsrfToken>, data: Data<'c>, defaults: mw::EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
     let team_members = defaults.racetime_members(client);
     Box::pin(async move {
         let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, true).await?;
@@ -442,7 +442,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
 pub(crate) async fn get(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<crate::series::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(enter_form(transaction, discord_ctx, me, uri, csrf, client, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
+    Ok(enter_form(transaction, discord_ctx, me, uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
 }
 
 #[rocket::post("/event/<series>/<event>/enter", data = "<form>")]
@@ -704,14 +704,14 @@ pub(crate) async fn post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<Disc
                         transaction.commit().await?;
                         RedirectOrContent::Redirect(Redirect::to(uri!(super::status(series, event))))
                     } else {
-                        RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, client, csrf, data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?)
+                        RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?)
                     })
                 }
             }
         }
         if value.step2 {
-            return Ok(RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, client, csrf, data, mw::EnterFormStep2Defaults::Context(form.context)).await?))
+            return Ok(RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Context(form.context)).await?))
         }
     }
-    Ok(RedirectOrContent::Content(enter_form(transaction, discord_ctx, Some(me), uri, csrf, client, data, pic::EnterFormDefaults::Context(form.context)).await?))
+    Ok(RedirectOrContent::Content(enter_form(transaction, discord_ctx, Some(me), uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Context(form.context)).await?))
 }

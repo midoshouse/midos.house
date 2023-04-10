@@ -40,7 +40,7 @@ pub(crate) fn form_field(name: &str, errors: &mut Vec<&form::Error<'_>>, content
     }
 }
 
-pub(crate) fn full_form(uri: Origin<'_>, csrf: Option<CsrfToken>, content: impl ToHtml, errors: Vec<&form::Error<'_>>, submit_text: &str) -> RawHtml<String> {
+pub(crate) fn full_form(uri: Origin<'_>, csrf: Option<&CsrfToken>, content: impl ToHtml, errors: Vec<&form::Error<'_>>, submit_text: &str) -> RawHtml<String> {
     html! {
         form(action = uri.to_string(), method = "post") {
             : csrf;

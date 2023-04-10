@@ -5,6 +5,7 @@ use {
         convert::identity,
         fmt,
         io,
+        mem,
         str::FromStr,
         time::Duration,
     },
@@ -12,6 +13,7 @@ use {
     chrono::prelude::*,
     enum_iterator::Sequence,
     futures::stream::TryStreamExt as _,
+    itertools::Itertools as _,
     once_cell::sync::Lazy,
     rand::prelude::*,
     rocket::{
@@ -108,8 +110,10 @@ use {
             StatusOrError,
             decode_pginterval,
             favicon,
+            form_field,
             format_datetime,
             format_duration,
+            full_form,
             parse_duration,
         },
     },
@@ -564,7 +568,7 @@ impl<'a> Data<'a> {
                 AND event = $2
                 AND member = $3
                 AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-            ) AS "exists!""#, self.series as _, &self.event, i64::from(me.id)).fetch_one(&mut *transaction).await?
+            ) AS "exists!""#, self.series as _, &self.event, me.id as _).fetch_one(&mut *transaction).await?
         } else {
             false
         };
@@ -1119,18 +1123,54 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Races — {}", data.display_name), content).await?)
 }
 
-async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, ctx: Context<'_>) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    let mut transaction = pool.begin().await?;
-    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+pub(crate) enum StatusContext<'v> {
+    None,
+    RequestAsync(Context<'v>),
+    SubmitAsync(Context<'v>),
+    Edit(Context<'v>),
+}
+
+impl<'v> StatusContext<'v> {
+    pub(crate) fn take_request_async(&mut self) -> Context<'v> {
+        match mem::replace(self, Self::None) {
+            Self::RequestAsync(ctx) => ctx,
+            old_val => {
+                *self = old_val;
+                Context::default()
+            }
+        }
+    }
+
+    pub(crate) fn take_submit_async(&mut self) -> Context<'v> {
+        match mem::replace(self, Self::None) {
+            Self::SubmitAsync(ctx) => ctx,
+            old_val => {
+                *self = old_val;
+                Context::default()
+            }
+        }
+    }
+    fn take_edit(&mut self) -> Context<'v> {
+        match mem::replace(self, Self::None) {
+            Self::Edit(ctx) => ctx,
+            old_val => {
+                *self = old_val;
+                Context::default()
+            }
+        }
+    }
+}
+
+async fn status_page(mut transaction: Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, mut ctx: StatusContext<'_>) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::MyStatus, false).await?;
     let content = if let Some(ref me) = me {
-        if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name, racetime_slug, role AS "role: Role", resigned FROM teams, team_members WHERE
+        if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name, racetime_slug, role AS "role: Role", resigned, restream_consent FROM teams, team_members WHERE
             id = team
             AND series = $1
             AND event = $2
             AND member = $3
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        "#, series as _, event, i64::from(me.id)).fetch_optional(&mut transaction).await? {
+        "#, data.series as _, &data.event, me.id as _).fetch_optional(&mut transaction).await? {
             html! {
                 : header;
                 @if !matches!(data.team_config(), TeamConfig::Solo) {
@@ -1160,7 +1200,7 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
                     p : "You have resigned from this event.";
                 } else {
                     @match data.series {
-                        Series::Multiworld => : mw::status(&mut transaction, discord_ctx, csrf, &data, row.id, ctx).await?;
+                        Series::Multiworld => : mw::status(&mut transaction, discord_ctx, csrf, &data, row.id, &mut ctx).await?;
                         Series::NineDaysOfSaws => @if data.is_ended() {
                             p : "This race has been completed."; //TODO ranking and finish time
                         } else if let Some(ref race_room) = data.url {
@@ -1192,13 +1232,27 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
                         }
                         Series::Rsl => @unimplemented // no signups on Mido's House
                         Series::Standard => @unimplemented // no signups on Mido's House
-                        Series::TriforceBlitz => : tfb::status(&mut transaction, csrf, &data, Some(row.id), ctx).await?;
+                        Series::TriforceBlitz => : tfb::status(&mut transaction, csrf, &data, Some(row.id), &mut ctx).await?;
                     }
-                    h2 : "Options";
-                    p : "More options coming soon"; //TODO options to change team name, swap roles, or opt in/out for restreaming
                     @if !data.is_ended() {
+                        h2 : "Options";
+                        @let ctx = ctx.take_edit();
+                        @let mut errors = ctx.errors().collect_vec();
+                        : full_form(uri!(status_post(data.series, &*data.event)), csrf, html! {
+                            : form_field("restream_consent", &mut errors, html! {
+                                input(type = "checkbox", id = "restream_consent", name = "restream_consent", checked? = ctx.field_value("restream_consent").map_or(row.restream_consent, |value| value == "on"));
+                                label(for = "restream_consent") {
+                                    @if let TeamConfig::Solo = data.team_config() {
+                                        : "I am okay with being restreamed.";
+                                    } else {
+                                        : "We are okay with being restreamed.";
+                                    }
+                                }
+                            });
+                            //TODO options to change team name or swap roles
+                        }, errors, "Save");
                         p {
-                            a(href = uri!(resign(series, event, row.id)).to_string()) : "Resign";
+                            a(href = uri!(resign(data.series, &*data.event, row.id)).to_string()) : "Resign";
                         }
                     }
                 }
@@ -1217,7 +1271,7 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
             : header;
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(status(series, event))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(status(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to view your status for this event.";
                 }
             }
@@ -1228,7 +1282,52 @@ async fn status_page(pool: &PgPool, discord_ctx: &DiscordCtx, me: Option<User>, 
 
 #[rocket::get("/event/<series>/<event>/status")]
 pub(crate) async fn status(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    status_page(pool, &*discord_ctx.read().await, me, uri, csrf, series, event, Context::default()).await
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    Ok(status_page(transaction, &*discord_ctx.read().await, me, uri, csrf.as_ref(), data, StatusContext::None).await?)
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct StatusForm {
+    #[field(default = String::new())]
+    csrf: String,
+    restream_consent: bool,
+}
+
+#[rocket::post("/event/<series>/<event>/status", data = "<form>")]
+pub(crate) async fn status_post(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, StatusForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    if data.is_ended() {
+        form.context.push_error(form::Error::validation("This event has already ended."));
+    }
+    let row = sqlx::query!(r#"SELECT id AS "id: Id", restream_consent FROM teams, team_members WHERE
+        id = team
+        AND series = $1
+        AND event = $2
+        AND member = $3
+        AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+        AND NOT resigned
+    "#, data.series as _, &data.event, me.id as _).fetch_one(&mut transaction).await?;
+    Ok(if let Some(ref value) = form.value {
+        if row.restream_consent && !value.restream_consent {
+            //TODO check if restream consent can still be revoked according to tournament rules, offer to resign if not
+            if Race::for_event(&mut transaction, http_client, env, config, &data).await?.into_iter().any(|race| !race.schedule.is_ended() && race.video_url.is_some()) {
+                form.context.push_error(form::Error::validation("There is a restream planned for one of your upcoming races. Please contact an event organizer if you would like to cancel.").with_name("restream_consent"));
+            }
+        }
+        if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(status_page(transaction, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
+        } else {
+            sqlx::query!("UPDATE teams SET restream_consent = $1 WHERE id = $2", value.restream_consent, row.id as _).execute(&mut transaction).await?;
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(status(series, event))))
+        }
+    } else {
+        RedirectOrContent::Content(status_page(transaction, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
+    })
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -1247,7 +1346,7 @@ impl<E: Into<FindTeamError>> From<E> for StatusOrError<FindTeamError> {
     }
 }
 
-async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     Ok(match data.team_config() {
         TeamConfig::Solo => {
             let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
@@ -1266,7 +1365,7 @@ async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<U
 pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(find_team_form(transaction, me, uri, csrf, data, Context::default()).await?)
+    Ok(find_team_form(transaction, me, uri, csrf.as_ref(), data, Context::default()).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1294,7 +1393,7 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
             series = $1
             AND event = $2
             AND user_id = $3
-        ) AS "exists!""#, series as _, event, i64::from(me.id)).fetch_one(&mut transaction).await? {
+        ) AS "exists!""#, series as _, event, me.id as _).fetch_one(&mut transaction).await? {
             form.context.push_error(form::Error::validation("You are already on the list."));
         }
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
@@ -1303,18 +1402,18 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
             AND event = $2
             AND member = $3
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        ) AS "exists!""#, series as _, event, i64::from(me.id)).fetch_one(&mut transaction).await? {
+        ) AS "exists!""#, series as _, event, me.id as _).fetch_one(&mut transaction).await? {
             form.context.push_error(form::Error::validation("You are already signed up for this event."));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(find_team_form(transaction, Some(me), uri, csrf, data, form.context).await?)
+            RedirectOrContent::Content(find_team_form(transaction, Some(me), uri, csrf.as_ref(), data, form.context).await?)
         } else {
             sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role, availability, notes) VALUES ($1, $2, $3, $4, $5, $6)", series as _, event, me.id as _, value.role.unwrap_or_default() as _, value.availability, value.notes).execute(&mut transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(find_team(series, event))))
         }
     } else {
-        RedirectOrContent::Content(find_team_form(transaction, Some(me), uri, csrf, data, form.context).await?)
+        RedirectOrContent::Content(find_team_form(transaction, Some(me), uri, csrf.as_ref(), data, form.context).await?)
     })
 }
 
@@ -1347,7 +1446,7 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
     form.verify(&csrf);
     if form.context.errors().next().is_some() { return Err(AcceptError::Csrf.into()) }
     if data.is_started(&mut transaction).await? { return Err(AcceptError::EventStarted.into()) }
-    if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, i64::from(team), i64::from(me.id)).fetch_optional(&mut transaction).await? {
+    if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, i64::from(team), me.id as _).fetch_optional(&mut transaction).await? {
         if role == Role::Sheikah && me.racetime_id.is_none() {
             return Err(AcceptError::RaceTimeAccountRequired.into())
         }
@@ -1355,7 +1454,7 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
             let id = Id::new(&mut transaction, IdTable::Notifications).await?;
             sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', $3, $4, $5)", id as _, member as _, series as _, event, me.id as _).execute(&mut transaction).await?;
         }
-        sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", i64::from(team), i64::from(me.id)).execute(&mut transaction).await?;
+        sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", i64::from(team), me.id as _).execute(&mut transaction).await?;
         if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND status = 'unconfirmed') AS "exists!""#, i64::from(team)).fetch_one(&mut transaction).await? {
             // this confirms the team
             // remove all members from looking_for_team
@@ -1541,7 +1640,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, discord_ctx: &State<RwFu
             AND member = $3
             AND NOT resigned
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        "#, series as _, event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
+        "#, series as _, event, me.id as _).fetch_optional(&mut transaction).await?;
         let async_kind = if let Some(ref team) = team {
             if let Some(async_kind) = data.active_async(&mut transaction, Some(team.id)).await? {
                 let requested = sqlx::query_scalar!(r#"SELECT requested IS NOT NULL AS "requested!" FROM async_teams WHERE team = $1 AND kind = $2"#, i64::from(team.id), async_kind as _).fetch_optional(&mut transaction).await?;
@@ -1563,7 +1662,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, discord_ctx: &State<RwFu
         }
         if form.context.errors().next().is_some() {
             transaction.rollback().await?;
-            RedirectOrContent::Content(status_page(pool, &*discord_ctx.read().await, Some(me), uri, csrf, series, event, form.context).await?)
+            RedirectOrContent::Content(status_page(pool.begin().await?, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
         } else {
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
@@ -1573,7 +1672,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, discord_ctx: &State<RwFu
         }
     } else {
         transaction.rollback().await?;
-        RedirectOrContent::Content(status_page(pool, &*discord_ctx.read().await, Some(me), uri, csrf, series, event, form.context).await?)
+        RedirectOrContent::Content(status_page(pool.begin().await?, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
     })
 }
 
@@ -1612,7 +1711,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
             AND member = $3
             AND NOT resigned
             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        "#, series as _, event, i64::from(me.id)).fetch_optional(&mut transaction).await?;
+        "#, series as _, event, me.id as _).fetch_optional(&mut transaction).await?;
         let async_kind = if let Some(ref team) = team {
             if let Some(async_kind) = data.active_async(&mut transaction, Some(team.id)).await? {
                 let row = sqlx::query!(r#"SELECT requested IS NOT NULL AS "requested!", submitted IS NOT NULL AS "submitted!" FROM async_teams WHERE team = $1 AND kind = $2"#, i64::from(team.id), async_kind as _).fetch_optional(&mut transaction).await?;
@@ -1673,7 +1772,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         ];
         if form.context.errors().next().is_some() {
             transaction.rollback().await?;
-            RedirectOrContent::Content(status_page(pool, &*discord_ctx.read().await, Some(me), uri, csrf, series, event, form.context).await?)
+            RedirectOrContent::Content(status_page(pool.begin().await?, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
         } else {
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
@@ -1743,7 +1842,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         }
     } else {
         transaction.rollback().await?;
-        RedirectOrContent::Content(status_page(pool, &*discord_ctx.read().await, Some(me), uri, csrf, series, event, form.context).await?)
+        RedirectOrContent::Content(status_page(pool.begin().await?, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
     })
 }
 
