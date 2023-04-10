@@ -2134,13 +2134,15 @@ impl RaceHandler<GlobalState> for Handler {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
-                                sleep(Duration::from_secs(25 * 60)).await;
-                                if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
-                                let (_, ()) = tokio::join!(
-                                    ctx.send_message("@entrants Reminder: 5 minutes until you can start drawing/playing."),
-                                    sleep(Duration::from_secs(5 * 60)),
-                                );
-                                let _ = ctx.send_message("@entrants You may now start drawing/playing.").await;
+                                if let Ok(initial_wait) = (ctx.data().await.started_at.expect("in-progress race with no start time") + chrono::Duration::minutes(25) - Utc::now()).to_std() {
+                                    sleep(initial_wait).await;
+                                    if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
+                                    let (_, ()) = tokio::join!(
+                                        ctx.send_message("@entrants Reminder: 5 minutes until you can start drawing/playing."),
+                                        sleep(Duration::from_secs(5 * 60)),
+                                    );
+                                    let _ = ctx.send_message("@entrants You may now start drawing/playing.").await;
+                                }
                             })
                         });
                     }
@@ -2148,17 +2150,19 @@ impl RaceHandler<GlobalState> for Handler {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
-                                sleep(Duration::from_secs(2 * 60 * 60)).await;
-                                let is_1v1 = {
-                                    let data = ctx.data().await;
-                                    if !Self::should_handle_inner(&*data, ctx.global_state.clone(), false).await { return }
-                                    data.entrants_count == 2
-                                };
-                                let _ = ctx.send_message(if is_1v1 {
-                                    "@entrants Time limit reached. If anyone has found at least 1 Triforce piece, please .done. If neither player has any pieces, please continue and .done when one is found."
-                                } else {
-                                    "@entrants Time limit reached. If you've found at least 1 Triforce piece, please mark yourself as done. If you haven't, you may continue playing until you find one."
-                                }).await;
+                                if let Ok(initial_wait) = (ctx.data().await.started_at.expect("in-progress race with no start time") + chrono::Duration::hours(2) - Utc::now()).to_std() {
+                                    sleep(initial_wait).await;
+                                    let is_1v1 = {
+                                        let data = ctx.data().await;
+                                        if !Self::should_handle_inner(&*data, ctx.global_state.clone(), false).await { return }
+                                        data.entrants_count == 2
+                                    };
+                                    let _ = ctx.send_message(if is_1v1 {
+                                        "@entrants Time limit reached. If anyone has found at least 1 Triforce piece, please .done. If neither player has any pieces, please continue and .done when one is found."
+                                    } else {
+                                        "@entrants Time limit reached. If you've found at least 1 Triforce piece, please mark yourself as done. If you haven't, you may continue playing until you find one."
+                                    }).await;
+                                }
                             })
                         });
                     }
