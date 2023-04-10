@@ -232,7 +232,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                     : user.racetime_display_name;
                     @if let Some(discriminator) = user.racetime_discriminator {
                         : "#";
-                        : discriminator;
+                        : format!("{:04}", discriminator);
                     }
                 }
                 //TODO if this may be outdated, link to racetime.gg login page for refreshing
@@ -249,7 +249,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                             : racetime_user.racetime_display_name;
                             @if let Some(discriminator) = racetime_user.racetime_discriminator {
                                 : "#";
-                                : discriminator;
+                                : format!("{:04}", discriminator);
                             }
                         }
                         : " which belongs to a different Mido's House account. ";
@@ -296,7 +296,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                     : user.discord_display_name;
                     @if let Some(discriminator) = user.discord_discriminator {
                         : "#";
-                        : discriminator;
+                        : format!("{:04}", discriminator);
                     }
                 }
                 //TODO if this may be outdated, link to racetime.gg login page for refreshing
@@ -313,7 +313,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                             : discord_user.discord_display_name;
                             @if let Some(discriminator) = discord_user.discord_discriminator {
                                 : "#";
-                                : discriminator;
+                                : format!("{:04}", discriminator);
                             }
                         }
                         : " which belongs to a different Mido's House account. ";

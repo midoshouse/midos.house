@@ -24,27 +24,28 @@ pub(crate) struct Team {
     pub(crate) id: Id,
     pub(crate) racetime_slug: Option<String>,
     pub(crate) plural_name: Option<bool>,
+    pub(crate) restream_consent: bool,
 }
 
 impl Team {
     pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, id: Id) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams WHERE id = $1"#, i64::from(id)).fetch_optional(transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE id = $1"#, i64::from(id)).fetch_optional(transaction).await
     }
 
     pub(crate) async fn from_discord(transaction: &mut Transaction<'_, Postgres>, discord_role: RoleId) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT teams.id AS "id: Id", name, racetime_slug, plural_name FROM teams, discord_roles WHERE discord_roles.id = $1 AND racetime_slug = racetime_team"#, i64::from(discord_role)).fetch_optional(transaction).await
+        sqlx::query_as!(Self, r#"SELECT teams.id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams, discord_roles WHERE discord_roles.id = $1 AND racetime_slug = racetime_team"#, i64::from(discord_role)).fetch_optional(transaction).await
     }
 
     pub(crate) async fn from_racetime(transaction: &mut Transaction<'_, Postgres>, series: Series, event: &str, racetime_slug: &str) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams WHERE series = $1 AND event = $2 AND racetime_slug = $3"#, series as _, event, racetime_slug).fetch_optional(transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE series = $1 AND event = $2 AND racetime_slug = $3"#, series as _, event, racetime_slug).fetch_optional(transaction).await
     }
 
     pub(crate) async fn from_startgg(transaction: &mut Transaction<'_, Postgres>, startgg_id: &str) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams WHERE startgg_id = $1"#, startgg_id).fetch_optional(transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE startgg_id = $1"#, startgg_id).fetch_optional(transaction).await
     }
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, series: Series, event: &str) -> sqlx::Result<Vec<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams WHERE series = $1 AND event = $2"#, series as _, event).fetch_all(transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE series = $1 AND event = $2"#, series as _, event).fetch_all(transaction).await
     }
 
     pub(crate) async fn name(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Option<Cow<'_, str>>> {

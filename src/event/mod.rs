@@ -788,7 +788,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             let user = User::from_id(&mut transaction, row.id).await?.ok_or(TeamsError::NonexistentUser)?;
             members.push((role, user, is_confirmed, row.time.map(decode_pginterval).transpose()?, row.vod));
         }
-        signups.push((Team { id: team.id, name: team.name, racetime_slug: team.racetime_slug, plural_name: team.plural_name }, members, team.qualified, team.pieces, team.restream_consent));
+        signups.push((Team { id: team.id, name: team.name, racetime_slug: team.racetime_slug, plural_name: team.plural_name, restream_consent: team.restream_consent }, members, team.qualified, team.pieces, team.restream_consent));
     }
     if show_qualifier_times {
         signups.sort_unstable_by(|(team1, members1, qualified1, pieces1, _), (team2, members2, qualified2, pieces2, _)| {
@@ -982,7 +982,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 
 #[rocket::get("/event/<series>/<event>/races")]
 pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    async fn race_table(transaction: &mut Transaction<'_, Postgres>, can_create: bool, can_edit: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
+    async fn race_table(transaction: &mut Transaction<'_, Postgres>, can_create: bool, can_edit: bool, show_restream_consent: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
         let has_games = races.iter().any(|race| race.game.is_some());
         let has_seeds = races.iter().any(|race| race.seed.is_some());
         let has_buttons = (can_create || can_edit) && races.iter().any(|race| race.id.is_some());
@@ -1000,6 +1000,9 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                         th : "Links";
                         @if has_seeds {
                             : seed::table_header_cells(true);
+                        }
+                        @if show_restream_consent {
+                            th : "Restream Consent";
                         }
                         @if has_buttons {
                             th {
@@ -1087,6 +1090,13 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                     : seed::table_empty_cells(true);
                                 }
                             }
+                            @if show_restream_consent {
+                                td {
+                                    @if race.teams().all(|team| team.restream_consent) {
+                                        : "✓";
+                                    }
+                                }
+                            }
                             @if has_buttons {
                                 td {
                                     @if can_edit {
@@ -1111,10 +1121,14 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
         .partition::<Vec<_>, _>(|race| race.schedule.is_ended());
     past_races.reverse();
     let any_races_ongoing_or_upcoming = !ongoing_and_upcoming_races.is_empty();
-    let can_create = if let Some(ref me) = me {
-        data.organizers(&mut transaction).await?.contains(me)
+    let (can_create, show_restream_consent) = if let Some(ref me) = me {
+        let is_organizer = data.organizers(&mut transaction).await?.contains(me);
+        (
+            is_organizer,
+            is_organizer, //TODO or user is a restreamer for this event
+        )
     } else {
-        false
+        (false, false)
     };
     let can_edit = can_create || me.as_ref().map_or(false, |me| me.is_archivist);
     let content = html! {
@@ -1122,13 +1136,13 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
             //TODO split into ongoing and upcoming, show headers for both
-            : race_table(&mut transaction, can_create, can_edit, &ongoing_and_upcoming_races).await?;
+            : race_table(&mut transaction, can_create, can_edit, show_restream_consent, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : race_table(&mut transaction, can_create && !any_races_ongoing_or_upcoming, can_edit, &past_races).await?;
+            : race_table(&mut transaction, can_create && !any_races_ongoing_or_upcoming, can_edit, false, &past_races).await?;
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 a(class = "button", href = uri!(crate::cal::create_race(series, &event)).to_string()) : "New Race";
@@ -1648,7 +1662,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, discord_ctx: &State<RwFu
     let mut form = form.into_inner();
     form.verify(&csrf);
     Ok(if let Some(ref value) = form.value {
-        let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams, team_members WHERE
+        let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams, team_members WHERE
             id = team
             AND series = $1
             AND event = $2
@@ -1719,7 +1733,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
     let mut form = form.into_inner();
     form.verify(&csrf);
     Ok(if let Some(ref value) = form.value {
-        let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name FROM teams, team_members WHERE
+        let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams, team_members WHERE
             id = team
             AND series = $1
             AND event = $2
