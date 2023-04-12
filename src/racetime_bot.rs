@@ -114,7 +114,6 @@ use {
             self,
             Entrant,
             Entrants,
-            Race,
         },
         config::{
             Config,
@@ -398,6 +397,7 @@ pub(crate) struct GlobalState {
     new_room_lock: Mutex<()>,
     host: &'static str,
     racetime_config: ConfigRaceTime,
+    extra_room_tx: tokio::sync::RwLock<mpsc::Sender<String>>,
     db_pool: PgPool,
     http_client: reqwest::Client,
     startgg_token: String,
@@ -410,6 +410,7 @@ impl GlobalState {
     pub(crate) fn new(racetime_config: ConfigRaceTime, db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Self {
         Self {
             new_room_lock: Mutex::default(),
+            extra_room_tx: tokio::sync::RwLock::new(mpsc::channel(1).0),
             ootr_api_client: OotrApiClient::new(http_client.clone(), ootr_api_key),
             host, racetime_config, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown,
         }
@@ -740,6 +741,8 @@ pub(crate) enum SeedRollUpdate {
     },
     /// Seed rolling failed.
     Error(RollError),
+    /// An existing seed has been prepared.
+    DoneExisting(seed::Data),
 }
 
 impl SeedRollUpdate {
@@ -809,6 +812,26 @@ impl SeedRollUpdate {
                 }
                 ctx.set_bot_raceinfo(&format!("{}{}\n{seed_url}", if let Some(preset) = rsl_preset { format!("{}\n", preset.race_info()) } else { String::default() }, format_hash(file_hash))).await?;
                 *state.write().await = RaceState::RolledWeb { seed_id, file_stem };
+            }
+            Self::DoneExisting(seed) => {
+                let extra = seed.extra(Utc::now()).await.to_racetime()?;
+                let seed_url = match seed.files {
+                    seed::Files::MidosHouse { file_stem } => format!("https://midos.house/seed/{file_stem}.{}", if let Some(world_count) = extra.world_count {
+                        if world_count.get() > 1 { "zpfz" } else { "zpf" }
+                    } else if Path::new(seed::DIR).join(format!("{file_stem}.zpfz")).exists() {
+                        "zpfz"
+                    } else {
+                        "zpf"
+                    }),
+                    seed::Files::OotrWeb { id, .. } => format!("https://ootrandomizer.com/seed/get?id={id}"),
+                    seed::Files::TriforceBlitz { uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
+                };
+                ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
+                ctx.set_bot_raceinfo(&format!(
+                    "{}{seed_url}",
+                    extra.file_hash.map(|file_hash| format!("{}\n", format_hash(file_hash))).unwrap_or_default(),
+                )).await?;
+                *state.write().await = RaceState::RolledExisting;
             }
             Self::Error(RollError::Retries(num_retries)) => {
                 ctx.send_message(&format!("Sorry @entrants, the randomizer reported an error {num_retries} times, so I'm giving up on rolling the seed. Please try again. If this error persists, please report it to Fenhl.")).await?;
@@ -1034,6 +1057,8 @@ enum RaceState {
         spoiler_log: bool,
     },
     Rolling,
+    //TODO consolidate the 3 “rolled” states into one that holds a `seed::Data`, ensuring location of locked local spoiler log doesn't get lost
+    RolledExisting,
     RolledLocally(PathBuf),
     RolledWeb {
         seed_id: u64,
@@ -1048,6 +1073,7 @@ struct OfficialRaceData {
     game: Option<i16>,
     entrants: Vec<String>,
     start: DateTime<Utc>,
+    is_first_async_half: bool,
     fpa_invoked: bool,
 }
 
@@ -1188,6 +1214,12 @@ impl Handler {
         self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count, spoiler_log), description);
     }
 
+    async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, seed: seed::Data, description: String) {
+        let (tx, rx) = mpsc::channel(1);
+        tx.send(SeedRollUpdate::DoneExisting(seed)).await.unwrap();
+        self.roll_seed_inner(ctx, state, rx, description);
+    }
+
     /// Returns `false` if this race was already finished/cancelled.
     async fn unlock_spoiler_log(&self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
         #[derive(Deserialize)]
@@ -1196,14 +1228,14 @@ impl Handler {
             spoiler_log: String,
         }
 
-        //TODO make sure this isn't the first half of an async
         let mut state = self.race_state.write().await;
         match *state {
-            RaceState::RolledLocally(ref spoiler_log_path) => if Path::new(spoiler_log_path).exists() {
+            RaceState::RolledExisting => {} //TODO actually do the unlock
+            RaceState::RolledLocally(ref spoiler_log_path) => if self.official_data.as_ref().map_or(true, |official_data| !official_data.is_first_async_half) && Path::new(spoiler_log_path).exists() {
                 let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name");
                 fs::rename(spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await.to_racetime()?;
             },
-            RaceState::RolledWeb { seed_id, ref file_stem } => {
+            RaceState::RolledWeb { seed_id, ref file_stem } => if self.official_data.as_ref().map_or(true, |official_data| !official_data.is_first_async_half) {
                 let spoiler_filename = format!("{file_stem}_Spoiler.json");
                 ctx.global_state.ootr_api_client.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &seed_id.to_string())]), None::<&()>).await?
                     .detailed_error_for_status().await.to_racetime()?;
@@ -1212,7 +1244,7 @@ impl Handler {
                     .json_with_text_in_error::<SeedDetailsResponse>().await.to_racetime()?
                     .spoiler_log;
                 fs::write(Path::new(seed::DIR).join(spoiler_filename), &spoiler_log).await.to_racetime()?;
-            }
+            },
             RaceState::SpoilerSent => return Ok(false),
             _ => {}
         }
@@ -1252,7 +1284,7 @@ impl RaceHandler<GlobalState> for Handler {
         let data = ctx.data().await;
         let new_room_lock = lock!(ctx.global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-        let (official_data, video_url, race_state, high_seed_name, low_seed_name, fpa_enabled) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
+        let (official_data, existing_seed, video_url, race_state, high_seed_name, low_seed_name, fpa_enabled) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
             let mut entrants = Vec::default();
             let start = cal_event.start().expect("handling room for official race without start time");
             for team in cal_event.active_teams() {
@@ -1282,10 +1314,10 @@ impl RaceHandler<GlobalState> for Handler {
                 if event.is_single_race() {
                     format!("the {}", event.display_name) //TODO remove “the” depending on event name
                 } else {
-                    format!("this {} race", match (cal_event.race.phase, cal_event.race.round) {
+                    format!("this {} race", match (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref()) {
                         (Some(phase), Some(round)) => format!("{phase} {round}"),
-                        (Some(phase), None) => phase,
-                        (None, Some(round)) => round,
+                        (Some(phase), None) => phase.clone(),
+                        (None, Some(round)) => round.clone(),
                         (None, None) => event.display_name.clone(),
                     })
                 },
@@ -1298,7 +1330,7 @@ impl RaceHandler<GlobalState> for Handler {
                     let [high_seed_name, low_seed_name] = match cal_event.race.entrants {
                         Entrants::Open | Entrants::Count { .. } => [format!("Team A"), format!("Team B")],
                         Entrants::Named(_) => unimplemented!("official race with opaque participants text"), //TODO
-                        Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)]) => if team1.id == *high_seed {
+                        Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => if team1.id == *high_seed {
                             [
                                 team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
                                 team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
@@ -1313,7 +1345,7 @@ impl RaceHandler<GlobalState> for Handler {
                         Entrants::Three([_, _, _]) => unimplemented!("official race with 3 teams"), //TODO
                     };
                     (RaceState::Draft {
-                        state: cal_event.race.draft.map(|draft| draft.state).unwrap_or_default(),
+                        state: cal_event.race.draft.as_ref().map(|draft| draft.state.clone()).unwrap_or_default(),
                         spoiler_log: false,
                         //TODO restrict draft picks
                     }, high_seed_name, low_seed_name)
@@ -1325,8 +1357,10 @@ impl RaceHandler<GlobalState> for Handler {
                     id: cal_event.race.id.expect("race loaded from database has ID"),
                     game: cal_event.race.game,
                     fpa_invoked: false,
+                    is_first_async_half: cal_event.is_first_async_half(),
                     event, entrants, start,
                 }),
+                cal_event.race.seed.clone(),
                 cal_event.race.video_url.clone(),
                 race_state,
                 high_seed_name,
@@ -1383,11 +1417,12 @@ impl RaceHandler<GlobalState> for Handler {
                             goal.send_presets(ctx).await?;
                         }
                     },
-                    RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } => ctx.send_message("@entrants I just restarted. You may have to reconfigure !breaks and !fpa. Sorry about that.").await?,
+                    RaceState::RolledExisting | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } => ctx.send_message("@entrants I just restarted. You may have to reconfigure !breaks and !fpa. Sorry about that.").await?,
                     RaceState::Draft { .. } | RaceState::Rolling | RaceState::SpoilerSent => unreachable!(),
                 }
             }
             (
+                None,
                 None,
                 None,
                 RaceState::default(),
@@ -1409,35 +1444,41 @@ impl RaceHandler<GlobalState> for Handler {
             official_data, high_seed_name, low_seed_name, fpa_enabled,
         };
         if let Some(OfficialRaceData { ref event, .. }) = this.official_data {
-            match event.draft_kind() {
-                DraftKind::MultiworldS3 => {
-                    let state = this.race_state.read().await;
-                    if let RaceState::Draft { state: ref draft_state, .. } = *state {
-                        if let mw::DraftStep::Done(settings) = draft_state.next_step() {
-                            ctx.send_message(&format!("Your seed with {settings} will be posted in 15 minutes.")).await?;
+            if let Some(seed) = existing_seed {
+                ctx.send_message("Your seed will be posted in 15 minutes.").await?;
+                let state = this.race_state.clone().write_owned().await;
+                this.queue_existing_seed(ctx, state, seed, format!("a seed")).await;
+            } else {
+                match event.draft_kind() {
+                    DraftKind::MultiworldS3 => {
+                        let state = this.race_state.read().await;
+                        if let RaceState::Draft { state: ref draft_state, .. } = *state {
+                            if let mw::DraftStep::Done(settings) = draft_state.next_step() {
+                                ctx.send_message(&format!("Your seed with {settings} will be posted in 15 minutes.")).await?;
+                            }
+                            drop(state);
+                            this.advance_draft(ctx).await?;
                         }
-                        drop(state);
-                        this.advance_draft(ctx).await?;
                     }
-                }
-                DraftKind::None => {
-                    let state = this.race_state.clone().write_owned().await;
-                    if let RaceState::Init = *state {
-                        match goal {
-                            Goal::MultiworldS3 => unreachable!(), // uses DraftKind::MultiworldS3
-                            Goal::PicRs2 => {
-                                ctx.send_message("Your random settings Pictionary seed will be posted in 15 minutes.").await?;
-                                this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
-                                    version: Some((Version::new(2, 3, 8), 10)),
-                                    preset: RslDevFenhlPreset::Pictionary,
-                                }, 1, true, format!("a random settings Pictionary seed"));
-                            }
-                            Goal::TriforceBlitz => {
-                                drop(state);
-                                goal.send_presets(ctx).await?;
-                            }
-                            Goal::NineDaysOfSaws | Goal::Rsl => {
-                                drop(state); //TODO roll seed
+                    DraftKind::None => {
+                        let state = this.race_state.clone().write_owned().await;
+                        if let RaceState::Init = *state {
+                            match goal {
+                                Goal::MultiworldS3 => unreachable!(), // uses DraftKind::MultiworldS3
+                                Goal::PicRs2 => {
+                                    ctx.send_message("Your random settings Pictionary seed will be posted in 15 minutes.").await?;
+                                    this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
+                                        version: Some((Version::new(2, 3, 8), 10)),
+                                        preset: RslDevFenhlPreset::Pictionary,
+                                    }, 1, true, format!("a random settings Pictionary seed"));
+                                }
+                                Goal::TriforceBlitz => {
+                                    drop(state);
+                                    goal.send_presets(ctx).await?; //TODO automatically roll seeds (https://github.com/c0hesion/blitz-client/issues/2)
+                                }
+                                Goal::NineDaysOfSaws | Goal::Rsl => {
+                                    drop(state); //TODO roll seed
+                                }
                             }
                         }
                     }
@@ -1496,7 +1537,7 @@ impl RaceHandler<GlobalState> for Handler {
                             [_, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!ban <setting>”")).await?,
                         }
                     },
-                    RaceState::Rolling | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                    RaceState::Rolling | RaceState::RolledExisting | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
@@ -1591,7 +1632,7 @@ impl RaceHandler<GlobalState> for Handler {
                             [_, _, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!draft <setting> <value>”")).await?,
                         }
                     },
-                    RaceState::Rolling | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                    RaceState::Rolling | RaceState::RolledExisting | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
@@ -1610,7 +1651,7 @@ impl RaceHandler<GlobalState> for Handler {
                         drop(state);
                         self.advance_draft(ctx).await?;
                     },
-                    RaceState::Rolling | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                    RaceState::Rolling | RaceState::RolledExisting | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
@@ -1620,14 +1661,10 @@ impl RaceHandler<GlobalState> for Handler {
                     if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                         ctx.send_message("FPA cannot be invoked before the race starts.").await?;
                     } else {
-                        if let Some(OfficialRaceData { ref mut fpa_invoked, .. }) = self.official_data {
+                        if let Some(OfficialRaceData { ref mut fpa_invoked, ref event, .. }) = self.official_data {
                             *fpa_invoked = true;
                             if self.restreams.is_empty() {
-                                let player_team = match goal { //TODO check whether this is a team race instead
-                                    Goal::Rsl | Goal::TriforceBlitz => "player",
-                                    Goal::MultiworldS3 | Goal::PicRs2 => "team",
-                                    Goal::NineDaysOfSaws => "player/team",
-                                };
+                                let player_team = if let TeamConfig::Solo = event.team_config() { "player" } else { "team" };
                                 ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. The {player_team} that did not call FPA can continue playing; the race will be retimed once completed.")).await?;
                             } else {
                                 ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. Please pause since this race is being restreamed.")).await?;
@@ -1794,7 +1831,7 @@ impl RaceHandler<GlobalState> for Handler {
                         drop(state);
                         self.advance_draft(ctx).await?;
                     },
-                    RaceState::Rolling | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                    RaceState::Rolling | RaceState::RolledExisting | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
@@ -2033,7 +2070,8 @@ impl RaceHandler<GlobalState> for Handler {
                                     if let Some("triforceblitz.com" | "www.triforceblitz.com") = seed.host_str() {
                                         //TODO validate rest of URL?
                                         //TODO prevent overriding existing seed URL?
-                                        ctx.set_bot_raceinfo(&seed.to_string()).await?; //TODO get file hash from TFB API?
+                                        //TODO save in database if official
+                                        ctx.set_bot_raceinfo(&seed.to_string()).await?; //TODO get file hash from TFB API? (https://github.com/c0hesion/blitz-client/issues/2)
                                     } else {
                                         ctx.send_message(&format!("Sorry {reply_to}, that doesn't seem to be a Triforce Blitz seed link.")).await?;
                                     }
@@ -2049,7 +2087,7 @@ impl RaceHandler<GlobalState> for Handler {
                     },
                     RaceState::Draft { .. } => ctx.send_message(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
                     RaceState::Rolling => ctx.send_message(&format!("Sorry {reply_to}, but I'm already rolling a seed for this room. Please wait.")).await?,
-                    RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, but I already rolled a seed. Check the race info!")).await?,
+                    RaceState::RolledExisting | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, but I already rolled a seed. Check the race info!")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
@@ -2071,7 +2109,7 @@ impl RaceHandler<GlobalState> for Handler {
                     } else {
                         ctx.send_message(&format!("Sorry {reply_to}, this part of the draft can't be skipped.")).await?;
                     },
-                    RaceState::Rolling | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                    RaceState::Rolling | RaceState::RolledExisting | RaceState::RolledLocally(..) | RaceState::RolledWeb { .. } | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
@@ -2170,9 +2208,20 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx).await? {
-                if let Some(OfficialRaceData { ref event, fpa_invoked, game, .. }) = self.official_data {
+                if let Some(OfficialRaceData { ref event, fpa_invoked, game, is_first_async_half, .. }) = self.official_data {
                     let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                    if fpa_invoked {
+                    if is_first_async_half {
+                        if let Some(organizer_channel) = event.discord_organizer_channel {
+                            organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
+                                //TODO mention organizer role
+                                .push("first half of async finished: <https://")
+                                .push(ctx.global_state.host)
+                                .push(&ctx.data().await.url)
+                                .push('>')
+                                .build()
+                            ).await.to_racetime()?;
+                        }
+                    } else if fpa_invoked {
                         if let Some(organizer_channel) = event.discord_organizer_channel {
                             organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
                                 //TODO mention organizer role
@@ -2342,34 +2391,48 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
             () = &mut shutdown => break,
             _ = sleep(Duration::from_secs(60)) => {
                 let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
-                for row in sqlx::query!(r#"SELECT series AS "series: Series", event, id AS "id: Id" FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut transaction).await.to_racetime()? { //TODO get permission to create private rooms, then also use for asyncs
-                    let Some(goal) = all::<Goal>().find(|goal| goal.matches_event(row.series, &row.event)) else { continue };
+                for cal_event in cal::Event::rooms_to_open(&mut transaction, &global_state.http_client, &global_state.startgg_token).await.to_racetime()? {
+                    let Some(goal) = all::<Goal>().find(|goal| goal.matches_event(cal_event.race.series, &cal_event.race.event)) else { continue };
                     if let Goal::Rsl = goal { continue } // we're currently not opening rooms for RSL bracket matches despite having a goal for it
-                    let race = Race::from_id(&mut transaction, &global_state.http_client, &global_state.startgg_token, row.id).await.to_racetime()?;
                     match racetime::authorize_with_host(global_state.host, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.http_client).await {
                         Ok((access_token, _)) => {
                             let new_room_lock = lock!(global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
-                            let info_prefix = match (&race.phase, &race.round) {
+                            let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
                                 (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
                                 (Some(phase), None) => Some(phase.to_owned()),
                                 (None, Some(round)) => Some(round.to_owned()),
                                 (None, None) => None,
                             };
+                            let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
                             let race_slug = racetime::StartRace {
                                 goal: goal.as_str().to_owned(),
                                 goal_is_custom: goal.is_custom(),
-                                team_race: !matches!(race.event(&mut transaction).await.to_racetime()?.team_config(), TeamConfig::Solo | TeamConfig::Pictionary),
-                                invitational: !matches!(race.entrants, Entrants::Open),
-                                unlisted: false, //TODO get permission to open unlisted rooms for asyncs
-                                info_user: match race.entrants {
+                                team_race: !matches!(event.team_config(), TeamConfig::Solo | TeamConfig::Pictionary),
+                                invitational: !matches!(cal_event.race.entrants, Entrants::Open),
+                                unlisted: cal_event.is_first_async_half(),
+                                info_user: match cal_event.race.entrants {
                                     Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
                                     Entrants::Named(ref entrants) => format!("{}{entrants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
-                                    Entrants::Two([ref team1, ref team2]) => format!(
-                                        "{}{} vs {}",
-                                        info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                                        team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                        team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    ), //TODO adjust for asyncs
+                                    Entrants::Two([ref team1, ref team2]) => match cal_event.kind {
+                                        cal::EventKind::Normal => format!(
+                                            "{}{} vs {}",
+                                            info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                                            team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                            team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                        ),
+                                        cal::EventKind::Async1 => format!(
+                                            "{} (async): {} vs {}",
+                                            info_prefix.clone().unwrap_or_default(),
+                                            team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                            team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                        ),
+                                        cal::EventKind::Async2 => format!(
+                                            "{} (async): {} vs {}",
+                                            info_prefix.clone().unwrap_or_default(),
+                                            team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                            team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                        ),
+                                    },
                                     Entrants::Three([ref team1, ref team2, ref team3]) => format!(
                                         "{}{} vs {} vs {}",
                                         info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
@@ -2383,8 +2446,8 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 start_delay: 15,
                                 time_limit: 24,
                                 time_limit_auto_complete: false,
-                                streaming_required: None,
-                                auto_start: race.video_url.is_none(),
+                                streaming_required: Some(!cal_event.is_first_async_half()),
+                                auto_start: cal_event.is_first_async_half() || cal_event.race.video_url.is_none(),
                                 allow_comments: true,
                                 hide_comments: true,
                                 allow_prerace_chat: true,
@@ -2393,62 +2456,72 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 chat_message_delay: 0,
                             }.start_with_host(global_state.host, &access_token, &global_state.http_client, CATEGORY).await?;
                             let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", global_state.host))?;
-                            sqlx::query!("UPDATE races SET room = $1 WHERE id = $2", room_url.to_string(), i64::from(race.id.expect("created from ID"))).execute(&mut transaction).await.to_racetime()?;
+                            match cal_event.kind {
+                                cal::EventKind::Normal => { sqlx::query!("UPDATE races SET room = $1 WHERE id = $2", room_url.to_string(), i64::from(cal_event.race.id.expect("created from ID"))).execute(&mut transaction).await.to_racetime()?; }
+                                cal::EventKind::Async1 => { sqlx::query!("UPDATE races SET async_room1 = $1 WHERE id = $2", room_url.to_string(), i64::from(cal_event.race.id.expect("created from ID"))).execute(&mut transaction).await.to_racetime()?; }
+                                cal::EventKind::Async2 => { sqlx::query!("UPDATE races SET async_room2 = $1 WHERE id = $2", room_url.to_string(), i64::from(cal_event.race.id.expect("created from ID"))).execute(&mut transaction).await.to_racetime()?; }
+                            }
                             transaction.commit().await.to_racetime()?;
                             drop(new_room_lock);
                             transaction = global_state.db_pool.begin().await.to_racetime()?;
-                            if let Some(event) = event::Data::new(&mut transaction, row.series, row.event).await.to_racetime()? {
-                                let mut msg = MessageBuilder::default();
-                                match race.entrants {
-                                    Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {
+                            let mut msg = MessageBuilder::default();
+                            match cal_event.race.entrants {
+                                Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {
+                                    msg.push_safe(prefix);
+                                },
+                                Entrants::Named(ref entrants) => {
+                                    if let Some(prefix) = info_prefix {
                                         msg.push_safe(prefix);
-                                    },
-                                    Entrants::Named(ref entrants) => {
-                                        if let Some(prefix) = info_prefix {
-                                            msg.push_safe(prefix);
-                                            msg.push(": ");
-                                        }
-                                        msg.push_safe(entrants);
+                                        msg.push(": ");
                                     }
-                                    Entrants::Two([ref team1, ref team2]) => {
-                                        if let Some(prefix) = info_prefix {
-                                            msg.push_safe(prefix);
-                                            //TODO adjust for asyncs
-                                            msg.push(": ");
-                                        }
-                                        msg.mention_entrant(&mut transaction, event.discord_guild, team1).await.to_racetime()?;
-                                        msg.push(" vs ");
-                                        msg.mention_entrant(&mut transaction, event.discord_guild, team2).await.to_racetime()?;
-                                    }
-                                    Entrants::Three([ref team1, ref team2, ref team3]) => {
-                                        if let Some(prefix) = info_prefix {
-                                            msg.push_safe(prefix);
-                                            //TODO adjust for asyncs
-                                            msg.push(": ");
-                                        }
-                                        msg.mention_entrant(&mut transaction, event.discord_guild, team1).await.to_racetime()?;
-                                        msg.push(" vs ");
-                                        msg.mention_entrant(&mut transaction, event.discord_guild, team2).await.to_racetime()?;
-                                        msg.push(" vs ");
-                                        msg.mention_entrant(&mut transaction, event.discord_guild, team3).await.to_racetime()?;
-                                    }
+                                    msg.push_safe(entrants);
                                 }
-                                if let Some(game) = race.game {
-                                    msg.push(", game ");
-                                    msg.push(game.to_string());
+                                Entrants::Two([ref team1, ref team2]) => {
+                                    if let Some(prefix) = info_prefix {
+                                        msg.push_safe(prefix);
+                                        //TODO adjust for asyncs
+                                        msg.push(": ");
+                                    }
+                                    msg.mention_entrant(&mut transaction, event.discord_guild, team1).await.to_racetime()?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut transaction, event.discord_guild, team2).await.to_racetime()?;
                                 }
-                                msg.push(" <");
-                                msg.push(room_url);
-                                msg.push('>');
-                                if let Some(channel) = event.discord_race_room_channel {
+                                Entrants::Three([ref team1, ref team2, ref team3]) => {
+                                    if let Some(prefix) = info_prefix {
+                                        msg.push_safe(prefix);
+                                        //TODO adjust for asyncs
+                                        msg.push(": ");
+                                    }
+                                    msg.mention_entrant(&mut transaction, event.discord_guild, team1).await.to_racetime()?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut transaction, event.discord_guild, team2).await.to_racetime()?;
+                                    msg.push(" vs ");
+                                    msg.mention_entrant(&mut transaction, event.discord_guild, team3).await.to_racetime()?;
+                                }
+                            }
+                            if let Some(game) = cal_event.race.game {
+                                msg.push(", game ");
+                                msg.push(game.to_string());
+                            }
+                            msg.push(" <");
+                            msg.push(room_url);
+                            msg.push('>');
+                            if cal_event.is_first_async_half() {
+                                let _ = global_state.extra_room_tx.read().await.send(race_slug).await;
+                                if let Some(channel) = event.discord_organizer_channel {
                                     channel.say(&*global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
-                                } else if let Some(thread) = race.scheduling_thread {
-                                    thread.say(&*global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?; //TODO different message? (e.g. “your race room is open”)
-                                } else {
-                                    // DM Fenhl
-                                    let ctx = global_state.discord_ctx.read().await;
-                                    UserId::new(86841168427495424).create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, msg.build()).await.to_racetime()?;
                                 }
+                                //TODO DM participants on Discord
+                            } else if let Some(channel) = event.discord_race_room_channel {
+                                channel.say(&*global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
+                            } else if let Some(thread) = cal_event.race.scheduling_thread {
+                                thread.say(&*global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?; //TODO different message? (e.g. “your race room is open”)
+                            } else if let Some(channel) = event.discord_organizer_channel {
+                                channel.say(&*global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
+                            } else {
+                                // DM Fenhl
+                                let ctx = global_state.discord_ctx.read().await;
+                                UserId::new(86841168427495424).create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, msg.build()).await.to_racetime()?;
                             }
                         }
                         Err(Error::Reqwest(e)) if e.status().map_or(false, |status| status.is_server_error()) => {
@@ -2471,6 +2544,7 @@ async fn handle_rooms(global_state: Arc<GlobalState>, env: Environment, racetime
     loop {
         match racetime::Bot::new_with_host(env.racetime_host(), CATEGORY, &racetime_config.client_id, &racetime_config.client_secret, global_state.clone()).await {
             Ok(bot) => {
+                *global_state.extra_room_tx.write().await = bot.extra_room_sender();
                 let () = bot.run_until::<Handler, _, _>(shutdown).await?;
                 break Ok(())
             }

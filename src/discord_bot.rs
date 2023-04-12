@@ -250,7 +250,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             });
             let match_source = all().find(|match_source| guild_events.iter().all(|event| event.match_source() == *match_source));
             let assign = match match_source {
-                Some(MatchSource::Manual) => guild.create_application_command(ctx, CreateCommand::new("assign")
+                Some(MatchSource::Manual) => guild.create_command(ctx, CreateCommand::new("assign")
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
                     .description("Marks this thread as the scheduling thread for the given game of the match.")
@@ -265,7 +265,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     )
                     //TODO high-seed option
                 ).await?.id,
-                Some(MatchSource::StartGG) => guild.create_application_command(ctx, {
+                Some(MatchSource::StartGG) => guild.create_command(ctx, {
                     let mut c = CreateCommand::new("assign")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
@@ -295,7 +295,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 None => unimplemented!("Discord guilds with mixed match sources not yet supported (guild ID: {}, events: {})", guild.id, guild_events.iter().map(|event| format!("{}/{}", event.series, event.event)).format(", ")),
             };
             let ban = if has_draft {
-                Some(guild.create_application_command(ctx, CreateCommand::new("ban")
+                Some(guild.create_command(ctx, CreateCommand::new("ban")
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
                     .description("Locks a setting for this match to its default value.")
@@ -319,7 +319,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 None
             };
             let draft = if has_draft {
-                Some(guild.create_application_command(ctx, CreateCommand::new("draft")
+                Some(guild.create_command(ctx, CreateCommand::new("draft")
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
                     .description("Chooses a setting for this match.")
@@ -450,7 +450,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 None
             };
             let first = if has_draft {
-                Some(guild.create_application_command(ctx, CreateCommand::new("first")
+                Some(guild.create_command(ctx, CreateCommand::new("first")
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
                     .description("Go first in the settings draft.")
@@ -458,14 +458,14 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             } else {
                 None
             };
-            let post_status = guild.create_application_command(ctx, CreateCommand::new("post-status")
+            let post_status = guild.create_command(ctx, CreateCommand::new("post-status")
                 .kind(CommandType::ChatInput)
                 .default_member_permissions(Permissions::ADMINISTRATOR)
                 .dm_permission(false)
                 .description("Posts this race's status to the thread, pinging the team whose turn it is in the settings draft.")
             ).await?.id;
             let pronoun_roles = if guild.id == mw::GUILD_ID {
-                Some(guild.create_application_command(ctx, CreateCommand::new("pronoun-roles")
+                Some(guild.create_command(ctx, CreateCommand::new("pronoun-roles")
                     .kind(CommandType::ChatInput)
                     .default_member_permissions(Permissions::ADMINISTRATOR)
                     .dm_permission(false)
@@ -474,7 +474,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             } else {
                 None
             };
-            let schedule = guild.create_application_command(ctx, CreateCommand::new("schedule")
+            let schedule = guild.create_command(ctx, CreateCommand::new("schedule")
                 .kind(CommandType::ChatInput)
                 .dm_permission(false)
                 .description("Submits a starting time for this race.")
@@ -484,7 +484,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     "The starting time as a Discord timestamp",
                 ).required(true))
             ).await?.id;
-            let schedule_async = guild.create_application_command(ctx, CreateCommand::new("schedule-async")
+            let schedule_async = guild.create_command(ctx, CreateCommand::new("schedule-async")
                 .kind(CommandType::ChatInput)
                 .dm_permission(false)
                 .description("Submits a starting time for your half of this race.")
@@ -494,13 +494,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     "The starting time as a Discord timestamp",
                 ).required(true))
             ).await?.id;
-            let schedule_remove = guild.create_application_command(ctx, CreateCommand::new("schedule-remove")
+            let schedule_remove = guild.create_command(ctx, CreateCommand::new("schedule-remove")
                 .kind(CommandType::ChatInput)
                 .dm_permission(false)
                 .description("Removes the starting time(s) for this race from the schedule.")
             ).await?.id;
             let second = if has_draft {
-                Some(guild.create_application_command(ctx, CreateCommand::new("second")
+                Some(guild.create_command(ctx, CreateCommand::new("second")
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
                     .description("Go second in the settings draft.")
@@ -509,7 +509,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 None
             };
             let skip = if has_draft {
-                Some(guild.create_application_command(ctx, CreateCommand::new("skip")
+                Some(guild.create_command(ctx, CreateCommand::new("skip")
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
                     .description("Skip your ban or the final pick of the settings draft.")
@@ -517,13 +517,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             } else {
                 None
             };
-            let status = guild.create_application_command(ctx, CreateCommand::new("status")
+            let status = guild.create_command(ctx, CreateCommand::new("status")
                 .kind(CommandType::ChatInput)
                 .dm_permission(false)
                 .description("Shows you this race's current scheduling and settings draft status.")
             ).await?.id;
             let watch_roles = if guild.id == mw::GUILD_ID {
-                Some(guild.create_application_command(ctx, CreateCommand::new("watch-roles")
+                Some(guild.create_command(ctx, CreateCommand::new("watch-roles")
                     .kind(CommandType::ChatInput)
                     .default_member_permissions(Permissions::ADMINISTRATOR)
                     .dm_permission(false)

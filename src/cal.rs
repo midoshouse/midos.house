@@ -867,7 +867,7 @@ pub(crate) enum EventKind {
 
 pub(crate) struct Event {
     pub(crate) race: Race,
-    kind: EventKind,
+    pub(crate) kind: EventKind,
 }
 
 impl Event {
@@ -891,6 +891,35 @@ impl Event {
             }))
         }
         Ok(None)
+    }
+
+    pub(crate) async fn rooms_to_open(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str) -> Result<Vec<Self>, Error> {
+        let mut events = Vec::default();
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND start <= NOW() + TIME '00:30:00'"#).fetch_all(&mut *transaction).await? {
+            events.push(Self {
+                race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
+                kind: EventKind::Normal,
+            })
+        }
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE room IS NULL AND async_start1 IS NOT NULL AND async_start1 > NOW() AND async_start1 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut *transaction).await? {
+            let event = Self {
+                race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
+                kind: EventKind::Async1,
+            };
+            if !matches!(event.race.event(&mut *transaction).await?.team_config(), TeamConfig::Solo) { // racetime.gg doesn't support single-entrant races
+                events.push(event);
+            }
+        }
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE room IS NULL AND async_start2 IS NOT NULL AND async_start2 > NOW() AND async_start2 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut *transaction).await? {
+            let event = Self {
+                race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
+                kind: EventKind::Async2,
+            };
+            if !matches!(event.race.event(&mut *transaction).await?.team_config(), TeamConfig::Solo) { // racetime.gg doesn't support single-entrant races
+                events.push(event);
+            }
+        }
+        Ok(events)
     }
 
     pub(crate) fn active_teams(&self) -> impl Iterator<Item = &Team> + Send {
@@ -939,6 +968,17 @@ impl Event {
                 EventKind::Normal => unreachable!(),
                 EventKind::Async1 => end1,
                 EventKind::Async2 => end2,
+            },
+        }
+    }
+
+    pub(crate) fn is_first_async_half(&self) -> bool {
+        match self.race.schedule {
+            RaceSchedule::Unscheduled | RaceSchedule::Live { .. } => false,
+            RaceSchedule::Async { start1, start2, .. } => match self.kind {
+                EventKind::Normal => unreachable!(),
+                EventKind::Async1 => start1.map_or(false, |start1| start2.map_or(true, |start2| start1 < start2)),
+                EventKind::Async2 => start2.map_or(false, |start2| start1.map_or(true, |start1| start2 < start1)),
             },
         }
     }

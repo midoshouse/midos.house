@@ -684,8 +684,8 @@ pub(crate) enum Error {
     #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
-    #[error(transparent)] TableCells(#[from] seed::TableCellsError),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("missing user data for an event organizer")]
@@ -703,8 +703,8 @@ pub(crate) enum InfoError {
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Event(#[from] Error),
     #[error(transparent)] Page(#[from] PageError),
+    #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
-    #[error(transparent)] TableCells(#[from] seed::TableCellsError),
 }
 
 impl<E: Into<InfoError>> From<E> for StatusOrError<InfoError> {
@@ -1079,12 +1079,14 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                         a(class = "favicon", href = startgg_url.to_string()) : favicon(&startgg_url);
                                     }
                                     @for room in race.rooms() {
+                                        //TODO hide room of 1st async half until 2nd half finished
                                         a(class = "favicon", href = room.to_string()) : favicon(&room);
                                     }
                                 }
                             }
                             @if has_seeds {
                                 @if let Some(ref seed) = race.seed {
+                                    //TODO hide seed if unfinished async
                                     : seed::table_cells(now, seed, true).await?;
                                 } else {
                                     : seed::table_empty_cells(true);

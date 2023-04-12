@@ -1,6 +1,7 @@
 use {
     std::{
         borrow::Cow,
+        num::NonZeroU8,
         path::Path,
     },
     chrono::prelude::*,
@@ -20,6 +21,7 @@ use {
     wheel::fs,
     crate::http::static_url,
 };
+#[cfg(unix)] use async_proto::Protocol;
 
 #[cfg(unix)] pub(crate) const DIR: &str = "/var/www/midos.house/seed";
 #[cfg(windows)] pub(crate) const DIR: &str = "C:/Users/fenhl/games/zelda/oot/midos-house-seeds";
@@ -69,13 +71,15 @@ impl HashIconExt for HashIcon {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(unix, derive(Protocol))]
 pub(crate) struct Data {
     pub(crate) file_hash: Option<[HashIcon; 5]>,
     pub(crate) files: Files,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
+#[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum Files {
     MidosHouse {
         file_stem: Cow<'static, str>,
@@ -88,6 +92,65 @@ pub(crate) enum Files {
     TriforceBlitz {
         uuid: Uuid,
     },
+}
+
+impl Data {
+    pub(crate) async fn extra(&self, now: DateTime<Utc>) -> Result<ExtraData, ExtraDataError> {
+        /// If some other part of the log like settings or version number can't be parsed, we may still be able to read the file hash from the log
+        #[derive(Deserialize)]
+        struct SparseSpoilerLog {
+            file_hash: [HashIcon; 5],
+        }
+
+        let check_local_log = self.file_hash.is_none() || match self.files {
+            Files::MidosHouse { .. } => true,
+            Files::OotrWeb { gen_time, .. } => gen_time <= now - chrono::Duration::days(90),
+            Files::TriforceBlitz { .. } => false,
+        };
+        if check_local_log {
+            if let Files::MidosHouse { ref file_stem } | Files::OotrWeb { ref file_stem, .. } = self.files {
+                let spoiler_file_name = format!("{file_stem}_Spoiler.json");
+                let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
+                let spoiler_path_exists = spoiler_path.exists();
+                let (file_hash, world_count) = if spoiler_path_exists {
+                    let log = fs::read_to_string(&spoiler_path).await?;
+                    if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
+                        (Some(log.file_hash), Some(log.settings.world_count))
+                    } else {
+                        (
+                            self.file_hash.or_else(|| serde_json::from_str::<SparseSpoilerLog>(&log).ok().map(|log| log.file_hash)),
+                            None,
+                        )
+                    }
+                } else {
+                    (self.file_hash, None)
+                };
+                return Ok(ExtraData {
+                    spoiler_file_name: Some(spoiler_file_name),
+                    spoiler_path_exists, file_hash, world_count,
+                })
+            }
+        }
+        Ok(ExtraData {
+            spoiler_file_name: None,
+            spoiler_path_exists: false,
+            file_hash: self.file_hash,
+            world_count: None,
+        })
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ExtraDataError {
+    #[error(transparent)] Json(#[from] serde_json::Error),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
+}
+
+pub(crate) struct ExtraData {
+    spoiler_file_name: Option<String>,
+    spoiler_path_exists: bool,
+    pub(crate) file_hash: Option<[HashIcon; 5]>,
+    pub(crate) world_count: Option<NonZeroU8>,
 }
 
 pub(crate) fn table_header_cells(spoiler_logs: bool) -> RawHtml<String> {
@@ -110,52 +173,11 @@ pub(crate) fn table_empty_cells(spoiler_logs: bool) -> RawHtml<String> {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum TableCellsError {
-    #[error(transparent)] Json(#[from] serde_json::Error),
-    #[error(transparent)] Wheel(#[from] wheel::Error),
-}
-
-pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool) -> Result<RawHtml<String>, TableCellsError> {
-    /// If some other part of the log like settings or version number can't be parsed, we may still be able to read the file hash from the log
-    #[derive(Deserialize)]
-    struct SparseSpoilerLog {
-        file_hash: [HashIcon; 5],
-    }
-
-    let check_local_log = seed.file_hash.is_none() || match seed.files {
-        Files::MidosHouse { .. } => true,
-        Files::OotrWeb { gen_time, .. } => gen_time <= now - chrono::Duration::days(90),
-        Files::TriforceBlitz { .. } => false,
-    };
-    let (spoiler_file_name, spoiler_path_exists, file_hash, world_count) = if check_local_log {
-        if let Files::MidosHouse { ref file_stem } | Files::OotrWeb { ref file_stem, .. } = seed.files {
-            let spoiler_file_name = format!("{file_stem}_Spoiler.json");
-            let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
-            let spoiler_path_exists = spoiler_path.exists();
-            let (file_hash, world_count) = if spoiler_path_exists {
-                let log = fs::read_to_string(&spoiler_path).await?;
-                if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
-                    (Some(log.file_hash), Some(log.settings.world_count))
-                } else {
-                    (
-                        seed.file_hash.or_else(|| serde_json::from_str::<SparseSpoilerLog>(&log).ok().map(|log| log.file_hash)),
-                        None,
-                    )
-                }
-            } else {
-                (seed.file_hash, None)
-            };
-            (Some(spoiler_file_name), spoiler_path_exists, file_hash, world_count)
-        } else {
-            (None, false, seed.file_hash, None)
-        }
-    } else {
-        (None, false, seed.file_hash, None)
-    };
+pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool) -> Result<RawHtml<String>, ExtraDataError> {
+    let extra = seed.extra(now).await?;
     Ok(html! {
         td {
-            @if let Some(file_hash) = file_hash {
+            @if let Some(file_hash) = extra.file_hash {
                 div(class = "hash") {
                     @for hash_icon in file_hash {
                         : hash_icon.to_html();
@@ -170,7 +192,7 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
             }
             Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem } => {
                 td {
-                    a(href = format!("/seed/{file_stem}.{}", if let Some(world_count) = world_count {
+                    a(href = format!("/seed/{file_stem}.{}", if let Some(world_count) = extra.world_count {
                         if world_count.get() > 1 { "zpfz" } else { "zpf" }
                     } else if Path::new(DIR).join(format!("{file_stem}.zpfz")).exists() {
                         "zpfz"
@@ -180,8 +202,8 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
                 }
                 @if spoiler_logs {
                     td {
-                        @if spoiler_path_exists {
-                            a(href = format!("/seed/{}", spoiler_file_name.expect("should be present since web seed missing or expired"))) : "View";
+                        @if extra.spoiler_path_exists {
+                            a(href = format!("/seed/{}", extra.spoiler_file_name.expect("should be present since web seed missing or expired"))) : "View";
                         } else {
                             : "not found"; //TODO different message if the race is still in progress
                         }
@@ -195,7 +217,7 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
     })
 }
 
-pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -> Result<RawHtml<String>, TableCellsError> {
+pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -> Result<RawHtml<String>, ExtraDataError> {
     pin!(seeds);
     let now = Utc::now();
     Ok(html! {

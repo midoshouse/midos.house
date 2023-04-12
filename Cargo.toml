@@ -139,5 +139,5 @@ features = ["reqwest", "rocket-beta", "serde", "serde_json"]
 xdg = "2"
 
 [target.'cfg(unix)'.dependencies.async-proto]
-version = "0.16"
-features = ["chrono", "serde_json"]
+version = "0.16.5"
+features = ["chrono", "serde_json", "uuid"]
