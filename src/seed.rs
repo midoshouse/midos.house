@@ -221,7 +221,7 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -
     pin!(seeds);
     let now = Utc::now();
     Ok(html! {
-        table {
+        table(class = "seeds") {
             thead {
                 tr : table_header_cells(spoiler_logs);
             }
