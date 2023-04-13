@@ -84,6 +84,7 @@ pub(crate) fn graphql_playground() -> RawHtml<String> {
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum CsvError {
     #[error(transparent)] Csv(#[from] csv::Error),
+    #[error(transparent)] Event(#[from] event::Error),
     #[error(transparent)] EventData(#[from] event::DataError),
     #[error(transparent)] IntoInner(#[from] csv::IntoInnerError<csv::Writer<Vec<u8>>>),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -100,9 +101,11 @@ impl<E: Into<CsvError>> From<E> for StatusOrError<CsvError> {
 #[rocket::get("/api/v1/event/<series>/<event>/entrants.csv?<api_key>")]
 pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, series: Series, event: &str, api_key: &str) -> Result<(ContentType, Vec<u8>), StatusOrError<CsvError>> {
     let mut transaction = db_pool.begin().await?;
-    let _ /*me*/ = Scopes { entrants_read: true, ..Scopes::default() }.validate(&mut transaction, api_key).await?.ok_or(StatusOrError::Status(Status::Forbidden))?;
-    //TODO validate that the API key's owner has permission to see restream consent
+    let me = Scopes { entrants_read: true, ..Scopes::default() }.validate(&mut transaction, api_key).await?.ok_or(StatusOrError::Status(Status::Forbidden))?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    if !event.organizers(&mut transaction).await?.contains(&me) && !event.restreamers(&mut transaction).await?.contains(&me) {
+        return Err(StatusOrError::Status(Status::Forbidden))
+    }
     let show_qualifier_times = event.show_qualifier_times && event.is_started(&mut transaction).await?;
     let signups = event.signups_sorted(&mut transaction, None, show_qualifier_times).await?;
     let mut csv = csv::Writer::from_writer(Vec::default());

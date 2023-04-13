@@ -546,6 +546,16 @@ impl<'a> Data<'a> {
         Ok(buf)
     }
 
+    pub(crate) async fn restreamers(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<User>, Error> {
+        let mut buf = Vec::<User>::default();
+        for id in sqlx::query_scalar!(r#"SELECT restreamer AS "restreamer: Id" FROM restreamers WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut *transaction).await? {
+            let user = User::from_id(&mut *transaction, id).await?.ok_or(Error::RestreamerUserData)?;
+            let (Ok(idx) | Err(idx)) = buf.binary_search_by(|probe| probe.display_name().cmp(user.display_name()).then_with(|| probe.id.cmp(&user.id)));
+            buf.insert(idx, user);
+        }
+        Ok(buf)
+    }
+
     pub(crate) async fn active_async(&self, transaction: &mut Transaction<'_, Postgres>, team_id: Option<Id>) -> Result<Option<AsyncKind>, DataError> {
         for kind in sqlx::query_scalar!(r#"SELECT kind AS "kind: AsyncKind" FROM asyncs WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut *transaction).await? {
             match kind {
@@ -757,6 +767,8 @@ pub(crate) enum Error {
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("missing user data for an event organizer")]
     OrganizerUserData,
+    #[error("missing user data for a restreamer")]
+    RestreamerUserData,
 }
 
 impl<E: Into<Error>> From<E> for StatusOrError<Error> {
@@ -825,7 +837,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
         || data.is_started(&mut transaction).await?
     );
     let show_restream_consent = if let Some(ref me) = me {
-        data.organizers(&mut transaction).await?.contains(me) //TODO or user is a restreamer for this event
+        data.organizers(&mut transaction).await?.contains(me) || data.restreamers(&mut transaction).await?.contains(me)
     } else {
         false
     };
@@ -1133,7 +1145,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
         let is_organizer = data.organizers(&mut transaction).await?.contains(me);
         (
             is_organizer,
-            is_organizer, //TODO or user is a restreamer for this event
+            is_organizer || data.restreamers(&mut transaction).await?.contains(me),
         )
     } else {
         (false, false)
