@@ -45,7 +45,7 @@ impl Team {
     }
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, series: Series, event: &str) -> sqlx::Result<Vec<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE series = $1 AND event = $2"#, series as _, event).fetch_all(transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE series = $1 AND event = $2 AND NOT resigned"#, series as _, event).fetch_all(transaction).await
     }
 
     pub(crate) async fn name(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Option<Cow<'_, str>>> {

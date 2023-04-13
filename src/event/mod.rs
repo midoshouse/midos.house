@@ -327,7 +327,7 @@ pub(crate) struct Data<'a> {
     pub(crate) discord_organizer_channel: Option<ChannelId>,
     pub(crate) discord_scheduling_channel: Option<ChannelId>,
     enter_flow: Option<enter::Flow>,
-    show_qualifier_times: bool,
+    pub(crate) show_qualifier_times: bool,
     pub(crate) default_multiple_games: bool,
 }
 
@@ -338,6 +338,8 @@ pub(crate) enum DataError {
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error("no event with this series and identifier")]
     Missing,
+    #[error("team with nonexistent user")]
+    NonexistentUser,
 }
 
 impl<'a> Data<'a> {
@@ -560,6 +562,71 @@ impl<'a> Data<'a> {
         Ok(None)
     }
 
+    pub(crate) async fn signups_sorted(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>, show_qualifier_times: bool) -> Result<Vec<(Team, Vec<(Role, User, bool, Option<Duration>, Option<String>)>, bool, Option<i16>)>, DataError> {
+        let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!", pieces, restream_consent FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+            series = $1
+            AND event = $2
+            AND NOT resigned
+            AND (
+                EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
+                OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+            )
+            AND (kind = 'qualifier' OR kind IS NULL)
+        "#, self.series as _, &self.event, me.as_ref().map(|me| i64::from(me.id))).fetch_all(&mut *transaction).await?;
+        let roles = self.team_config().roles();
+        let mut signups = Vec::with_capacity(teams.len());
+        for team in teams {
+            let mut members = Vec::with_capacity(roles.len());
+            for &(role, _) in roles {
+                let row = sqlx::query!(r#"
+                    SELECT member AS "id: Id", status AS "status: SignupStatus", time, vod
+                    FROM team_members LEFT OUTER JOIN async_players ON (member = player AND series = $1 AND event = $2 AND kind = 'qualifier')
+                    WHERE team = $3 AND role = $4
+                "#, self.series as _, &self.event, team.id as _, role as _).fetch_one(&mut *transaction).await?;
+                let is_confirmed = row.status.is_confirmed();
+                let user = User::from_id(&mut *transaction, row.id).await?.ok_or(DataError::NonexistentUser)?;
+                members.push((role, user, is_confirmed, row.time.map(decode_pginterval).transpose()?, row.vod));
+            }
+            signups.push((Team { id: team.id, name: team.name, racetime_slug: team.racetime_slug, plural_name: team.plural_name, restream_consent: team.restream_consent }, members, team.qualified, team.pieces));
+        }
+        if show_qualifier_times {
+            signups.sort_unstable_by(|(team1, members1, qualified1, pieces1), (team2, members2, qualified2, pieces2)| {
+                #[derive(PartialEq, Eq, PartialOrd, Ord)]
+                enum Qualification {
+                    Finished(Option<i16>, Duration),
+                    DidNotFinish,
+                    NotYetQualified,
+                }
+
+                impl Qualification {
+                    fn new(qualified: bool, pieces: Option<i16>, members: &[(Role, User, bool, Option<Duration>, Option<String>)]) -> Self {
+                        if qualified {
+                            if let Some(time) = members.iter().try_fold(Duration::default(), |acc, &(_, _, _, time, _)| Some(acc + time?)) {
+                                Self::Finished(
+                                    pieces.map(|pieces| -pieces), // list teams with more pieces first
+                                    time,
+                                )
+                            } else {
+                                Self::DidNotFinish
+                            }
+                        } else {
+                            Self::NotYetQualified
+                        }
+                    }
+                }
+
+                Qualification::new(*qualified1, *pieces1, members1).cmp(&Qualification::new(*qualified2, *pieces2, members2))
+                .then_with(|| team1.cmp(team2))
+            });
+        } else {
+            signups.sort_unstable_by(|(team1, _, qualified1, _), (team2, _, qualified2, _)|
+                qualified2.cmp(qualified1) // reversed to list qualified teams first
+                .then_with(|| team1.cmp(team2))
+            );
+        }
+        Ok(signups)
+    }
+
     pub(crate) async fn header(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>, tab: Tab, is_subpage: bool) -> Result<RawHtml<String>, Error> {
         let signed_up = if let Some(me) = me {
             sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
@@ -739,8 +806,6 @@ pub(crate) enum TeamsError {
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] PgInterval(#[from] crate::util::PgIntervalDecodeError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
-    #[error("team with nonexistent user")]
-    NonexistentUser,
 }
 
 impl<E: Into<TeamsError>> From<E> for StatusOrError<TeamsError> {
@@ -754,7 +819,6 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, me.as_ref(), Tab::Teams, false).await?;
-    let mut signups = Vec::default();
     let has_qualifier = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier') AS "exists!""#, series as _, event).fetch_one(&mut transaction).await?;
     let show_qualifier_times = data.show_qualifier_times && (
         sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM async_teams, team_members WHERE async_teams.team = team_members.team AND member = $1 AND kind = 'qualifier'"#, me.as_ref().map(|me| i64::from(me.id))).fetch_optional(&mut *transaction).await?.unwrap_or(false)
@@ -765,66 +829,8 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     } else {
         false
     };
-    let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!", pieces, restream_consent FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
-        series = $1
-        AND event = $2
-        AND NOT resigned
-        AND (
-            EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
-            OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-        )
-        AND (kind = 'qualifier' OR kind IS NULL)
-    "#, series as _, event, me.as_ref().map(|me| i64::from(me.id))).fetch_all(&mut transaction).await?;
     let roles = data.team_config().roles();
-    for team in teams {
-        let mut members = Vec::with_capacity(roles.len());
-        for &(role, _) in roles {
-            let row = sqlx::query!(r#"
-                SELECT member AS "id: Id", status AS "status: SignupStatus", time, vod
-                FROM team_members LEFT OUTER JOIN async_players ON (member = player AND series = $1 AND event = $2 AND kind = 'qualifier')
-                WHERE team = $3 AND role = $4
-            "#, series as _, event, i64::from(team.id), role as _).fetch_one(&mut transaction).await?;
-            let is_confirmed = row.status.is_confirmed();
-            let user = User::from_id(&mut transaction, row.id).await?.ok_or(TeamsError::NonexistentUser)?;
-            members.push((role, user, is_confirmed, row.time.map(decode_pginterval).transpose()?, row.vod));
-        }
-        signups.push((Team { id: team.id, name: team.name, racetime_slug: team.racetime_slug, plural_name: team.plural_name, restream_consent: team.restream_consent }, members, team.qualified, team.pieces, team.restream_consent));
-    }
-    if show_qualifier_times {
-        signups.sort_unstable_by(|(team1, members1, qualified1, pieces1, _), (team2, members2, qualified2, pieces2, _)| {
-            #[derive(PartialEq, Eq, PartialOrd, Ord)]
-            enum Qualification {
-                Finished(Option<i16>, Duration),
-                DidNotFinish,
-                NotYetQualified,
-            }
-
-            impl Qualification {
-                fn new(qualified: bool, pieces: Option<i16>, members: &[(Role, User, bool, Option<Duration>, Option<String>)]) -> Self {
-                    if qualified {
-                        if let Some(time) = members.iter().try_fold(Duration::default(), |acc, &(_, _, _, time, _)| Some(acc + time?)) {
-                            Self::Finished(
-                                pieces.map(|pieces| -pieces), // list teams with more pieces first
-                                time,
-                            )
-                        } else {
-                            Self::DidNotFinish
-                        }
-                    } else {
-                        Self::NotYetQualified
-                    }
-                }
-            }
-
-            Qualification::new(*qualified1, *pieces1, members1).cmp(&Qualification::new(*qualified2, *pieces2, members2))
-            .then_with(|| team1.cmp(team2))
-        });
-    } else {
-        signups.sort_unstable_by(|(team1, _, qualified1, _, _), (team2, _, qualified2, _, _)|
-            qualified2.cmp(qualified1) // reversed to list qualified teams first
-            .then_with(|| team1.cmp(team2))
-        );
-    }
+    let signups = data.signups_sorted(&mut transaction, me.as_ref(), show_qualifier_times).await?;
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config() { "Entrants" } else { "Teams" };
     let content = html! {
@@ -863,7 +869,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                         }
                     }
                 } else {
-                    @for (team, members, qualified, pieces, restream_consent) in signups {
+                    @for (team, members, qualified, pieces) in signups {
                         tr {
                             @if !matches!(data.team_config(), TeamConfig::Solo) {
                                 td {
@@ -951,7 +957,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                             }
                             @if show_restream_consent {
                                 td {
-                                    @if restream_consent {
+                                    @if team.restream_consent {
                                         : "✓";
                                     }
                                 }
