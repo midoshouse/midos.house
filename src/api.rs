@@ -1,16 +1,19 @@
 use {
+    std::sync::Arc,
     async_graphql::{
         *,
         http::{
             GraphQLPlaygroundConfig,
             playground_source,
         },
+        types::ID as GqlId,
     },
     async_graphql_rocket::{
         GraphQLQuery,
         GraphQLRequest,
         GraphQLResponse,
     },
+    chrono::prelude::*,
     enum_iterator::all,
     rocket::{
         State,
@@ -26,10 +29,17 @@ use {
         Postgres,
         Transaction,
     },
+    tokio::sync::Mutex,
     wheel::traits::ReqwestResponseExt as _,
     crate::{
+        Config,
         Environment,
         auth::Discriminator,
+        cal::{
+            self,
+            Race,
+            RaceSchedule,
+        },
         event::{
             self,
             Series,
@@ -57,24 +67,122 @@ impl Scopes {
     }
 }
 
+type ArcTransaction = Arc<Mutex<Transaction<'static, Postgres>>>;
+
+struct UtcTimestamp(DateTime<Utc>);
+
+impl<Tz: TimeZone> From<DateTime<Tz>> for UtcTimestamp {
+    fn from(value: DateTime<Tz>) -> Self {
+        Self(value.with_timezone(&Utc))
+    }
+}
+
+#[Scalar]
+/// A date and time in UTC, formatted per ISO 8601.
+impl ScalarType for UtcTimestamp {
+    fn parse(value: Value) -> InputValueResult<Self> {
+        if let Value::String(s) = value {
+            Ok(Self(DateTime::parse_from_rfc3339(&s).map_err(InputValueError::custom)?.with_timezone(&Utc)))
+        } else {
+            Err(InputValueError::expected_type(value))
+        }
+    }
+
+    fn to_value(&self) -> Value {
+        Value::String(self.0.to_rfc3339_opts(SecondsFormat::AutoSi, true))
+    }
+
+    fn is_valid(value: &Value) -> bool {
+        if let Value::String(s) = value {
+            DateTime::parse_from_rfc3339(s).is_ok()
+        } else {
+            false
+        }
+    }
+}
+
 type MidosHouseSchema = Schema<Query, EmptyMutation, EmptySubscription>;
 
 pub(crate) struct Query;
 
 #[Object] impl Query {
+    /// Custom racetime.gg goals in the OoTR category handled by Mido instead of RandoBot.
     async fn goal_names(&self) -> Vec<&'static str> {
         all::<racetime_bot::Goal>().filter(|goal| goal.is_custom()).map(|goal| goal.as_str()).collect()
     }
+
+    /// Returns a series (group of events) by its URL part.
+    async fn series(&self, name: String) -> Option<Series> {
+        name.parse().ok()
+    }
+}
+
+#[Object] impl Series {
+    /// Returns an event by its URL part.
+    async fn event(&self, ctx: &Context<'_>, name: String) -> Result<Option<event::Data<'_>>, event::DataError> {
+        event::Data::new(&mut *ctx.data_unchecked::<ArcTransaction>().lock().await, *self, name).await
+    }
+}
+
+#[Object] impl event::Data<'_> {
+    /// All past, upcoming, and unscheduled races for this event, sorted chronologically.
+    async fn races(&self, ctx: &Context<'_>) -> Result<Vec<Race>, cal::Error> {
+        Race::for_event(&mut *ctx.data_unchecked::<ArcTransaction>().lock().await, ctx.data_unchecked(), ctx.data_unchecked(), ctx.data_unchecked(), self).await
+    }
+}
+
+#[Object] impl Race {
+    /// The race's internal ID. Unique across all series, but only for races (e.g. a user may have the same ID as a race).
+    async fn id(&self) -> GqlId { self.id.unwrap().into() }
+
+    /// The scheduled starting time. Null if this race is asynced or not yet scheduled.
+    async fn start(&self) -> Option<UtcTimestamp> {
+        if let RaceSchedule::Live { start, .. } = self.schedule {
+            Some(start.into())
+        } else {
+            None
+        }
+    }
+
+    /// A categorization of races within the event, e.g. “Swiss”, “Challenge Cup”, “Live Qualifier”, “Top 8”, “Groups”, or “Bracket”. Combine with round, entrants, and game for a human-readable description of the race.
+    /// Null if this event only has one phase or for the main phase of the event (e.g. Standard top 64 as opposed to Challenge Cup).
+    async fn phase(&self) -> Option<&str> { self.phase.as_deref() }
+
+    /// A categorization of races within the phase, e.g. “Round 1”, “Openers”, or “Losers Quarterfinal”. Combine with phase, entrants, and game for a human-readable description of the race.
+    /// Null if this phase only has one match.
+    async fn round(&self) -> Option<&str> { self.round.as_deref() }
+}
+
+pub(crate) fn schema(db_pool: PgPool) -> MidosHouseSchema {
+    Schema::build(Query, EmptyMutation, EmptySubscription)
+        .data(db_pool)
+        .finish()
 }
 
 #[rocket::get("/api/v1/graphql?<query..>")]
-pub(crate) async fn graphql_query(schema: &State<MidosHouseSchema>, query: GraphQLQuery) -> GraphQLResponse {
-    query.execute(&**schema).await
+pub(crate) async fn graphql_query(env: &State<Environment>, config: &State<Config>, db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, schema: &State<MidosHouseSchema>, query: GraphQLQuery) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
+    let transaction = Arc::new(Mutex::new(db_pool.begin().await?));
+    let response = GraphQLRequest::from(query)
+        .data::<Environment>(**env)
+        .data::<Config>((*config).clone())
+        .data::<ArcTransaction>(transaction.clone())
+        .data::<reqwest::Client>((*http_client).clone())
+        .execute(&**schema).await;
+    Arc::try_unwrap(transaction).expect("query data still live after execution").into_inner().commit().await?;
+    Ok(response)
 }
 
 #[rocket::post("/api/v1/graphql", data = "<request>", format = "application/json")]
-pub(crate) async fn graphql_request(schema: &State<MidosHouseSchema>, request: GraphQLRequest) -> GraphQLResponse {
-    request.execute(&**schema).await
+pub(crate) async fn graphql_request(env: &State<Environment>, config: &State<Config>, db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, schema: &State<MidosHouseSchema>, request: GraphQLRequest) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
+    let transaction = Arc::new(Mutex::new(db_pool.begin().await?));
+    let response = request
+        .data::<Environment>(**env)
+        .data::<Config>((*config).clone())
+        .data::<ArcTransaction>(transaction.clone())
+        .data::<reqwest::Client>((*http_client).clone())
+        .execute(&**schema).await;
+    Arc::try_unwrap(transaction).expect("query data still live after execution").into_inner().commit().await?;
+    Ok(response)
 }
 
 #[rocket::get("/api/v1/graphql")]

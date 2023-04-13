@@ -570,9 +570,9 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
     .attach(SeedDownloadFairing)
     .manage(config)
     .manage(env)
-    .manage(pool)
+    .manage(pool.clone())
     .manage(discord_ctx)
     .manage(http_client)
-    .manage(async_graphql::Schema::build(api::Query, async_graphql::EmptyMutation, async_graphql::EmptySubscription).finish())
+    .manage(api::schema(pool))
     .ignite().await?)
 }
