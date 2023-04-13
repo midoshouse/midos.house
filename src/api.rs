@@ -124,7 +124,7 @@ pub(crate) struct Query;
     }
 }
 
-#[Object] impl event::Data<'_> {
+#[Object(name = "Event")] impl event::Data<'_> {
     /// All past, upcoming, and unscheduled races for this event, sorted chronologically.
     async fn races(&self, ctx: &Context<'_>) -> Result<Vec<Race>, cal::Error> {
         Race::for_event(&mut *ctx.data_unchecked::<ArcTransaction>().lock().await, ctx.data_unchecked(), ctx.data_unchecked(), ctx.data_unchecked(), self).await
