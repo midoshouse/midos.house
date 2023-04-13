@@ -73,13 +73,13 @@ use {
     },
 };
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub(super) struct Flow {
     requirements: Vec<Requirement>,
 }
 
 /// Requirements to enter an event
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum Requirement {
     /// Must have a racetime.gg account connected to their Mido's House account

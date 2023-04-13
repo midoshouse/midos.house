@@ -12,7 +12,10 @@ use {
         Transaction,
     },
     crate::{
-        event::Series,
+        event::{
+            Role,
+            Series,
+        },
         user::User,
         util::Id,
     },
@@ -95,11 +98,29 @@ impl Team {
         sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1"#, i64::from(self.id)).fetch_all(&mut *transaction).await
     }
 
+    async fn member_ids_roles(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<(Id, Role)>> {
+        Ok(
+            sqlx::query!(r#"SELECT member AS "member: Id", role AS "role: Role" FROM team_members WHERE team = $1"#, i64::from(self.id)).fetch_all(&mut *transaction).await?
+                .into_iter()
+                .map(|row| (row.member, row.role))
+                .collect()
+        )
+    }
+
     pub(crate) async fn members(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<User>> {
         let user_ids = self.member_ids(&mut *transaction).await?;
         let mut members = Vec::with_capacity(user_ids.len());
         for user_id in user_ids {
             members.push(User::from_id(&mut *transaction, user_id).await?.expect("database constraint violated: nonexistent team member"));
+        }
+        Ok(members)
+    }
+
+    pub(crate) async fn members_roles(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<(User, Role)>> {
+        let rows = self.member_ids_roles(&mut *transaction).await?;
+        let mut members = Vec::with_capacity(rows.len());
+        for (user_id, role) in rows {
+            members.push((User::from_id(&mut *transaction, user_id).await?.expect("database constraint violated: nonexistent team member"), role));
         }
         Ok(members)
     }

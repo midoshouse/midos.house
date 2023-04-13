@@ -678,6 +678,14 @@ impl Race {
         }
     }
 
+    pub(crate) fn teams_opt(&self) -> Option<impl Iterator<Item = &Team> + Send> {
+        match self.entrants {
+            Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => Some(Box::new([team1, team2].into_iter()) as Box<dyn Iterator<Item = &Team> + Send>),
+            Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => Some(Box::new([team1, team2, team3].into_iter())),
+            Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) | Entrants::Two(_) | Entrants::Three(_) => None,
+        }
+    }
+
     pub(crate) fn has_room_for(&self, team: &Team) -> bool {
         match &self.schedule {
             RaceSchedule::Unscheduled => false,

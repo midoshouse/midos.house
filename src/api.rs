@@ -15,6 +15,7 @@ use {
     },
     chrono::prelude::*,
     enum_iterator::all,
+    itertools::Itertools as _,
     rocket::{
         State,
         http::{
@@ -37,15 +38,15 @@ use {
         auth::Discriminator,
         cal::{
             self,
-            Race,
             RaceSchedule,
         },
         event::{
             self,
-            Series,
+            TeamConfig,
         },
         racetime_bot,
-        user::User,
+        team,
+        user,
         util::{
             Id,
             StatusOrError,
@@ -59,15 +60,21 @@ struct Scopes {
 }
 
 impl Scopes {
-    async fn validate(&self, transaction: &mut Transaction<'_, Postgres>, api_key: &str) -> sqlx::Result<Option<User>> {
+    async fn validate(&self, transaction: &mut Transaction<'_, Postgres>, api_key: &str) -> sqlx::Result<Option<user::User>> {
         let Some(row) = sqlx::query!(r#"SELECT user_id AS "user_id: Id", entrants_read FROM api_keys WHERE key = $1"#, api_key).fetch_optional(&mut *transaction).await? else { return Ok(None) };
         let Self { entrants_read } = *self;
         if entrants_read && !row.entrants_read { return Ok(None) }
-        User::from_id(transaction, row.user_id).await
+        user::User::from_id(transaction, row.user_id).await
     }
 }
 
 type ArcTransaction = Arc<Mutex<Transaction<'static, Postgres>>>;
+
+macro_rules! db {
+    ($ctx:expr) => {{
+        &mut *$ctx.data_unchecked::<ArcTransaction>().lock().await
+    }};
+}
 
 struct UtcTimestamp(DateTime<Utc>);
 
@@ -113,31 +120,37 @@ pub(crate) struct Query;
 
     /// Returns a series (group of events) by its URL part.
     async fn series(&self, name: String) -> Option<Series> {
-        name.parse().ok()
+        name.parse().ok().map(Series)
     }
 }
+
+struct Series(event::Series);
 
 #[Object] impl Series {
     /// Returns an event by its URL part.
-    async fn event(&self, ctx: &Context<'_>, name: String) -> Result<Option<event::Data<'_>>, event::DataError> {
-        event::Data::new(&mut *ctx.data_unchecked::<ArcTransaction>().lock().await, *self, name).await
+    async fn event(&self, ctx: &Context<'_>, name: String) -> Result<Option<Event>, event::DataError> {
+        Ok(event::Data::new(db!(ctx), self.0, name).await?.map(Event))
     }
 }
 
-#[Object(name = "Event")] impl event::Data<'_> {
+struct Event(event::Data<'static>);
+
+#[Object] impl Event {
     /// All past, upcoming, and unscheduled races for this event, sorted chronologically.
     async fn races(&self, ctx: &Context<'_>) -> Result<Vec<Race>, cal::Error> {
-        Race::for_event(&mut *ctx.data_unchecked::<ArcTransaction>().lock().await, ctx.data_unchecked(), ctx.data_unchecked(), ctx.data_unchecked(), self).await
+        Ok(cal::Race::for_event(db!(ctx), ctx.data_unchecked(), ctx.data_unchecked(), ctx.data_unchecked(), &self.0).await?.into_iter().map(Race).collect())
     }
 }
+
+struct Race(cal::Race);
 
 #[Object] impl Race {
     /// The race's internal ID. Unique across all series, but only for races (e.g. a user may have the same ID as a race).
-    async fn id(&self) -> GqlId { self.id.unwrap().into() }
+    async fn id(&self) -> GqlId { self.0.id.unwrap().into() }
 
     /// The scheduled starting time. Null if this race is asynced or not yet scheduled.
     async fn start(&self) -> Option<UtcTimestamp> {
-        if let RaceSchedule::Live { start, .. } = self.schedule {
+        if let RaceSchedule::Live { start, .. } = self.0.schedule {
             Some(start.into())
         } else {
             None
@@ -146,11 +159,63 @@ pub(crate) struct Query;
 
     /// A categorization of races within the event, e.g. “Swiss”, “Challenge Cup”, “Live Qualifier”, “Top 8”, “Groups”, or “Bracket”. Combine with round, entrants, and game for a human-readable description of the race.
     /// Null if this event only has one phase or for the main phase of the event (e.g. Standard top 64 as opposed to Challenge Cup).
-    async fn phase(&self) -> Option<&str> { self.phase.as_deref() }
+    async fn phase(&self) -> Option<&str> { self.0.phase.as_deref() }
 
     /// A categorization of races within the phase, e.g. “Round 1”, “Openers”, or “Losers Quarterfinal”. Combine with phase, entrants, and game for a human-readable description of the race.
     /// Null if this phase only has one match.
-    async fn round(&self) -> Option<&str> { self.round.as_deref() }
+    async fn round(&self) -> Option<&str> { self.0.round.as_deref() }
+
+    /// If this race is part of a best-of-N-races match, the ordinal of the race within the match. Null for best-of-1 matches.
+    async fn game(&self) -> Option<i16> { self.0.game }
+
+    /// All teams participating in this race. For solo events, these will be single-member teams.
+    /// Null if the race is open (not invitational) or if the event does not use Mido's House to manage entrants.
+    async fn teams(&self, ctx: &Context<'_>) -> Result<Option<Vec<Team>>, event::DataError> {
+        let event = self.0.event(db!(ctx)).await?;
+        Ok(self.0.teams_opt().map(|teams| teams.map(|team| Team { inner: team.clone(), event: event.clone() }).collect()))
+    }
+}
+
+struct Team {
+    inner: team::Team,
+    event: event::Data<'static>,
+}
+
+#[Object] impl Team {
+    /// The team's internal ID. Unique across all series, but only for teams (e.g. a race may have the same ID as a team).
+    async fn id(&self) -> GqlId { self.inner.id.into() }
+
+    /// Members are guaranteed to be listed in a consistent order depending on the team configuration of the event, e.g. pictionary events will always list the runner first and the pilot second.
+    async fn members(&self, ctx: &Context<'_>) -> sqlx::Result<Vec<TeamMember>> {
+        let team_config = self.event.team_config();
+        let roles = team_config.roles();
+        let mut members = self.inner.members_roles(db!(ctx)).await?;
+        members.sort_unstable_by_key(|(_, role)| roles.iter().position(|(iter_role, _)| iter_role == role));
+        Ok(
+            members.into_iter().zip_eq(roles)
+                .map(|((user, _), (_, display_name))| TeamMember {
+                    role: (!matches!(team_config, TeamConfig::Solo)).then(|| (*display_name).to_owned()),
+                    user: User(user),
+                })
+                .collect()
+        )
+    }
+}
+
+#[derive(SimpleObject)]
+struct TeamMember {
+    /// The role of the player within this team for team formats with distinct roles (e.g. multiworld, pictionary).
+    /// For team formats without distinct roles (e.g. co-op), this can be used to get a consistent ordering of the members of a team.
+    /// Null for solo events.
+    role: Option<String>,
+    user: User,
+}
+
+struct User(user::User);
+
+#[Object] impl User {
+    /// The user's internal ID. Only unique for users (e.g. a team may have the same ID as a user).
+    async fn id(&self) -> GqlId { self.0.id.into() }
 }
 
 pub(crate) fn schema(db_pool: PgPool) -> MidosHouseSchema {
@@ -208,7 +273,7 @@ impl<E: Into<CsvError>> From<E> for StatusOrError<CsvError> {
 }
 
 #[rocket::get("/api/v1/event/<series>/<event>/entrants.csv?<api_key>")]
-pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, series: Series, event: &str, api_key: &str) -> Result<(ContentType, Vec<u8>), StatusOrError<CsvError>> {
+pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, series: event::Series, event: &str, api_key: &str) -> Result<(ContentType, Vec<u8>), StatusOrError<CsvError>> {
     let mut transaction = db_pool.begin().await?;
     let me = Scopes { entrants_read: true, ..Scopes::default() }.validate(&mut transaction, api_key).await?.ok_or(StatusOrError::Status(Status::Forbidden))?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;

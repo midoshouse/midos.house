@@ -286,7 +286,7 @@ pub(crate) enum TeamConfig {
 }
 
 impl TeamConfig {
-    fn roles(&self) -> &'static [(Role, &'static str)] {
+    pub(crate) fn roles(&self) -> &'static [(Role, &'static str)] {
         match self {
             Self::Solo => &[
                 (Role::None, "Runner"),
@@ -308,6 +308,7 @@ impl TeamConfig {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct Data<'a> {
     pub(crate) series: Series,
     pub(crate) event: Cow<'a, str>,
