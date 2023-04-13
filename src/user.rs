@@ -24,6 +24,7 @@ use {
     crate::{
         auth::{
             DiscordUser,
+            Discriminator,
             RaceTimeUser,
         },
         http::{
@@ -69,11 +70,11 @@ pub(crate) struct User {
     display_source: DisplaySource, //TODO allow users with both accounts connected to set this in their preferences
     pub(crate) racetime_id: Option<String>,
     pub(crate) racetime_display_name: Option<String>,
-    pub(crate) racetime_discriminator: Option<i16>,
+    pub(crate) racetime_discriminator: Option<Discriminator>,
     pub(crate) racetime_pronouns: Option<RaceTimePronouns>,
     pub(crate) discord_id: Option<UserId>,
     pub(crate) discord_display_name: Option<String>,
-    pub(crate) discord_discriminator: Option<i16>, //TODO fill in database then make non-optional
+    pub(crate) discord_discriminator: Option<Discriminator>,
     pub(crate) is_archivist: bool,
 }
 
@@ -84,11 +85,11 @@ impl User {
                 display_source AS "display_source: DisplaySource",
                 racetime_id,
                 racetime_display_name,
-                racetime_discriminator,
+                racetime_discriminator AS "racetime_discriminator: Discriminator",
                 racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
                 discord_id AS "discord_id: Id",
                 discord_display_name,
-                discord_discriminator,
+                discord_discriminator AS "discord_discriminator: Discriminator",
                 is_archivist
             FROM users WHERE id = $1"#, i64::from(id)).fetch_optional(pool).await?
                 .map(|row| Self {
@@ -112,11 +113,11 @@ impl User {
                 id AS "id: Id",
                 display_source AS "display_source: DisplaySource",
                 racetime_display_name,
-                racetime_discriminator,
+                racetime_discriminator AS "racetime_discriminator: Discriminator",
                 racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
                 discord_id AS "discord_id: Id",
                 discord_display_name,
-                discord_discriminator,
+                discord_discriminator AS "discord_discriminator: Discriminator",
                 is_archivist
             FROM users WHERE racetime_id = $1"#, racetime_id).fetch_optional(pool).await?
                 .map(|row| Self {
@@ -141,10 +142,10 @@ impl User {
                 display_source AS "display_source: DisplaySource",
                 racetime_id,
                 racetime_display_name,
-                racetime_discriminator,
+                racetime_discriminator AS "racetime_discriminator: Discriminator",
                 racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
                 discord_display_name,
-                discord_discriminator,
+                discord_discriminator AS "discord_discriminator: Discriminator",
                 is_archivist
             FROM users WHERE discord_id = $1"#, i64::from(discord_id)).fetch_optional(pool).await?
                 .map(|row| Self {
@@ -232,7 +233,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                     : user.racetime_display_name;
                     @if let Some(discriminator) = user.racetime_discriminator {
                         : "#";
-                        : format!("{:04}", discriminator);
+                        : discriminator;
                     }
                 }
                 //TODO if this may be outdated, link to racetime.gg login page for refreshing
@@ -249,7 +250,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                             : racetime_user.racetime_display_name;
                             @if let Some(discriminator) = racetime_user.racetime_discriminator {
                                 : "#";
-                                : format!("{:04}", discriminator);
+                                : discriminator;
                             }
                         }
                         : " which belongs to a different Mido's House account. ";
@@ -296,7 +297,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                     : user.discord_display_name;
                     @if let Some(discriminator) = user.discord_discriminator {
                         : "#";
-                        : format!("{:04}", discriminator);
+                        : discriminator;
                     }
                 }
                 //TODO if this may be outdated, link to racetime.gg login page for refreshing
@@ -313,7 +314,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                             : discord_user.discord_display_name;
                             @if let Some(discriminator) = discord_user.discord_discriminator {
                                 : "#";
-                                : format!("{:04}", discriminator);
+                                : discriminator;
                             }
                         }
                         : " which belongs to a different Mido's House account. ";

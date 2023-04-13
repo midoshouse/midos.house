@@ -536,6 +536,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
     .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))
     .register("/", rocket::catchers![
         bad_request,
+        //TODO 403 Forbidden
         not_found,
         internal_server_error,
     ])

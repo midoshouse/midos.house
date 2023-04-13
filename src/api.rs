@@ -29,6 +29,7 @@ use {
     wheel::traits::ReqwestResponseExt as _,
     crate::{
         Environment,
+        auth::Discriminator,
         event::{
             self,
             Series,
@@ -117,7 +118,7 @@ pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<re
                 display_name: &'a str,
                 twitch_display_name: Option<String>,
                 discord_display_name: Option<&'a str>,
-                discord_discriminator: Option<i16>,
+                discord_discriminator: Option<Discriminator>,
                 racetime_id: Option<&'a str>,
                 qualifier_rank: usize,
                 restream_consent: bool,
