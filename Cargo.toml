@@ -25,6 +25,7 @@ enum-iterator = "1"
 futures = "0.3"
 git2 = "0.17"
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
+if_chain = "1"
 ics = "0.5"
 itertools = "0.10"
 lazy-regex = "2"

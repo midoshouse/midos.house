@@ -311,9 +311,10 @@ impl Race {
             room,
             async_room1,
             async_room2,
+            file_stem,
             web_id AS "web_id: Id",
             web_gen_time,
-            file_stem,
+            tfb_uuid,
             hash1 AS "hash1: HashIcon",
             hash2 AS "hash2: HashIcon",
             hash3 AS "hash3: HashIcon",
@@ -415,6 +416,17 @@ impl Race {
         update_end!(end_time, room, "UPDATE races SET end_time = $1 WHERE id = $2");
         update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE id = $2");
         update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE id = $2");
+        let seed_files = match (row.file_stem, row.web_id, row.web_gen_time, row.tfb_uuid) {
+            (_, _, _, Some(uuid)) => Some(seed::Files::TriforceBlitz { uuid }),
+            (Some(file_stem), Some(Id(id)), Some(gen_time), None) => Some(seed::Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
+            (Some(file_stem), Some(Id(id)), None, None) => Some(match (row.start, row.async_start1, row.async_start2) {
+                (Some(start), None, None) | (None, Some(start), None) | (None, None, Some(start)) => seed::Files::OotrWeb { id, gen_time: start - Duration::days(1), file_stem: Cow::Owned(file_stem) },
+                (None, Some(async_start1), Some(async_start2)) => seed::Files::OotrWeb { id, gen_time: async_start1.min(async_start2) - Duration::days(1), file_stem: Cow::Owned(file_stem) },
+                (_, _, _) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem) },
+            }),
+            (Some(file_stem), None, _, None) => Some(seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem) }),
+            (None, _, _, None) => None,
+        };
         Ok(Self {
             id: Some(id),
             series: row.series,
@@ -427,21 +439,13 @@ impl Race {
                 row.room.map(|room| room.parse()).transpose()?, row.async_room1.map(|room| room.parse()).transpose()?, row.async_room2.map(|room| room.parse()).transpose()?,
             ),
             draft: row.draft_state.map(|Json(draft)| draft),
-            seed: row.file_stem.map(|file_stem| seed::Data {
+            seed: seed_files.map(|files| seed::Data {
                 file_hash: match (row.hash1, row.hash2, row.hash3, row.hash4, row.hash5) {
                     (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
                     (None, None, None, None, None) => None,
                     _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
                 },
-                files: match (row.web_id, row.web_gen_time) {
-                    (Some(Id(id)), Some(gen_time)) => seed::Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) },
-                    (Some(Id(id)), None) => match (row.start, row.async_start1, row.async_start2) {
-                        (Some(start), None, None) | (None, Some(start), None) | (None, None, Some(start)) => seed::Files::OotrWeb { id, gen_time: start - Duration::days(1), file_stem: Cow::Owned(file_stem) },
-                        (None, Some(async_start1), Some(async_start2)) => seed::Files::OotrWeb { id, gen_time: async_start1.min(async_start2) - Duration::days(1), file_stem: Cow::Owned(file_stem) },
-                        (_, _, _) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem) },
-                    },
-                    (None, _) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem) },
-                },
+                files,
             }),
             video_url: row.video_url.map(|url| url.parse()).transpose()?,
             ignored: row.ignored,
@@ -756,10 +760,11 @@ impl Race {
             RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
             RaceSchedule::Async { start1, start2, end1, end2, ref room1, ref room2 } => (None, start1, start2, None, end1, end2, None, room1.as_ref(), room2.as_ref()),
         };
-        let (web_id, web_gen_time, file_stem) = match self.seed.as_ref().map(|seed| &seed.files) {
-            Some(seed::Files::MidosHouse { file_stem }) => (None, None, Some(file_stem)),
-            Some(seed::Files::OotrWeb { id, gen_time, file_stem }) => (Some(*id), Some(*gen_time), Some(file_stem)),
-            Some(seed::Files::TriforceBlitz { .. }) | None => (None, None, None),
+        let (web_id, web_gen_time, file_stem, tfb_uuid) = match self.seed.as_ref().map(|seed| &seed.files) {
+            Some(seed::Files::MidosHouse { file_stem }) => (None, None, Some(file_stem), None),
+            Some(seed::Files::OotrWeb { id, gen_time, file_stem }) => (Some(*id), Some(*gen_time), Some(file_stem), None),
+            Some(seed::Files::TriforceBlitz { uuid }) => (None, None, None, Some(uuid)),
+            None => (None, None, None, None),
         };
         sqlx::query!("INSERT INTO races (
             startgg_set,
@@ -796,9 +801,10 @@ impl Race {
             startgg_event,
             scheduling_thread,
             total,
-            finished
+            finished,
+            tfb_uuid
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)",
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)",
             self.startgg_set,
             start,
             self.series as _,
@@ -834,6 +840,7 @@ impl Race {
             self.scheduling_thread.map(|id| i64::from(id)),
             total.map(|total| total as i32),
             finished.map(|finished| finished as i32),
+            tfb_uuid,
         ).execute(transaction).await?;
         Ok(())
     }

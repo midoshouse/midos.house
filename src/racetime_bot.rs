@@ -31,6 +31,7 @@ use {
         Repository,
         ResetType,
     },
+    if_chain::if_chain,
     itertools::Itertools as _,
     lazy_regex::regex_captures,
     ootr_utils::{
@@ -98,6 +99,7 @@ use {
     },
     tokio_util::io::StreamReader,
     url::Url,
+    uuid::Uuid,
     wheel::{
         fs::{
             self,
@@ -2066,17 +2068,23 @@ impl RaceHandler<GlobalState> for Handler {
                             }
                             Goal::TriforceBlitz => match args[..] {
                                 [] => goal.send_presets(ctx).await?,
-                                [ref seed] => if let Ok(seed) = Url::parse(seed) {
-                                    if let Some("triforceblitz.com" | "www.triforceblitz.com") = seed.host_str() {
-                                        //TODO validate rest of URL?
+                                [ref seed] => if_chain! {
+                                    if let Ok(seed) = Url::parse(seed);
+                                    if let Some("triforceblitz.com" | "www.triforceblitz.com") = seed.host_str();
+                                    if let Some(mut path_segments) = seed.path_segments();
+                                    if path_segments.next() == Some("seed");
+                                    if let Some(segment) = path_segments.next();
+                                    if let Ok(uuid) = Uuid::parse_str(segment);
+                                    if path_segments.next().is_none();
+                                    then {
                                         //TODO prevent overriding existing seed URL?
-                                        //TODO save in database if official
+                                        if let Some(OfficialRaceData { id, .. }) = self.official_data {
+                                            sqlx::query!("UPDATE races SET tfb_uuid = $1 WHERE id = $2", uuid, id as _).execute(&ctx.global_state.db_pool).await.to_racetime()?;
+                                        }
                                         ctx.set_bot_raceinfo(&seed.to_string()).await?; //TODO get file hash from TFB API? (https://github.com/c0hesion/blitz-client/issues/2)
                                     } else {
                                         ctx.send_message(&format!("Sorry {reply_to}, that doesn't seem to be a Triforce Blitz seed link.")).await?;
                                     }
-                                } else {
-                                    ctx.send_message(&format!("Sorry {reply_to}, that doesn't seem to be a valid link.")).await?;
                                 },
                                 [_, _, ..] => {
                                     ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that.")).await?;
