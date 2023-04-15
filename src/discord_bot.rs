@@ -595,6 +595,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         }.pop() {
                                             race.id = None; // copy this race
                                             race.game = Some(game);
+                                            race.schedule = RaceSchedule::Unscheduled;
+                                            race.draft = match event.draft_kind() {
+                                                DraftKind::MultiworldS3 => unimplemented!(), //TODO
+                                                DraftKind::None => None,
+                                            };
+                                            race.seed = None;
+                                            race.video_url = None;
                                             race.save(&mut transaction).await?;
                                             let mut response_content = MessageBuilder::default();
                                             response_content.push("This thread is now assigned to game ");
