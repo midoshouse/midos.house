@@ -2180,7 +2180,8 @@ impl RaceHandler<GlobalState> for Handler {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
-                                if let Ok(initial_wait) = (ctx.data().await.started_at.expect("in-progress race with no start time") + chrono::Duration::minutes(25) - Utc::now()).to_std() {
+                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + chrono::Duration::minutes(25) - Utc::now();
+                                if let Ok(initial_wait) = initial_wait.to_std() {
                                     sleep(initial_wait).await;
                                     if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
                                     let (_, ()) = tokio::join!(
@@ -2196,7 +2197,8 @@ impl RaceHandler<GlobalState> for Handler {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
-                                if let Ok(initial_wait) = (ctx.data().await.started_at.expect("in-progress race with no start time") + chrono::Duration::hours(2) - Utc::now()).to_std() {
+                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + chrono::Duration::hours(2) - Utc::now();
+                                if let Ok(initial_wait) = initial_wait.to_std() {
                                     sleep(initial_wait).await;
                                     let is_1v1 = {
                                         let data = ctx.data().await;
