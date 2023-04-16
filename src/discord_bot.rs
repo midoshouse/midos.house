@@ -82,6 +82,7 @@ impl TypeMapKey for StartggToken {
 pub(crate) struct CommandIds {
     assign: CommandId,
     ban: Option<CommandId>,
+    delete_after: Option<CommandId>,
     draft: Option<CommandId>,
     first: Option<CommandId>,
     post_status: CommandId,
@@ -175,7 +176,7 @@ impl Draft {
     }
 }
 
-async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: &CommandInteraction) -> Result<Option<(Transaction<'a, Postgres>, Race, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
+async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: &CommandInteraction, game: Option<i16>) -> Result<Option<(Transaction<'a, Postgres>, Race, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
     let (mut transaction, http_client, startgg_token) = {
         let data = ctx.data.read().await;
         (
@@ -184,7 +185,12 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
             data.get::<StartggToken>().expect("start.gg auth token missing from Discord context").clone(),
         )
     };
-    Ok(match Race::for_scheduling_channel(&mut transaction, &http_client, &startgg_token, interaction.channel_id).await?.into_iter().at_most_one() {
+    let mut applicable_races = Race::for_scheduling_channel(&mut transaction, &http_client, &startgg_token, interaction.channel_id, game).await?;
+    if let Some(Some(min_game)) = applicable_races.iter().map(|race| race.game).min() {
+        // None < Some(_) so this code only runs if all applicable races are best-of-N
+        applicable_races.retain(|race| race.game == Some(min_game));
+    }
+    Ok(match applicable_races.into_iter().at_most_one() {
         Ok(None) => {
             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                 .ephemeral(true)
@@ -215,7 +221,7 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
         Err(_) => {
             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                 .ephemeral(true)
-                .content("Sorry, this thread is associated with multiple upcoming races. Please contact a tournament organizer to fix this.") //TODO allow selecting race via optional parameter
+                .content("Sorry, this thread is associated with multiple upcoming races. Please contact a tournament organizer to fix this.")
             )).await?;
             transaction.rollback().await?;
             None
@@ -317,6 +323,24 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 ).await?.id)
             } else {
                 None
+            };
+            let delete_after = match match_source {
+                Some(MatchSource::Manual) => Some(guild.create_command(ctx, CreateCommand::new("delete-after")
+                    .kind(CommandType::ChatInput)
+                    .dm_permission(false)
+                    .description("Deletes games of the match that are not required.")
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::Integer,
+                        "from-game",
+                        "The first game number within the match to remove.",
+                    )
+                        .min_int_value(1)
+                        .max_int_value(255)
+                        .required(true)
+                    )
+                ).await?.id),
+                Some(MatchSource::StartGG) => None,
+                None => unimplemented!("Discord guilds with mixed match sources not yet supported (guild ID: {}, events: {})", guild.id, guild_events.iter().map(|event| format!("{}/{}", event.series, event.event)).format(", ")),
             };
             let draft = if has_draft {
                 Some(guild.create_command(ctx, CreateCommand::new("draft")
@@ -483,6 +507,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     "start",
                     "The starting time as a Discord timestamp",
                 ).required(true))
+                .add_option(CreateCommandOption::new(
+                    CommandOptionType::Integer,
+                    "game",
+                    "The game number within the match. Defaults to the next upcoming game.",
+                )
+                    .min_int_value(1)
+                    .max_int_value(255)
+                    .required(false)
+                )
             ).await?.id;
             let schedule_async = guild.create_command(ctx, CreateCommand::new("schedule-async")
                 .kind(CommandType::ChatInput)
@@ -493,11 +526,29 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     "start",
                     "The starting time as a Discord timestamp",
                 ).required(true))
+                .add_option(CreateCommandOption::new(
+                    CommandOptionType::Integer,
+                    "game",
+                    "The game number within the match. Defaults to the next upcoming game.",
+                )
+                    .min_int_value(1)
+                    .max_int_value(255)
+                    .required(false)
+                )
             ).await?.id;
             let schedule_remove = guild.create_command(ctx, CreateCommand::new("schedule-remove")
                 .kind(CommandType::ChatInput)
                 .dm_permission(false)
                 .description("Removes the starting time(s) for this race from the schedule.")
+                .add_option(CreateCommandOption::new(
+                    CommandOptionType::Integer,
+                    "game",
+                    "The game number within the match. Defaults to the next upcoming game.",
+                )
+                    .min_int_value(1)
+                    .max_int_value(255)
+                    .required(false)
+                )
             ).await?.id;
             let second = if has_draft {
                 Some(guild.create_command(ctx, CreateCommand::new("second")
@@ -551,7 +602,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             ctx.data.write().await
                 .entry::<CommandIds>()
                 .or_default()
-                .insert(guild.id, CommandIds { assign, ban, draft, first, post_status, pronoun_roles, schedule, schedule_async, schedule_remove, second, skip, status, watch_roles });
+                .insert(guild.id, CommandIds { assign, ban, delete_after, draft, first, post_status, pronoun_roles, schedule, schedule_async, schedule_remove, second, skip, status, watch_roles });
             transaction.commit().await?;
             Ok(())
         }))
@@ -706,7 +757,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 )).await?;
                             }
                         } else if Some(interaction.data.id) == command_ids.ban {
-                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
                                 if let Some(team) = team {
                                     if let Some(mut draft) = race.draft.take() {
                                         if draft.state.went_first.is_none() {
@@ -801,8 +852,45 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     transaction.rollback().await?;
                                 }
                             }
+                        } else if Some(interaction.data.id) == command_ids.delete_after {
+                            let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
+                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut transaction).await? {
+                                let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
+                                if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id)) {
+                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                        .ephemeral(true)
+                                        .content("Sorry, only event organizers can use this command.")
+                                    )).await?;
+                                    return Ok(())
+                                }
+                                match event.match_source() {
+                                    MatchSource::Manual => {
+                                        let after_game = match interaction.data.options[0].value {
+                                            CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
+                                            _ => panic!("unexpected slash command option type"),
+                                        };
+                                        let races_deleted = sqlx::query_scalar!(r#"DELETE FROM races WHERE scheduling_thread = $1 AND NOT ignored AND GAME > $2"#, i64::from(interaction.channel_id), after_game).execute(&mut transaction).await?
+                                            .rows_affected();
+                                        transaction.commit().await?;
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content(if races_deleted == 0 {
+                                                format!("Sorry, looks like that didn't delete any races.")
+                                            } else {
+                                                format!("{races_deleted} race{} deleted from the schedule.", if races_deleted == 1 { "" } else { "s" })
+                                            })
+                                        )).await?;
+                                    }
+                                    MatchSource::StartGG => unreachable!(), // races are managed via the start.gg tournament
+                                }
+                            } else {
+                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                    .ephemeral(true)
+                                    .content("Sorry, this Discord server is not associated with an ongoing Mido's House event.")
+                                )).await?;
+                            }
                         } else if Some(interaction.data.id) == command_ids.draft {
-                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
                                 if let Some(team) = team {
                                     if let Some(mut draft) = race.draft.take() {
                                         if draft.state.went_first.is_none() {
@@ -899,7 +987,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 }
                             }
                         } else if Some(interaction.data.id) == command_ids.first {
-                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
                                 if let Some(team) = team {
                                     if let Some(mut draft) = race.draft.take() {
                                         if draft.state.went_first.is_some() {
@@ -946,7 +1034,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 }
                             }
                         } else if interaction.data.id == command_ids.post_status {
-                            if let Some((mut transaction, mut race, _)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some((mut transaction, mut race, _)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
                                 if let Some(draft) = race.draft.take() {
                                     let guild_id = interaction.guild_id.expect("/post-status called outside of a guild");
                                     let response_content = MessageBuilder::default()
@@ -1001,7 +1089,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 .button(CreateButton::new("pronouns_other").label("other"))
                             )).await?;
                         } else if interaction.data.id == command_ids.schedule {
-                            if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            let game = interaction.data.options.get(1).map(|option| match option.value {
+                                CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
+                                _ => panic!("unexpected slash command option type"),
+                            });
+                            if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 if team.is_some() || race.event(&mut transaction).await?.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id)) {
                                     let start = match interaction.data.options[0].value {
                                         CommandDataOptionValue::String(ref start) => start,
@@ -1011,7 +1103,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         if start < Utc::now() + Duration::minutes(30) {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
-                                                .content("Sorry, races must be scheduled at least 30 minutes in advance.")
+                                                .content("Sorry, races must be scheduled at least 30 minutes in advance.") //TODO allow different minimums depending on event
                                             )).await?;
                                             transaction.rollback().await?;
                                         } else {
@@ -1019,7 +1111,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             transaction.commit().await?;
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(false)
-                                                .content(format!("This race is now scheduled for <t:{}:F>.", start.timestamp()))
+                                                .content(format!("{} is now scheduled for <t:{}:F>.", if let Some(game) = race.game { format!("Game {game}") } else { format!("This race") }, start.timestamp()))
                                             )).await?;
                                         }
                                     } else {
@@ -1038,7 +1130,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 }
                             }
                         } else if interaction.data.id == command_ids.schedule_async {
-                            if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            let game = interaction.data.options.get(1).map(|option| match option.value {
+                                CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
+                                _ => panic!("unexpected slash command option type"),
+                            });
+                            if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 if team.is_some() || race.event(&mut transaction).await?.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id)) {
                                     let start = match interaction.data.options[0].value {
                                         CommandDataOptionValue::String(ref start) => start,
@@ -1072,7 +1168,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             transaction.commit().await?;
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(false)
-                                                .content(format!("Your half of this race is now scheduled for <t:{}:F>.", start.timestamp()))
+                                                .content(format!("Your half of {} is now scheduled for <t:{}:F>.", if let Some(game) = race.game { format!("game {game}") } else { format!("this race") }, start.timestamp()))
                                             )).await?;
                                         }
                                     } else {
@@ -1091,7 +1187,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 }
                             }
                         } else if interaction.data.id == command_ids.schedule_remove {
-                            if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            let game = interaction.data.options.get(0).map(|option| match option.value {
+                                CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
+                                _ => panic!("unexpected slash command option type"),
+                            });
+                            if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let is_organizer = race.event(&mut transaction).await?.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id));
                                 if team.is_some() || is_organizer {
                                     if !is_organizer && race.has_room_for(team.as_ref().expect("checked above")) {
@@ -1117,10 +1217,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         transaction.commit().await?;
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(false)
-                                            .content(if had_multiple_times {
-                                                "This race's starting times have been removed from the schedule."
-                                            } else {
-                                                "This race's starting time has been removed from the schedule."
+                                            .content(match (race.game, had_multiple_times) {
+                                                (None, false) => format!("This race's starting time has been removed from the schedule."),
+                                                (None, true) => format!("This race's starting times have been removed from the schedule."),
+                                                (Some(game), false) => format!("Game {game}'s starting time has been removed from the schedule."),
+                                                (Some(game), true) => format!("Game {game}'s starting times have been removed from the schedule."),
                                             })
                                         )).await?;
                                     }
@@ -1133,7 +1234,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 }
                             }
                         } else if Some(interaction.data.id) == command_ids.second {
-                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
                                 if let Some(team) = team {
                                     if let Some(mut draft) = race.draft.take() {
                                         if draft.state.went_first.is_some() {
@@ -1180,7 +1281,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 }
                             }
                         } else if Some(interaction.data.id) == command_ids.skip {
-                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
                                 if let Some(team) = team {
                                     if let Some(mut draft) = race.draft.take() {
                                         if draft.state.went_first.is_none() {
@@ -1245,7 +1346,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 }
                             }
                         } else if interaction.data.id == command_ids.status {
-                            if let Some((mut transaction, race, _)) = check_scheduling_thread_permissions(ctx, interaction).await? {
+                            if let Some((mut transaction, race, _)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
                                 if let Some(ref draft) = race.draft {
                                     let guild_id = interaction.guild_id.expect("/status called outside of a guild");
                                     let response_content = MessageBuilder::default()

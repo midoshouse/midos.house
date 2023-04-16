@@ -329,7 +329,7 @@ pub(crate) struct Data<'a> {
     pub(crate) discord_scheduling_channel: Option<ChannelId>,
     enter_flow: Option<enter::Flow>,
     pub(crate) show_qualifier_times: bool,
-    pub(crate) default_multiple_games: bool,
+    pub(crate) default_game_count: i16,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -363,7 +363,7 @@ impl<'a> Data<'a> {
             discord_scheduling_channel AS "discord_scheduling_channel: Id",
             enter_flow AS "enter_flow: Json<enter::Flow>",
             show_qualifier_times,
-            default_multiple_games
+            default_game_count
         FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
                 display_name: row.display_name,
@@ -382,7 +382,7 @@ impl<'a> Data<'a> {
                 discord_scheduling_channel: row.discord_scheduling_channel.map(|Id(id)| id.into()),
                 enter_flow: row.enter_flow.map(|Json(flow)| flow),
                 show_qualifier_times: row.show_qualifier_times,
-                default_multiple_games: row.default_multiple_games,
+                default_game_count: row.default_game_count,
                 series, event,
             }))
             .transpose()

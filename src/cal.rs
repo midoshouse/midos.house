@@ -640,9 +640,14 @@ impl Race {
         Ok(races)
     }
 
-    pub(crate) async fn for_scheduling_channel(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, channel_id: ChannelId) -> Result<Vec<Self>, Error> {
+    pub(crate) async fn for_scheduling_channel(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, channel_id: ChannelId, game: Option<i16>) -> Result<Vec<Self>, Error> {
         let mut races = Vec::default();
-        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW())"#, i64::from(channel_id)).fetch_all(&mut *transaction).await? {
+        let rows = if let Some(game) = game {
+            sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW()) AND game = $2"#, i64::from(channel_id), game).fetch_all(&mut *transaction).await?
+        } else {
+            sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW())"#, i64::from(channel_id)).fetch_all(&mut *transaction).await?
+        };
+        for id in rows {
             races.push(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?);
         }
         races.retain(|race| !race.ignored);
@@ -1243,12 +1248,13 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
                     }
                 }
             });
-            : form_field("multiple_games", &mut errors, html! {
-                input(type = "checkbox", id = "multiple_games", name = "multiple_games", checked? = ctx.field_value("multiple_games").map_or(event.default_multiple_games, |value| value == "on"));
-                label(for = "multiple_games") {
-                    : "This is a multi-game match. (Create follow-up games using ";
-                    code : "/assign";
-                    : " in the scheduling thread once game 1 has been played.)";
+            : form_field("game_count", &mut errors, html! {
+                label(for = "game_count") : "Number of games in this match:";
+                input(type = "number", min = "1", max = "255", name = "game_count", value = ctx.field_value("game_count").map_or_else(|| event.default_game_count.to_string(), |game_count| game_count.to_owned()));
+                label(class = "help") {
+                    : "(If some games end up not being necessary, use ";
+                    code : "/delete-after";
+                    : " in the scheduling thread to delete them.)";
                 }
             });
         }, errors, "Create")
@@ -1286,7 +1292,7 @@ pub(crate) struct CreateRaceForm {
     phase: String,
     #[field(default = String::new())]
     round: String,
-    multiple_games: bool,
+    game_count: i16,
 }
 
 #[rocket::post("/event/<series>/<event>/races/new", data = "<form>")]
@@ -1321,92 +1327,39 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(create_race_form(transaction, Some(me), uri, csrf.as_ref(), event, form.context).await?)
         } else {
-            let mut race = Race {
-                id: None,
-                series: event.series,
-                event: event.event.to_string(),
-                startgg_event: None,
-                startgg_set: None,
-                entrants: Entrants::Two([
-                    Entrant::MidosHouseTeam(team1.expect("validated")),
-                    Entrant::MidosHouseTeam(team2.expect("validated")),
-                ]),
-                phase: (!value.phase.is_empty()).then(|| value.phase.clone()),
-                round: (!value.round.is_empty()).then(|| value.round.clone()),
-                game: value.multiple_games.then_some(1),
-                scheduling_thread: None,
-                schedule: RaceSchedule::Unscheduled,
-                draft: match event.draft_kind() {
-                    DraftKind::MultiworldS3 => unimplemented!(), //TODO
-                    DraftKind::None => None,
-                },
-                seed: None,
-                video_url: None,
-                ignored: false,
-            };
-            if let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) {
-                let ctx = discord_ctx.read().await;
-                if let Some(command_ids) = ctx.data.read().await.get::<discord_bot::CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)) {
-                    if let Some(ChannelType::Forum) = scheduling_channel.to_channel(&*ctx).await?.guild().map(|c| c.kind) {
-                        let info_prefix = match (&race.phase, &race.round) {
-                            (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
-                            (Some(phase), None) => Some(phase.to_owned()),
-                            (None, Some(round)) => Some(round.to_owned()),
-                            (None, None) => None,
-                        };
-                        let title = match race.entrants {
-                            Entrants::Open | Entrants::Count { .. } => info_prefix.unwrap_or_default(),
-                            Entrants::Named(ref entrants) => format!("{}{}",
-                                info_prefix.map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                                entrants,
-                            ),
-                            Entrants::Two([ref team1, ref team2]) => format!("{}{} vs {}",
-                                info_prefix.map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                                team1.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team2.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            ),
-                            Entrants::Three([ref team1, ref team2, ref team3]) => format!("{}{} vs {} vs {}",
-                                info_prefix.map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                                team1.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team2.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                team3.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            ),
-                        };
+            let [team1, team2] = [team1, team2].map(|team| team.expect("validated"));
+            let scheduling_thread = if let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) {
+                let command_ids = discord_ctx.read().await.data.read().await.get::<discord_bot::CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied());
+                if let Some(command_ids) = command_ids {
+                    if let Some(ChannelType::Forum) = scheduling_channel.to_channel(&*discord_ctx.read().await).await?.guild().map(|c| c.kind) {
+                        let info_prefix = format!("{}{}{}",
+                            value.phase,
+                            if value.phase.is_empty() && value.round.is_empty() { "" } else { " " },
+                            value.round,
+                        );
+                        let title = format!("{}{} vs {}",
+                            if info_prefix.is_empty() { String::default() } else { format!("{info_prefix}: ") },
+                            team1.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                        );
                         let mut content = MessageBuilder::default();
-                        match race.entrants { //TODO better formatting for non-Discord mentions
-                            Entrants::Open | Entrants::Count { .. } => {}
-                            Entrants::Named(ref entrants) => {
-                                content.push_safe(entrants);
-                                content.push(": ");
-                            }
-                            Entrants::Two([ref team1, ref team2]) => {
-                                content.mention_entrant(&mut transaction, Some(guild_id), team1).await?;
-                                content.push(' ');
-                                content.mention_entrant(&mut transaction, Some(guild_id), team2).await?;
-                                content.push(' ');
-                            }
-                            Entrants::Three([ref team1, ref team2, ref team3]) => {
-                                content.mention_entrant(&mut transaction, Some(guild_id), team1).await?;
-                                content.push(' ');
-                                content.mention_entrant(&mut transaction, Some(guild_id), team2).await?;
-                                content.push(' ');
-                                content.mention_entrant(&mut transaction, Some(guild_id), team3).await?;
-                                content.push(' ');
-                            }
-                        }
-                        content.push("Welcome to ");
-                        if let Some(game) = race.game {
-                            content.push("game ");
-                            content.push(game.to_string());
-                            content.push(" of ");
-                        }
-                        content.push("your ");
-                        if let Some(ref phase) = race.phase {
-                            content.push_safe(phase);
+                        {
+                            content.mention_team(&mut transaction, Some(guild_id), &team1).await?;
+                            content.push(' ');
+                            content.mention_team(&mut transaction, Some(guild_id), &team2).await?;
                             content.push(' ');
                         }
-                        if let Some(ref round) = race.round {
-                            content.push_safe(round);
+                        content.push("Welcome to ");
+                        if value.game_count > 1 {
+                            content.push("game 1 of ");
+                        }
+                        content.push("your ");
+                        if !value.phase.is_empty() {
+                            content.push_safe(value.phase.clone());
+                            content.push(' ');
+                        }
+                        if !value.round.is_empty() {
+                            content.push_safe(value.round.clone());
                             content.push(' ');
                         }
                         content.push("match. Use ");
@@ -1418,16 +1371,44 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
                             DraftKind::MultiworldS3 => unimplemented!(), //TODO
                             DraftKind::None => {}
                         }
-                        race.scheduling_thread = Some(scheduling_channel.create_forum_post(&*ctx, CreateForumPost::new(
+                        Some(scheduling_channel.create_forum_post(&*discord_ctx.read().await, CreateForumPost::new(
                             title,
                             CreateMessage::new().content(content.build()),
-                        ).auto_archive_duration(10080)).await?.id);
+                        ).auto_archive_duration(10080)).await?.id)
                     } else {
                         unimplemented!() //TODO create scheduling thread
                     }
-                };
+                } else {
+                    None //TODO still create scheduling thread, just without posting command info?
+                }
+            } else {
+                None
+            };
+            for game in 1..=value.game_count {
+                Race {
+                    id: None,
+                    series: event.series,
+                    event: event.event.to_string(),
+                    startgg_event: None,
+                    startgg_set: None,
+                    entrants: Entrants::Two([
+                        Entrant::MidosHouseTeam(team1.clone()),
+                        Entrant::MidosHouseTeam(team2.clone()),
+                    ]),
+                    phase: (!value.phase.is_empty()).then(|| value.phase.clone()),
+                    round: (!value.round.is_empty()).then(|| value.round.clone()),
+                    game: (value.game_count > 1).then_some(game),
+                    schedule: RaceSchedule::Unscheduled,
+                    draft: match event.draft_kind() {
+                        DraftKind::MultiworldS3 => unimplemented!(), //TODO
+                        DraftKind::None => None,
+                    },
+                    seed: None,
+                    video_url: None,
+                    ignored: false,
+                    scheduling_thread,
+                }.save(&mut transaction).await?;
             }
-            race.save(&mut transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
