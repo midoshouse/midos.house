@@ -1,5 +1,11 @@
 use {
-    std::sync::Arc,
+    std::{
+        cmp::Ordering::{
+            self,
+            *,
+        },
+        sync::Arc,
+    },
     async_graphql::{
         *,
         http::{
@@ -13,6 +19,7 @@ use {
         GraphQLRequest,
         GraphQLResponse,
     },
+    async_trait::async_trait,
     chrono::prelude::*,
     enum_iterator::all,
     itertools::Itertools as _,
@@ -21,6 +28,11 @@ use {
         http::{
             ContentType,
             Status,
+        },
+        request::{
+            self,
+            FromRequest,
+            Request,
         },
         response::content::RawHtml,
     },
@@ -54,7 +66,13 @@ use {
     },
 };
 
-#[derive(Default)]
+macro_rules! db {
+    ($ctx:expr) => {{
+        &mut *$ctx.data_unchecked::<ArcTransaction>().lock().await
+    }};
+}
+
+#[derive(Default, PartialEq, Eq)]
 struct Scopes {
     entrants_read: bool,
 }
@@ -62,19 +80,60 @@ struct Scopes {
 impl Scopes {
     async fn validate(&self, transaction: &mut Transaction<'_, Postgres>, api_key: &str) -> sqlx::Result<Option<user::User>> {
         let Some(row) = sqlx::query!(r#"SELECT user_id AS "user_id: Id", entrants_read FROM api_keys WHERE key = $1"#, api_key).fetch_optional(&mut *transaction).await? else { return Ok(None) };
+        if (Self { entrants_read: row.entrants_read }) >= *self {
+            user::User::from_id(transaction, row.user_id).await
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl PartialOrd for Scopes {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        let mut any_less = false;
+        let mut any_greater = false;
         let Self { entrants_read } = *self;
-        if entrants_read && !row.entrants_read { return Ok(None) }
-        user::User::from_id(transaction, row.user_id).await
+        match (entrants_read, other.entrants_read) {
+            (false, false) | (true, true) => {}
+            (false, true) => any_less = true,
+            (true, false) => any_greater = true,
+        }
+        match (any_less, any_greater) {
+            (false, false) => Some(Equal),
+            (false, true) => Some(Greater),
+            (true, false) => Some(Less),
+            (true, true) => None,
+        }
+    }
+}
+
+#[async_trait]
+impl Guard for Scopes {
+    async fn check(&self, ctx: &Context<'_>) -> Result<()> {
+        if ctx.data::<ApiKey>()?.scopes >= *self {
+            Ok(())
+        } else {
+            Err("API key missing scopes".into())
+        }
+    }
+}
+
+struct ShowRestreamConsent<'a>(&'a cal::Race);
+
+#[async_trait]
+impl Guard for ShowRestreamConsent<'_> {
+    async fn check(&self, ctx: &Context<'_>) -> Result<()> {
+        let me = &ctx.data::<ApiKey>()?.user;
+        let event = self.0.event(db!(ctx)).await?;
+        if event.organizers(db!(ctx)).await?.contains(me) || event.restreamers(db!(ctx)).await?.contains(me) {
+            Ok(())
+        } else {
+            Err("Only event organizers and restreamers can view restream consent info".into())
+        }
     }
 }
 
 type ArcTransaction = Arc<Mutex<Transaction<'static, Postgres>>>;
-
-macro_rules! db {
-    ($ctx:expr) => {{
-        &mut *$ctx.data_unchecked::<ArcTransaction>().lock().await
-    }};
-}
 
 struct UtcTimestamp(DateTime<Utc>);
 
@@ -174,6 +233,14 @@ struct Race(cal::Race);
         let event = self.0.event(db!(ctx)).await?;
         Ok(self.0.teams_opt().map(|teams| teams.map(|team| Team { inner: team.clone(), event: event.clone() }).collect()))
     }
+
+    /// Whether all teams in this race have consented to be restreamed.
+    /// Null if the race is open (not invitational) or if the event does not use Mido's House to manage entrants.
+    /// Requires permission to view restream consent and an API key with `entrants_read` scope.
+    #[graphql(guard = "Scopes { entrants_read: true, ..Scopes::default() }.and(ShowRestreamConsent(&self.0))")]
+    async fn restream_consent(&self) -> Option<bool> {
+        self.0.teams_opt().map(|mut teams| teams.all(|team| team.restream_consent))
+    }
 }
 
 struct Team {
@@ -224,28 +291,80 @@ pub(crate) fn schema(db_pool: PgPool) -> MidosHouseSchema {
         .finish()
 }
 
+pub(crate) struct ApiKey {
+    scopes: Scopes,
+    user: user::User,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ApiKeyFromRequestError {
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("failed to get database connection pool")]
+    DbPool,
+    #[error("the X-API-Key header was not specified")]
+    MissingHeader,
+    #[error("the X-API-Key header was specified multiple times")]
+    MultipleHeaders,
+    #[error("the given API key does not exist")]
+    NoSuchApiKey,
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for ApiKey {
+    type Error = ApiKeyFromRequestError;
+
+    async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
+        let db_pool = match <&State<PgPool>>::from_request(req).await {
+            request::Outcome::Success(db_pool) => db_pool,
+            request::Outcome::Forward(()) => return request::Outcome::Forward(()),
+            request::Outcome::Failure((status, ())) => return request::Outcome::Failure((status, ApiKeyFromRequestError::DbPool)),
+        };
+        match req.headers().get("X-API-Key").at_most_one() {
+            Ok(Some(api_key)) => match sqlx::query!(r#"SELECT user_id AS "user_id: Id", entrants_read FROM api_keys WHERE key = $1"#, api_key).fetch_optional(&**db_pool).await {
+                Ok(Some(row)) => request::Outcome::Success(Self {
+                    scopes: Scopes { entrants_read: row.entrants_read },
+                    user: match user::User::from_id(&**db_pool, row.user_id).await {
+                        Ok(user) => user.expect("database constraint validated: API keys belong to existing users"),
+                        Err(e) => return request::Outcome::Failure((Status::InternalServerError, ApiKeyFromRequestError::Sql(e))),
+                    },
+                }),
+                Ok(None) => request::Outcome::Failure((Status::Unauthorized, ApiKeyFromRequestError::NoSuchApiKey)),
+                Err(e) => request::Outcome::Failure((Status::InternalServerError, ApiKeyFromRequestError::Sql(e))),
+            },
+            Ok(None) => request::Outcome::Failure((Status::Unauthorized, ApiKeyFromRequestError::MissingHeader)),
+            Err(_) => request::Outcome::Failure((Status::Unauthorized, ApiKeyFromRequestError::MultipleHeaders)),
+        }
+    }
+}
+
 #[rocket::get("/api/v1/graphql?<query..>")]
-pub(crate) async fn graphql_query(env: &State<Environment>, config: &State<Config>, db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, schema: &State<MidosHouseSchema>, query: GraphQLQuery) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
+pub(crate) async fn graphql_query(env: &State<Environment>, config: &State<Config>, db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, schema: &State<MidosHouseSchema>, api_key: Option<ApiKey>, query: GraphQLQuery) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
     let transaction = Arc::new(Mutex::new(db_pool.begin().await?));
-    let response = GraphQLRequest::from(query)
+    let mut request = GraphQLRequest::from(query)
         .data::<Environment>(**env)
         .data::<Config>((*config).clone())
         .data::<ArcTransaction>(transaction.clone())
-        .data::<reqwest::Client>((*http_client).clone())
-        .execute(&**schema).await;
+        .data::<reqwest::Client>((*http_client).clone());
+    if let Some(api_key) = api_key {
+        request = request.data::<ApiKey>(api_key);
+    }
+    let response = request.execute(&**schema).await;
     Arc::try_unwrap(transaction).expect("query data still live after execution").into_inner().commit().await?;
     Ok(response)
 }
 
 #[rocket::post("/api/v1/graphql", data = "<request>", format = "application/json")]
-pub(crate) async fn graphql_request(env: &State<Environment>, config: &State<Config>, db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, schema: &State<MidosHouseSchema>, request: GraphQLRequest) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
+pub(crate) async fn graphql_request(env: &State<Environment>, config: &State<Config>, db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, schema: &State<MidosHouseSchema>, api_key: Option<ApiKey>, request: GraphQLRequest) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
     let transaction = Arc::new(Mutex::new(db_pool.begin().await?));
-    let response = request
+    let mut request = request
         .data::<Environment>(**env)
         .data::<Config>((*config).clone())
         .data::<ArcTransaction>(transaction.clone())
-        .data::<reqwest::Client>((*http_client).clone())
-        .execute(&**schema).await;
+        .data::<reqwest::Client>((*http_client).clone());
+    if let Some(api_key) = api_key {
+        request = request.data::<ApiKey>(api_key);
+    }
+    let response = request.execute(&**schema).await;
     Arc::try_unwrap(transaction).expect("query data still live after execution").into_inner().commit().await?;
     Ok(response)
 }
