@@ -2093,8 +2093,8 @@ checksum = "b7e5500299e16ebb147ae15a00a942af264cf3688f47923b8fc2cd5858f23ad3"
 
 [[package]]
 name = "ootr-utils"
-version = "0.1.8"
-source = "git+https://github.com/midoshouse/rust-ootr-utils?branch=main#a7e3404df2d8eef9e75c7c65f179d47c763b8e13"
+version = "0.1.9"
+source = "git+https://github.com/midoshouse/rust-ootr-utils?branch=main#e4b8566d06926804266e1ae5cdb086115fabcd40"
 dependencies = [
  "async-proto",
  "directories",

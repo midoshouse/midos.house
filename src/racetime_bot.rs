@@ -2384,7 +2384,11 @@ impl RaceHandler<GlobalState> for Handler {
     }
 
     async fn error(&mut self, _ctx: &RaceContext<GlobalState>, mut errors: Vec<String>) -> Result<(), Error> {
-        errors.retain(|error| !error.ends_with(" is not allowed to join this race.")); // failing to invite a user should not crash the race handler
+        // failing to invite a user should not crash the race handler
+        errors.retain(|error|
+            !error.ends_with(" is not allowed to join this race.")
+            && !error.ends_with(" is already an entrant.")
+        );
         if errors.is_empty() {
             Ok(())
         } else {
