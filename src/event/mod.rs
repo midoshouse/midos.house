@@ -1145,16 +1145,14 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
         .partition::<Vec<_>, _>(|race| race.schedule.is_ended());
     past_races.reverse();
     let any_races_ongoing_or_upcoming = !ongoing_and_upcoming_races.is_empty();
-    let (can_create, show_restream_consent) = if let Some(ref me) = me {
-        let is_organizer = data.organizers(&mut transaction).await?.contains(me);
-        (
-            is_organizer,
-            is_organizer || data.restreamers(&mut transaction).await?.contains(me),
-        )
+    let (can_create, show_restream_consent, can_edit) = if let Some(ref me) = me {
+        let can_create = data.organizers(&mut transaction).await?.contains(me);
+        let show_restream_consent = can_create || data.restreamers(&mut transaction).await?.contains(me);
+        let can_edit = show_restream_consent || me.is_archivist;
+        (can_create, show_restream_consent, can_edit)
     } else {
-        (false, false)
+        (false, false, false)
     };
-    let can_edit = can_create || me.as_ref().map_or(false, |me| me.is_archivist);
     let content = html! {
         : header;
         //TODO copiable calendar link (with link to index for explanation?)

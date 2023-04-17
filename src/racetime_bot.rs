@@ -33,7 +33,10 @@ use {
     },
     if_chain::if_chain,
     itertools::Itertools as _,
-    lazy_regex::regex_captures,
+    lazy_regex::{
+        regex_captures,
+        regex_is_match,
+    },
     ootr_utils::{
         self as rando,
         spoiler::{
@@ -75,7 +78,11 @@ use {
         UserId,
     },
     serenity_utils::RwFuture,
-    sqlx::PgPool,
+    sqlx::{
+        PgPool,
+        Postgres,
+        Transaction,
+    },
     tokio::{
         io::{
             self,
@@ -144,6 +151,7 @@ use {
             MessageBuilderExt as _,
             format_duration,
             io_error_from_reqwest,
+            natjoin_str,
             parse_duration,
             sync::{
                 ArcRwLock,
@@ -173,6 +181,71 @@ const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 4] = [
 ];
 
 const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ParseUserError {
+    #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
+    #[error("this seems to be neither a URL, nor a racetime.gg user ID, nor a Mido's House user ID")]
+    Format,
+    #[error("there is no racetime.gg user with this ID (error 404)")]
+    IdNotFound,
+    #[error("this URL is not a racetime.gg user profile URL")]
+    InvalidUrl,
+    #[error("there is no Mido's House user with this ID")]
+    MidosHouseId,
+    #[error("There is no racetime.gg account associated with this Mido's House account. Ask the user to go to their profile and select “Connect a racetime.gg account”. You can also link to their racetime.gg profile directly.")]
+    MidosHouseUserNoRacetime,
+    #[error("there is no racetime.gg user with this URL (error 404)")]
+    UrlNotFound,
+}
+
+pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, host: &str, id_or_url: &str) -> Result<String, ParseUserError> {
+    if let Ok(id) = id_or_url.parse() {
+        return if let Some(user) = User::from_id(transaction, id).await? {
+            if let Some(racetime_id) = user.racetime_id {
+                Ok(racetime_id)
+            } else {
+                Err(ParseUserError::MidosHouseUserNoRacetime)
+            }
+        } else {
+            Err(ParseUserError::MidosHouseId)
+        }
+    }
+    if regex_is_match!("^[0-9A-Za-z]+$", id_or_url) {
+        return match http_client.get(format!("https://{host}/user/{id_or_url}/data"))
+            .send().await?
+            .detailed_error_for_status().await
+        {
+            Ok(_) => Ok(id_or_url.to_owned()),
+            Err(wheel::Error::ResponseStatus { inner, .. }) if inner.status() == Some(reqwest::StatusCode::NOT_FOUND) => Err(ParseUserError::IdNotFound),
+            Err(e) => Err(e.into()),
+        }
+    }
+    if let Ok(url) = Url::parse(id_or_url) {
+        return if_chain! {
+            if let Some("racetime.gg" | "www.racetime.gg") = url.host_str();
+            if let Some(mut path_segments) = url.path_segments();
+            if path_segments.next() == Some("user");
+            if let Some(url_part) = path_segments.next();
+            if path_segments.next().is_none();
+            then {
+                match http_client.get(format!("https://{host}/user/{url_part}/data"))
+                    .send().await?
+                    .detailed_error_for_status().await
+                {
+                    Ok(response) => Ok(response.json_with_text_in_error::<UserData>().await?.id),
+                    Err(wheel::Error::ResponseStatus { inner, .. }) if inner.status() == Some(reqwest::StatusCode::NOT_FOUND) => Err(ParseUserError::UrlNotFound),
+                    Err(e) => Err(e.into()),
+                }
+            } else {
+                Err(ParseUserError::InvalidUrl)
+            }
+        }
+    }
+    Err(ParseUserError::Format)
+}
 
 #[derive(Default)]
 pub(crate) enum RslDevFenhlPreset {
@@ -1079,8 +1152,10 @@ struct OfficialRaceData {
     fpa_invoked: bool,
 }
 
+#[derive(Default)]
 struct RestreamState {
-    restreamer_racetime_id: String,
+    language: Option<&'static str>,
+    restreamer_racetime_id: Option<String>,
     ready: bool,
 }
 
@@ -1088,7 +1163,7 @@ struct Handler {
     official_data: Option<OfficialRaceData>,
     high_seed_name: String,
     low_seed_name: String,
-    restreams: HashMap<Url, Option<RestreamState>>,
+    restreams: HashMap<Url, RestreamState>,
     breaks: Option<Breaks>,
     break_notifications: Option<tokio::task::JoinHandle<()>>,
     goal_notifications: Option<tokio::task::JoinHandle<()>>,
@@ -1356,10 +1431,18 @@ impl RaceHandler<GlobalState> for Handler {
             };
             let mut restreams = HashMap::default();
             if let Some(video_url) = cal_event.race.video_url.clone() {
-                restreams.insert(video_url, None);
+                restreams.insert(video_url, RestreamState {
+                    language: Some("english"),
+                    restreamer_racetime_id: cal_event.race.restreamer.clone(),
+                    ready: false,
+                });
             }
             if let Some(video_url_fr) = cal_event.race.video_url_fr.clone() {
-                restreams.insert(video_url_fr, None);
+                restreams.insert(video_url_fr, RestreamState {
+                    language: Some("French"),
+                    restreamer_racetime_id: cal_event.race.restreamer_fr.clone(),
+                    ready: false,
+                });
             }
             (
                 Some(OfficialRaceData {
@@ -1442,6 +1525,39 @@ impl RaceHandler<GlobalState> for Handler {
         };
         transaction.commit().await.to_racetime()?;
         drop(new_room_lock);
+        if let Some(restreams_text) = natjoin_str(restreams.iter().map(|(video_url, state)| format!("in {} at {video_url}", state.language.expect("preset restreams should have languages assigned")))) {
+            let text = if restreams.values().any(|state| state.restreamer_racetime_id.is_none()) {
+                for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
+                    if let Some(entrant) = ctx.data().await.entrants.iter().find(|entrant| entrant.user.id == *restreamer) {
+                        match entrant.status.value {
+                            EntrantStatusValue::Requested => {
+                                ctx.accept_request(restreamer).await?;
+                                ctx.add_monitor(restreamer).await?;
+                                ctx.remove_entrant(restreamer).await?;
+                            }
+                            EntrantStatusValue::Invited |
+                            EntrantStatusValue::Declined |
+                            EntrantStatusValue::Ready |
+                            EntrantStatusValue::NotReady |
+                            EntrantStatusValue::InProgress |
+                            EntrantStatusValue::Done |
+                            EntrantStatusValue::Dnf |
+                            EntrantStatusValue::Dq => {
+                                ctx.add_monitor(restreamer).await?;
+                            }
+                        }
+                    } else {
+                        ctx.invite_user(restreamer).await?;
+                        ctx.add_monitor(restreamer).await?;
+                        ctx.remove_entrant(restreamer).await?;
+                    }
+                }
+                format!("This race is being restreamed {restreams_text} — auto-start is disabled. Tournament organizers can use !monitor to become race monitors, then invite the restreamer{0} as race monitor{0} to allow them to force-start.", if restreams.len() == 1 { "" } else { "s" })
+            } else {
+                format!("This race is being restreamed {restreams_text} — auto-start is disabled. Restreamers can use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.")
+            };
+            ctx.send_message(&text).await?;
+        }
         let this = Self {
             breaks: None, //TODO default breaks for restreamed matches?
             break_notifications: None,
@@ -1747,13 +1863,13 @@ impl RaceHandler<GlobalState> for Handler {
             },
             "presets" => goal.send_presets(ctx).await?,
             "ready" => {
-                if let Some(state) = self.restreams.values_mut().filter_map(Option::as_mut).find(|state| state.restreamer_racetime_id == msg.user.as_ref().expect("received !ready command from bot").id) {
+                if let Some(state) = self.restreams.values_mut().find(|state| state.restreamer_racetime_id.as_ref() == Some(&msg.user.as_ref().expect("received !ready command from bot").id)) {
                     state.ready = true;
                 } else {
                     ctx.send_message(&format!("Sorry {reply_to}, only restreamers can do that.")).await?;
                     return Ok(())
                 }
-                if self.restreams.values().all(|state| state.as_ref().map_or(false, |state| state.ready)) {
+                if self.restreams.values().all(|state| state.ready) {
                     ctx.send_message(&format!("All restreams ready, unlocking auto-start…")).await?;
                     let (access_token, _) = racetime::authorize_with_host(ctx.global_state.host, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
                     racetime::EditRace {
@@ -1781,41 +1897,45 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             }
             "restreamer" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
-                if let [restream_url, restreamer_racetime_id] = &args[..] {
+                if let [restream_url, restreamer] = &args[..] {
                     let restream_url = if restream_url.contains('/') {
                         Url::parse(restream_url)
                     } else {
                         Url::parse(&format!("https://twitch.tv/{restream_url}"))
                     };
                     if let Ok(restream_url) = restream_url {
-                        if self.restreams.is_empty() {
-                            let (access_token, _) = racetime::authorize_with_host(ctx.global_state.host, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
-                            racetime::EditRace {
-                                goal: goal.as_str().to_owned(),
-                                goal_is_custom: goal.is_custom(),
-                                start_delay: 15,
-                                time_limit: 24,
-                                chat_message_delay: 0,
-                                team_race: None,
-                                unlisted: None,
-                                info_user: None,
-                                info_bot: None,
-                                require_even_teams: None,
-                                time_limit_auto_complete: None,
-                                streaming_required: None,
-                                auto_start: Some(false),
-                                allow_comments: None,
-                                hide_comments: None,
-                                allow_prerace_chat: None,
-                                allow_midrace_chat: None,
-                                allow_non_entrant_chat: None,
-                            }.edit_with_host(ctx.global_state.host, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
+                        let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
+                        match parse_user(&mut transaction, &ctx.global_state.http_client, ctx.global_state.host, restreamer).await {
+                            Ok(restreamer_racetime_id) => {
+                                if self.restreams.is_empty() {
+                                    let (access_token, _) = racetime::authorize_with_host(ctx.global_state.host, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
+                                    racetime::EditRace {
+                                        goal: goal.as_str().to_owned(),
+                                        goal_is_custom: goal.is_custom(),
+                                        start_delay: 15,
+                                        time_limit: 24,
+                                        chat_message_delay: 0,
+                                        team_race: None,
+                                        unlisted: None,
+                                        info_user: None,
+                                        info_bot: None,
+                                        require_even_teams: None,
+                                        time_limit_auto_complete: None,
+                                        streaming_required: None,
+                                        auto_start: Some(false),
+                                        allow_comments: None,
+                                        hide_comments: None,
+                                        allow_prerace_chat: None,
+                                        allow_midrace_chat: None,
+                                        allow_non_entrant_chat: None,
+                                    }.edit_with_host(ctx.global_state.host, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
+                                }
+                                self.restreams.entry(restream_url).or_default().restreamer_racetime_id = Some(restreamer_racetime_id.clone());
+                                ctx.send_message("Restreamer assigned. Use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.").await?; //TODO mention restreamer
+                            }
+                            Err(e) => ctx.send_message(&format!("Sorry {reply_to}, I couldn't parse the restreamer: {e}")).await?,
                         }
-                        *self.restreams.entry(restream_url).or_default() = Some(RestreamState {
-                            restreamer_racetime_id: restreamer_racetime_id.clone(),
-                            ready: false,
-                        });
-                        ctx.send_message("Restreamer assigned. Use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.").await?; //TODO mention restreamer
+                        transaction.commit().await.to_racetime()?;
                     } else {
                         ctx.send_message(&format!("Sorry {reply_to}, that doesn't seem to be a valid URL or Twitch channel.")).await?;
                     }
@@ -2423,6 +2543,41 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 (None, Some(round)) => Some(round.to_owned()),
                                 (None, None) => None,
                             };
+                            let mut info_user = match cal_event.race.entrants {
+                                Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
+                                Entrants::Named(ref entrants) => format!("{}{entrants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
+                                Entrants::Two([ref team1, ref team2]) => match cal_event.kind {
+                                    cal::EventKind::Normal => format!(
+                                        "{}{} vs {}",
+                                        info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                                        team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                        team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                    ),
+                                    cal::EventKind::Async1 => format!(
+                                        "{} (async): {} vs {}",
+                                        info_prefix.clone().unwrap_or_default(),
+                                        team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                        team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                    ),
+                                    cal::EventKind::Async2 => format!(
+                                        "{} (async): {} vs {}",
+                                        info_prefix.clone().unwrap_or_default(),
+                                        team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                        team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                    ),
+                                },
+                                Entrants::Three([ref team1, ref team2, ref team3]) => format!(
+                                    "{}{} vs {} vs {}",
+                                    info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                                    team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                    team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                    team3.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                ), //TODO adjust for asyncs
+                            };
+                            if let Some(game) = cal_event.race.game {
+                                info_user.push_str(", game ");
+                                info_user.push_str(&game.to_string());
+                            }
                             let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
                             let race_slug = racetime::StartRace {
                                 goal: goal.as_str().to_owned(),
@@ -2430,37 +2585,6 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 team_race: !matches!(event.team_config(), TeamConfig::Solo | TeamConfig::Pictionary),
                                 invitational: !matches!(cal_event.race.entrants, Entrants::Open),
                                 unlisted: cal_event.is_first_async_half(),
-                                info_user: match cal_event.race.entrants {
-                                    Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
-                                    Entrants::Named(ref entrants) => format!("{}{entrants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
-                                    Entrants::Two([ref team1, ref team2]) => match cal_event.kind {
-                                        cal::EventKind::Normal => format!(
-                                            "{}{} vs {}",
-                                            info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                                            team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                            team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                        ),
-                                        cal::EventKind::Async1 => format!(
-                                            "{} (async): {} vs {}",
-                                            info_prefix.clone().unwrap_or_default(),
-                                            team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                            team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                        ),
-                                        cal::EventKind::Async2 => format!(
-                                            "{} (async): {} vs {}",
-                                            info_prefix.clone().unwrap_or_default(),
-                                            team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                            team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                        ),
-                                    },
-                                    Entrants::Three([ref team1, ref team2, ref team3]) => format!(
-                                        "{}{} vs {} vs {}",
-                                        info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                                        team1.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                        team2.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                        team3.name(&mut transaction).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                                    ), //TODO adjust for asyncs
-                                },
                                 info_bot: String::default(),
                                 require_even_teams: true,
                                 start_delay: 15,
@@ -2474,6 +2598,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 allow_midrace_chat: true,
                                 allow_non_entrant_chat: true, // needs to be true for all races so the !monitor command can work
                                 chat_message_delay: 0,
+                                info_user,
                             }.start_with_host(global_state.host, &access_token, &global_state.http_client, CATEGORY).await?;
                             let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", global_state.host))?;
                             match cal_event.kind {
