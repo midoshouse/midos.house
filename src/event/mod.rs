@@ -1094,6 +1094,9 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                     @if let Some(ref video_url) = race.video_url {
                                         a(class = "favicon", href = video_url.to_string()) : favicon(video_url);
                                     }
+                                    @if let Some(ref video_url_fr) = race.video_url_fr {
+                                        a(class = "favicon", href = video_url_fr.to_string()) : favicon(video_url_fr);
+                                    }
                                     @if let Some(startgg_url) = race.startgg_set_url()? {
                                         a(class = "favicon", href = startgg_url.to_string()) : favicon(&startgg_url);
                                     }
@@ -1364,7 +1367,7 @@ pub(crate) async fn status_post(env: &State<Environment>, config: &State<Config>
     Ok(if let Some(ref value) = form.value {
         if row.restream_consent && !value.restream_consent {
             //TODO check if restream consent can still be revoked according to tournament rules, offer to resign if not
-            if Race::for_event(&mut transaction, http_client, env, config, &data).await?.into_iter().any(|race| !race.schedule.is_ended() && race.video_url.is_some()) {
+            if Race::for_event(&mut transaction, http_client, env, config, &data).await?.into_iter().any(|race| !race.schedule.is_ended() && (race.video_url.is_some() || race.video_url_fr.is_some())) {
                 form.context.push_error(form::Error::validation("There is a restream planned for one of your upcoming races. Please contact an event organizer if you would like to cancel.").with_name("restream_consent"));
             }
         }

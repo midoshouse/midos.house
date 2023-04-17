@@ -281,6 +281,7 @@ pub(crate) struct Race {
     pub(crate) draft: Option<Draft>,
     pub(crate) seed: Option<seed::Data>,
     pub(crate) video_url: Option<Url>,
+    pub(crate) video_url_fr: Option<Url>,
     pub(crate) ignored: bool,
 }
 
@@ -322,6 +323,7 @@ impl Race {
             hash4 AS "hash4: HashIcon",
             hash5 AS "hash5: HashIcon",
             video_url,
+            video_url_fr,
             ignored
         FROM races WHERE id = $1"#, i64::from(id)).fetch_one(&mut *transaction).await?;
         let (startgg_event, startgg_set, phase, round, slots) = if let Some(startgg_set) = row.startgg_set {
@@ -449,6 +451,7 @@ impl Race {
                 files,
             }),
             video_url: row.video_url.map(|url| url.parse()).transpose()?,
+            video_url_fr: row.video_url_fr.map(|url| url.parse()).transpose()?,
             ignored: row.ignored,
             startgg_event, startgg_set, entrants, phase, round,
         })
@@ -532,6 +535,7 @@ impl Race {
                     draft: None,
                     seed: None, //TODO
                     video_url: event.video_url.clone(), //TODO sync between event and race?
+                    video_url_fr: None, //TODO video_url_fr field on event::Data?
                     ignored: false,
                     schedule,
                 }).await?;
@@ -574,6 +578,7 @@ impl Race {
                                 draft: None,
                                 seed: None,
                                 video_url: None,
+                                video_url_fr: None,
                                 ignored: false,
                             }).await?;
                         }
@@ -626,6 +631,7 @@ impl Race {
                                 draft: None,
                                 seed: None,
                                 video_url: None,
+                                video_url_fr: None,
                                 ignored: false,
                                 entrants,
                             }).await?;
@@ -801,6 +807,7 @@ impl Race {
             p1,
             p2,
             video_url,
+            video_url_fr,
             phase,
             round,
             p3,
@@ -810,7 +817,7 @@ impl Race {
             finished,
             tfb_uuid
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)",
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)",
             self.startgg_set,
             start,
             self.series as _,
@@ -839,6 +846,7 @@ impl Race {
             p1,
             p2,
             self.video_url.as_ref().map(|url| url.to_string()),
+            self.video_url_fr.as_ref().map(|url| url.to_string()),
             self.phase,
             self.round,
             p3,
@@ -1132,6 +1140,8 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                 })))); //TODO better fallback duration estimates depending on participants
                 cal_event.push(URL::new(if let Some(ref video_url) = race.video_url {
                     video_url.to_string()
+                } else if let Some(ref video_url_fr) = race.video_url_fr {
+                    video_url_fr.to_string()
                 } else if let Some(room) = race_event.room() {
                     room.to_string()
                 } else if let Some(set_url) = race.startgg_set_url()? {
@@ -1406,6 +1416,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
                     },
                     seed: None,
                     video_url: None,
+                    video_url_fr: None,
                     ignored: false,
                     scheduling_thread,
                 }.save(&mut transaction).await?;
@@ -1456,11 +1467,20 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, m
             }
             //TODO allow editing seed
             : form_field("video_url", &mut errors, html! {
-                label(for = "video_url") : "Restream URL:";
+                label(for = "video_url") : "English Restream URL:";
                 input(type = "text", name = "video_url", value? = if let Some(ref ctx) = ctx {
                     ctx.field_value("video_url").map(|room| room.to_string())
                 } else {
                     race.video_url.map(|video_url| video_url.to_string())
+                });
+                label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
+            });
+            : form_field("video_url_fr", &mut errors, html! {
+                label(for = "video_url_fr") : "French Restream URL:";
+                input(type = "text", name = "video_url_fr", value? = if let Some(ref ctx) = ctx {
+                    ctx.field_value("video_url_fr").map(|room| room.to_string())
+                } else {
+                    race.video_url_fr.map(|video_url_fr| video_url_fr.to_string())
                 });
                 label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
             });
@@ -1621,6 +1641,8 @@ pub(crate) struct EditRaceForm {
     async_room2: String,
     #[field(default = String::new())]
     video_url: String,
+    #[field(default = String::new())]
+    video_url_fr: String,
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit", data = "<form>")]
@@ -1817,15 +1839,21 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                 form.context.push_error(form::Error::validation(format!("Failed to parse URL: {e}")).with_name("video_url"));
             }
         }
+        if !value.video_url_fr.is_empty() {
+            if let Err(e) = Url::parse(&value.video_url_fr) {
+                form.context.push_error(form::Error::validation(format!("Failed to parse URL: {e}")).with_name("video_url_fr"));
+            }
+        }
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
         } else {
             sqlx::query!(
-                "UPDATE races SET room = $1, async_room1 = $2, async_room2 = $3, video_url = $4, last_edited_by = $5, last_edited_at = NOW() WHERE id = $6",
+                "UPDATE races SET room = $1, async_room1 = $2, async_room2 = $3, video_url = $4, video_url_fr = $5, last_edited_by = $6, last_edited_at = NOW() WHERE id = $7",
                 (!value.room.is_empty()).then(|| &value.room),
                 (!value.async_room1.is_empty()).then(|| &value.async_room1),
                 (!value.async_room2.is_empty()).then(|| &value.async_room2),
                 (!value.video_url.is_empty()).then(|| &value.video_url),
+                (!value.video_url_fr.is_empty()).then(|| &value.video_url_fr),
                 me.id as _,
                 i64::from(id),
             ).execute(&mut transaction).await?;

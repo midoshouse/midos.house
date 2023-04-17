@@ -653,6 +653,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             };
                                             race.seed = None;
                                             race.video_url = None;
+                                            race.video_url_fr = None;
                                             race.save(&mut transaction).await?;
                                             let mut response_content = MessageBuilder::default();
                                             response_content.push("This thread is now assigned to game ");

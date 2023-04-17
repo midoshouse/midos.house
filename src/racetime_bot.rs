@@ -1286,7 +1286,7 @@ impl RaceHandler<GlobalState> for Handler {
         let data = ctx.data().await;
         let new_room_lock = lock!(ctx.global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-        let (official_data, existing_seed, video_url, race_state, high_seed_name, low_seed_name, fpa_enabled) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
+        let (official_data, existing_seed, restreams, race_state, high_seed_name, low_seed_name, fpa_enabled) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
             let mut entrants = Vec::default();
             let start = cal_event.start().expect("handling room for official race without start time");
             for team in cal_event.active_teams() {
@@ -1354,6 +1354,13 @@ impl RaceHandler<GlobalState> for Handler {
                 }
                 DraftKind::None => (RaceState::Init, format!("Team A"), format!("Team B")),
             };
+            let mut restreams = HashMap::default();
+            if let Some(video_url) = cal_event.race.video_url.clone() {
+                restreams.insert(video_url, None);
+            }
+            if let Some(video_url_fr) = cal_event.race.video_url_fr.clone() {
+                restreams.insert(video_url_fr, None);
+            }
             (
                 Some(OfficialRaceData {
                     id: cal_event.race.id.expect("race loaded from database has ID"),
@@ -1363,7 +1370,7 @@ impl RaceHandler<GlobalState> for Handler {
                     event, entrants, start,
                 }),
                 cal_event.race.seed.clone(),
-                cal_event.race.video_url.clone(),
+                restreams,
                 race_state,
                 high_seed_name,
                 low_seed_name,
@@ -1426,7 +1433,7 @@ impl RaceHandler<GlobalState> for Handler {
             (
                 None,
                 None,
-                None,
+                HashMap::default(),
                 RaceState::default(),
                 format!("Team A"),
                 format!("Team B"),
@@ -1436,14 +1443,13 @@ impl RaceHandler<GlobalState> for Handler {
         transaction.commit().await.to_racetime()?;
         drop(new_room_lock);
         let this = Self {
-            restreams: HashMap::from_iter(video_url.map(|url| (url, None))),
             breaks: None, //TODO default breaks for restreamed matches?
             break_notifications: None,
             goal_notifications: None,
             start_saved: false,
             locked: false,
             race_state: ArcRwLock::new(race_state),
-            official_data, high_seed_name, low_seed_name, fpa_enabled,
+            official_data, high_seed_name, low_seed_name, restreams, fpa_enabled,
         };
         if let Some(OfficialRaceData { ref event, .. }) = this.official_data {
             if let Some(seed) = existing_seed {
@@ -2461,7 +2467,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 time_limit: 24,
                                 time_limit_auto_complete: false,
                                 streaming_required: Some(!cal_event.is_first_async_half()),
-                                auto_start: cal_event.is_first_async_half() || cal_event.race.video_url.is_none(),
+                                auto_start: cal_event.is_first_async_half() || (cal_event.race.video_url.is_none() && cal_event.race.video_url_fr.is_none()),
                                 allow_comments: true,
                                 hide_comments: true,
                                 allow_prerace_chat: true,
