@@ -1106,7 +1106,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                             @if has_seeds {
                                 @if let Some(ref seed) = race.seed {
                                     //TODO hide seed if unfinished async
-                                    : seed::table_cells(now, seed, true).await?;
+                                    : seed::table_cells(now, seed, true, can_edit.then_some(()).and(race.id).map(|id| uri!(cal::add_file_hash(race.series, &*race.event, id)))).await?;
                                 } else {
                                     : seed::table_empty_cells(true);
                                 }

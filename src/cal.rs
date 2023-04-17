@@ -12,6 +12,7 @@ use {
         prelude::*,
     },
     chrono_tz::America,
+    enum_iterator::all,
     futures::stream::TryStreamExt as _,
     ics::{
         ICalendar,
@@ -1848,5 +1849,179 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
         }
     } else {
         RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
+    })
+}
+
+pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+    let id = race.id.expect("race being edited must have an ID");
+    let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
+    let form = if me.is_some() {
+        let mut errors = ctx.errors().collect();
+        full_form(uri!(add_file_hash_post(event.series, &*event.event, id)), csrf, html! {
+            : form_field("hash1", &mut errors, html! {
+                label(for = "hash1") : "Hash Icon 1:";
+                select(name = "hash1") {
+                    @for icon in all::<HashIcon>() {
+                        option(value = icon.to_string(), selected? = ctx.field_value("hash1") == Some(&icon.to_string())) : icon.to_string();
+                    }
+                }
+            });
+            : form_field("hash2", &mut errors, html! {
+                label(for = "hash2") : "Hash Icon 2:";
+                select(name = "hash2") {
+                    @for icon in all::<HashIcon>() {
+                        option(value = icon.to_string(), selected? = ctx.field_value("hash2") == Some(&icon.to_string())) : icon.to_string();
+                    }
+                }
+            });
+            : form_field("hash3", &mut errors, html! {
+                label(for = "hash3") : "Hash Icon 3:";
+                select(name = "hash3") {
+                    @for icon in all::<HashIcon>() {
+                        option(value = icon.to_string(), selected? = ctx.field_value("hash3") == Some(&icon.to_string())) : icon.to_string();
+                    }
+                }
+            });
+            : form_field("hash4", &mut errors, html! {
+                label(for = "hash4") : "Hash Icon 4:";
+                select(name = "hash4") {
+                    @for icon in all::<HashIcon>() {
+                        option(value = icon.to_string(), selected? = ctx.field_value("hash4") == Some(&icon.to_string())) : icon.to_string();
+                    }
+                }
+            });
+            : form_field("hash5", &mut errors, html! {
+                label(for = "hash5") : "Hash Icon 5:";
+                select(name = "hash5") {
+                    @for icon in all::<HashIcon>() {
+                        option(value = icon.to_string(), selected? = ctx.field_value("hash5") == Some(&icon.to_string())) : icon.to_string();
+                    }
+                }
+            });
+        }, errors, "Save")
+    } else {
+        html! {
+            article {
+                p {
+                    a(href = uri!(auth::login(Some(uri!(edit_race(event.series, &*event.event, id))))).to_string()) : "Sign in or create a Mido's House account";
+                    : " to edit this race.";
+                }
+            }
+        }
+    };
+    let content = html! {
+        : header;
+        h2 : "Add file hash";
+        @match race.schedule {
+            RaceSchedule::Unscheduled => p : "Not yet scheduled";
+            RaceSchedule::Live { room, .. } => @if let Some(room) = room {
+                p {
+                    a(href = room.to_string()) : "Race room";
+                }
+            } else {
+                p : "Race room not yet assigned";
+            }
+            RaceSchedule::Async { room1, room2, .. } => {
+                @if let Some(room1) = room1 {
+                    p {
+                        a(href = room1.to_string()) : "Race room 1";
+                    }
+                } else {
+                    p : "Race room 1 not yet assigned";
+                }
+                @if let Some(room2) = room2 {
+                    p {
+                        a(href = room2.to_string()) : "Race room 2";
+                    }
+                } else {
+                    p : "Race room 2 not yet assigned";
+                }
+            }
+        }
+        : form;
+    };
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(), ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
+}
+
+#[rocket::get("/event/<series>/<event>/races/<id>/edit-hash")]
+pub(crate) async fn add_file_hash(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+    let mut transaction = pool.begin().await?;
+    let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let race = Race::from_id(&mut transaction, http_client, startgg_token, id).await?;
+    if race.series != event.series || race.event != event.event {
+        return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(add_file_hash(race.series, race.event, id)))))
+    }
+    Ok(RedirectOrContent::Content(add_file_hash_form(transaction, me, uri, csrf.as_ref(), event, race, Context::default()).await?))
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct AddFileHashForm {
+    #[field(default = String::new())]
+    csrf: String,
+    hash1: String,
+    hash2: String,
+    hash3: String,
+    hash4: String,
+    hash5: String,
+}
+
+#[rocket::post("/event/<series>/<event>/races/<id>/edit-hash", data = "<form>")]
+pub(crate) async fn add_file_hash_post(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id, form: Form<Contextual<'_, AddFileHashForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+    let mut transaction = pool.begin().await?;
+    let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let race = Race::from_id(&mut transaction, http_client, startgg_token, id).await?;
+    let mut form = form.into_inner();
+    form.verify(&csrf);
+    if race.series != event.series || race.event != event.event {
+        form.context.push_error(form::Error::validation("This race is not part of this event."));
+    }
+    if !me.is_archivist && !event.organizers(&mut transaction).await?.contains(&me) {
+        form.context.push_error(form::Error::validation("You must be an archivist to edit this race. If you would like to become an archivist, please contact Fenhl on Discord."));
+    }
+    Ok(if let Some(ref value) = form.value {
+        let hash1 = if let Ok(hash1) = value.hash1.parse::<HashIcon>() {
+            Some(hash1)
+        } else {
+            form.context.push_error(form::Error::validation("No such hash icon.").with_name("hash1"));
+            None
+        };
+        let hash2 = if let Ok(hash2) = value.hash2.parse::<HashIcon>() {
+            Some(hash2)
+        } else {
+            form.context.push_error(form::Error::validation("No such hash icon.").with_name("hash2"));
+            None
+        };
+        let hash3 = if let Ok(hash3) = value.hash3.parse::<HashIcon>() {
+            Some(hash3)
+        } else {
+            form.context.push_error(form::Error::validation("No such hash icon.").with_name("hash3"));
+            None
+        };
+        let hash4 = if let Ok(hash4) = value.hash4.parse::<HashIcon>() {
+            Some(hash4)
+        } else {
+            form.context.push_error(form::Error::validation("No such hash icon.").with_name("hash4"));
+            None
+        };
+        let hash5 = if let Ok(hash5) = value.hash5.parse::<HashIcon>() {
+            Some(hash5)
+        } else {
+            form.context.push_error(form::Error::validation("No such hash icon.").with_name("hash5"));
+            None
+        };
+        if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(add_file_hash_form(transaction, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
+        } else {
+            sqlx::query!(
+                "UPDATE races SET hash1 = $1, hash2 = $2, hash3 = $3, hash4 = $4, hash5 = $5 WHERE id = $6",
+                hash1.unwrap() as _, hash2.unwrap() as _, hash3.unwrap() as _, hash4.unwrap() as _, hash5.unwrap() as _, i64::from(id),
+            ).execute(&mut transaction).await?;
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
+        }
+    } else {
+        RedirectOrContent::Content(add_file_hash_form(transaction, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
     })
 }

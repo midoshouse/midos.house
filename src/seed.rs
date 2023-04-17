@@ -13,7 +13,10 @@ use {
         HashIcon,
         SpoilerLog,
     },
-    rocket::response::content::RawHtml,
+    rocket::{
+        http::uri::Origin,
+        response::content::RawHtml,
+    },
     rocket_util::html,
     serde::Deserialize,
     tokio::pin,
@@ -173,7 +176,7 @@ pub(crate) fn table_empty_cells(spoiler_logs: bool) -> RawHtml<String> {
     }
 }
 
-pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool) -> Result<RawHtml<String>, ExtraDataError> {
+pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, add_hash_url: Option<Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
     let extra = seed.extra(now).await?;
     Ok(html! {
         td {
@@ -183,6 +186,8 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
                         : hash_icon.to_html();
                     }
                 }
+            } else if let Some(add_hash_url) = add_hash_url {
+                a(class = "button", href = add_hash_url.to_string()) : "Add";
             }
         }
         // ootrandomizer.com seeds are deleted after 90 days
@@ -227,7 +232,7 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -
             }
             tbody {
                 @while let Some(seed) = seeds.next().await {
-                    tr : table_cells(now, &seed, spoiler_logs).await?;
+                    tr : table_cells(now, &seed, spoiler_logs, None).await?;
                 }
             }
         }
