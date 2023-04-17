@@ -252,6 +252,9 @@ struct Team {
     /// The team's internal ID. Unique across all series, but only for teams (e.g. a race may have the same ID as a team).
     async fn id(&self) -> GqlId { self.inner.id.into() }
 
+    /// The team's display name. Null for solo events or if the team did not specify a name.
+    async fn name(&self) -> Option<&str> { self.inner.name.as_deref() }
+
     /// Members are guaranteed to be listed in a consistent order depending on the team configuration of the event, e.g. pictionary events will always list the runner first and the pilot second.
     async fn members(&self, ctx: &Context<'_>) -> sqlx::Result<Vec<TeamMember>> {
         let team_config = self.event.team_config();
@@ -283,6 +286,9 @@ struct User(user::User);
 #[Object] impl User {
     /// The user's internal ID. Only unique for users (e.g. a team may have the same ID as a user).
     async fn id(&self) -> GqlId { self.0.id.into() }
+
+    /// The user's Mido's House display name.
+    async fn display_name(&self) -> &str { self.0.display_name() }
 }
 
 pub(crate) fn schema(db_pool: PgPool) -> MidosHouseSchema {
