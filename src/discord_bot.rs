@@ -656,13 +656,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             race.video_url_fr = None;
                                             race.save(&mut transaction).await?;
                                             let mut response_content = MessageBuilder::default();
-                                            response_content.push("This thread is now assigned to game ");
+                                            response_content.push("Game ");
                                             response_content.push(game.to_string());
-                                            response_content.push(". Use ");
-                                            response_content.mention_command(command_ids.schedule, "schedule");
-                                            response_content.push(" to schedule as a live race or ");
-                                            response_content.mention_command(command_ids.schedule_async, "schedule-async");
-                                            response_content.push(" to schedule as an async."); //TODO adjust message if asyncing is not allowed
+                                            response_content.push(" has been added to this match.");
                                             let response_content = response_content.build();
                                             transaction.commit().await?;
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
