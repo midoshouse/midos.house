@@ -1503,7 +1503,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, m
                 label(class = "help") : "(racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID. Leave this field blank to assign yourself.)";
             });
             : form_field("video_url_fr", &mut errors, html! {
-                label(for = "video_url_fr") : "French Restream URL:";
+                label(for = "video_url_fr") : "French restream URL:";
                 input(type = "text", name = "video_url_fr", value? = if let Some(ref ctx) = ctx {
                     ctx.field_value("video_url_fr").map(|room| room.to_string())
                 } else {

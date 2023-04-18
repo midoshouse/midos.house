@@ -1143,12 +1143,10 @@ enum RaceState {
 }
 
 struct OfficialRaceData {
-    id: Id,
+    cal_event: cal::Event,
     event: event::Data<'static>,
-    game: Option<i16>,
+    restreams: HashMap<Url, RestreamState>,
     entrants: Vec<String>,
-    start: DateTime<Utc>,
-    is_first_async_half: bool,
     fpa_invoked: bool,
 }
 
@@ -1163,7 +1161,6 @@ struct Handler {
     official_data: Option<OfficialRaceData>,
     high_seed_name: String,
     low_seed_name: String,
-    restreams: HashMap<Url, RestreamState>,
     breaks: Option<Breaks>,
     break_notifications: Option<tokio::task::JoinHandle<()>>,
     goal_notifications: Option<tokio::task::JoinHandle<()>>,
@@ -1256,8 +1253,8 @@ impl Handler {
         let db_pool = ctx.global_state.db_pool.clone();
         let ctx = ctx.clone();
         let state = self.race_state.clone();
-        let id = self.official_data.as_ref().map(|official_data| official_data.id);
-        let mut official_start = self.official_data.as_ref().map(|official_data| official_data.start);
+        let id = self.official_data.as_ref().map(|official_data| official_data.cal_event.race.id.expect("handling room for official race without ID"));
+        let mut official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         tokio::spawn(async move {
             let mut seed_state = None::<SeedRollUpdate>;
             loop {
@@ -1308,11 +1305,11 @@ impl Handler {
         let mut state = self.race_state.write().await;
         match *state {
             RaceState::RolledExisting => {} //TODO actually do the unlock
-            RaceState::RolledLocally(ref spoiler_log_path) => if self.official_data.as_ref().map_or(true, |official_data| !official_data.is_first_async_half) && Path::new(spoiler_log_path).exists() {
+            RaceState::RolledLocally(ref spoiler_log_path) => if self.official_data.as_ref().map_or(true, |official_data| !official_data.cal_event.is_first_async_half()) && Path::new(spoiler_log_path).exists() {
                 let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name");
                 fs::rename(spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await.to_racetime()?;
             },
-            RaceState::RolledWeb { seed_id, ref file_stem } => if self.official_data.as_ref().map_or(true, |official_data| !official_data.is_first_async_half) {
+            RaceState::RolledWeb { seed_id, ref file_stem } => if self.official_data.as_ref().map_or(true, |official_data| !official_data.cal_event.is_first_async_half()) {
                 let spoiler_filename = format!("{file_stem}_Spoiler.json");
                 ctx.global_state.ootr_api_client.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &seed_id.to_string())]), None::<&()>).await?
                     .detailed_error_for_status().await.to_racetime()?;
@@ -1361,9 +1358,8 @@ impl RaceHandler<GlobalState> for Handler {
         let data = ctx.data().await;
         let new_room_lock = lock!(ctx.global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-        let (official_data, existing_seed, restreams, race_state, high_seed_name, low_seed_name, fpa_enabled) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
+        let (existing_seed, official_data, race_state, high_seed_name, low_seed_name, fpa_enabled) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
             let mut entrants = Vec::default();
-            let start = cal_event.start().expect("handling room for official race without start time");
             for team in cal_event.active_teams() {
                 let mut members = sqlx::query_scalar!(r#"SELECT racetime_id AS "racetime_id!: String" FROM users, team_members WHERE id = member AND team = $1 AND racetime_id IS NOT NULL"#, i64::from(team.id)).fetch(&mut transaction);
                 while let Some(member) = members.try_next().await.to_racetime()? {
@@ -1445,15 +1441,11 @@ impl RaceHandler<GlobalState> for Handler {
                 });
             }
             (
-                Some(OfficialRaceData {
-                    id: cal_event.race.id.expect("race loaded from database has ID"),
-                    game: cal_event.race.game,
-                    fpa_invoked: false,
-                    is_first_async_half: cal_event.is_first_async_half(),
-                    event, entrants, start,
-                }),
                 cal_event.race.seed.clone(),
-                restreams,
+                Some(OfficialRaceData {
+                    fpa_invoked: false,
+                    cal_event, event, restreams, entrants,
+                }),
                 race_state,
                 high_seed_name,
                 low_seed_name,
@@ -1516,7 +1508,6 @@ impl RaceHandler<GlobalState> for Handler {
             (
                 None,
                 None,
-                HashMap::default(),
                 RaceState::default(),
                 format!("Team A"),
                 format!("Team B"),
@@ -1525,39 +1516,6 @@ impl RaceHandler<GlobalState> for Handler {
         };
         transaction.commit().await.to_racetime()?;
         drop(new_room_lock);
-        if let Some(restreams_text) = natjoin_str(restreams.iter().map(|(video_url, state)| format!("in {} at {video_url}", state.language.expect("preset restreams should have languages assigned")))) {
-            let text = if restreams.values().any(|state| state.restreamer_racetime_id.is_none()) {
-                for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
-                    if let Some(entrant) = ctx.data().await.entrants.iter().find(|entrant| entrant.user.id == *restreamer) {
-                        match entrant.status.value {
-                            EntrantStatusValue::Requested => {
-                                ctx.accept_request(restreamer).await?;
-                                ctx.add_monitor(restreamer).await?;
-                                ctx.remove_entrant(restreamer).await?;
-                            }
-                            EntrantStatusValue::Invited |
-                            EntrantStatusValue::Declined |
-                            EntrantStatusValue::Ready |
-                            EntrantStatusValue::NotReady |
-                            EntrantStatusValue::InProgress |
-                            EntrantStatusValue::Done |
-                            EntrantStatusValue::Dnf |
-                            EntrantStatusValue::Dq => {
-                                ctx.add_monitor(restreamer).await?;
-                            }
-                        }
-                    } else {
-                        ctx.invite_user(restreamer).await?;
-                        ctx.add_monitor(restreamer).await?;
-                        ctx.remove_entrant(restreamer).await?;
-                    }
-                }
-                format!("This race is being restreamed {restreams_text} — auto-start is disabled. Tournament organizers can use !monitor to become race monitors, then invite the restreamer{0} as race monitor{0} to allow them to force-start.", if restreams.len() == 1 { "" } else { "s" })
-            } else {
-                format!("This race is being restreamed {restreams_text} — auto-start is disabled. Restreamers can use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.")
-            };
-            ctx.send_message(&text).await?;
-        }
         let this = Self {
             breaks: None, //TODO default breaks for restreamed matches?
             break_notifications: None,
@@ -1565,9 +1523,42 @@ impl RaceHandler<GlobalState> for Handler {
             start_saved: false,
             locked: false,
             race_state: ArcRwLock::new(race_state),
-            official_data, high_seed_name, low_seed_name, restreams, fpa_enabled,
+            official_data, high_seed_name, low_seed_name, fpa_enabled,
         };
-        if let Some(OfficialRaceData { ref event, .. }) = this.official_data {
+        if let Some(OfficialRaceData { ref event, ref restreams, .. }) = this.official_data {
+            if let Some(restreams_text) = natjoin_str(restreams.iter().map(|(video_url, state)| format!("in {} at {video_url}", state.language.expect("preset restreams should have languages assigned")))) {
+                let text = if restreams.values().any(|state| state.restreamer_racetime_id.is_none()) {
+                    for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
+                        if let Some(entrant) = ctx.data().await.entrants.iter().find(|entrant| entrant.user.id == *restreamer) {
+                            match entrant.status.value {
+                                EntrantStatusValue::Requested => {
+                                    ctx.accept_request(restreamer).await?;
+                                    ctx.add_monitor(restreamer).await?;
+                                    ctx.remove_entrant(restreamer).await?;
+                                }
+                                EntrantStatusValue::Invited |
+                                EntrantStatusValue::Declined |
+                                EntrantStatusValue::Ready |
+                                EntrantStatusValue::NotReady |
+                                EntrantStatusValue::InProgress |
+                                EntrantStatusValue::Done |
+                                EntrantStatusValue::Dnf |
+                                EntrantStatusValue::Dq => {
+                                    ctx.add_monitor(restreamer).await?;
+                                }
+                            }
+                        } else {
+                            ctx.invite_user(restreamer).await?;
+                            ctx.add_monitor(restreamer).await?;
+                            ctx.remove_entrant(restreamer).await?;
+                        }
+                    }
+                    format!("This race is being restreamed {restreams_text} — auto-start is disabled. Tournament organizers can use !monitor to become race monitors, then invite the restreamer{0} as race monitor{0} to allow them to force-start.", if restreams.len() == 1 { "" } else { "s" })
+                } else {
+                    format!("This race is being restreamed {restreams_text} — auto-start is disabled. Restreamers can use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.")
+                };
+                ctx.send_message(&text).await?;
+            }
             if let Some(seed) = existing_seed {
                 ctx.send_message("Your seed will be posted in 15 minutes.").await?;
                 let state = this.race_state.clone().write_owned().await;
@@ -1785,9 +1776,9 @@ impl RaceHandler<GlobalState> for Handler {
                     if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                         ctx.send_message("FPA cannot be invoked before the race starts.").await?;
                     } else {
-                        if let Some(OfficialRaceData { ref mut fpa_invoked, ref event, .. }) = self.official_data {
+                        if let Some(OfficialRaceData { ref restreams, ref mut fpa_invoked, ref event, .. }) = self.official_data {
                             *fpa_invoked = true;
-                            if self.restreams.is_empty() {
+                            if restreams.is_empty() {
                                 let player_team = if let TeamConfig::Solo = event.team_config() { "player" } else { "team" };
                                 ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. The {player_team} that did not call FPA can continue playing; the race will be retimed once completed.")).await?;
                             } else {
@@ -1862,85 +1853,93 @@ impl RaceHandler<GlobalState> for Handler {
                 ctx.send_message(&format!("Sorry {reply_to}, this command is only available for official races.")).await?;
             },
             "presets" => goal.send_presets(ctx).await?,
-            "ready" => {
-                if let Some(state) = self.restreams.values_mut().find(|state| state.restreamer_racetime_id.as_ref() == Some(&msg.user.as_ref().expect("received !ready command from bot").id)) {
+            "ready" => if let Some(OfficialRaceData { ref mut restreams, ref cal_event, ref event, .. }) = self.official_data {
+                if let Some(state) = restreams.values_mut().find(|state| state.restreamer_racetime_id.as_ref() == Some(&msg.user.as_ref().expect("received !ready command from bot").id)) {
                     state.ready = true;
                 } else {
                     ctx.send_message(&format!("Sorry {reply_to}, only restreamers can do that.")).await?;
                     return Ok(())
                 }
-                if self.restreams.values().all(|state| state.ready) {
+                if restreams.values().all(|state| state.ready) {
                     ctx.send_message(&format!("All restreams ready, unlocking auto-start…")).await?;
                     let (access_token, _) = racetime::authorize_with_host(ctx.global_state.host, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
-                    racetime::EditRace {
+                    racetime::StartRace {
                         goal: goal.as_str().to_owned(),
                         goal_is_custom: goal.is_custom(),
+                        team_race: !matches!(event.team_config(), TeamConfig::Solo | TeamConfig::Pictionary),
+                        invitational: !matches!(cal_event.race.entrants, Entrants::Open),
+                        unlisted: cal_event.is_first_async_half(),
+                        info_user: ctx.data().await.info_user.clone().unwrap_or_default(),
+                        info_bot: ctx.data().await.info_bot.clone().unwrap_or_default(),
+                        require_even_teams: true,
                         start_delay: 15,
                         time_limit: 24,
+                        time_limit_auto_complete: false,
+                        streaming_required: !cal_event.is_first_async_half(),
+                        auto_start: true,
+                        allow_comments: true,
+                        hide_comments: true,
+                        allow_prerace_chat: true,
+                        allow_midrace_chat: true,
+                        allow_non_entrant_chat: true,
                         chat_message_delay: 0,
-                        team_race: None,
-                        unlisted: None,
-                        info_user: None,
-                        info_bot: None,
-                        require_even_teams: None,
-                        time_limit_auto_complete: None,
-                        streaming_required: None,
-                        auto_start: Some(true),
-                        allow_comments: None,
-                        hide_comments: None,
-                        allow_prerace_chat: None,
-                        allow_midrace_chat: None,
-                        allow_non_entrant_chat: None,
                     }.edit_with_host(ctx.global_state.host, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
                 } else {
                     ctx.send_message(&format!("Restream ready, still waiting for other restreams.")).await?;
                 }
-            }
+            } else {
+                ctx.send_message(&format!("Sorry {reply_to}, this command is only available for official races.")).await?;
+            },
             "restreamer" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
-                if let [restream_url, restreamer] = &args[..] {
-                    let restream_url = if restream_url.contains('/') {
-                        Url::parse(restream_url)
-                    } else {
-                        Url::parse(&format!("https://twitch.tv/{restream_url}"))
-                    };
-                    if let Ok(restream_url) = restream_url {
-                        let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                        match parse_user(&mut transaction, &ctx.global_state.http_client, ctx.global_state.host, restreamer).await {
-                            Ok(restreamer_racetime_id) => {
-                                if self.restreams.is_empty() {
-                                    let (access_token, _) = racetime::authorize_with_host(ctx.global_state.host, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
-                                    racetime::EditRace {
-                                        goal: goal.as_str().to_owned(),
-                                        goal_is_custom: goal.is_custom(),
-                                        start_delay: 15,
-                                        time_limit: 24,
-                                        chat_message_delay: 0,
-                                        team_race: None,
-                                        unlisted: None,
-                                        info_user: None,
-                                        info_bot: None,
-                                        require_even_teams: None,
-                                        time_limit_auto_complete: None,
-                                        streaming_required: None,
-                                        auto_start: Some(false),
-                                        allow_comments: None,
-                                        hide_comments: None,
-                                        allow_prerace_chat: None,
-                                        allow_midrace_chat: None,
-                                        allow_non_entrant_chat: None,
-                                    }.edit_with_host(ctx.global_state.host, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
+                if let Some(OfficialRaceData { ref mut restreams, ref cal_event, ref event, .. }) = self.official_data {
+                    if let [restream_url, restreamer] = &args[..] {
+                        let restream_url = if restream_url.contains('/') {
+                            Url::parse(restream_url)
+                        } else {
+                            Url::parse(&format!("https://twitch.tv/{restream_url}"))
+                        };
+                        if let Ok(restream_url) = restream_url {
+                            let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
+                            match parse_user(&mut transaction, &ctx.global_state.http_client, ctx.global_state.host, restreamer).await {
+                                Ok(restreamer_racetime_id) => {
+                                    if restreams.is_empty() {
+                                        let (access_token, _) = racetime::authorize_with_host(ctx.global_state.host, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
+                                        racetime::StartRace {
+                                            goal: goal.as_str().to_owned(),
+                                            goal_is_custom: goal.is_custom(),
+                                            team_race: !matches!(event.team_config(), TeamConfig::Solo | TeamConfig::Pictionary),
+                                            invitational: !matches!(cal_event.race.entrants, Entrants::Open),
+                                            unlisted: cal_event.is_first_async_half(),
+                                            info_user: ctx.data().await.info_user.clone().unwrap_or_default(),
+                                            info_bot: ctx.data().await.info_bot.clone().unwrap_or_default(),
+                                            require_even_teams: true,
+                                            start_delay: 15,
+                                            time_limit: 24,
+                                            time_limit_auto_complete: false,
+                                            streaming_required: !cal_event.is_first_async_half(),
+                                            auto_start: false,
+                                            allow_comments: true,
+                                            hide_comments: true,
+                                            allow_prerace_chat: true,
+                                            allow_midrace_chat: true,
+                                            allow_non_entrant_chat: true,
+                                            chat_message_delay: 0,
+                                        }.edit_with_host(ctx.global_state.host, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
+                                    }
+                                    restreams.entry(restream_url).or_default().restreamer_racetime_id = Some(restreamer_racetime_id.clone());
+                                    ctx.send_message("Restreamer assigned. Use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.").await?; //TODO mention restreamer
                                 }
-                                self.restreams.entry(restream_url).or_default().restreamer_racetime_id = Some(restreamer_racetime_id.clone());
-                                ctx.send_message("Restreamer assigned. Use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.").await?; //TODO mention restreamer
+                                Err(e) => ctx.send_message(&format!("Sorry {reply_to}, I couldn't parse the restreamer: {e}")).await?,
                             }
-                            Err(e) => ctx.send_message(&format!("Sorry {reply_to}, I couldn't parse the restreamer: {e}")).await?,
+                            transaction.commit().await.to_racetime()?;
+                        } else {
+                            ctx.send_message(&format!("Sorry {reply_to}, that doesn't seem to be a valid URL or Twitch channel.")).await?;
                         }
-                        transaction.commit().await.to_racetime()?;
                     } else {
-                        ctx.send_message(&format!("Sorry {reply_to}, that doesn't seem to be a valid URL or Twitch channel.")).await?;
+                        ctx.send_message(&format!("Sorry {reply_to}, I don't recognise that format for adding a restreamer.")).await?; //TODO better help message
                     }
                 } else {
-                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognise that format for adding a restreamer.")).await?; //TODO better help message
+                    ctx.send_message(&format!("Sorry {reply_to}, this command is only available for official races.")).await?;
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
@@ -2204,8 +2203,8 @@ impl RaceHandler<GlobalState> for Handler {
                                     if path_segments.next().is_none();
                                     then {
                                         //TODO prevent overriding existing seed URL?
-                                        if let Some(OfficialRaceData { id, .. }) = self.official_data {
-                                            sqlx::query!("UPDATE races SET tfb_uuid = $1 WHERE id = $2", uuid, id as _).execute(&ctx.global_state.db_pool).await.to_racetime()?;
+                                        if let Some(OfficialRaceData { ref cal_event, .. }) = self.official_data {
+                                            sqlx::query!("UPDATE races SET tfb_uuid = $1 WHERE id = $2", uuid, cal_event.race.id as _).execute(&ctx.global_state.db_pool).await.to_racetime()?;
                                         }
                                         ctx.set_bot_raceinfo(&seed.to_string()).await?; //TODO get file hash from TFB API? (https://github.com/c0hesion/blitz-client/issues/2)
                                     } else {
@@ -2344,9 +2343,9 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx).await? {
-                if let Some(OfficialRaceData { ref event, fpa_invoked, game, is_first_async_half, .. }) = self.official_data {
+                if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, .. }) = self.official_data {
                     let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                    if is_first_async_half {
+                    if cal_event.is_first_async_half() {
                         if let Some(organizer_channel) = event.discord_organizer_channel {
                             organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
                                 //TODO mention organizer role
@@ -2398,7 +2397,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         let winner = User::from_racetime(&mut transaction, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                         let loser = User::from_racetime(&mut transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                         let mut msg = MessageBuilder::default();
-                                        if let Some(game) = game {
+                                        if let Some(game) = cal_event.race.game {
                                             msg.push("game ");
                                             msg.push(game.to_string());
                                             msg.push(": ");
@@ -2459,7 +2458,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         let winner = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                         let loser = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                         let mut msg = MessageBuilder::default();
-                                        if let Some(game) = game {
+                                        if let Some(game) = cal_event.race.game {
                                             msg.push("game ");
                                             msg.push(game.to_string());
                                             msg.push(": ");
@@ -2511,12 +2510,18 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(())
     }
 
-    async fn error(&mut self, _ctx: &RaceContext<GlobalState>, mut errors: Vec<String>) -> Result<(), Error> {
-        // failing to invite a user should not crash the race handler
-        errors.retain(|error|
-            !error.ends_with(" is not allowed to join this race.")
-            && !error.ends_with(" is already an entrant.")
-        );
+    async fn error(&mut self, ctx: &RaceContext<GlobalState>, mut errors: Vec<String>) -> Result<(), Error> {
+        let url = ctx.data().await.url.clone();
+        errors.retain(|error| {
+            if error == "Possible sync error. Refresh to continue." {
+                // see https://github.com/racetimeGG/racetime-app/pull/196
+                eprintln!("sync error in race handler for {url}");
+                //TODO also notify race chat in case a command got eaten?
+                return false
+            }
+            !error.ends_with(" is not allowed to join this race.") // failing to invite a user should not crash the race handler
+            && !error.ends_with(" is already an entrant.") // failing to invite a user should not crash the race handler
+        });
         if errors.is_empty() {
             Ok(())
         } else {
@@ -2590,7 +2595,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 start_delay: 15,
                                 time_limit: 24,
                                 time_limit_auto_complete: false,
-                                streaming_required: Some(!cal_event.is_first_async_half()),
+                                streaming_required: !cal_event.is_first_async_half(),
                                 auto_start: cal_event.is_first_async_half() || (cal_event.race.video_url.is_none() && cal_event.race.video_url_fr.is_none()),
                                 allow_comments: true,
                                 hide_comments: true,
