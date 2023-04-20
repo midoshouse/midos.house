@@ -2516,18 +2516,11 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(())
     }
 
-    async fn error(&mut self, ctx: &RaceContext<GlobalState>, mut errors: Vec<String>) -> Result<(), Error> {
-        let url = ctx.data().await.url.clone();
-        errors.retain(|error| {
-            if error == "Possible sync error. Refresh to continue." {
-                // see https://github.com/racetimeGG/racetime-app/pull/196
-                eprintln!("sync error in race handler for {url}");
-                //TODO also notify race chat in case a command got eaten?
-                return false
-            }
+    async fn error(&mut self, _: &RaceContext<GlobalState>, mut errors: Vec<String>) -> Result<(), Error> {
+        errors.retain(|error|
             !error.ends_with(" is not allowed to join this race.") // failing to invite a user should not crash the race handler
             && !error.ends_with(" is already an entrant.") // failing to invite a user should not crash the race handler
-        });
+        );
         if errors.is_empty() {
             Ok(())
         } else {
