@@ -1431,7 +1431,7 @@ impl RaceHandler<GlobalState> for Handler {
             let mut restreams = HashMap::default();
             if let Some(video_url) = cal_event.race.video_url.clone() {
                 restreams.insert(video_url, RestreamState {
-                    language: Some("english"),
+                    language: Some("English"),
                     restreamer_racetime_id: cal_event.race.restreamer.clone(),
                     ready: false,
                 });
@@ -1530,34 +1530,36 @@ impl RaceHandler<GlobalState> for Handler {
         };
         if let Some(OfficialRaceData { ref event, ref restreams, .. }) = this.official_data {
             if let Some(restreams_text) = natjoin_str(restreams.iter().map(|(video_url, state)| format!("in {} at {video_url}", state.language.expect("preset restreams should have languages assigned")))) {
-                let text = if restreams.values().any(|state| state.restreamer_racetime_id.is_none()) {
-                    for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
-                        if let Some(entrant) = ctx.data().await.entrants.iter().find(|entrant| entrant.user.id == *restreamer) {
-                            match entrant.status.value {
-                                EntrantStatusValue::Requested => {
-                                    println!("accepting join request from {restreamer} ({})", entrant.user.full_name);
-                                    ctx.accept_request(restreamer).await?;
-                                    ctx.add_monitor(restreamer).await?;
-                                    ctx.remove_entrant(restreamer).await?;
-                                }
-                                EntrantStatusValue::Invited |
-                                EntrantStatusValue::Declined |
-                                EntrantStatusValue::Ready |
-                                EntrantStatusValue::NotReady |
-                                EntrantStatusValue::InProgress |
-                                EntrantStatusValue::Done |
-                                EntrantStatusValue::Dnf |
-                                EntrantStatusValue::Dq => {
-                                    ctx.add_monitor(restreamer).await?;
-                                }
+                for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
+                    if let Some(entrant) = ctx.data().await.entrants.iter().find(|entrant| entrant.user.id == *restreamer) {
+                        match entrant.status.value {
+                            EntrantStatusValue::Requested => {
+                                println!("accepting join request from {restreamer} ({})", entrant.user.full_name);
+                                ctx.accept_request(restreamer).await?;
+                                ctx.add_monitor(restreamer).await?;
+                                ctx.remove_entrant(restreamer).await?;
                             }
-                        } else {
-                            ctx.invite_user(restreamer).await?;
-                            ctx.add_monitor(restreamer).await?;
-                            ctx.remove_entrant(restreamer).await?;
+                            EntrantStatusValue::Invited |
+                            EntrantStatusValue::Declined |
+                            EntrantStatusValue::Ready |
+                            EntrantStatusValue::NotReady |
+                            EntrantStatusValue::InProgress |
+                            EntrantStatusValue::Done |
+                            EntrantStatusValue::Dnf |
+                            EntrantStatusValue::Dq => {
+                                ctx.add_monitor(restreamer).await?;
+                            }
                         }
+                    } else {
+                        ctx.invite_user(restreamer).await?;
+                        ctx.add_monitor(restreamer).await?;
+                        ctx.remove_entrant(restreamer).await?;
                     }
-                    format!("This race is being restreamed {restreams_text} — auto-start is disabled. Tournament organizers can use !monitor to become race monitors, then invite the restreamer{0} as race monitor{0} to allow them to force-start.", if restreams.len() == 1 { "" } else { "s" })
+                }
+                let text = if restreams.values().any(|state| state.restreamer_racetime_id.is_none()) {
+                    format!("This race is being restreamed {restreams_text} — auto-start is disabled. Tournament organizers can use “!monitor” to become race monitors, then invite the restreamer{0} as race monitor{0} to allow them to force-start.", if restreams.len() == 1 { "" } else { "s" })
+                } else if restreams.len() == 1 {
+                    format!("This race is being restreamed {restreams_text} — auto-start is disabled. The restreamer can use “!ready” to unlock auto-start.")
                 } else {
                     format!("This race is being restreamed {restreams_text} — auto-start is disabled. Restreamers can use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.")
                 };
@@ -1886,7 +1888,7 @@ impl RaceHandler<GlobalState> for Handler {
                         hide_comments: true,
                         allow_prerace_chat: true,
                         allow_midrace_chat: true,
-                        allow_non_entrant_chat: true,
+                        allow_non_entrant_chat: false,
                         chat_message_delay: 0,
                     }.edit_with_host(ctx.global_state.host, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
                 } else {
@@ -1927,7 +1929,7 @@ impl RaceHandler<GlobalState> for Handler {
                                             hide_comments: true,
                                             allow_prerace_chat: true,
                                             allow_midrace_chat: true,
-                                            allow_non_entrant_chat: true,
+                                            allow_non_entrant_chat: false,
                                             chat_message_delay: 0,
                                         }.edit_with_host(ctx.global_state.host, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
                                     }
@@ -2600,7 +2602,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 hide_comments: true,
                                 allow_prerace_chat: true,
                                 allow_midrace_chat: true,
-                                allow_non_entrant_chat: true, // needs to be true for all races so the !monitor command can work
+                                allow_non_entrant_chat: false, // only affects the race while it's ongoing, so !monitor still works
                                 chat_message_delay: 0,
                                 info_user,
                             }.start_with_host(global_state.host, &access_token, &global_state.http_client, CATEGORY).await?;

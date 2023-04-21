@@ -1377,11 +1377,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
                             content.mention_team(&mut transaction, Some(guild_id), &team2).await?;
                             content.push(' ');
                         }
-                        content.push("Welcome to ");
-                        if value.game_count > 1 {
-                            content.push("game 1 of ");
-                        }
-                        content.push("your ");
+                        content.push("Welcome to your ");
                         if !value.phase.is_empty() {
                             content.push_safe(value.phase.clone());
                             content.push(' ');
@@ -1395,6 +1391,11 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
                         content.push(" to schedule as a live race or ");
                         content.mention_command(command_ids.schedule_async, "schedule-async");
                         content.push(" to schedule as an async."); //TODO adjust message if asyncing is not allowed
+                        if value.game_count > 1 {
+                            content.push(" You can use the ");
+                            content.push_mono("game:");
+                            content.push(" parameter with these commands to schedule subsequent games ahead of time.");
+                        }
                         match event.draft_kind() {
                             DraftKind::MultiworldS3 => unimplemented!(), //TODO
                             DraftKind::None => {}
