@@ -2,10 +2,17 @@ use {
     std::{
         borrow::Cow,
         cmp::Ordering,
-        collections::HashMap,
+        collections::hash_map::{
+            self,
+            HashMap,
+        },
         convert::identity,
         iter,
         path::Path,
+        time::{
+            Duration as UDuration,
+            Instant,
+        },
     },
     chrono::{
         Duration,
@@ -25,6 +32,7 @@ use {
     },
     itertools::Itertools as _,
     lazy_regex::regex_captures,
+    once_cell::sync::Lazy,
     ootr_utils::spoiler::{
         HashIcon,
         SpoilerLog,
@@ -66,7 +74,10 @@ use {
         model::prelude::*,
     },
     serenity_utils::RwFuture,
-    sheets::Sheets,
+    sheets::{
+        Sheets,
+        ValueRange,
+    },
     sqlx::{
         PgPool,
         Postgres,
@@ -126,6 +137,10 @@ use {
             full_form,
             io_error_from_reqwest,
             natjoin_str,
+            sync::{
+                Mutex,
+                lock,
+            },
         },
     },
 };
@@ -1053,6 +1068,8 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     }
 }
 
+static SHEETS_CACHE: Lazy<Mutex<HashMap<(String, String), (Instant, ValueRange)>>> = Lazy::new(|| Mutex::default());
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum SheetsError {
     #[error(transparent)] Api(#[from] sheets::APIError), //TODO adjust status codes, e.g. 502 Bad Gateway for 503 Service Unavailable
@@ -1065,15 +1082,22 @@ pub(crate) enum SheetsError {
 }
 
 async fn sheet_values(sheet_id: &str, range: String) -> Result<Vec<Vec<String>>, SheetsError> {
-    let gsuite_secret = read_service_account_key("assets/google-client-secret.json").await?;
-    let auth = ServiceAccountAuthenticator::builder(gsuite_secret)
-        .build()
-        .await?;
-    let token = auth.token(&["https://www.googleapis.com/auth/spreadsheets"]).await?;
-    if token.as_str().is_empty() { return Err(SheetsError::EmptyToken) }
-    let sheets_client = Sheets::new(token);
-    let sheet_values = sheets_client.get_values(sheet_id, range).await?;
-    sheet_values.values.ok_or(SheetsError::NoValues)
+    let key = (sheet_id.to_owned(), range.clone());
+    let mut cache = lock!(SHEETS_CACHE);
+    cache.retain(|_, (retrieved, _)| retrieved.elapsed() < UDuration::from_secs(5 * 60));
+    match cache.entry(key) {
+        hash_map::Entry::Occupied(entry) => entry.get().1.values.clone(),
+        hash_map::Entry::Vacant(entry) => {
+            let gsuite_secret = read_service_account_key("assets/google-client-secret.json").await?;
+            let auth = ServiceAccountAuthenticator::builder(gsuite_secret)
+                .build()
+                .await?;
+            let token = auth.token(&["https://www.googleapis.com/auth/spreadsheets"]).await?;
+            if token.as_str().is_empty() { return Err(SheetsError::EmptyToken) }
+            let sheets_client = Sheets::new(token);
+            entry.insert((Instant::now(), sheets_client.get_values(sheet_id, range).await?)).1.values.clone()
+        }
+    }.ok_or(SheetsError::NoValues)
 }
 
 fn ics_datetime<Tz: TimeZone>(datetime: DateTime<Tz>) -> String {
