@@ -702,7 +702,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : " (also known as Multiworld 1.0) and ";
                     a(href = uri!(http::mw).to_string()) : "Mido's House Multiworld";
                     : ". While we recommend using the Mido's House plugin since it supports Project64 in addition to BizHawk and is easier to use (see ";
-                    a(href = "https://github.com/midoshouse/ootr-multiworld#feature-comparison") : "feature comparison";
+                    a(href = "https://wiki.ootrandomizer.com/index.php?title=Multiworld#Feature_comparison") : "feature comparison";
                     : "), both plugins are legal in this tournament.";
                 }
                 p : "We were hopeful to host this season of the tournament on Multiworld 2.0, but there have been further delays with its release. In the event that it does release during this tournament, the plan is to allow Multiworld 2.0 to be used after being cleared by the tournament staff. However, be aware that by using this your team accepts the risks with using it and must abide by the standard FPA rules.";
