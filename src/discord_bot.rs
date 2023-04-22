@@ -194,7 +194,11 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
         Ok(None) => {
             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                 .ephemeral(true)
-                .content("Sorry, this thread is not associated with any upcoming races. Please contact a tournament organizer to fix this.")
+                .content(if game.is_some() {
+                    "Sorry, there don't seem to be any upcoming races with that game number associated with this thread. If this seems wrong, please contact a tournament organizer to fix this."
+                } else {
+                    "Sorry, this thread is not associated with any upcoming races. Please contact a tournament organizer to fix this."
+                })
             )).await?;
             transaction.rollback().await?;
             None

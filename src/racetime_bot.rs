@@ -1365,10 +1365,7 @@ impl RaceHandler<GlobalState> for Handler {
                 while let Some(member) = members.try_next().await.to_racetime()? {
                     if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
                         match entrant.status.value {
-                            EntrantStatusValue::Requested => {
-                                println!("accepting join request from {member} ({})", entrant.user.full_name);
-                                ctx.accept_request(&member).await?;
-                            }
+                            EntrantStatusValue::Requested => {} // handled in race_data method
                             EntrantStatusValue::Invited |
                             EntrantStatusValue::Declined |
                             EntrantStatusValue::Ready |
@@ -1534,7 +1531,6 @@ impl RaceHandler<GlobalState> for Handler {
                     if let Some(entrant) = ctx.data().await.entrants.iter().find(|entrant| entrant.user.id == *restreamer) {
                         match entrant.status.value {
                             EntrantStatusValue::Requested => {
-                                println!("accepting join request from {restreamer} ({})", entrant.user.full_name);
                                 ctx.accept_request(restreamer).await?;
                                 ctx.add_monitor(restreamer).await?;
                                 ctx.remove_entrant(restreamer).await?;
@@ -1833,7 +1829,6 @@ impl RaceHandler<GlobalState> for Handler {
                 if let Some(entrant) = ctx.data().await.entrants.iter().find(|entrant| entrant.user.id == *monitor) {
                     match entrant.status.value {
                         EntrantStatusValue::Requested => {
-                            println!("accepting join request from {monitor} ({})", entrant.user.full_name);
                             ctx.accept_request(monitor).await?;
                             ctx.add_monitor(monitor).await?;
                             ctx.remove_entrant(monitor).await?;
@@ -2270,7 +2265,6 @@ impl RaceHandler<GlobalState> for Handler {
         if let Some(OfficialRaceData { ref entrants, .. }) = self.official_data {
             for entrant in &data.entrants {
                 if entrant.status.value == EntrantStatusValue::Requested && entrants.contains(&entrant.user.id) {
-                    println!("accepting join request from {} ({})", entrant.user.id, entrant.user.full_name);
                     ctx.accept_request(&entrant.user.id).await?;
                 }
             }
