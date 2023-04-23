@@ -4,6 +4,7 @@ use {
         iter,
     },
     futures::stream,
+    if_chain::if_chain,
     itertools::Itertools as _,
     ootr_utils::spoiler::HashIcon,
     rocket::{
@@ -16,6 +17,8 @@ use {
         Postgres,
         Transaction,
     },
+    url::Url,
+    uuid::Uuid,
     crate::{
         event::{
             self,
@@ -36,6 +39,22 @@ use {
         },
     },
 };
+
+pub(crate) fn parse_seed_url(seed: &Url) -> Option<Uuid> {
+    if_chain! {
+        if let Some("triforceblitz.com" | "www.triforceblitz.com") = seed.host_str();
+        if let Some(mut path_segments) = seed.path_segments();
+        if path_segments.next() == Some("seed");
+        if let Some(segment) = path_segments.next();
+        if let Ok(uuid) = Uuid::parse_str(segment);
+        if path_segments.next().is_none();
+        then {
+            Some(uuid)
+        } else {
+            None
+        }
+    }
+}
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
     Ok(match &*data.event {

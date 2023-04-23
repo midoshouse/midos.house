@@ -34,6 +34,10 @@ use {
     },
     if_chain::if_chain,
     itertools::Itertools as _,
+    kuchiki::{
+        NodeRef,
+        traits::TendrilSink as _,
+    },
     lazy_regex::{
         regex_captures,
         regex_is_match,
@@ -104,7 +108,6 @@ use {
     },
     tokio_util::io::StreamReader,
     url::Url,
-    uuid::Uuid,
     wheel::{
         fs::{
             self,
@@ -140,6 +143,7 @@ use {
             mw,
             ndos,
             rsl,
+            tfb,
         },
         team::Team,
         user::User,
@@ -437,14 +441,7 @@ impl Goal {
                     rsl::Preset::S6Test => "test settings for RSL season 6",
                 })).await?;
             },
-            Self::TriforceBlitz => {
-                let room_url = format!("https://{}{}", ctx.global_state.host, ctx.data().await.url);
-                let seed_url = Url::parse_with_params("https://www.triforceblitz.com/generator", &[
-                    ("unlockSetting", "RACETIME"),
-                    ("racetimeRoom", &room_url),
-                ])?;
-                ctx.send_message(&format!("Generate a seed at {seed_url} then use “!seed <seed-link>” to update the race info.")).await?;
-            }
+            Self::TriforceBlitz => ctx.send_message("!seed: official Triforce Blitz settings").await?, //TODO option to link the daily seed
         }
         Ok(())
     }
@@ -723,6 +720,55 @@ impl GlobalState {
         }));
         update_rx
     }
+
+    pub(crate) fn roll_tfb_seed(self: Arc<Self>, room: String, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+        let (update_tx, update_rx) = mpsc::channel(128);
+        let update_tx2 = update_tx.clone();
+        tokio::spawn(async move {
+            let _ = update_tx.send(SeedRollUpdate::Started).await;
+            let form_data = if spoiler_log {
+                vec![
+                    ("unlockSetting", "ALWAYS"),
+                    ("version", "LATEST"),
+                ]
+            } else {
+                vec![
+                    ("unlockSetting", "RACETIME"),
+                    ("racetimeRoom", &room),
+                    ("version", "LATEST"),
+                ]
+            };
+            let response = self.http_client
+                .post("https://www.triforceblitz.com/generator")
+                .form(&form_data)
+                .send().await?
+                .detailed_error_for_status().await?;
+            let uuid = tfb::parse_seed_url(response.url()).ok_or(RollError::TfbUrl)?;
+            let response_body = response.text().await?;
+            let file_hash = kuchiki::parse_html().one(response_body)
+                .select_first(".hash-icons").map_err(|()| RollError::TfbHtml)?
+                .as_node()
+                .children()
+                .filter_map(NodeRef::into_element_ref)
+                .filter_map(|elt| elt.attributes.borrow().get("title").and_then(|title| title.parse().ok()))
+                .collect_vec();
+            let _ = update_tx.send(SeedRollUpdate::Done {
+                seed: seed::Data {
+                    file_hash: Some(file_hash.try_into().map_err(|_| RollError::TfbHash)?),
+                    files: seed::Files::TriforceBlitz { uuid },
+                },
+                rsl_preset: None,
+                send_spoiler_log: spoiler_log,
+            }).await;
+            Ok(())
+        }.then(|res| async move {
+            match res {
+                Ok(()) => {}
+                Err(e) => { let _ = update_tx2.send(SeedRollUpdate::Error(e)).await; }
+            }
+        }));
+        update_rx
+    }
 }
 
 async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
@@ -786,6 +832,12 @@ pub(crate) enum RollError {
     RslVersion,
     #[error("randomizer did not report spoiler log location")]
     SpoilerLogPath,
+    #[error("didn't find 5 hash icons on Triforce Blitz seed page")]
+    TfbHash,
+    #[error("failed to parse Triforce Blitz seed page")]
+    TfbHtml,
+    #[error("Triforce Blitz website returned unexpected URL")]
+    TfbUrl,
     #[error("seed status API endpoint returned unknown value {0}")]
     UnespectedSeedStatus(u8),
 }
@@ -1313,6 +1365,10 @@ impl Handler {
         self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count, spoiler_log), an, description);
     }
 
+    async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, spoiler_log: bool, an: bool, description: String) {
+        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_tfb_seed(format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), spoiler_log), an, description);
+    }
+
     async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, seed: seed::Data, an: bool, description: String) {
         let (tx, rx) = mpsc::channel(1);
         tx.send(SeedRollUpdate::Done { rsl_preset: None, send_spoiler_log: false, seed }).await.unwrap();
@@ -1535,7 +1591,7 @@ impl RaceHandler<GlobalState> for Handler {
                         }
                         Goal::TriforceBlitz => {
                             ctx.send_message("Welcome to Triforce Blitz!").await?;
-                            goal.send_presets(ctx).await?;
+                            ctx.send_message("Create a seed with !seed").await?; //TODO option to link the daily seed
                         }
                     },
                     RaceState::Rolled(_) => ctx.send_message("@entrants I just restarted. You may have to reconfigure !breaks and !fpa. Sorry about that.").await?,
@@ -1615,20 +1671,13 @@ impl RaceHandler<GlobalState> for Handler {
                         if let RaceState::Init = *state {
                             match goal {
                                 Goal::MultiworldS3 => unreachable!(), // uses DraftKind::MultiworldS3
-                                Goal::PicRs2 => {
-                                    ctx.send_message("Your random settings Pictionary seed will be posted in 15 minutes.").await?;
-                                    this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
-                                        version: Some((Version::new(2, 3, 8), 10)),
-                                        preset: RslDevFenhlPreset::Pictionary,
-                                    }, 1, true, false, format!("random settings Pictionary seed"));
-                                }
-                                Goal::TriforceBlitz => {
-                                    drop(state);
-                                    goal.send_presets(ctx).await?; //TODO automatically roll seeds (https://github.com/c0hesion/blitz-client/issues/2)
-                                }
-                                Goal::NineDaysOfSaws | Goal::Rsl => {
-                                    drop(state); //TODO roll seed
-                                }
+                                Goal::NineDaysOfSaws => unreachable!(), // 9dos series has concluded
+                                Goal::PicRs2 => this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
+                                    version: Some((Version::new(2, 3, 8), 10)),
+                                    preset: RslDevFenhlPreset::Pictionary,
+                                }, 1, true, false, format!("random settings Pictionary seed")),
+                                Goal::Rsl => unreachable!(), // no official race rooms
+                                Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, false, false, format!("Triforce Blitz seed")).await,
                             }
                         }
                     }
@@ -2227,31 +2276,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 };
                                 self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, spoiler_log, an, description);
                             }
-                            Goal::TriforceBlitz => match args[..] {
-                                [] => goal.send_presets(ctx).await?,
-                                [ref seed] => if_chain! {
-                                    if let Ok(seed) = Url::parse(seed);
-                                    if let Some("triforceblitz.com" | "www.triforceblitz.com") = seed.host_str();
-                                    if let Some(mut path_segments) = seed.path_segments();
-                                    if path_segments.next() == Some("seed");
-                                    if let Some(segment) = path_segments.next();
-                                    if let Ok(uuid) = Uuid::parse_str(segment);
-                                    if path_segments.next().is_none();
-                                    then {
-                                        //TODO prevent overriding existing seed URL?
-                                        if let Some(OfficialRaceData { ref cal_event, .. }) = self.official_data {
-                                            sqlx::query!("UPDATE races SET tfb_uuid = $1 WHERE id = $2", uuid, cal_event.race.id as _).execute(&ctx.global_state.db_pool).await.to_racetime()?;
-                                        }
-                                        ctx.set_bot_raceinfo(&seed.to_string()).await?; //TODO get file hash from TFB API? (https://github.com/c0hesion/blitz-client/issues/2)
-                                    } else {
-                                        ctx.send_message(&format!("Sorry {reply_to}, that doesn't seem to be a Triforce Blitz seed link.")).await?;
-                                    }
-                                },
-                                [_, _, ..] => {
-                                    ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that.")).await?;
-                                    goal.send_presets(ctx).await?;
-                                }
-                            },
+                            Goal::TriforceBlitz => self.roll_tfb_seed(ctx, state, spoiler_log, false, format!("Triforce Blitz seed")).await, //TODO option to link the daily seed
                         }
                     },
                     RaceState::Draft { .. } => ctx.send_message(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
