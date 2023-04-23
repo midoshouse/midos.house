@@ -2,13 +2,17 @@ use {
     std::{
         borrow::Cow,
         num::NonZeroU8,
-        path::Path,
+        path::{
+            Path,
+            PathBuf,
+        },
     },
     chrono::prelude::*,
     futures::stream::{
         Stream,
         StreamExt as _,
     },
+    if_chain::if_chain,
     ootr_utils::spoiler::{
         HashIcon,
         SpoilerLog,
@@ -86,6 +90,7 @@ pub(crate) struct Data {
 pub(crate) enum Files {
     MidosHouse {
         file_stem: Cow<'static, str>,
+        locked_spoiler_log_path: Option<String>,
     },
     OotrWeb {
         id: u64,
@@ -105,15 +110,21 @@ impl Data {
             file_hash: [HashIcon; 5],
         }
 
-        let check_local_log = self.file_hash.is_none() || match self.files {
-            Files::MidosHouse { .. } => true,
-            Files::OotrWeb { gen_time, .. } => gen_time <= now - chrono::Duration::days(90),
-            Files::TriforceBlitz { .. } => false,
-        };
-        if check_local_log {
-            if let Files::MidosHouse { ref file_stem } | Files::OotrWeb { ref file_stem, .. } = self.files {
-                let spoiler_file_name = format!("{file_stem}_Spoiler.json");
-                let spoiler_path = Path::new(DIR).join(&spoiler_file_name);
+        if_chain! {
+            if self.file_hash.is_none() || match self.files {
+                Files::MidosHouse { .. } => true,
+                Files::OotrWeb { gen_time, .. } => gen_time <= now - chrono::Duration::days(90),
+                Files::TriforceBlitz { .. } => false,
+            };
+            if let Some((spoiler_path, spoiler_file_name)) = match self.files {
+                Files::MidosHouse { locked_spoiler_log_path: Some(ref spoiler_path), .. } => Some((PathBuf::from(spoiler_path), None)),
+                Files::MidosHouse { locked_spoiler_log_path: None, ref file_stem } | Files::OotrWeb { ref file_stem, .. } => {
+                    let spoiler_file_name = format!("{file_stem}_Spoiler.json");
+                    Some((Path::new(DIR).join(&spoiler_file_name).to_owned(), Some(spoiler_file_name)))
+                }
+                _ => None,
+            };
+            then {
                 let spoiler_path_exists = spoiler_path.exists();
                 let (file_hash, world_count) = if spoiler_path_exists {
                     let log = fs::read_to_string(&spoiler_path).await?;
@@ -129,14 +140,21 @@ impl Data {
                     (self.file_hash, None)
                 };
                 return Ok(ExtraData {
-                    spoiler_file_name: Some(spoiler_file_name),
-                    spoiler_path_exists, file_hash, world_count,
+                    spoiler_status: if spoiler_path_exists {
+                        if let Some(spoiler_file_name) = spoiler_file_name {
+                            SpoilerStatus::Unlocked(spoiler_file_name)
+                        } else {
+                            SpoilerStatus::Locked
+                        }
+                    } else {
+                        SpoilerStatus::NotFound
+                    },
+                    file_hash, world_count,
                 })
             }
         }
         Ok(ExtraData {
-            spoiler_file_name: None,
-            spoiler_path_exists: false,
+            spoiler_status: SpoilerStatus::NotFound,
             file_hash: self.file_hash,
             world_count: None,
         })
@@ -150,10 +168,15 @@ pub(crate) enum ExtraDataError {
 }
 
 pub(crate) struct ExtraData {
-    spoiler_file_name: Option<String>,
-    spoiler_path_exists: bool,
+    spoiler_status: SpoilerStatus,
     pub(crate) file_hash: Option<[HashIcon; 5]>,
     pub(crate) world_count: Option<NonZeroU8>,
+}
+
+enum SpoilerStatus {
+    Unlocked(String),
+    Locked,
+    NotFound,
 }
 
 pub(crate) fn table_header_cells(spoiler_logs: bool) -> RawHtml<String> {
@@ -195,7 +218,7 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
             Files::OotrWeb { id, gen_time, .. } if gen_time > now - chrono::Duration::days(90) => td(colspan? = spoiler_logs.then_some("2")) {
                 a(href = format!("https://ootrandomizer.com/seed/get?id={id}")) : "View";
             }
-            Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem } => {
+            Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem, .. } => {
                 td {
                     a(href = format!("/seed/{file_stem}.{}", if let Some(world_count) = extra.world_count {
                         if world_count.get() > 1 { "zpfz" } else { "zpf" }
@@ -207,10 +230,10 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
                 }
                 @if spoiler_logs {
                     td {
-                        @if extra.spoiler_path_exists {
-                            a(href = format!("/seed/{}", extra.spoiler_file_name.expect("should be present since web seed missing or expired"))) : "View";
-                        } else {
-                            : "not found"; //TODO different message if the race is still in progress
+                        @match extra.spoiler_status {
+                            SpoilerStatus::Unlocked(spoiler_file_name) => a(href = format!("/seed/{spoiler_file_name}")) : "View";
+                            SpoilerStatus::Locked => : "locked";
+                            SpoilerStatus::NotFound => : "not found";
                         }
                     }
                 }

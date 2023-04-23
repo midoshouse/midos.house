@@ -1041,7 +1041,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                             file_stem: Cow::Owned(file_stem.clone()),
                             id, gen_time,
                         },
-                        (None, None, None, Some(file_stem)) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem.clone()) },
+                        (None, None, None, Some(file_stem)) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem.clone()), locked_spoiler_log_path: None },
                         _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
                     },
                 };

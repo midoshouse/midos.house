@@ -1,11 +1,5 @@
 use {
-    std::{
-        path::{
-            Path,
-            PathBuf,
-        },
-        sync::Arc,
-    },
+    std::sync::Arc,
     async_proto::{
         Protocol,
         ReadError,
@@ -27,7 +21,6 @@ use {
             SeedRollUpdate,
             VersionedRslPreset,
         },
-        seed,
         util::sync::{
             Mutex,
             lock,
@@ -95,15 +88,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                 loop {
                                     let update = rx.recv().await;
                                     update.write(&mut sock).await.expect("error writing to UNIX socket");
-                                    match update {
-                                        Some(SeedRollUpdate::DoneLocal { send_spoiler_log: true, spoiler_log_path, .. }) => {
-                                            let spoiler_log_path = PathBuf::from(spoiler_log_path);
-                                            let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename");
-                                            fs::rename(&spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await.expect("failed to publish spoiler log");
-                                        }
-                                        Some(_) => {}
-                                        None => break,
-                                    }
+                                    if update.is_none() { break }
                                 }
                             } else {
                                 Some(SeedRollUpdate::Error(RollError::NonObjectSettings)).write(&mut sock).await.expect("error writing to UNIX socket");
@@ -119,15 +104,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                     loop {
                                         let update = rx.recv().await;
                                         update.write(&mut sock).await.expect("error writing to UNIX socket");
-                                        match update {
-                                            Some(SeedRollUpdate::DoneLocal { send_spoiler_log: true, spoiler_log_path, .. }) => {
-                                                let spoiler_log_path = PathBuf::from(spoiler_log_path);
-                                                let spoiler_filename = spoiler_log_path.file_name().expect("spoiler log path with no file name").to_str().expect("non-UTF-8 spoiler filename");
-                                                fs::rename(&spoiler_log_path, Path::new(seed::DIR).join(spoiler_filename)).await.expect("failed to publish spoiler log");
-                                            }
-                                            Some(_) => {}
-                                            None => break,
-                                        }
+                                        if update.is_none() { break }
                                     }
                                 } else {
                                     Some(SeedRollUpdate::Error(RollError::RslVersion)).write(&mut sock).await.expect("error writing to UNIX socket");

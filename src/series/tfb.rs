@@ -107,7 +107,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                         (None, None, None, None, None) => None,
                         _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
                     },
-                    files: seed::Files::MidosHouse { file_stem: Cow::Owned(async_row.file_stem) },
+                    files: seed::Files::MidosHouse { file_stem: Cow::Owned(async_row.file_stem), locked_spoiler_log_path: None },
                 };
                 let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
                 let ctx = ctx.take_submit_async();

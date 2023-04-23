@@ -332,6 +332,7 @@ impl Race {
             async_room1,
             async_room2,
             file_stem,
+            locked_spoiler_log_path,
             web_id AS "web_id: Id",
             web_gen_time,
             tfb_uuid,
@@ -439,16 +440,16 @@ impl Race {
         update_end!(end_time, room, "UPDATE races SET end_time = $1 WHERE id = $2");
         update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE id = $2");
         update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE id = $2");
-        let seed_files = match (row.file_stem, row.web_id, row.web_gen_time, row.tfb_uuid) {
-            (_, _, _, Some(uuid)) => Some(seed::Files::TriforceBlitz { uuid }),
-            (Some(file_stem), Some(Id(id)), Some(gen_time), None) => Some(seed::Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
-            (Some(file_stem), Some(Id(id)), None, None) => Some(match (row.start, row.async_start1, row.async_start2) {
+        let seed_files = match (row.file_stem, row.locked_spoiler_log_path, row.web_id, row.web_gen_time, row.tfb_uuid) {
+            (_, _, _, _, Some(uuid)) => Some(seed::Files::TriforceBlitz { uuid }),
+            (Some(file_stem), _, Some(Id(id)), Some(gen_time), None) => Some(seed::Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
+            (Some(file_stem), locked_spoiler_log_path, Some(Id(id)), None, None) => Some(match (row.start, row.async_start1, row.async_start2) {
                 (Some(start), None, None) | (None, Some(start), None) | (None, None, Some(start)) => seed::Files::OotrWeb { id, gen_time: start - Duration::days(1), file_stem: Cow::Owned(file_stem) },
                 (None, Some(async_start1), Some(async_start2)) => seed::Files::OotrWeb { id, gen_time: async_start1.min(async_start2) - Duration::days(1), file_stem: Cow::Owned(file_stem) },
-                (_, _, _) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem) },
+                (_, _, _) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path },
             }),
-            (Some(file_stem), None, _, None) => Some(seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem) }),
-            (None, _, _, None) => None,
+            (Some(file_stem), locked_spoiler_log_path, None, _, None) => Some(seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path }),
+            (None, _, _, _, None) => None,
         };
         Ok(Self {
             id: Some(id),
@@ -800,11 +801,11 @@ impl Race {
             RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
             RaceSchedule::Async { start1, start2, end1, end2, ref room1, ref room2 } => (None, start1, start2, None, end1, end2, None, room1.as_ref(), room2.as_ref()),
         };
-        let (web_id, web_gen_time, file_stem, tfb_uuid) = match self.seed.as_ref().map(|seed| &seed.files) {
-            Some(seed::Files::MidosHouse { file_stem }) => (None, None, Some(file_stem), None),
-            Some(seed::Files::OotrWeb { id, gen_time, file_stem }) => (Some(*id), Some(*gen_time), Some(file_stem), None),
-            Some(seed::Files::TriforceBlitz { uuid }) => (None, None, None, Some(uuid)),
-            None => (None, None, None, None),
+        let (web_id, web_gen_time, file_stem, locked_spoiler_log_path, tfb_uuid) = match self.seed.as_ref().map(|seed| &seed.files) {
+            Some(seed::Files::MidosHouse { file_stem, locked_spoiler_log_path }) => (None, None, Some(file_stem), locked_spoiler_log_path.as_ref(), None),
+            Some(seed::Files::OotrWeb { id, gen_time, file_stem }) => (Some(*id), Some(*gen_time), Some(file_stem), None, None),
+            Some(seed::Files::TriforceBlitz { uuid }) => (None, None, None, None, Some(uuid)),
+            None => (None, None, None, None, None),
         };
         sqlx::query!("INSERT INTO races (
             startgg_set,
@@ -845,9 +846,10 @@ impl Race {
             finished,
             tfb_uuid,
             restreamer,
-            restreamer_fr
+            restreamer_fr,
+            locked_spoiler_log_path
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39)",
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40)",
             self.startgg_set,
             start,
             self.series as _,
@@ -887,6 +889,7 @@ impl Race {
             tfb_uuid,
             self.restreamer,
             self.restreamer_fr,
+            locked_spoiler_log_path,
         ).execute(transaction).await?;
         Ok(())
     }
