@@ -330,6 +330,7 @@ pub(crate) struct Data<'a> {
     enter_flow: Option<enter::Flow>,
     pub(crate) show_qualifier_times: bool,
     pub(crate) default_game_count: i16,
+    pub(crate) min_schedule_notice: Duration,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -363,7 +364,8 @@ impl<'a> Data<'a> {
             discord_scheduling_channel AS "discord_scheduling_channel: Id",
             enter_flow AS "enter_flow: Json<enter::Flow>",
             show_qualifier_times,
-            default_game_count
+            default_game_count,
+            min_schedule_notice
         FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
                 display_name: row.display_name,
@@ -383,6 +385,7 @@ impl<'a> Data<'a> {
                 enter_flow: row.enter_flow.map(|Json(flow)| flow),
                 show_qualifier_times: row.show_qualifier_times,
                 default_game_count: row.default_game_count,
+                min_schedule_notice: decode_pginterval(row.min_schedule_notice)?,
                 series, event,
             }))
             .transpose()

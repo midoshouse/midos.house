@@ -1,7 +1,10 @@
 use {
     anyhow::Result,
     serde::Deserialize,
-    serenity::model::prelude::*,
+    serenity::{
+        model::prelude::*,
+        prelude::*,
+    },
 };
 #[cfg(unix)] use {
     anyhow::bail,
@@ -50,6 +53,10 @@ pub(crate) struct ConfigRaceTime {
     #[serde(rename = "clientID")]
     pub(crate) client_id: String,
     pub(crate) client_secret: String,
+}
+
+impl TypeMapKey for ConfigRaceTime {
+    type Value = Self;
 }
 
 #[derive(Clone, Deserialize)]

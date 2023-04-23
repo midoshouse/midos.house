@@ -967,7 +967,7 @@ impl Event {
                 race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Async1,
             };
-            if !matches!(event.race.event(&mut *transaction).await?.team_config(), TeamConfig::Solo) { // racetime.gg doesn't support single-entrant races
+            if !matches!(event.race.event(&mut *transaction).await?.team_config(), TeamConfig::Solo | TeamConfig::Pictionary) { // racetime.gg doesn't support single-entrant races
                 events.push(event);
             }
         }
@@ -976,7 +976,7 @@ impl Event {
                 race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Async2,
             };
-            if !matches!(event.race.event(&mut *transaction).await?.team_config(), TeamConfig::Solo) { // racetime.gg doesn't support single-entrant races
+            if !matches!(event.race.event(&mut *transaction).await?.team_config(), TeamConfig::Solo | TeamConfig::Pictionary) { // racetime.gg doesn't support single-entrant races
                 events.push(event);
             }
         }
