@@ -741,6 +741,7 @@ impl GlobalState {
             let response = self.http_client
                 .post("https://www.triforceblitz.com/generator")
                 .form(&form_data)
+                .timeout(Duration::from_secs(5 * 60))
                 .send().await?
                 .detailed_error_for_status().await?;
             let uuid = tfb::parse_seed_url(response.url()).ok_or(RollError::TfbUrl)?;
