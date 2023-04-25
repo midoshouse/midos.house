@@ -1141,35 +1141,37 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 })
                                             )).await?;
                                             transaction.rollback().await?;
-                                        } else if start - Utc::now() < Duration::minutes(30) {
-                                            let (http_client, new_room_lock, racetime_host, racetime_config) = {
-                                                let data = ctx.data.read().await;
-                                                (
-                                                    data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
-                                                    data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
-                                                    *data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context"),
-                                                    data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
-                                                )
-                                            };
-                                            let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
-                                            if let Some((_, msg)) = racetime_bot::create_room(transaction, &new_room_lock, racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(false)
-                                                    .content(msg)
-                                                )).await?;
-                                            } else {
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(false)
-                                                    .content(format!("{} is now scheduled for <t:{}:F>. The race room will be opened momentarily.", if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") }, start.timestamp()))
-                                                )).await?;
-                                            }
                                         } else {
                                             sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
-                                            transaction.commit().await?;
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(false)
-                                                .content(format!("{} is now scheduled for <t:{}:F>.", if let Some(game) = race.game { format!("Game {game}") } else { format!("This race") }, start.timestamp()))
-                                            )).await?;
+                                            if start - Utc::now() < Duration::minutes(30) {
+                                                let (http_client, new_room_lock, racetime_host, racetime_config) = {
+                                                    let data = ctx.data.read().await;
+                                                    (
+                                                        data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
+                                                        data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
+                                                        *data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context"),
+                                                        data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
+                                                    )
+                                                };
+                                                let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
+                                                if let Some((_, msg)) = racetime_bot::create_room(transaction, &new_room_lock, racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
+                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                        .ephemeral(false)
+                                                        .content(msg)
+                                                    )).await?;
+                                                } else {
+                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                        .ephemeral(false)
+                                                        .content(format!("{} is now scheduled for <t:{}:F>. The race room will be opened momentarily.", if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") }, start.timestamp()))
+                                                    )).await?;
+                                                }
+                                            } else {
+                                                transaction.commit().await?;
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(false)
+                                                    .content(format!("{} is now scheduled for <t:{}:F>.", if let Some(game) = race.game { format!("Game {game}") } else { format!("This race") }, start.timestamp()))
+                                                )).await?;
+                                            }
                                         }
                                     } else {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1209,54 +1211,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 })
                                             )).await?;
                                             transaction.rollback().await?;
-                                        } else if !matches!(event.team_config(), TeamConfig::Solo | TeamConfig::Pictionary) && start - Utc::now() < Duration::minutes(30) {
-                                            let (http_client, new_room_lock, racetime_host, racetime_config) = {
-                                                let data = ctx.data.read().await;
-                                                (
-                                                    data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
-                                                    data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
-                                                    *data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context"),
-                                                    data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
-                                                )
-                                            };
-                                            let cal_event = cal::Event {
-                                                kind: match race.entrants {
-                                                    Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
-                                                        if team.as_ref().map_or(false, |team| team1 == team) {
-                                                            cal::EventKind::Async1
-                                                        } else if team.as_ref().map_or(false, |team| team2 == team) {
-                                                            cal::EventKind::Async2
-                                                        } else {
-                                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                                .ephemeral(true)
-                                                                .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to schedule as async
-                                                            )).await?;
-                                                            transaction.rollback().await?;
-                                                            return Ok(())
-                                                        }
-                                                    }
-                                                    _ => panic!("tried to schedule race with not two MH teams as async"),
-                                                },
-                                                race,
-                                            };
-                                            if let Some((_, msg)) = racetime_bot::create_room(transaction, &new_room_lock, racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(false)
-                                                    .content(msg)
-                                                )).await?;
-                                            } else {
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(false)
-                                                    .content(format!("{} is now scheduled for <t:{}:F>. The race room will be opened momentarily.", if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") }, start.timestamp()))
-                                                )).await?;
-                                            }
                                         } else {
-                                            match race.entrants {
-                                                Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)]) => {
-                                                    if team.as_ref().map_or(false, |team| team1 == *team) {
+                                            let kind = match race.entrants {
+                                                Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
+                                                    if team.as_ref().map_or(false, |team| team1 == team) {
                                                         sqlx::query!("UPDATE races SET async_start1 = $1, start = NULL WHERE id = $2", start, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
-                                                    } else if team.as_ref().map_or(false, |team| team2 == *team) {
+                                                        cal::EventKind::Async1
+                                                    } else if team.as_ref().map_or(false, |team| team2 == team) {
                                                         sqlx::query!("UPDATE races SET async_start2 = $1, start = NULL WHERE id = $2", start, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                                        cal::EventKind::Async2
                                                     } else {
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                             .ephemeral(true)
@@ -1267,12 +1230,36 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     }
                                                 }
                                                 _ => panic!("tried to schedule race with not two MH teams as async"),
+                                            };
+                                            if !matches!(event.team_config(), TeamConfig::Solo | TeamConfig::Pictionary) && start - Utc::now() < Duration::minutes(30) {
+                                                let (http_client, new_room_lock, racetime_host, racetime_config) = {
+                                                    let data = ctx.data.read().await;
+                                                    (
+                                                        data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
+                                                        data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
+                                                        *data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context"),
+                                                        data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
+                                                    )
+                                                };
+                                                let cal_event = cal::Event { race, kind };
+                                                if let Some((_, msg)) = racetime_bot::create_room(transaction, &new_room_lock, racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
+                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                        .ephemeral(false)
+                                                        .content(msg)
+                                                    )).await?;
+                                                } else {
+                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                        .ephemeral(false)
+                                                        .content(format!("{} is now scheduled for <t:{}:F>. The race room will be opened momentarily.", if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") }, start.timestamp()))
+                                                    )).await?;
+                                                }
+                                            } else {
+                                                transaction.commit().await?;
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(false)
+                                                    .content(format!("Your half of {} is now scheduled for <t:{}:F>.", if let Some(game) = race.game { format!("game {game}") } else { format!("this race") }, start.timestamp()))
+                                                )).await?;
                                             }
-                                            transaction.commit().await?;
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(false)
-                                                .content(format!("Your half of {} is now scheduled for <t:{}:F>.", if let Some(game) = race.game { format!("game {game}") } else { format!("this race") }, start.timestamp()))
-                                            )).await?;
                                         }
                                     } else {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
