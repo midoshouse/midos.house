@@ -1622,7 +1622,9 @@ impl RaceHandler<GlobalState> for Handler {
         if let Some(OfficialRaceData { ref event, ref restreams, .. }) = this.official_data {
             if let Some(restreams_text) = natjoin_str(restreams.iter().map(|(video_url, state)| format!("in {} at {video_url}", state.language.expect("preset restreams should have languages assigned")))) {
                 for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
-                    if let Some(entrant) = ctx.data().await.entrants.iter().find(|entrant| entrant.user.id == *restreamer) {
+                    let data = ctx.data().await;
+                    if data.monitors.iter().find(|monitor| monitor.id == *restreamer).is_some() { continue }
+                    if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == *restreamer) {
                         match entrant.status.value {
                             EntrantStatusValue::Requested => {
                                 ctx.accept_request(restreamer).await?;
