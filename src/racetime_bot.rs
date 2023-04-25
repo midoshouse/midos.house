@@ -1449,7 +1449,7 @@ impl RaceHandler<GlobalState> for Handler {
                 while let Some(member) = members.try_next().await.to_racetime()? {
                     if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
                         match entrant.status.value {
-                            EntrantStatusValue::Requested => {} // handled in race_data method
+                            EntrantStatusValue::Requested => ctx.accept_request(&member).await?,
                             EntrantStatusValue::Invited |
                             EntrantStatusValue::Declined |
                             EntrantStatusValue::Ready |
@@ -1625,7 +1625,6 @@ impl RaceHandler<GlobalState> for Handler {
                     if let Some(entrant) = ctx.data().await.entrants.iter().find(|entrant| entrant.user.id == *restreamer) {
                         match entrant.status.value {
                             EntrantStatusValue::Requested => {
-                                println!("Handler::new: accepting join request from restreamer {}", entrant.user.full_name);
                                 ctx.accept_request(restreamer).await?;
                                 ctx.add_monitor(restreamer).await?;
                                 ctx.remove_entrant(restreamer).await?;
@@ -1913,7 +1912,6 @@ impl RaceHandler<GlobalState> for Handler {
                 if let Some(entrant) = ctx.data().await.entrants.iter().find(|entrant| entrant.user.id == *monitor) {
                     match entrant.status.value {
                         EntrantStatusValue::Requested => {
-                            println!("!monitor: accepting join request from monitor {}", entrant.user.full_name);
                             ctx.accept_request(monitor).await?;
                             ctx.add_monitor(monitor).await?;
                             ctx.remove_entrant(monitor).await?;
@@ -2327,7 +2325,6 @@ impl RaceHandler<GlobalState> for Handler {
         if let Some(OfficialRaceData { ref entrants, .. }) = self.official_data {
             for entrant in &data.entrants {
                 if entrant.status.value == EntrantStatusValue::Requested && entrants.contains(&entrant.user.id) {
-                    println!("race_data: accepting join request from runner {}", entrant.user.full_name);
                     ctx.accept_request(&entrant.user.id).await?;
                 }
             }
@@ -2583,6 +2580,7 @@ impl RaceHandler<GlobalState> for Handler {
         errors.retain(|error|
             !error.ends_with(" is not allowed to join this race.") // failing to invite a user should not crash the race handler
             && !error.ends_with(" is already an entrant.") // failing to invite a user should not crash the race handler
+            && error != "This user has not requested to join this race. Refresh to continue." // a join request may be accepted multiple times if multiple race data changes happen in quick succession
         );
         if errors.is_empty() {
             Ok(())
