@@ -533,6 +533,7 @@ impl Race {
             races.push(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?);
         }
         match event.series {
+            Series::League => {} //TODO get from League website somehow
             Series::Multiworld => {} // added to database
             Series::NineDaysOfSaws | Series::Pictionary => {
                 let schedule = if let Some(start) = event.start(&mut *transaction).await? {
@@ -1178,7 +1179,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                 cal_event.push(DtStart::new(ics_datetime(start)));
                 cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + match event.series {
                     Series::TriforceBlitz => Duration::hours(2),
-                    Series::NineDaysOfSaws | Series::Standard => Duration::hours(3) + Duration::minutes(30),
+                    Series::League | Series::NineDaysOfSaws | Series::Standard => Duration::hours(3) + Duration::minutes(30),
                     Series::Multiworld | Series::Pictionary => Duration::hours(4),
                     Series::Rsl => Duration::hours(4) + Duration::minutes(30),
                 })))); //TODO better fallback duration estimates depending on participants

@@ -178,6 +178,7 @@ impl Role {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Series {
+    League,
     Multiworld,
     NineDaysOfSaws,
     Pictionary,
@@ -189,6 +190,7 @@ pub(crate) enum Series {
 impl Series {
     pub(crate) fn to_str(&self) -> &'static str {
         match self {
+            Self::League => "league",
             Self::Multiworld => "mw",
             Self::NineDaysOfSaws => "9dos",
             Self::Pictionary => "pic",
@@ -204,6 +206,7 @@ impl FromStr for Series {
 
     fn from_str(s: &str) -> Result<Self, ()> {
         match s {
+            "league" => Ok(Self::League),
             "9dos" => Ok(Self::NineDaysOfSaws),
             "mw" => Ok(Self::Multiworld),
             "pic" => Ok(Self::Pictionary),
@@ -396,59 +399,44 @@ impl<'a> Data<'a> {
     }
 
     pub(crate) fn chests(&self) -> ChestAppearances {
+        macro_rules! from_file {
+            ($path:literal) => {{
+                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!($path)).expect("failed to parse chest weights"));
+
+                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
+            }};
+        }
         //TODO parse weights at compile time
+
         match (self.series, &*self.event) {
+            (Series::League, "4") => from_file!("../../assets/event/league/chests-4-7.1.94.json"),
+            (Series::League, _) => unimplemented!(),
             (Series::Multiworld, "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
             (Series::Multiworld, "3") => mw::S3Settings::random(&mut thread_rng()).chests(),
             (Series::Multiworld, _) => unimplemented!(),
             (Series::NineDaysOfSaws, _) => ChestAppearances::VANILLA, // no CAMC in SAWS
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
-            (Series::Rsl, "1") => {
-                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-1-4c526c2.json")).expect("failed to parse chest weights"));
-
-                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
-            }
-            (Series::Rsl, "2") => {
-                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-2-7028072.json")).expect("failed to parse chest weights"));
-
-                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
-            }
-            (Series::Rsl, "3") => {
-                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-3-a0f568b.json")).expect("failed to parse chest weights"));
-
-                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
-            }
-            (Series::Rsl, "4") => {
-                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-4-da4dae5.json")).expect("failed to parse chest weights"));
-
-                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
-            }
+            (Series::Rsl, "1") => from_file!("../../assets/event/rsl/chests-1-4c526c2.json"),
+            (Series::Rsl, "2") => from_file!("../../assets/event/rsl/chests-2-7028072.json"),
+            (Series::Rsl, "3") => from_file!("../../assets/event/rsl/chests-3-a0f568b.json"),
+            (Series::Rsl, "4") => from_file!("../../assets/event/rsl/chests-4-da4dae5.json"),
             (Series::Rsl, "5") => {
                 // rsl/5 moved from version 20cd31a of the RSL script to version 05bfcd2 after the first two races of the first Swiss round.
                 // For the sake of simplicity, only the new version is used for chests weights right now.
                 //TODO After the event, the version should be randomized based on the total number of races played on each version.
-                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/rsl/chests-5-05bfcd2.json")).expect("failed to parse chest weights"));
-
-                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
+                from_file!("../../assets/event/rsl/chests-5-05bfcd2.json")
             }
             (Series::Rsl, _) => unimplemented!(),
-            (Series::Standard, "6") => {
-                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/s/chests-6-6.9.10.json")).expect("failed to parse chest weights"));
-
-                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
-            }
+            (Series::Standard, "6") => from_file!("../../assets/event/s/chests-6-6.9.10.json"),
             (Series::Standard, _) => unimplemented!(),
-            (Series::TriforceBlitz, "2") => {
-                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/tfb/chests-2-7.1.3-blitz.42.json")).expect("failed to parse chest weights"));
-
-                WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
-            }
+            (Series::TriforceBlitz, "2") => from_file!("../../assets/event/tfb/chests-2-7.1.3-blitz.42.json"),
             (Series::TriforceBlitz, _) => unimplemented!(),
         }
     }
 
     pub(crate) fn is_single_race(&self) -> bool {
         match self.series {
+            Series::League => false,
             Series::Multiworld => false,
             Series::NineDaysOfSaws => true,
             Series::Pictionary => true,
@@ -460,6 +448,7 @@ impl<'a> Data<'a> {
 
     pub(crate) fn team_config(&self) -> TeamConfig {
         match self.series {
+            Series::League => TeamConfig::Solo,
             Series::Multiworld => TeamConfig::Multiworld,
             Series::NineDaysOfSaws => match &*self.event {
                 "1" => TeamConfig::Solo,
@@ -802,6 +791,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, me.as_ref(), Tab::Info, false).await?;
     let content = match data.series {
+        Series::League => league::info(&mut transaction, &data).await?,
         Series::Multiworld => mw::info(&mut transaction, &data).await?,
         Series::NineDaysOfSaws => ndos::info(&mut transaction, &data).await?,
         Series::Pictionary => pic::info(&mut transaction, &data).await?,
@@ -1254,6 +1244,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, discord_ctx: &D
                     p : "You have resigned from this event.";
                 } else {
                     @match data.series {
+                        Series::League => @unimplemented // no signups on Mido's House
                         Series::Multiworld => : mw::status(&mut transaction, discord_ctx, csrf, &data, row.id, &mut ctx).await?;
                         Series::NineDaysOfSaws => @if data.is_ended() {
                             p : "This race has been completed."; //TODO ranking and finish time
