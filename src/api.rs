@@ -42,7 +42,6 @@ use {
         Postgres,
         Transaction,
     },
-    tokio::sync::Mutex,
     wheel::traits::ReqwestResponseExt as _,
     crate::{
         Config,
@@ -62,13 +61,17 @@ use {
         util::{
             Id,
             StatusOrError,
+            sync::{
+                Mutex,
+                lock,
+            },
         },
     },
 };
 
 macro_rules! db {
     ($ctx:expr) => {{
-        &mut *$ctx.data_unchecked::<ArcTransaction>().lock().await
+        &mut *lock!($ctx.data_unchecked::<ArcTransaction>())
     }};
 }
 

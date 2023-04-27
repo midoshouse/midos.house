@@ -1,41 +1,61 @@
 #![allow(unused_qualifications)]
 
-use std::{
-    ops::{
-        Deref,
-        DerefMut,
+use {
+    std::{
+        ops::{
+            Deref,
+            DerefMut,
+        },
+        sync::Arc,
     },
-    sync::Arc,
 };
 #[cfg(not(debug_assertions))] pub(crate) use tokio::sync::OwnedRwLockWriteGuard;
 
 macro_rules! lock {
     ($mutex:expr) => {{
-        #[cfg(debug_assertions)] println!(
-            "[{} {}:{}] acquiring mutex guard",
-            file!(),
-            line!(),
-            column!(),
-        );
-        let guard = $mutex.0.lock().await;
-        #[cfg(debug_assertions)] println!(
-            "[{} {}:{}] mutex guard acquired",
-            file!(),
-            line!(),
-            column!(),
-        );
-        $crate::util::sync::MutexGuard(guard)
+        #[allow(unused_qualifications)] {
+            #[cfg(debug_assertions)] println!(
+                "[{} {}:{}] acquiring mutex guard",
+                file!(),
+                line!(),
+                column!(),
+            );
+            let mut guard_fut = std::pin::pin!($mutex.0.lock());
+            let guard = tokio::select! {
+                guard = &mut guard_fut => guard,
+                () = tokio::time::sleep(std::time::Duration::from_secs(60)) => {
+                    eprintln!(
+                        "[{} {}:{}] warning: acquiring mutex guard taking over a minute",
+                        file!(),
+                        line!(),
+                        column!(),
+                    );
+                    guard_fut.await
+                }
+            };
+            #[cfg(debug_assertions)] println!(
+                "[{} {}:{}] mutex guard acquired",
+                file!(),
+                line!(),
+                column!(),
+            );
+            $crate::util::sync::MutexGuard(guard)
+        }
     }};
 }
 
 pub(crate) use lock;
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Mutex<T: ?Sized>(pub(crate) tokio::sync::Mutex<T>);
 
 impl<T> Mutex<T> {
     pub(crate) fn new(t: T) -> Self {
         Self(tokio::sync::Mutex::new(t))
+    }
+
+    pub(crate) fn into_inner(self) -> T {
+        self.0.into_inner()
     }
 }
 
