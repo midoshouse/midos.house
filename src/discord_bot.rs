@@ -1,5 +1,6 @@
 use {
     std::{
+        borrow::Cow,
         collections::HashMap,
         sync::Arc,
         time::Duration as UDuration,
@@ -90,7 +91,7 @@ impl TypeMapKey for HttpClient {
 enum RacetimeHost {}
 
 impl TypeMapKey for RacetimeHost {
-    type Value = &'static str;
+    type Value = racetime::HostInfo;
 }
 
 enum StartggToken {}
@@ -271,7 +272,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
         .error_notifier(ErrorNotifier::User(FENHL))
         .data::<DbPool>(db_pool)
         .data::<HttpClient>(http_client)
-        .data::<RacetimeHost>(env.racetime_host())
+        .data::<RacetimeHost>(racetime::HostInfo {
+            hostname: Cow::Borrowed(env.racetime_host()),
+            ..racetime::HostInfo::default()
+        })
         .data::<ConfigRaceTime>(if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone())
         .data::<NewRoomLock>(new_room_lock)
         .data::<StartggToken>(if env.is_dev() { config.startgg_dev } else { config.startgg_production })
@@ -1152,13 +1156,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     (
                                                         data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
                                                         data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
-                                                        *data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context"),
+                                                        data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
                                                         data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
                                                     )
                                                 };
                                                 let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
                                                 let new_room_lock = lock!(new_room_lock);
-                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
+                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)
                                                         .content(msg)
@@ -1243,13 +1247,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     (
                                                         data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
                                                         data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
-                                                        *data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context"),
+                                                        data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
                                                         data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
                                                     )
                                                 };
                                                 let cal_event = cal::Event { race, kind };
                                                 let new_room_lock = lock!(new_room_lock);
-                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
+                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)
                                                         .content(msg)
