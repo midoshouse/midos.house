@@ -159,6 +159,7 @@ use {
                 ArcRwLock,
                 Mutex,
                 OwnedRwLockWriteGuard,
+                RwLock,
                 lock,
             },
         },
@@ -468,7 +469,7 @@ pub(crate) struct GlobalState {
     host_info: racetime::HostInfo,
     host: &'static str,
     racetime_config: ConfigRaceTime,
-    extra_room_tx: tokio::sync::RwLock<mpsc::Sender<String>>,
+    extra_room_tx: RwLock<mpsc::Sender<String>>,
     db_pool: PgPool,
     http_client: reqwest::Client,
     startgg_token: String,
@@ -484,7 +485,7 @@ impl GlobalState {
                 hostname: Cow::Borrowed(host),
                 ..racetime::HostInfo::default()
             },
-            extra_room_tx: tokio::sync::RwLock::new(mpsc::channel(1).0),
+            extra_room_tx: RwLock::new(mpsc::channel(1).0),
             ootr_api_client: OotrApiClient::new(http_client.clone(), ootr_api_key),
             new_room_lock, host, racetime_config, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown,
         }
@@ -996,11 +997,11 @@ impl SeedRollUpdate {
                         }
                     },
                 )).await?;
-                *state.write().await = RaceState::Rolled(seed);
+                *lock!(@write state) = RaceState::Rolled(seed);
             }
             Self::Error(RollError::Retries(num_retries)) => {
                 ctx.send_message(&format!("Sorry @entrants, the randomizer reported an error {num_retries} times, so I'm giving up on rolling the seed. Please try again. If this error persists, please report it to Fenhl.")).await?;
-                *state.write().await = RaceState::Init;
+                *lock!(@write state) = RaceState::Init;
             }
             Self::Error(msg) => {
                 eprintln!("seed roll error: {msg:?}");
@@ -1288,7 +1289,7 @@ impl Handler {
 
     async fn send_settings(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         let available_settings = {
-            let state = self.race_state.read().await;
+            let state = lock!(@read self.race_state);
             if let RaceState::Draft { ref state, .. } = *state {
                 state.available_settings()
             } else {
@@ -1311,7 +1312,7 @@ impl Handler {
     }
 
     async fn advance_draft(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
-        let state = self.race_state.clone().write_owned().await;
+        let state = lock!(@write_owned self.race_state.clone());
         if let RaceState::Draft { state: ref draft, spoiler_log } = *state {
             match draft.next_step() {
                 mw::DraftStep::GoFirst => ctx.send_message(&format!("{}, you have the higher seed. Choose whether you want to go !first or !second", self.high_seed_name)).await?,
@@ -1389,7 +1390,7 @@ impl Handler {
             spoiler_log: String,
         }
 
-        let mut state = self.race_state.write().await;
+        let mut state = lock!(@write self.race_state);
         match *state {
             RaceState::Rolled(seed::Data { ref files, .. }) => if self.official_data.as_ref().map_or(true, |official_data| !official_data.cal_event.is_first_async_half()) {
                 match files {
@@ -1429,15 +1430,15 @@ impl RaceHandler<GlobalState> for Handler {
     async fn task(global_state: Arc<GlobalState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
         let race_data = ArcRwLock::from(race_data);
         tokio::spawn(async move {
-            println!("race handler for {} started", race_data.read().await.url);
+            println!("race handler for {} started", lock!(@read race_data).url);
             let res = join_handle.await;
             let mut clean_shutdown = lock!(global_state.clean_shutdown);
-            assert!(clean_shutdown.open_rooms.remove(&race_data.read().await.url));
+            assert!(clean_shutdown.open_rooms.remove(&lock!(@read race_data).url));
             if clean_shutdown.requested && clean_shutdown.open_rooms.is_empty() {
                 clean_shutdown.notifier.notify_waiters();
             }
             let () = res.unwrap();
-            println!("race handler for {} stopped", race_data.read().await.url);
+            println!("race handler for {} stopped", lock!(@read race_data).url);
         });
         Ok(())
     }
@@ -1663,19 +1664,19 @@ impl RaceHandler<GlobalState> for Handler {
                 ctx.send_message(&text).await?;
             }
             if let Some(seed) = existing_seed {
-                let state = this.race_state.clone().write_owned().await;
+                let state = lock!(@write_owned this.race_state.clone());
                 this.queue_existing_seed(ctx, state, seed, false, format!("seed")).await;
             } else {
                 match event.draft_kind() {
                     DraftKind::MultiworldS3 => {
-                        let state = this.race_state.read().await;
+                        let state = lock!(@read this.race_state);
                         if let RaceState::Draft { .. } = *state {
                             drop(state);
                             this.advance_draft(ctx).await?;
                         }
                     }
                     DraftKind::None => {
-                        let state = this.race_state.clone().write_owned().await;
+                        let state = lock!(@write_owned this.race_state.clone());
                         if let RaceState::Init = *state {
                             match goal {
                                 Goal::MultiworldS3 => unreachable!(), // uses DraftKind::MultiworldS3
@@ -1700,7 +1701,7 @@ impl RaceHandler<GlobalState> for Handler {
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match &*cmd_name.to_ascii_lowercase() {
             "ban" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = self.race_state.write().await;
+                let mut state = lock!(@write self.race_state);
                 match *state {
                     RaceState::Init => match goal.draft_kind() {
                         DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
@@ -1777,7 +1778,7 @@ impl RaceHandler<GlobalState> for Handler {
                 },
             },
             "draft" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = self.race_state.write().await;
+                let mut state = lock!(@write self.race_state);
                 match *state {
                     RaceState::Init => match goal.draft_kind() {
                         DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
@@ -1845,7 +1846,7 @@ impl RaceHandler<GlobalState> for Handler {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
             "first" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = self.race_state.write().await;
+                let mut state = lock!(@write self.race_state);
                 match *state {
                     RaceState::Init => match goal.draft_kind() {
                         DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
@@ -2037,7 +2038,7 @@ impl RaceHandler<GlobalState> for Handler {
                 ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
             },
             "second" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = self.race_state.write().await;
+                let mut state = lock!(@write self.race_state);
                 match *state {
                     RaceState::Init => match goal.draft_kind() {
                         DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
@@ -2057,7 +2058,7 @@ impl RaceHandler<GlobalState> for Handler {
             },
             "seed" | "spoilerseed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let spoiler_log = cmd_name.to_ascii_lowercase() == "spoilerseed";
-                let mut state = self.race_state.clone().write_owned().await;
+                let mut state = lock!(@write_owned self.race_state.clone());
                 match *state {
                     RaceState::Init => if self.locked && !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                         ctx.send_message(&format!("Sorry {reply_to}, seed rolling is locked. Only {} may roll a seed for this race.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })).await?;
@@ -2296,7 +2297,7 @@ impl RaceHandler<GlobalState> for Handler {
             },
             "settings" => self.send_settings(ctx).await?,
             "skip" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = self.race_state.write().await;
+                let mut state = lock!(@write self.race_state);
                 match *state {
                     RaceState::Init => match goal.draft_kind() {
                         DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
@@ -2735,7 +2736,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                     if let Goal::Rsl = goal { continue } // we're currently not opening rooms for RSL bracket matches despite having a goal for it
                     let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
                     if let Some((race_slug, msg)) = create_room(&mut transaction, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.http_client, &cal_event, &event).await? {
-                        let _ = global_state.extra_room_tx.read().await.send(race_slug).await;
+                        let _ = lock!(@read global_state.extra_room_tx).send(race_slug).await;
                         if cal_event.is_first_async_half() {
                             if let Some(channel) = event.discord_organizer_channel {
                                 channel.say(&*global_state.discord_ctx.read().await, msg).await.to_racetime()?;
@@ -2768,7 +2769,7 @@ async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRa
     loop {
         match racetime::Bot::new_with_host(global_state.host_info.clone(), CATEGORY, &racetime_config.client_id, &racetime_config.client_secret, global_state.clone()).await {
             Ok(bot) => {
-                *global_state.extra_room_tx.write().await = bot.extra_room_sender();
+                *lock!(@write global_state.extra_room_tx) = bot.extra_room_sender();
                 let () = bot.run_until::<Handler, _, _>(shutdown).await?;
                 break Ok(())
             }

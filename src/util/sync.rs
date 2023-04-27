@@ -8,6 +8,7 @@ use {
         },
         sync::Arc,
     },
+    derivative::Derivative,
 };
 #[cfg(not(debug_assertions))] pub(crate) use tokio::sync::OwnedRwLockWriteGuard;
 
@@ -40,6 +41,96 @@ macro_rules! lock {
                 column!(),
             );
             $crate::util::sync::MutexGuard(guard)
+        }
+    }};
+    (@read $rw_lock:expr) => {{
+        #[allow(unused_qualifications)] {
+            #[cfg(debug_assertions)] println!(
+                "[{} {}:{}] acquiring RwLock read guard",
+                file!(),
+                line!(),
+                column!(),
+            );
+            let mut guard_fut = std::pin::pin!($rw_lock.0.read());
+            let guard = tokio::select! {
+                guard = &mut guard_fut => guard,
+                () = tokio::time::sleep(std::time::Duration::from_secs(60)) => {
+                    eprintln!(
+                        "[{} {}:{}] warning: acquiring RwLock read guard taking over a minute",
+                        file!(),
+                        line!(),
+                        column!(),
+                    );
+                    guard_fut.await
+                }
+            };
+            #[cfg(debug_assertions)] println!(
+                "[{} {}:{}] RwLock read guard acquired",
+                file!(),
+                line!(),
+                column!(),
+            );
+            $crate::util::sync::RwLockReadGuard(guard)
+        }
+    }};
+    (@write $rw_lock:expr) => {{
+        #[allow(unused_qualifications)] {
+            #[cfg(debug_assertions)] println!(
+                "[{} {}:{}] acquiring RwLock write guard",
+                file!(),
+                line!(),
+                column!(),
+            );
+            let mut guard_fut = std::pin::pin!($rw_lock.0.write());
+            let guard = tokio::select! {
+                guard = &mut guard_fut => guard,
+                () = tokio::time::sleep(std::time::Duration::from_secs(60)) => {
+                    eprintln!(
+                        "[{} {}:{}] warning: acquiring RwLock write guard taking over a minute",
+                        file!(),
+                        line!(),
+                        column!(),
+                    );
+                    guard_fut.await
+                }
+            };
+            #[cfg(debug_assertions)] println!(
+                "[{} {}:{}] RwLock write guard acquired",
+                file!(),
+                line!(),
+                column!(),
+            );
+            $crate::util::sync::RwLockWriteGuard(guard)
+        }
+    }};
+    (@write_owned $rw_lock:expr) => {{
+        #[allow(unused_qualifications)] {
+            #[cfg(debug_assertions)] println!(
+                "[{} {}:{}] acquiring owned RwLock write guard",
+                file!(),
+                line!(),
+                column!(),
+            );
+            let mut guard_fut = std::pin::pin!($rw_lock.0.write_owned());
+            let guard = tokio::select! {
+                guard = &mut guard_fut => guard,
+                () = tokio::time::sleep(std::time::Duration::from_secs(60)) => {
+                    eprintln!(
+                        "[{} {}:{}] warning: acquiring owned RwLock write guard taking over a minute",
+                        file!(),
+                        line!(),
+                        column!(),
+                    );
+                    guard_fut.await
+                }
+            };
+            #[cfg(debug_assertions)] println!(
+                "[{} {}:{}] owned RwLock write guard acquired",
+                file!(),
+                line!(),
+                column!(),
+            );
+            $crate::util::sync::OwnedRwLockWriteGuard(guard)
         }
     }};
 }
@@ -77,66 +168,17 @@ impl<T: ?Sized> DerefMut for MutexGuard<'_, T> {
     }
 }
 
-pub(crate) struct ArcRwLock<T: ?Sized>(Arc<tokio::sync::RwLock<T>>);
+pub(crate) struct RwLock<T: ?Sized>(pub(crate) tokio::sync::RwLock<T>);
 
-impl<T> ArcRwLock<T> {
+impl<T> RwLock<T> {
     pub(crate) fn new(t: T) -> Self {
-        Self(Arc::new(tokio::sync::RwLock::new(t)))
+        Self(tokio::sync::RwLock::new(t))
     }
 }
 
-#[cfg(not(debug_assertions))] impl<T: ?Sized> ArcRwLock<T> {
-    pub(crate) async fn write_owned(self) -> OwnedRwLockWriteGuard<T> {
-        self.0.write_owned().await
-    }
-}
+pub(crate) struct RwLockReadGuard<'a, T: ?Sized>(pub(crate) tokio::sync::RwLockReadGuard<'a, T>);
 
-#[cfg(not(debug_assertions))] impl<T: ?Sized> Deref for ArcRwLock<T> {
-    type Target = tokio::sync::RwLock<T>;
-
-    fn deref(&self) -> &tokio::sync::RwLock<T> {
-        &self.0
-    }
-}
-
-#[cfg(debug_assertions)] impl<T: ?Sized> ArcRwLock<T> {
-    pub(crate) async fn read(&self) -> RwLockReadGuard<'_, T> {
-        println!("acquiring RwLock read guard");
-        let guard = self.0.read().await;
-        println!("RwLock read guard acquired");
-        RwLockReadGuard(guard)
-    }
-
-    pub(crate) async fn write(&self) -> RwLockWriteGuard<'_, T> {
-        println!("acquiring RwLock write guard");
-        let guard = self.0.write().await;
-        println!("RwLock write guard acquired");
-        RwLockWriteGuard(guard)
-    }
-
-    pub(crate) async fn write_owned(self) -> OwnedRwLockWriteGuard<T> {
-        println!("acquiring owned RwLock write guard");
-        let guard = self.0.write_owned().await;
-        println!("owned RwLock write guard acquired");
-        OwnedRwLockWriteGuard(guard)
-    }
-}
-
-impl<T> From<Arc<tokio::sync::RwLock<T>>> for ArcRwLock<T> {
-    fn from(value: Arc<tokio::sync::RwLock<T>>) -> Self {
-        Self(value)
-    }
-}
-
-impl<T: ?Sized> Clone for ArcRwLock<T> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
-#[cfg(debug_assertions)] pub(crate) struct RwLockReadGuard<'a, T: ?Sized>(tokio::sync::RwLockReadGuard<'a, T>);
-
-#[cfg(debug_assertions)] impl<T: ?Sized> Deref for RwLockReadGuard<'_, T> {
+impl<T: ?Sized> Deref for RwLockReadGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T { &self.0 }
@@ -148,15 +190,15 @@ impl<T: ?Sized> Clone for ArcRwLock<T> {
     }
 }
 
-#[cfg(debug_assertions)] pub(crate) struct RwLockWriteGuard<'a, T: ?Sized>(tokio::sync::RwLockWriteGuard<'a, T>);
+pub(crate) struct RwLockWriteGuard<'a, T: ?Sized>(pub(crate) tokio::sync::RwLockWriteGuard<'a, T>);
 
-#[cfg(debug_assertions)] impl<T: ?Sized> Deref for RwLockWriteGuard<'_, T> {
+impl<T: ?Sized> Deref for RwLockWriteGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T { &self.0 }
 }
 
-#[cfg(debug_assertions)] impl<T: ?Sized> DerefMut for RwLockWriteGuard<'_, T> {
+impl<T: ?Sized> DerefMut for RwLockWriteGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T { &mut self.0 }
 }
 
@@ -166,15 +208,31 @@ impl<T: ?Sized> Clone for ArcRwLock<T> {
     }
 }
 
-#[cfg(debug_assertions)] pub(crate) struct OwnedRwLockWriteGuard<T: ?Sized>(tokio::sync::OwnedRwLockWriteGuard<T>);
+#[derive(Derivative)]
+#[derivative(Clone(bound = ""))]
+pub(crate) struct ArcRwLock<T: ?Sized>(pub(crate) Arc<tokio::sync::RwLock<T>>);
 
-#[cfg(debug_assertions)] impl<T: ?Sized> Deref for OwnedRwLockWriteGuard<T> {
+impl<T> ArcRwLock<T> {
+    pub(crate) fn new(t: T) -> Self {
+        Self(Arc::new(tokio::sync::RwLock::new(t)))
+    }
+}
+
+impl<T> From<Arc<tokio::sync::RwLock<T>>> for ArcRwLock<T> {
+    fn from(value: Arc<tokio::sync::RwLock<T>>) -> Self {
+        Self(value)
+    }
+}
+
+pub(crate) struct OwnedRwLockWriteGuard<T: ?Sized>(pub(crate) tokio::sync::OwnedRwLockWriteGuard<T>);
+
+impl<T: ?Sized> Deref for OwnedRwLockWriteGuard<T> {
     type Target = T;
 
     fn deref(&self) -> &T { &self.0 }
 }
 
-#[cfg(debug_assertions)] impl<T: ?Sized> DerefMut for OwnedRwLockWriteGuard<T> {
+impl<T: ?Sized> DerefMut for OwnedRwLockWriteGuard<T> {
     fn deref_mut(&mut self) -> &mut T { &mut self.0 }
 }
 
