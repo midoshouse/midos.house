@@ -1621,7 +1621,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             Ok(())
         }))
         .task(|ctx_fut, _| async move {
+            println!("Discord bot waiting for shutdown request");
             shutdown.await;
+            println!("shutting down Discord bot");
             serenity_utils::shut_down(&*ctx_fut.read().await).await;
+            println!("Discord bot shutdown complete");
         })
 }
