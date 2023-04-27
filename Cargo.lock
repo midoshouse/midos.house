@@ -566,7 +566,7 @@ dependencies = [
 [[package]]
 name = "command_attr"
 version = "0.4.1"
-source = "git+https://github.com/serenity-rs/serenity?branch=next#fb72ec20e0a5b7ab5dde3830c95bc5c479143886"
+source = "git+https://github.com/kangalio/serenity?branch=fix-shutdown#6a4d070ac98f58b00450d39bbcff97c9fcc4d1d7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3400,7 +3400,7 @@ dependencies = [
 [[package]]
 name = "serenity"
 version = "0.11.5"
-source = "git+https://github.com/serenity-rs/serenity?branch=next#fb72ec20e0a5b7ab5dde3830c95bc5c479143886"
+source = "git+https://github.com/kangalio/serenity?branch=fix-shutdown#6a4d070ac98f58b00450d39bbcff97c9fcc4d1d7"
 dependencies = [
  "async-trait",
  "base64 0.21.0",
@@ -3433,7 +3433,7 @@ dependencies = [
 [[package]]
 name = "serenity-utils"
 version = "0.10.2"
-source = "git+https://github.com/fenhl/serenity-utils?branch=next#28958a4693d041bcd202e04f5519d0de650d52ca"
+source = "git+https://github.com/fenhl/serenity-utils?branch=fix-shutdown#3595bccad43f0cc65cfe63828a0c9c92722d964b"
 dependencies = [
  "derive_more",
  "futures",
@@ -3449,7 +3449,7 @@ dependencies = [
 [[package]]
 name = "serenity-utils-derive"
 version = "0.10.2"
-source = "git+https://github.com/fenhl/serenity-utils?branch=next#28958a4693d041bcd202e04f5519d0de650d52ca"
+source = "git+https://github.com/fenhl/serenity-utils?branch=fix-shutdown#3595bccad43f0cc65cfe63828a0c9c92722d964b"
 dependencies = [
  "proc-macro2",
  "quote",

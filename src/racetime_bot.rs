@@ -1430,15 +1430,18 @@ impl RaceHandler<GlobalState> for Handler {
     async fn task(global_state: Arc<GlobalState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
         let race_data = ArcRwLock::from(race_data);
         tokio::spawn(async move {
-            println!("race handler for {} started", lock!(@read race_data).url);
+            println!("race handler for https://{}{} started", global_state.host, lock!(@read race_data).url);
             let res = join_handle.await;
             let mut clean_shutdown = lock!(global_state.clean_shutdown);
             assert!(clean_shutdown.open_rooms.remove(&lock!(@read race_data).url));
             if clean_shutdown.requested && clean_shutdown.open_rooms.is_empty() {
                 clean_shutdown.notifier.notify_waiters();
             }
-            let () = res.unwrap();
-            println!("race handler for {} stopped", lock!(@read race_data).url);
+            if let Ok(()) = res {
+                println!("race handler for https://{}{} stopped", global_state.host, lock!(@read race_data).url);
+            } else {
+                println!("race handler for https://{}{} panicked", global_state.host, lock!(@read race_data).url);
+            }
         });
         Ok(())
     }
@@ -1575,7 +1578,8 @@ impl RaceHandler<GlobalState> for Handler {
                     }
                 }
             }
-            if let RaceStatusValue::Pending | RaceStatusValue::InProgress = data.status.value {
+            if let RaceStatusValue::Pending | RaceStatusValue::InProgress = data.status.value { //TODO also check this in official races
+                //TODO get chatlog, only send if !breaks was actually used
                 ctx.send_message("@entrants I just restarted and it looks like the race is already in progress. If the !breaks command was used, break notifications may be broken now. Sorry about that.").await?;
             } else {
                 match race_state {

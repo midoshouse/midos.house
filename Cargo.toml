@@ -103,16 +103,19 @@ version = "2"
 features = ["json"]
 
 [dependencies.serenity]
-#version = "0.11"
-git = "https://github.com/serenity-rs/serenity" # waiting for https://github.com/serenity-rs/serenity/pull/2357 to be published
-branch = "next"
+#version = "0.11" # waiting for https://github.com/serenity-rs/serenity/pull/2357 and https://github.com/serenity-rs/serenity/pull/2400 to be published
+#git = "https://github.com/serenity-rs/serenity" # waiting for https://github.com/serenity-rs/serenity/pull/2400 to be merged
+#branch = "next"
+git = "https://github.com/kangalio/serenity"
+branch = "fix-shutdown"
 default-features = false
 features = ["client", "gateway", "model", "rustls_backend"]
 
 [dependencies.serenity-utils]
 git = "https://github.com/fenhl/serenity-utils"
-#branch = "main"
-branch = "next" # waiting for https://github.com/serenity-rs/serenity/pull/2357 to be published
+#branch = "main" # waiting for https://github.com/serenity-rs/serenity/pull/2357 and https://github.com/serenity-rs/serenity/pull/2400 to be published
+#branch = "next" # waiting for https://github.com/serenity-rs/serenity/pull/2400 to be merged
+branch = "fix-shutdown"
 
 [dependencies.sheets]
 git = "https://github.com/fenhl/cio"
