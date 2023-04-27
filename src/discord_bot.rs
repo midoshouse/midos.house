@@ -65,7 +65,10 @@ use {
             IdTable,
             MessageBuilderExt as _,
             format_duration,
-            sync::Mutex,
+            sync::{
+                Mutex,
+                lock,
+            },
         },
     },
 };
@@ -1154,7 +1157,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     )
                                                 };
                                                 let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
-                                                if let Some((_, msg)) = racetime_bot::create_room(transaction, &new_room_lock, racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
+                                                let new_room_lock = lock!(new_room_lock);
+                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)
                                                         .content(msg)
@@ -1165,6 +1169,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         .content(format!("{} is now scheduled for <t:{}:F>. The race room will be opened momentarily.", if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") }, start.timestamp()))
                                                     )).await?;
                                                 }
+                                                transaction.commit().await?;
+                                                drop(new_room_lock);
                                             } else {
                                                 transaction.commit().await?;
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1242,7 +1248,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     )
                                                 };
                                                 let cal_event = cal::Event { race, kind };
-                                                if let Some((_, msg)) = racetime_bot::create_room(transaction, &new_room_lock, racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
+                                                let new_room_lock = lock!(new_room_lock);
+                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)
                                                         .content(msg)
@@ -1253,6 +1260,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         .content(format!("{} is now scheduled for <t:{}:F>. The race room will be opened momentarily.", if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") }, start.timestamp()))
                                                     )).await?;
                                                 }
+                                                transaction.commit().await?;
+                                                drop(new_room_lock);
                                             } else {
                                                 transaction.commit().await?;
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()

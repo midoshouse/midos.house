@@ -966,7 +966,7 @@ impl Event {
                 kind: EventKind::Normal,
             })
         }
-        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE room IS NULL AND async_start1 IS NOT NULL AND async_start1 > NOW() AND async_start1 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut *transaction).await? {
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE async_room1 IS NULL AND async_start1 IS NOT NULL AND async_start1 > NOW() AND async_start1 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut *transaction).await? {
             let event = Self {
                 race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Async1,
@@ -975,7 +975,7 @@ impl Event {
                 events.push(event);
             }
         }
-        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE room IS NULL AND async_start2 IS NOT NULL AND async_start2 > NOW() AND async_start2 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut *transaction).await? {
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE async_room2 IS NULL AND async_start2 IS NOT NULL AND async_start2 > NOW() AND async_start2 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut *transaction).await? {
             let event = Self {
                 race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Async2,
