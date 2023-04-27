@@ -202,7 +202,7 @@ pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
         Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("spreadsheets") => html! {
             img(class = "favicon", alt = "external link (docs.google.com/spreadsheets)", src = "https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico");
         },
-        Some("ootrandomizer.com") => html! {
+        Some("ootrandomizer.com" | "league.ootrandomizer.com") => html! {
             img(class = "favicon", alt = "external link (ootrandomizer.com)", src = "https://ootrandomizer.com/img/favicon.ico");
         },
         Some("youtube.com" | "www.youtube.com") => html! {
