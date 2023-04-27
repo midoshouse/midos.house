@@ -10,7 +10,6 @@ use {
     },
     derivative::Derivative,
 };
-#[cfg(not(debug_assertions))] pub(crate) use tokio::sync::OwnedRwLockWriteGuard;
 
 macro_rules! lock {
     ($mutex:expr) => {{
