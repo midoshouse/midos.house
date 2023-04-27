@@ -19,7 +19,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "4" => html! {
             article {
                 p {
-                    : "This is OoTR League season 4, organized by ";
+                    : "This is OoTR League season 4, organized by shaun1e, ";
                     : natjoin_html(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://league.ootrandomizer.com/") : "the official website";
