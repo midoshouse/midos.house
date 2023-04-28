@@ -821,7 +821,7 @@ impl<E: Into<TeamsError>> From<E> for StatusOrError<TeamsError> {
 }
 
 #[rocket::get("/event/<series>/<event>/teams")]
-pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<TeamsError>> {
+pub(crate) async fn teams(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<TeamsError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, me.as_ref(), Tab::Teams, false).await?;
@@ -879,7 +879,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                         tr {
                             @if !matches!(data.team_config(), TeamConfig::Solo) {
                                 td {
-                                    : team.to_html(&mut transaction, false).await?;
+                                    : team.to_html(&mut transaction, **env, false).await?;
                                     @if show_qualifier_times && qualified {
                                         br;
                                         small {
@@ -994,7 +994,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 
 #[rocket::get("/event/<series>/<event>/races")]
 pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    async fn race_table(transaction: &mut Transaction<'_, Postgres>, can_create: bool, can_edit: bool, show_restream_consent: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
+    async fn race_table(transaction: &mut Transaction<'_, Postgres>, env: Environment, can_create: bool, can_edit: bool, show_restream_consent: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
         let has_games = races.iter().any(|race| race.game.is_some());
         let has_seeds = races.iter().any(|race| race.seed.is_some());
         let has_buttons = (can_create || can_edit) && races.iter().any(|race| race.id.is_some());
@@ -1058,7 +1058,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 Entrants::Named(ref entrants) => td(colspan = "6") : entrants;
                                 Entrants::Two([ref team1, ref team2]) => {
                                     td(class = "vs1", colspan = "3") {
-                                        : team1.to_html(&mut *transaction, false).await?;
+                                        : team1.to_html(&mut *transaction, env, false).await?;
                                         @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {
                                             br;
                                             small {
@@ -1067,7 +1067,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                         }
                                     }
                                     td(class = "vs2", colspan = "3") {
-                                        : team2.to_html(&mut *transaction, false).await?;
+                                        : team2.to_html(&mut *transaction, env, false).await?;
                                         @if let RaceSchedule::Async { start2: Some(start), .. } = race.schedule {
                                             br;
                                             small {
@@ -1077,9 +1077,9 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                     }
                                 }
                                 Entrants::Three([ref team1, ref team2, ref team3]) => {
-                                    td(colspan = "2") : team1.to_html(&mut *transaction, false).await?;
-                                    td(colspan = "2") : team2.to_html(&mut *transaction, false).await?;
-                                    td(colspan = "2") : team3.to_html(&mut *transaction, false).await?;
+                                    td(colspan = "2") : team1.to_html(&mut *transaction, env, false).await?;
+                                    td(colspan = "2") : team2.to_html(&mut *transaction, env, false).await?;
+                                    td(colspan = "2") : team3.to_html(&mut *transaction, env, false).await?;
                                 }
                             }
                             td {
@@ -1151,13 +1151,13 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
             //TODO split into ongoing and upcoming, show headers for both
-            : race_table(&mut transaction, can_create, can_edit, show_restream_consent, &ongoing_and_upcoming_races).await?;
+            : race_table(&mut transaction, **env, can_create, can_edit, show_restream_consent, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : race_table(&mut transaction, can_create && !any_races_ongoing_or_upcoming, can_edit, false, &past_races).await?;
+            : race_table(&mut transaction, **env, can_create && !any_races_ongoing_or_upcoming, can_edit, false, &past_races).await?;
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 a(class = "button", href = uri!(crate::cal::create_race(series, &event)).to_string()) : "New Race";

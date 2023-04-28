@@ -190,7 +190,7 @@ checksum = "cebcf27112b969c4ff2a003b318ab5efde96055f9d0ee3344a3b3831fa2932ba"
 dependencies = [
  "Inflector",
  "async-graphql-parser",
- "darling",
+ "darling 0.14.4",
  "proc-macro-crate",
  "proc-macro2",
  "quote",
@@ -482,9 +482,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.2.4"
+version = "4.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "956ac1f6381d8d82ab4684768f89c0ea3afe66925ceadb4eeb3fc452ffc55d62"
+checksum = "8a1f23fa97e1d1641371b51f35535cb26959b8e27ab50d167a8b996b5bada819"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -493,9 +493,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.2.4"
+version = "4.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84080e799e54cff944f4b4a4b0e71630b0e0443b25b985175c7dddc1a859b749"
+checksum = "0fdc5d93c358224b4d6867ef1356d740de2303e9892edc06c5340daeccd96bab"
 dependencies = [
  "anstream",
  "anstyle",
@@ -566,7 +566,7 @@ dependencies = [
 [[package]]
 name = "command_attr"
 version = "0.4.1"
-source = "git+https://github.com/kangalio/serenity?branch=fix-shutdown#6a4d070ac98f58b00450d39bbcff97c9fcc4d1d7"
+source = "git+https://github.com/kangalio/serenity?branch=fix-shutdown#51db3d5f8df1a66ba795171a0b2c0e46ffc192c5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -800,8 +800,18 @@ version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b750cb3417fd1b327431a470f388520309479ab0bf5e323505daf0290cd3850"
 dependencies = [
- "darling_core",
- "darling_macro",
+ "darling_core 0.14.4",
+ "darling_macro 0.14.4",
+]
+
+[[package]]
+name = "darling"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7c99d16b88c92aef47e58dadd53e87b4bd234c29934947a6cec8b466300f99b"
+dependencies = [
+ "darling_core 0.20.0",
+ "darling_macro 0.20.0",
 ]
 
 [[package]]
@@ -819,14 +829,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "darling_core"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ea05d2fcb27b53f7a98faddaf5f2914760330ab7703adfc9df13332b42189f9"
+dependencies = [
+ "fnv",
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "strsim",
+ "syn 2.0.15",
+]
+
+[[package]]
 name = "darling_macro"
 version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4aab4dbc9f7611d8b55048a3a16d2d010c2c8334e46304b40ac1cc14bf3b48e"
 dependencies = [
- "darling_core",
+ "darling_core 0.14.4",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7bfb82b62b1b8a2a9808fb4caf844ede819a76cfc23b2827d7f94eefb49551eb"
+dependencies = [
+ "darling_core 0.20.0",
+ "quote",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -1095,12 +1130,12 @@ dependencies = [
 
 [[package]]
 name = "flate2"
-version = "1.0.25"
+version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8a2db397cb1c8772f31494cb8917e48cd1e64f0fa7efac59fbd741a0a8ce841"
+checksum = "3b9429470923de8e8cbd4d2dc513535400b4b3fef0319fb5c4e1f520a7bef743"
 dependencies = [
  "crc32fast",
- "miniz_oxide 0.6.2",
+ "miniz_oxide",
 ]
 
 [[package]]
@@ -1906,9 +1941,9 @@ dependencies = [
 
 [[package]]
 name = "libz-sys"
-version = "1.1.8"
+version = "1.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9702761c3935f8cc2f101793272e202c72b99da8f4224a19ddcf1279a6450bbf"
+checksum = "56ee889ecc9568871456d42f603d6a0ce59ff328d291063a45cbdf0036baf6db"
 dependencies = [
  "cc",
  "libc",
@@ -1933,9 +1968,9 @@ checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.3.4"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36eb31c1778188ae1e64398743890d0877fef36d11521ac60406b42016e8c2cf"
+checksum = "b64f40e5e03e0d54f03845c8197d0291253cdbedfb1cb46b13c2c117554a9f4c"
 
 [[package]]
 name = "lock_api"
@@ -2115,15 +2150,6 @@ name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
-
-[[package]]
-name = "miniz_oxide"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b275950c28b37e794e8c55d88aeb5e139d0ce23fdbbeda68f8d7174abdf9e8fa"
-dependencies = [
- "adler",
-]
 
 [[package]]
 name = "miniz_oxide"
@@ -2626,7 +2652,7 @@ dependencies = [
  "crc32fast",
  "fdeflate",
  "flate2",
- "miniz_oxide 0.7.1",
+ "miniz_oxide",
 ]
 
 [[package]]
@@ -2708,9 +2734,9 @@ dependencies = [
 
 [[package]]
 name = "racetime"
-version = "0.17.3"
+version = "0.17.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da76aa8a50909a73e80f1dcadace20ac7b55927d77230da61f2dfb266dcd8eec"
+checksum = "4abb227740ac090afd5e393330f0452f2c6052703be47bbd7766ca00d3c359b9"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3371,9 +3397,9 @@ dependencies = [
 
 [[package]]
 name = "serde_with"
-version = "2.3.2"
+version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "331bb8c3bf9b92457ab7abecf07078c13f7d270ba490103e84e8b014490cd0b0"
+checksum = "07ff71d2c147a7b57362cead5e22f772cd52f6ab31cfcd9edcd7f6aeb2a0afbe"
 dependencies = [
  "base64 0.13.1",
  "chrono",
@@ -3387,20 +3413,20 @@ dependencies = [
 
 [[package]]
 name = "serde_with_macros"
-version = "2.3.2"
+version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "859011bddcc11f289f07f467cc1fe01c7a941daa4d8f6c40d4d1c92eb6d9319c"
+checksum = "881b6f881b17d13214e5d494c939ebab463d01264ce1811e9d4ac3a882e7695f"
 dependencies = [
- "darling",
+ "darling 0.20.0",
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.15",
 ]
 
 [[package]]
 name = "serenity"
 version = "0.11.5"
-source = "git+https://github.com/kangalio/serenity?branch=fix-shutdown#6a4d070ac98f58b00450d39bbcff97c9fcc4d1d7"
+source = "git+https://github.com/kangalio/serenity?branch=fix-shutdown#51db3d5f8df1a66ba795171a0b2c0e46ffc192c5"
 dependencies = [
  "async-trait",
  "base64 0.21.0",
@@ -3433,7 +3459,7 @@ dependencies = [
 [[package]]
 name = "serenity-utils"
 version = "0.10.2"
-source = "git+https://github.com/fenhl/serenity-utils?branch=fix-shutdown#3595bccad43f0cc65cfe63828a0c9c92722d964b"
+source = "git+https://github.com/fenhl/serenity-utils?branch=fix-shutdown#9c9447393d64a15a86b2eae74550ca6c50ccd252"
 dependencies = [
  "derive_more",
  "futures",
@@ -3449,7 +3475,7 @@ dependencies = [
 [[package]]
 name = "serenity-utils-derive"
 version = "0.10.2"
-source = "git+https://github.com/fenhl/serenity-utils?branch=fix-shutdown#3595bccad43f0cc65cfe63828a0c9c92722d964b"
+source = "git+https://github.com/fenhl/serenity-utils?branch=fix-shutdown#9c9447393d64a15a86b2eae74550ca6c50ccd252"
 dependencies = [
  "proc-macro2",
  "quote",

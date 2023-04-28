@@ -2783,7 +2783,7 @@ async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRa
                 } else {
                     wait_time *= 2; // exponential backoff
                 }
-                eprintln!("failed to connect to racetime.gg: {e} ({e:?})");
+                eprintln!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", format_duration(wait_time, true));
                 //TODO notify if wait_time >= Duration::from_secs(2)
                 sleep(wait_time).await;
                 last_crash = Instant::now();

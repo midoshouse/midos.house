@@ -68,6 +68,7 @@ use {
         all::{
             CreateForumPost,
             CreateMessage,
+            CreateThread,
             Context as DiscordCtx,
             MessageBuilder,
         },
@@ -159,9 +160,9 @@ impl Entrant {
         })
     }
 
-    pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, running_text: bool) -> sqlx::Result<RawHtml<String>> {
+    pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, running_text: bool) -> sqlx::Result<RawHtml<String>> {
         Ok(match self {
-            Self::MidosHouseTeam(team) => team.to_html(transaction, running_text).await?,
+            Self::MidosHouseTeam(team) => team.to_html(transaction, env, running_text).await?,
             Self::Named(name) => name.to_html(),
         })
     }
@@ -1387,53 +1388,60 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
             let scheduling_thread = if let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) {
                 let command_ids = discord_ctx.read().await.data.read().await.get::<discord_bot::CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied());
                 if let Some(command_ids) = command_ids {
+                    let info_prefix = format!("{}{}{}",
+                        value.phase,
+                        if value.phase.is_empty() && value.round.is_empty() { "" } else { " " },
+                        value.round,
+                    );
+                    let title = format!("{}{} vs {}",
+                        if info_prefix.is_empty() { String::default() } else { format!("{info_prefix}: ") },
+                        team1.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                        team2.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    );
+                    let mut content = MessageBuilder::default();
+                    {
+                        content.mention_team(&mut transaction, Some(guild_id), &team1).await?;
+                        content.push(' ');
+                        content.mention_team(&mut transaction, Some(guild_id), &team2).await?;
+                        content.push(' ');
+                    }
+                    content.push("Welcome to your ");
+                    if !value.phase.is_empty() {
+                        content.push_safe(value.phase.clone());
+                        content.push(' ');
+                    }
+                    if !value.round.is_empty() {
+                        content.push_safe(value.round.clone());
+                        content.push(' ');
+                    }
+                    content.push("match. Use ");
+                    content.mention_command(command_ids.schedule, "schedule");
+                    content.push(" to schedule as a live race or ");
+                    content.mention_command(command_ids.schedule_async, "schedule-async");
+                    content.push(" to schedule as an async."); //TODO adjust message if asyncing is not allowed
+                    if value.game_count > 1 {
+                        content.push(" You can use the ");
+                        content.push_mono("game:");
+                        content.push(" parameter with these commands to schedule subsequent games ahead of time.");
+                    }
+                    match event.draft_kind() {
+                        DraftKind::MultiworldS3 => unimplemented!(), //TODO
+                        DraftKind::None => {}
+                    }
+                    let content = content.build(); //TODO remove code duplication with /assign
                     if let Some(ChannelType::Forum) = scheduling_channel.to_channel(&*discord_ctx.read().await).await?.guild().map(|c| c.kind) {
-                        let info_prefix = format!("{}{}{}",
-                            value.phase,
-                            if value.phase.is_empty() && value.round.is_empty() { "" } else { " " },
-                            value.round,
-                        );
-                        let title = format!("{}{} vs {}",
-                            if info_prefix.is_empty() { String::default() } else { format!("{info_prefix}: ") },
-                            team1.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team2.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                        );
-                        let mut content = MessageBuilder::default();
-                        {
-                            content.mention_team(&mut transaction, Some(guild_id), &team1).await?;
-                            content.push(' ');
-                            content.mention_team(&mut transaction, Some(guild_id), &team2).await?;
-                            content.push(' ');
-                        }
-                        content.push("Welcome to your ");
-                        if !value.phase.is_empty() {
-                            content.push_safe(value.phase.clone());
-                            content.push(' ');
-                        }
-                        if !value.round.is_empty() {
-                            content.push_safe(value.round.clone());
-                            content.push(' ');
-                        }
-                        content.push("match. Use ");
-                        content.mention_command(command_ids.schedule, "schedule");
-                        content.push(" to schedule as a live race or ");
-                        content.mention_command(command_ids.schedule_async, "schedule-async");
-                        content.push(" to schedule as an async."); //TODO adjust message if asyncing is not allowed
-                        if value.game_count > 1 {
-                            content.push(" You can use the ");
-                            content.push_mono("game:");
-                            content.push(" parameter with these commands to schedule subsequent games ahead of time.");
-                        }
-                        match event.draft_kind() {
-                            DraftKind::MultiworldS3 => unimplemented!(), //TODO
-                            DraftKind::None => {}
-                        }
                         Some(scheduling_channel.create_forum_post(&*discord_ctx.read().await, CreateForumPost::new(
                             title,
-                            CreateMessage::new().content(content.build()),
+                            CreateMessage::new().content(content),
                         ).auto_archive_duration(10080)).await?.id)
                     } else {
-                        unimplemented!() //TODO create scheduling thread
+                        // must post the thread as a reply to a message since there currently doesn't seem to be a way to create a standalone public thread in serenity
+                        let msg = scheduling_channel.say(&*discord_ctx.read().await, &title).await?;
+                        let thread = scheduling_channel.create_public_thread(&*discord_ctx.read().await, msg, CreateThread::new(
+                            title,
+                        ).auto_archive_duration(10080)).await?;
+                        thread.say(&*discord_ctx.read().await, content).await?;
+                        Some(thread.id)
                     }
                 } else {
                     None //TODO still create scheduling thread, just without posting command info?
@@ -1477,7 +1485,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
     })
 }
 
-pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
+pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
     let id = race.id.expect("race being edited must have an ID");
     let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
@@ -1590,16 +1598,16 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, m
             Entrants::Two([p1, p2]) => {
                 p : "Entrants:";
                 ol {
-                    li : p1.to_html(&mut transaction, false).await?;
-                    li : p2.to_html(&mut transaction, false).await?;
+                    li : p1.to_html(&mut transaction, env, false).await?;
+                    li : p2.to_html(&mut transaction, env, false).await?;
                 }
             }
             Entrants::Three([p1, p2, p3]) => {
                 p : "Entrants:";
                 ol {
-                    li : p1.to_html(&mut transaction, false).await?;
-                    li : p2.to_html(&mut transaction, false).await?;
-                    li : p3.to_html(&mut transaction, false).await?;
+                    li : p1.to_html(&mut transaction, env, false).await?;
+                    li : p2.to_html(&mut transaction, env, false).await?;
+                    li : p3.to_html(&mut transaction, env, false).await?;
                 }
             }
         }
@@ -1691,7 +1699,7 @@ pub(crate) async fn edit_race(env: &State<Environment>, config: &State<Config>, 
     if race.series != event.series || race.event != event.event {
         return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(edit_race(race.series, race.event, id)))))
     }
-    Ok(RedirectOrContent::Content(edit_race_form(transaction, me, uri, csrf.as_ref(), event, race, None).await?))
+    Ok(RedirectOrContent::Content(edit_race_form(transaction, **env, me, uri, csrf.as_ref(), event, race, None).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1962,7 +1970,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
             None
         };
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
+            RedirectOrContent::Content(edit_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
         } else {
             sqlx::query!(
                 "UPDATE races SET room = $1, async_room1 = $2, async_room2 = $3, video_url = $4, restreamer = $5, video_url_fr = $6, restreamer_fr = $7, last_edited_by = $8, last_edited_at = NOW() WHERE id = $9",
@@ -1995,7 +2003,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(edit_race_form(transaction, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
+        RedirectOrContent::Content(edit_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
     })
 }
 

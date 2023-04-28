@@ -259,7 +259,9 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                             : fenhl;
                             : ".";
                         } else {
-                            a(class = "button", href = uri!(crate::auth::merge_accounts).to_string()) : "Merge Accounts";
+                            span { //HACK fix button styling (nth-child)
+                                a(class = "button", href = uri!(crate::auth::merge_accounts).to_string()) : "Merge Accounts";
+                            }
                         }
                     }
                 }
@@ -275,7 +277,9 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                             }
                         }
                         : " which does not belong to a Mido's House account. ";
-                        a(class = "button", href = uri!(crate::auth::register_racetime).to_string()) : "Add this racetime.gg account to your Mido's House account";
+                        span { //HACK fix button styling (nth-child)
+                            a(class = "button", href = uri!(crate::auth::register_racetime).to_string()) : "Add this racetime.gg account to your Mido's House account";
+                        }
                     }
                 }
             }
@@ -323,7 +327,9 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                             : fenhl;
                             : ".";
                         } else {
-                            a(class = "button", href = uri!(crate::auth::merge_accounts).to_string()) : "Merge Accounts";
+                            span { //HACK fix button styling (nth-child)
+                                a(class = "button", href = uri!(crate::auth::merge_accounts).to_string()) : "Merge Accounts";
+                            }
                         }
                     }
                 }
@@ -337,7 +343,9 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                             : discord_user.discriminator;
                         }
                         : " which does not belong to a Mido's House account. ";
-                        a(class = "button", href = uri!(crate::auth::register_discord).to_string()) : "Add this Discord account to your Mido's House account";
+                        span { //HACK fix button styling (nth-child)
+                            a(class = "button", href = uri!(crate::auth::register_discord).to_string()) : "Add this Discord account to your Mido's House account";
+                        }
                     }
                 }
             }

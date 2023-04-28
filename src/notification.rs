@@ -24,6 +24,7 @@ use {
         Transaction,
     },
     crate::{
+        Environment,
         auth,
         event::{
             self,
@@ -92,7 +93,7 @@ impl Notification {
         Ok(notifications)
     }
 
-    async fn into_html(self, transaction: &mut Transaction<'_, Postgres>, me: &User, csrf: &Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
+    async fn into_html(self, transaction: &mut Transaction<'_, Postgres>, env: Environment, me: &User, csrf: &Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
         Ok(match self {
             Self::Simple(id) => {
                 let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, i64::from(id)).fetch_one(&mut *transaction).await? {
@@ -236,7 +237,7 @@ impl Notification {
                             : " as ";
                             : mw::Role::try_from(my_role).expect("non-multiworld role in multiworld team");
                             : " for team ";
-                            a(href = format!("https://racetime.gg/team/{}", team_row.racetime_slug.expect("multiworld team without racetime slug"))) : team_row.name; //TODO use Team type
+                            a(href = format!("https://{}/team/{}", env.racetime_host(), team_row.racetime_slug.expect("multiworld team without racetime slug"))) : team_row.name; //TODO use Team type
                             @if let Some(teammates) = natjoin_html(teammates) {
                                 : " together with ";
                                 : teammates;
@@ -266,12 +267,12 @@ impl Notification {
 }
 
 #[rocket::get("/notifications")]
-pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn notifications(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
     let mut transaction = pool.begin().await?;
     Ok(if let Some(me) = me {
         let mut notifications = Vec::default();
         for notification in Notification::get(&mut transaction, &me).await? {
-            notifications.push(notification.into_html(&mut transaction, &me, &csrf).await?);
+            notifications.push(notification.into_html(&mut transaction, **env, &me, &csrf).await?);
         }
         page(transaction, &Some(me), &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
             h1 : "Notifications";

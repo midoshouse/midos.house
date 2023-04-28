@@ -647,7 +647,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
         .on_interaction_create(|ctx, interaction| Box::pin(async move {
             match interaction {
                 Interaction::Command(interaction) => {
-                    let guild_id = interaction.guild_id.expect("/assign called outside of a guild");
+                    let guild_id = interaction.guild_id.expect("Discord slash command called outside of a guild");
                     if let Some(&command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)) {
                         if interaction.data.id == command_ids.assign {
                             let (http_client, mut transaction, startgg_token) = {
@@ -668,7 +668,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     return Ok(())
                                 }
                                 match event.match_source() {
-                                    MatchSource::Manual => {
+                                    MatchSource::Manual => { //TODO unregister existing, then this becomes unreachable
                                         let game = match interaction.data.options[0].value {
                                             CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
                                             _ => panic!("unexpected slash command option type"),
@@ -755,7 +755,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread
                                             ", i64::from(id), &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id)).execute(&mut transaction).await?,
                                         };
-                                        let guild_id = interaction.guild_id.expect("/ban called outside of a guild");
                                         let mut response_content = MessageBuilder::default();
                                         response_content.push("This thread is now assigned to ");
                                         if let Some(game) = game {
@@ -833,7 +832,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     mw::S3Setting::Spawn => draft.state.spawn = Some(mw::Spawn::default()),
                                                 }
                                                 sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
-                                                let guild_id = interaction.guild_id.expect("/ban called outside of a guild");
                                                 let response_content = MessageBuilder::default()
                                                     .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                     .push(if team.name_is_plural() { " have locked in " } else { " has locked in " })
@@ -973,7 +971,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     mw::S3Setting::Spawn => { let value = all::<mw::Spawn>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.spawn = Some(value); value.to_string() }
                                                 };
                                                 sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
-                                                let guild_id = interaction.guild_id.expect("/draft called outside of a guild");
                                                 let response_content = MessageBuilder::default()
                                                     .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                     .push(if team.name_is_plural() { " have picked " } else { " has picked " })
@@ -1036,7 +1033,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         } else if draft.is_active_team(team.id) {
                                             draft.state.went_first = Some(true);
                                             sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
-                                            let guild_id = interaction.guild_id.expect("/first called outside of a guild");
                                             let response_content = MessageBuilder::default()
                                                 .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                 .push(if team.name_is_plural() { " have" } else { " has" })
@@ -1073,7 +1069,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         } else if interaction.data.id == command_ids.post_status {
                             if let Some((mut transaction, mut race, _)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
                                 if let Some(draft) = race.draft.take() {
-                                    let guild_id = interaction.guild_id.expect("/post-status called outside of a guild");
                                     let response_content = MessageBuilder::default()
                                         //TODO include scheduling status, both for regular races and for asyncs
                                         .push(draft.next_step(&mut transaction, guild_id, &command_ids, race.teams()).await?)
@@ -1092,7 +1087,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 }
                             }
                         } else if Some(interaction.data.id) == command_ids.pronoun_roles {
-                            let guild_id = interaction.guild_id.expect("/pronoun-roles called outside of a guild");
                             guild_id.create_role(ctx, EditRole::new()
                                 .hoist(false)
                                 .mentionable(false)
@@ -1349,7 +1343,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         } else if draft.is_active_team(team.id) {
                                             draft.state.went_first = Some(false);
                                             sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
-                                            let guild_id = interaction.guild_id.expect("/second called outside of a guild");
                                             let response_content = MessageBuilder::default()
                                                 .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                 .push(if team.name_is_plural() { " have" } else { " has" })
@@ -1413,7 +1406,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             };
                                             draft.state.skipped_bans += 1;
                                             sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
-                                            let guild_id = interaction.guild_id.expect("/skip called outside of a guild");
                                             let response_content = MessageBuilder::default()
                                                 .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                 .push(if team.name_is_plural() { " have skipped their " } else { " has skipped their " })
@@ -1451,7 +1443,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         } else if interaction.data.id == command_ids.status {
                             if let Some((mut transaction, race, _)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
                                 if let Some(ref draft) = race.draft {
-                                    let guild_id = interaction.guild_id.expect("/status called outside of a guild");
                                     let response_content = MessageBuilder::default()
                                         //TODO include scheduling status, both for regular races and for asyncs
                                         .push(draft.next_step(&mut transaction, guild_id, &command_ids, race.teams()).await?)
@@ -1470,7 +1461,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 }
                             }
                         } else if Some(interaction.data.id) == command_ids.watch_roles {
-                            let guild_id = interaction.guild_id.expect("/watch-roles called outside of a guild");
                             let watch_party_channel = match interaction.data.options[0].value {
                                 CommandDataOptionValue::Channel(channel) => channel,
                                 _ => panic!("unexpected slash command option type"),

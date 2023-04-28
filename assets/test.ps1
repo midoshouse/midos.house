@@ -17,6 +17,8 @@ ThrowOnNativeFailure
 
 ssh midos.house sudo -u mido killall -9 midos-house-dev
 
+.\assets\reset-dev-env.ps1
+
 scp .\target\wsl\debug\midos-house midos.house:bin/midos-house-dev
 ThrowOnNativeFailure
 
