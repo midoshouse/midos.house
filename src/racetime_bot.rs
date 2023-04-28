@@ -467,7 +467,7 @@ pub(crate) struct GlobalState {
     /// Locked while event rooms are being created. Wait with handling new rooms while it's held.
     new_room_lock: Arc<Mutex<()>>,
     host_info: racetime::HostInfo,
-    host: &'static str,
+    pub(crate) host: &'static str,
     racetime_config: ConfigRaceTime,
     extra_room_tx: RwLock<mpsc::Sender<String>>,
     db_pool: PgPool,
