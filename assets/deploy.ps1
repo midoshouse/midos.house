@@ -22,7 +22,6 @@ scp .\target\wsl\release\midos-house midos.house:bin/midos-house-next
 ThrowOnNativeFailure
 
 ssh midos.house 'if systemctl is-active midos-house; then sudo -u mido bin/midos-house prepare-stop; fi'
-ThrowOnNativeFailure
 
 ssh midos.house sudo systemctl stop midos-house
 ThrowOnNativeFailure
