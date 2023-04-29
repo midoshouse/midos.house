@@ -100,6 +100,10 @@ pub(crate) enum Files {
     TriforceBlitz {
         uuid: Uuid,
     },
+    TfbSotd {
+        date: NaiveDate,
+        ordinal: u64,
+    },
 }
 
 impl Data {
@@ -115,6 +119,7 @@ impl Data {
                 Files::MidosHouse { .. } => true,
                 Files::OotrWeb { gen_time, .. } => gen_time <= now - chrono::Duration::days(90),
                 Files::TriforceBlitz { .. } => false,
+                Files::TfbSotd { .. } => false,
             };
             if let Some((spoiler_path, spoiler_file_name)) = match self.files {
                 Files::MidosHouse { locked_spoiler_log_path: Some(ref spoiler_path), .. } => Some((PathBuf::from(spoiler_path), None)),
@@ -240,6 +245,9 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
             }
             Files::TriforceBlitz { uuid } => td(colspan? = spoiler_logs.then_some("2")) {
                 a(href = format!("https://www.triforceblitz.com/seed/{uuid}")) : "View";
+            }
+            Files::TfbSotd { ordinal, .. } => td(colspan? = spoiler_logs.then_some("2")) {
+                a(href = format!("https://www.triforceblitz.com/seed/daily/{ordinal}")) : "View";
             }
         }
     })

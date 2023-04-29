@@ -807,6 +807,7 @@ impl Race {
             Some(seed::Files::MidosHouse { file_stem, locked_spoiler_log_path }) => (None, None, Some(file_stem), locked_spoiler_log_path.as_ref(), None),
             Some(seed::Files::OotrWeb { id, gen_time, file_stem }) => (Some(*id), Some(*gen_time), Some(file_stem), None, None),
             Some(seed::Files::TriforceBlitz { uuid }) => (None, None, None, None, Some(uuid)),
+            Some(seed::Files::TfbSotd { .. }) => unimplemented!("Triforce Blitz seed of the day not supported for official races"),
             None => (None, None, None, None, None),
         };
         sqlx::query!("INSERT INTO races (

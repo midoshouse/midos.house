@@ -442,7 +442,10 @@ impl Goal {
                     rsl::Preset::S6Test => "test settings for RSL season 6",
                 })).await?;
             },
-            Self::TriforceBlitz => ctx.send_message("!seed: official Triforce Blitz settings").await?, //TODO option to link the daily seed
+            Self::TriforceBlitz => {
+                ctx.send_message("!seed: official Triforce Blitz settings").await?;
+                ctx.send_message("!seed daily: Triforce Blitz Seed of the Day").await?;
+            }
         }
         Ok(())
     }
@@ -895,7 +898,7 @@ pub(crate) enum SeedRollUpdate {
 }
 
 impl SeedRollUpdate {
-    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &ArcRwLock<RaceState>, race_id: Option<Id>, an: bool, description: &str) -> Result<(), Error> {
+    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &ArcRwLock<RaceState>, race_id: Option<Id>, article: &'static str, description: &str) -> Result<(), Error> {
         match self {
             Self::Queued(0) => ctx.send_message("I'm already rolling other multiworld seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
             Self::Queued(1) => ctx.send_message("I'm already rolling other multiworld seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
@@ -904,7 +907,7 @@ impl SeedRollUpdate {
             Self::MovedForward(1) => ctx.send_message("The queue has moved and there is only 1 more seed in front of yours.").await?,
             Self::MovedForward(pos) => ctx.send_message(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
             Self::WaitRateLimit(duration) => ctx.send_message(&format!("Your seed will be rolled in {}.", format_duration(duration, true))).await?,
-            Self::Started => ctx.send_message(&format!("Rolling {} {description}…", if an { "an" } else { "a" })).await?,
+            Self::Started => ctx.send_message(&format!("Rolling {article} {description}…")).await?,
             Self::Done { mut seed, rsl_preset, send_spoiler_log } => {
                 if let seed::Files::MidosHouse { ref file_stem, ref mut locked_spoiler_log_path } = seed.files {
                     if send_spoiler_log && locked_spoiler_log_path.is_some() {
@@ -933,6 +936,7 @@ impl SeedRollUpdate {
                                 uuid, race_id as _,
                             ).execute(db_pool).await.to_racetime()?;
                         }
+                        seed::Files::TfbSotd { .. } => unimplemented!("Triforce Blitz seed of the day not supported for official races"),
                     }
                     if let Some([hash1, hash2, hash3, hash4, hash5]) = extra.file_hash {
                         sqlx::query!(
@@ -953,7 +957,7 @@ impl SeedRollUpdate {
                                         format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), &file_stem, preset as _, id as i64, gen_time, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
                                     ).execute(db_pool).await.to_racetime()?;
                                 }
-                                seed::Files::TriforceBlitz { .. } => unreachable!(), // no such thing as random settings Triforce Blitz
+                                seed::Files::TriforceBlitz { .. } | seed::Files::TfbSotd { .. } => unreachable!(), // no such thing as random settings Triforce Blitz
                             }
                         }
                     }
@@ -968,6 +972,7 @@ impl SeedRollUpdate {
                     }),
                     seed::Files::OotrWeb { id, .. } => format!("https://ootrandomizer.com/seed/get?id={id}"),
                     seed::Files::TriforceBlitz { uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
+                    seed::Files::TfbSotd { ordinal, .. } => format!("https://www.triforceblitz.com/seed/daily/{ordinal}"),
                 };
                 ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
                 if let seed::Files::MidosHouse { ref file_stem, .. } = seed.files {
@@ -979,6 +984,14 @@ impl SeedRollUpdate {
                 } else {
                     if send_spoiler_log {
                         ctx.send_message("The spoiler log is also available on the seed page.").await?;
+                    } else if let seed::Files::TfbSotd { date, .. } = seed.files {
+                        if let Some(unlock_date) = date.succ_opt().and_then(|next| next.succ_opt()) {
+                            let unlock_time = Utc.from_utc_datetime(&unlock_date.and_hms_opt(20, 0, 0).expect("failed to construct naive datetime at 20:00:00"));
+                            let unlock_time = (unlock_time - Utc::now()).to_std().expect("unlock time for current daily seed in the past");
+                            ctx.send_message(&format!("The spoiler log will be available on the seed page {}.", format_duration(unlock_time, true))).await?;
+                        } else {
+                            unimplemented!("distant future Triforce Blitz SotD")
+                        }
                     } else {
                         ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
                     }
@@ -1324,7 +1337,7 @@ impl Handler {
                     3 => format!("{}, pick the final setting. You can also use “!skip” if you want to leave the settings as they are.", team.choose(&self.high_seed_name, &self.low_seed_name)),
                     _ => unreachable!(),
                 }).await?,
-                mw::DraftStep::Done(settings) => self.roll_seed(ctx, state, self.goal(ctx).await.rando_version(), settings.resolve(), spoiler_log, false, format!("seed with {settings}")),
+                mw::DraftStep::Done(settings) => self.roll_seed(ctx, state, self.goal(ctx).await.rando_version(), settings.resolve(), spoiler_log, "a", format!("seed with {settings}")),
             }
         } else {
             unreachable!()
@@ -1332,7 +1345,7 @@ impl Handler {
         Ok(())
     }
 
-    fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, mut state: OwnedRwLockWriteGuard<RaceState>, mut updates: mpsc::Receiver<SeedRollUpdate>, an: bool, description: String) {
+    fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, mut state: OwnedRwLockWriteGuard<RaceState>, mut updates: mpsc::Receiver<SeedRollUpdate>, article: &'static str, description: String) {
         *state = RaceState::Rolling;
         drop(state);
         let db_pool = ctx.global_state.db_pool.clone();
@@ -1343,13 +1356,15 @@ impl Handler {
         tokio::spawn(async move {
             let mut seed_state = None::<SeedRollUpdate>;
             if let Some(delay) = official_start.and_then(|start| (start - chrono::Duration::minutes(15) - Utc::now()).to_std().ok()) {
-                ctx.send_message(&format!("Your {description} will be posted in {}.", format_duration(delay, true))).await?;
+                // don't want to give an unnecessarily exact estimate if the room was opened automatically 30 minutes ahead of start
+                let display_delay = if delay > Duration::from_secs(14 * 60) && delay < Duration::from_secs(16 * 60) { Duration::from_secs(15 * 60) } else { delay };
+                ctx.send_message(&format!("Your {description} will be posted in {}.", format_duration(display_delay, true))).await?;
                 let mut sleep = pin!(sleep_until(Instant::now() + delay).fuse());
                 loop {
                     select! {
                         () = &mut sleep => {
                             if let Some(update) = seed_state.take() {
-                                update.handle(&db_pool, &ctx, &state, id, an, &description).await?;
+                                update.handle(&db_pool, &ctx, &state, id, article, &description).await?;
                             }
                         }
                         Some(update) = updates.recv() => seed_state = Some(update),
@@ -1357,29 +1372,29 @@ impl Handler {
                 }
             } else {
                 while let Some(update) = updates.recv().await {
-                    update.handle(&db_pool, &ctx, &state, id, an, &description).await?;
+                    update.handle(&db_pool, &ctx, &state, id, article, &description).await?;
                 }
                 return Ok::<_, Error>(())
             }
         });
     }
 
-    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: rando::Version, settings: serde_json::Map<String, Json>, spoiler_log: bool, an: bool, description: String) {
-        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_seed(version, settings, spoiler_log), an, description);
+    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: rando::Version, settings: serde_json::Map<String, Json>, spoiler_log: bool, article: &'static str, description: String) {
+        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_seed(version, settings, spoiler_log), article, description);
     }
 
-    fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool, an: bool, description: String) {
-        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count, spoiler_log), an, description);
+    fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool, article: &'static str, description: String) {
+        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count, spoiler_log), article, description);
     }
 
-    async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, spoiler_log: bool, an: bool, description: String) {
-        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_tfb_seed(format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), spoiler_log), an, description);
+    async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, spoiler_log: bool, article: &'static str, description: String) {
+        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_tfb_seed(format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), spoiler_log), article, description);
     }
 
-    async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, seed: seed::Data, an: bool, description: String) {
+    async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, seed: seed::Data, article: &'static str, description: String) {
         let (tx, rx) = mpsc::channel(1);
         tx.send(SeedRollUpdate::Done { rsl_preset: None, send_spoiler_log: false, seed }).await.unwrap();
-        self.roll_seed_inner(ctx, state, rx, an, description);
+        self.roll_seed_inner(ctx, state, rx, article, description);
     }
 
     /// Returns `false` if this race was already finished/cancelled.
@@ -1406,7 +1421,7 @@ impl Handler {
                             .spoiler_log;
                         fs::write(Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json")), &spoiler_log).await.to_racetime()?;
                     }
-                    seed::Files::TriforceBlitz { .. } => {} // automatically unlocked by triforceblitz.com
+                    seed::Files::TriforceBlitz { .. } | seed::Files::TfbSotd { .. } => {} // automatically unlocked by triforceblitz.com
                 }
             },
             RaceState::SpoilerSent => return Ok(false),
@@ -1507,8 +1522,8 @@ impl RaceHandler<GlobalState> for Handler {
                                 team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
                             ]
                         },
-                        Entrants::Two([_, _]) => unimplemented!("official race with non-MH teams"), //TODO
-                        Entrants::Three([_, _, _]) => unimplemented!("official race with 3 teams"), //TODO
+                        Entrants::Two([_, _]) => unimplemented!("MW S3 draft style with non-MH teams"), //TODO
+                        Entrants::Three([_, _, _]) => unimplemented!("MW S3 draft style with 3 teams"),
                     };
                     (RaceState::Draft {
                         state: cal_event.race.draft.as_ref().map(|draft| draft.state.clone()).unwrap_or_default(),
@@ -1602,7 +1617,7 @@ impl RaceHandler<GlobalState> for Handler {
                         }
                         Goal::TriforceBlitz => {
                             ctx.send_message("Welcome to Triforce Blitz!").await?;
-                            ctx.send_message("Create a seed with !seed").await?; //TODO option to link the daily seed
+                            ctx.send_message("Create a seed with “!seed” or link the seed of the day with “!seed daily”").await?;
                         }
                     },
                     RaceState::Rolled(_) => ctx.send_message("@entrants I just restarted. You may have to reconfigure !breaks and !fpa. Sorry about that.").await?,
@@ -1669,7 +1684,7 @@ impl RaceHandler<GlobalState> for Handler {
             }
             if let Some(seed) = existing_seed {
                 let state = lock!(@write_owned this.race_state.clone());
-                this.queue_existing_seed(ctx, state, seed, false, format!("seed")).await;
+                this.queue_existing_seed(ctx, state, seed, "a", format!("seed")).await;
             } else {
                 match event.draft_kind() {
                     DraftKind::MultiworldS3 => {
@@ -1688,9 +1703,9 @@ impl RaceHandler<GlobalState> for Handler {
                                 Goal::PicRs2 => this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
                                     version: Some((Version::new(2, 3, 8), 10)),
                                     preset: RslDevFenhlPreset::Pictionary,
-                                }, 1, true, false, format!("random settings Pictionary seed")),
+                                }, 1, true, "a", format!("random settings Pictionary seed")),
                                 Goal::Rsl => unreachable!(), // no official race rooms
-                                Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, false, false, format!("Triforce Blitz seed")).await,
+                                Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, false, "a", format!("Triforce Blitz seed")).await,
                             }
                         }
                     }
@@ -1746,7 +1761,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     self.send_settings(ctx).await?;
                                 }
                             }
-                            [_, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!ban <setting>”")).await?,
+                            [..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!ban <setting>”")).await?,
                         }
                     },
                     RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
@@ -1841,7 +1856,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     self.send_settings(ctx).await?;
                                 }
                             }
-                            [_, _, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!draft <setting> <value>”")).await?,
+                            [..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!draft <setting> <value>”")).await?,
                         }
                     },
                     RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
@@ -1911,7 +1926,7 @@ impl RaceHandler<GlobalState> for Handler {
                     },
                     _ => ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that subcommand. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
                 },
-                [_, _, ..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
+                [..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
             },
             "lock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 self.locked = true;
@@ -2073,10 +2088,10 @@ impl RaceHandler<GlobalState> for Handler {
                                     ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
                                 }
-                                [ref arg] if arg == "base" => self.roll_seed(ctx, state, goal.rando_version(), mw::S3Settings::default().resolve(), spoiler_log, false, format!("seed with {}", mw::S3Settings::default())),
+                                [ref arg] if arg == "base" => self.roll_seed(ctx, state, goal.rando_version(), mw::S3Settings::default().resolve(), spoiler_log, "a", format!("seed with {}", mw::S3Settings::default())),
                                 [ref arg] if arg == "random" => {
                                     let settings = mw::S3Settings::random(&mut thread_rng());
-                                    self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), spoiler_log, false, format!("seed with {settings}"));
+                                    self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), spoiler_log, "a", format!("seed with {settings}"));
                                 }
                                 [ref arg] if arg == "draft" => {
                                     *state = RaceState::Draft { state: mw::S3Draft::default(), spoiler_log };
@@ -2120,7 +2135,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         ctx.send_message(&format!("Sorry {reply_to}, you need to pair each setting with a value.")).await?;
                                         self.send_settings(ctx).await?;
                                     } else {
-                                        self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), spoiler_log, false, format!("seed with {settings}"));
+                                        self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), spoiler_log, "a", format!("seed with {settings}"));
                                     }
                                 }
                             },
@@ -2217,12 +2232,12 @@ impl RaceHandler<GlobalState> for Handler {
                                     _ => None,
                                 } {
                                     settings.insert(format!("user_message"), json!(format!("9 Days of SAWS: day {}", &arg[3..])));
-                                    self.roll_seed(ctx, state, goal.rando_version(), settings, spoiler_log, false, format!("{description} seed"));
+                                    self.roll_seed(ctx, state, goal.rando_version(), settings, spoiler_log, "a", format!("{description} seed"));
                                 } else {
                                     ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
                                 },
-                                [_, _, ..] => {
+                                [..] => {
                                     ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
                                 }
@@ -2230,7 +2245,7 @@ impl RaceHandler<GlobalState> for Handler {
                             Goal::PicRs2 => self.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
                                 version: Some((Version::new(2, 3, 8), 10)),
                                 preset: RslDevFenhlPreset::Pictionary,
-                            }, 1, true, false, format!("random settings Pictionary seed")),
+                            }, 1, true, "a", format!("random settings Pictionary seed")),
                             Goal::Rsl => {
                                 let (preset, world_count) = match args[..] {
                                     [] => (rsl::Preset::League, 1),
@@ -2272,24 +2287,60 @@ impl RaceHandler<GlobalState> for Handler {
                                         goal.send_presets(ctx).await?;
                                         return Ok(())
                                     },
-                                    [_, _, _, ..] => {
+                                    [..] => {
                                         ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
                                         goal.send_presets(ctx).await?;
                                         return Ok(())
                                     }
                                 };
-                                let (an, description) = match preset {
-                                    rsl::Preset::League => (false, format!("Random Settings League seed")),
-                                    rsl::Preset::Beginner => (false, format!("random settings Beginner seed")),
-                                    rsl::Preset::Intermediate => (false, format!("random settings Intermediate seed")),
-                                    rsl::Preset::Ddr => (false, format!("random settings DDR seed")),
-                                    rsl::Preset::CoOp => (false, format!("random settings co-op seed")),
-                                    rsl::Preset::Multiworld => (false, format!("random settings multiworld seed for {world_count} players")),
-                                    rsl::Preset::S6Test => (true, format!("RSL season 6 test seed")),
+                                let (article, description) = match preset {
+                                    rsl::Preset::League => ("a", format!("Random Settings League seed")),
+                                    rsl::Preset::Beginner => ("a", format!("random settings Beginner seed")),
+                                    rsl::Preset::Intermediate => ("a", format!("random settings Intermediate seed")),
+                                    rsl::Preset::Ddr => ("a", format!("random settings DDR seed")),
+                                    rsl::Preset::CoOp => ("a", format!("random settings co-op seed")),
+                                    rsl::Preset::Multiworld => ("a", format!("random settings multiworld seed for {world_count} players")),
+                                    rsl::Preset::S6Test => ("an", format!("RSL season 6 test seed")),
                                 };
-                                self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, spoiler_log, an, description);
+                                self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, spoiler_log, article, description);
                             }
-                            Goal::TriforceBlitz => self.roll_tfb_seed(ctx, state, spoiler_log, false, format!("Triforce Blitz seed")).await, //TODO option to link the daily seed
+                            Goal::TriforceBlitz => match args[..] {
+                                [] => self.roll_tfb_seed(ctx, state, spoiler_log, "a", format!("Triforce Blitz seed")).await,
+                                [ref arg] if arg == "daily" => {
+                                    let (date, ordinal, file_hash) = {
+                                        let response = ctx.global_state.http_client
+                                            .get("https://www.triforceblitz.com/seed/daily/all")
+                                            .send().await?
+                                            .detailed_error_for_status().await.to_racetime()?;
+                                        let response_body = response.text().await?;
+                                        let latest = kuchiki::parse_html().one(response_body)
+                                            .select_first("main > section > div > div").map_err(|()| RollError::TfbHtml).to_racetime()?;
+                                        let latest = latest.as_node();
+                                        let a = latest.select_first("a").map_err(|()| RollError::TfbHtml).to_racetime()?;
+                                        let a_attrs = a.attributes.borrow();
+                                        let href = a_attrs.get("href").ok_or(RollError::TfbHtml).to_racetime()?;
+                                        let (_, ordinal) = regex_captures!("^/seed/daily/([0-9]+)$", href).ok_or(RollError::TfbHtml).to_racetime()?;
+                                        let ordinal = ordinal.parse().to_racetime()?;
+                                        let date = NaiveDate::parse_from_str(&a.text_contents(), "%-d %B %Y").to_racetime()?;
+                                        let file_hash = latest.select_first(".hash-icons").map_err(|()| RollError::TfbHtml).to_racetime()?
+                                            .as_node()
+                                            .children()
+                                            .filter_map(NodeRef::into_element_ref)
+                                            .filter_map(|elt| elt.attributes.borrow().get("title").and_then(|title| title.parse().ok()))
+                                            .collect_vec()
+                                            .try_into().map_err(|_| RollError::TfbHtml).to_racetime()?;
+                                        (date, ordinal, file_hash)
+                                    };
+                                    self.queue_existing_seed(ctx, state, seed::Data {
+                                        file_hash: Some(file_hash),
+                                        files: seed::Files::TfbSotd { date, ordinal },
+                                    }, "the", format!("Triforce Blitz seed of the day")).await;
+                                }
+                                [..] => {
+                                    ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
+                                    goal.send_presets(ctx).await?;
+                                }
+                            },
                         }
                     },
                     RaceState::Draft { .. } => ctx.send_message(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
