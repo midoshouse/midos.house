@@ -56,7 +56,6 @@ use {
             self,
             MatchSource,
             Series,
-            TeamConfig,
         },
         racetime_bot,
         series::mw,
@@ -1235,7 +1234,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 }
                                                 _ => panic!("tried to schedule race with not two MH teams as async"),
                                             };
-                                            if !matches!(event.team_config(), TeamConfig::Solo | TeamConfig::Pictionary) && start - Utc::now() < Duration::minutes(30) {
+                                            if event.team_config().is_racetime_team_format() && start - Utc::now() < Duration::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config) = {
                                                     let data = ctx.data.read().await;
                                                     (
@@ -1252,6 +1251,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         .ephemeral(false)
                                                         .content(msg)
                                                     )).await?;
+                                                    //TODO also post in race rooms channel, if any
                                                 } else {
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)

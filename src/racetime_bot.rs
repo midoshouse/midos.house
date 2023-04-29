@@ -1467,29 +1467,41 @@ impl RaceHandler<GlobalState> for Handler {
         let new_room_lock = lock!(ctx.global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
         let (existing_seed, official_data, race_state, high_seed_name, low_seed_name, fpa_enabled) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
+            let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
             let mut entrants = Vec::default();
             for team in cal_event.active_teams() {
-                let mut members = sqlx::query_scalar!(r#"SELECT racetime_id AS "racetime_id!: String" FROM users, team_members WHERE id = member AND team = $1 AND racetime_id IS NOT NULL"#, i64::from(team.id)).fetch(&mut transaction); //TODO don't invite pilots in TeamConfig::Pictionary
-                while let Some(member) = members.try_next().await.to_racetime()? {
-                    if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
-                        match entrant.status.value {
-                            EntrantStatusValue::Requested => ctx.accept_request(&member).await?,
-                            EntrantStatusValue::Invited |
-                            EntrantStatusValue::Declined |
-                            EntrantStatusValue::Ready |
-                            EntrantStatusValue::NotReady |
-                            EntrantStatusValue::InProgress |
-                            EntrantStatusValue::Done |
-                            EntrantStatusValue::Dnf |
-                            EntrantStatusValue::Dq => {}
+                for (member, role) in team.members_roles(&mut transaction).await.to_racetime()? {
+                    if event.team_config().role_is_racing(role) {
+                        if let Some(member) = member.racetime_id {
+                            if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
+                                match entrant.status.value {
+                                    EntrantStatusValue::Requested => ctx.accept_request(&member).await?,
+                                    EntrantStatusValue::Invited |
+                                    EntrantStatusValue::Declined |
+                                    EntrantStatusValue::Ready |
+                                    EntrantStatusValue::NotReady |
+                                    EntrantStatusValue::InProgress |
+                                    EntrantStatusValue::Done |
+                                    EntrantStatusValue::Dnf |
+                                    EntrantStatusValue::Dq => {}
+                                }
+                            } else {
+                                ctx.invite_user(&member).await?;
+                            }
+                            entrants.push(member);
+                        } else {
+                            ctx.send_message(&format!(
+                                "Warning: {name} could not be invited because {subj} {has_not} linked {poss} racetime.gg account to {poss} Mido's House account. Please contact an organizer to invite {obj} manually for now.",
+                                name = member,
+                                subj = member.subjective_pronoun(),
+                                has_not = if member.subjective_pronoun_uses_plural_form() { "haven't" } else { "hasn't" },
+                                poss = member.possessive_determiner(),
+                                obj = member.objective_pronoun(),
+                            )).await?;
                         }
-                    } else {
-                        ctx.invite_user(&member).await?;
                     }
-                    entrants.push(member);
                 }
             }
-            let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
             ctx.send_message(&format!(
                 "Welcome to {}! Learn more about the event at https://midos.house/event/{}/{}",
                 if event.is_single_race() {
@@ -1978,7 +1990,7 @@ impl RaceHandler<GlobalState> for Handler {
                     racetime::StartRace {
                         goal: goal.as_str().to_owned(),
                         goal_is_custom: goal.is_custom(),
-                        team_race: !matches!(event.team_config(), TeamConfig::Solo | TeamConfig::Pictionary),
+                        team_race: event.team_config().is_racetime_team_format(),
                         invitational: !matches!(cal_event.race.entrants, Entrants::Open),
                         unlisted: cal_event.is_first_async_half(),
                         info_user: ctx.data().await.info_user.clone().unwrap_or_default(),
@@ -2019,7 +2031,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         racetime::StartRace {
                                             goal: goal.as_str().to_owned(),
                                             goal_is_custom: goal.is_custom(),
-                                            team_race: !matches!(event.team_config(), TeamConfig::Solo | TeamConfig::Pictionary),
+                                            team_race: event.team_config().is_racetime_team_format(),
                                             invitational: !matches!(cal_event.race.entrants, Entrants::Open),
                                             unlisted: cal_event.is_first_async_half(),
                                             info_user: ctx.data().await.info_user.clone().unwrap_or_default(),
@@ -2701,7 +2713,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, hos
             let race_slug = racetime::StartRace {
                 goal: goal.as_str().to_owned(),
                 goal_is_custom: goal.is_custom(),
-                team_race: !matches!(event.team_config(), TeamConfig::Solo | TeamConfig::Pictionary),
+                team_race: event.team_config().is_racetime_team_format(),
                 invitational: !matches!(cal_event.race.entrants, Entrants::Open),
                 unlisted: cal_event.is_first_async_half(),
                 info_bot: String::default(),
@@ -2782,7 +2794,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
     loop {
         select! {
             () = &mut shutdown => break,
-            _ = sleep(Duration::from_secs(60)) => {
+            _ = sleep(Duration::from_secs(60)) => { //TODO exact timing (coordinate with everything that can change the schedule)
                 let new_room_lock = lock!(global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
                 let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
                 let rooms_to_open = cal::Event::rooms_to_open(&mut transaction, &global_state.http_client, &global_state.startgg_token).await.to_racetime()?;

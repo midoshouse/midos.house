@@ -309,6 +309,15 @@ impl TeamConfig {
             ],
         }
     }
+
+    /// Whether team members with the given role should be invited to race rooms.
+    pub(crate) fn role_is_racing(&self, role: Role) -> bool {
+        !matches!(self, Self::Pictionary) || matches!(role, Role::Sheikah)
+    }
+
+    pub(crate) fn is_racetime_team_format(&self) -> bool {
+        self.roles().iter().filter(|&&(role, _)| self.role_is_racing(role)).count() > 1
+    }
 }
 
 #[derive(Clone)]

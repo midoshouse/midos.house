@@ -170,7 +170,7 @@ impl User {
         }
     }
 
-    fn subjective_pronoun(&self) -> &'static str {
+    pub(crate) fn subjective_pronoun(&self) -> &'static str {
         match self.racetime_pronouns {
             Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => "he",
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "she",
@@ -178,11 +178,19 @@ impl User {
         }
     }
 
-    fn subjective_pronoun_uses_plural_form(&self) -> bool {
+    pub(crate) fn subjective_pronoun_uses_plural_form(&self) -> bool {
         match self.racetime_pronouns {
             Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => false,
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => false,
             Some(RaceTimePronouns::They | RaceTimePronouns::Other) | None => true,
+        }
+    }
+
+    pub(crate) fn objective_pronoun(&self) -> &'static str {
+        match self.racetime_pronouns {
+            Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => "him",
+            Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "her",
+            Some(RaceTimePronouns::They | RaceTimePronouns::Other) | None => "them",
         }
     }
 
