@@ -456,6 +456,15 @@ impl fmt::Display for S3Settings {
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
     Ok(match &*data.event {
+        "1" => html! {
+            article {
+                p {
+                    : "This is an archive of the first Ocarina of Time randomizer multiworld tournament, organized by ";
+                    : natjoin_html(data.organizers(transaction).await?);
+                    : ".";
+                }
+            }
+        },
         "2" => html! {
             article {
                 p {

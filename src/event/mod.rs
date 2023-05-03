@@ -330,6 +330,7 @@ pub(crate) struct Data<'a> {
     pub(crate) base_start: Option<DateTime<Utc>>,
     pub(crate) end: Option<DateTime<Utc>>,
     pub(crate) url: Option<Url>,
+    hide_races_tab: bool,
     hide_teams_tab: bool,
     teams_url: Option<Url>,
     enter_url: Option<Url>,
@@ -365,6 +366,7 @@ impl<'a> Data<'a> {
             start,
             end_time,
             url,
+            hide_races_tab,
             hide_teams_tab,
             teams_url,
             enter_url,
@@ -385,6 +387,7 @@ impl<'a> Data<'a> {
                 base_start: row.start,
                 end: row.end_time,
                 url: row.url.map(|url| url.parse()).transpose()?,
+                hide_races_tab: row.hide_races_tab,
                 hide_teams_tab: row.hide_teams_tab,
                 teams_url: row.teams_url.map(|url| url.parse()).transpose()?,
                 enter_url: row.enter_url.map(|url| url.parse()).transpose()?,
@@ -677,7 +680,7 @@ impl<'a> Data<'a> {
                         a(class = "button", href = uri!(teams(self.series, &*self.event)).to_string()) : teams_label;
                     }
                 }
-                @if !self.is_single_race() { //TODO also hide for past events with no race list
+                @if !self.hide_races_tab && !self.is_single_race() {
                     @if let Tab::Races = tab {
                         a(class = "button selected", href? = is_subpage.then(|| uri!(races(self.series, &*self.event)).to_string())) : "Races";
                     } else {

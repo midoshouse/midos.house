@@ -514,7 +514,11 @@ impl Race {
         }
         match event.series {
             Series::League => {} //TODO get from League website somehow
-            Series::Multiworld => {} // added to database
+            Series::Multiworld => match &*event.event {
+                "1" => {} // no match data available
+                "2" | "3" => {} // added to database
+                _ => unimplemented!(),
+            },
             Series::NineDaysOfSaws | Series::Pictionary => {
                 let schedule = if let Some(start) = event.start(&mut *transaction).await? {
                     RaceSchedule::Live {
