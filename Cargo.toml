@@ -44,8 +44,8 @@ uuid = "1"
 
 [dependencies.chrono]
 version = "0.4"
-#TODO disable default features if dependencies no longer use them (which may already be the case?)
-features = ["serde"]
+default-features = false
+features = ["clock", "serde", "std"]
 
 [dependencies.clap]
 version = "4"
@@ -69,10 +69,6 @@ features = ["png"]
 git = "https://github.com/midoshouse/rust-ootr-utils"
 branch = "main"
 features = ["sqlx"]
-
-[dependencies.openssl]
-version = "0.10"
-features = ["vendored"]
 
 [dependencies.reqwest]
 version = "0.11"
