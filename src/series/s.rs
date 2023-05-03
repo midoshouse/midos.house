@@ -3,9 +3,9 @@ use {
     rocket_util::html,
 };
 
-pub(crate) fn info(event: &str) -> RawHtml<String> {
+pub(crate) fn info(event: &str) -> Option<RawHtml<String>> {
     match event {
-        "6" => html! {
+        "6" => Some(html! {
             article {
                 p {
                     : "This is the 6th season of the main Ocarina of Time randomizer tournament. See ";
@@ -19,7 +19,7 @@ pub(crate) fn info(event: &str) -> RawHtml<String> {
                     }
                 }
             }
-        },
-        _ => unimplemented!(),
+        }),
+        _ => None,
     }
 }

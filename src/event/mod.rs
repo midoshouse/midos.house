@@ -114,6 +114,7 @@ use {
             format_datetime,
             format_duration,
             full_form,
+            natjoin_html,
             parse_duration,
         },
     },
@@ -423,7 +424,7 @@ impl<'a> Data<'a> {
         match (self.series, &*self.event) {
             (Series::League, "4") => from_file!("../../assets/event/league/chests-4-7.1.94.json"),
             (Series::League, _) => unimplemented!(),
-            (Series::Multiworld, "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
+            (Series::Multiworld, "1" | "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
             (Series::Multiworld, "3") => mw::S3Settings::random(&mut thread_rng()).chests(),
             (Series::Multiworld, _) => unimplemented!(),
             (Series::NineDaysOfSaws, _) => ChestAppearances::VANILLA, // no CAMC in SAWS
@@ -805,16 +806,37 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
     let content = match data.series {
         Series::League => league::info(&mut transaction, &data).await?,
         Series::Multiworld => mw::info(&mut transaction, &data).await?,
-        Series::NineDaysOfSaws => ndos::info(&mut transaction, &data).await?,
+        Series::NineDaysOfSaws => Some(ndos::info(&mut transaction, &data).await?),
         Series::Pictionary => pic::info(&mut transaction, &data).await?,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
         Series::Standard => s::info(event),
         Series::TriforceBlitz => tfb::info(&mut transaction, &data).await?,
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, html! {
+    let content = html! {
         : header;
-        : content;
-    }).await?)
+        @if let Some(content) = content {
+            : content;
+        } else if let Some(organizers) = natjoin_html(data.organizers(&mut transaction).await?) {
+            article {
+                p {
+                    : "This event ";
+                    @if data.is_ended() {
+                        : "was";
+                    } else {
+                        : "is";
+                    }
+                    : " organized by ";
+                    : organizers;
+                    : ".";
+                }
+            }
+        } else {
+            article {
+                p : "No information about this event available yet.";
+            }
+        }
+    };
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &data.display_name, content).await?)
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]

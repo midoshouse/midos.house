@@ -454,9 +454,9 @@ impl fmt::Display for S3Settings {
     }
 }
 
-pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     Ok(match &*data.event {
-        "1" => html! {
+        "1" => Some(html! {
             article {
                 p {
                     : "This is an archive of the first Ocarina of Time randomizer multiworld tournament, organized by ";
@@ -464,8 +464,8 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : ".";
                 }
             }
-        },
-        "2" => html! {
+        }),
+        "2" => Some(html! {
             article {
                 p {
                     : "This is an archive of the second Ocarina of Time randomizer multiworld tournament, organized by ";
@@ -488,8 +488,8 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     }
                 }
             }
-        },
-        "3" => html! {
+        }),
+        "3" => Some(html! {
             article {
                 p {
                     : "Hello and welcome to the official rules document for the Ocarina of Time Randomizer Multiworld Tournament Season 3, organized by ";
@@ -716,8 +716,8 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
                 p : "We were hopeful to host this season of the tournament on Multiworld 2.0, but there have been further delays with its release. In the event that it does release during this tournament, the plan is to allow Multiworld 2.0 to be used after being cleared by the tournament staff. However, be aware that by using this your team accepts the risks with using it and must abide by the standard FPA rules.";
             }
-        },
-        _ => unimplemented!(),
+        }),
+        _ => None,
     })
 }
 

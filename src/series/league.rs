@@ -14,9 +14,9 @@ use {
     },
 };
 
-pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     Ok(match &*data.event {
-        "4" => html! {
+        "4" => Some(html! {
             article {
                 p {
                     : "This is OoTR League season 4, organized by shaun1e, ";
@@ -26,7 +26,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : " for details.";
                 }
             }
-        },
-        _ => unimplemented!(),
+        }),
+        _ => None,
     })
 }

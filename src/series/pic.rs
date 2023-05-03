@@ -54,7 +54,7 @@ use {
     },
 };
 
-pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     let is_random_settings = data.event.starts_with("rs");
     let settings = match &*data.event {
         "5" => html! {
@@ -220,7 +220,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 : ".";
             }
         },
-        _ => unimplemented!(),
+        _ => return Ok(None),
     };
     let sample_seeds = match &*data.event {
         "5" => Some(seed::table(stream::iter(vec![
@@ -246,7 +246,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         ]), true).await?),
         _ => None,
     };
-    Ok(html! {
+    Ok(Some(html! {
         article {
             h2 : "What is a Pictionary Spoiler Log Race?";
             p : "Each team consists of one Runner and one Spoiler Log Pilot who is drawing. The pilot has to figure out a way through the seed and how to tell their runner in drawing what checks they need to do. Hints are obviously disabled.";
@@ -373,7 +373,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             }
             p : "Special thanks to winniedemon who will be helping us keep important posts from getting lost in the Discord!";
         }
-    })
+    }))
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, FromFormField, UriDisplayQuery)]

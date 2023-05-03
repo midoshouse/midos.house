@@ -56,9 +56,9 @@ pub(crate) fn parse_seed_url(seed: &Url) -> Option<Uuid> {
     }
 }
 
-pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     Ok(match &*data.event {
-        "2" => html! {
+        "2" => Some(html! {
             article {
                 p {
                     : "This is the 2nd season of the Triforce Blitz tournament, organized by ";
@@ -68,8 +68,8 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : " for details.";
                 }
             }
-        },
-        _ => unimplemented!(),
+        }),
+        _ => None,
     })
 }
 

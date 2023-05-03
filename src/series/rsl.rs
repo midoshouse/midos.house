@@ -74,9 +74,9 @@ impl FromStr for Preset {
     }
 }
 
-pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
+pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     Ok(match &*data.event {
-        "1" => html! {
+        "1" => Some(html! {
             article {
                 p {
                     : "This is an archive of the 1st season of the Random Settings League tournament, organized by Cubsrule21, ";
@@ -86,8 +86,8 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : " for details.";
                 }
             }
-        },
-        "2" => html! {
+        }),
+        "2" => Some(html! {
             article {
                 p {
                     : "This is an archive of the 2nd season of the Random Settings League tournament, organized by Cubsrule21, ";
@@ -101,8 +101,8 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     }
                 }
             }
-        },
-        "3" => html! {
+        }),
+        "3" => Some(html! {
             article {
                 p {
                     : "This is an archive of the 3rd season of the Random Settings League tournament, organized by Cubsrule21, ";
@@ -116,8 +116,8 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     }
                 }
             }
-        },
-        "4" => html! {
+        }),
+        "4" => Some(html! {
             article {
                 p {
                     : "This is an archive of the 4th season of the Random Settings League tournament, organized by Cubsrule21, ";
@@ -134,8 +134,8 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     }
                 }
             }
-        },
-        "5" => html! {
+        }),
+        "5" => Some(html! {
             article {
                 p {
                     : "This is the 5th season of the Random Settings League tournament, organized by Cubsrule21, ";
@@ -145,7 +145,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : " for details.";
                 }
             }
-        },
-        _ => unimplemented!(),
+        }),
+        _ => None,
     })
 }
