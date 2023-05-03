@@ -139,3 +139,7 @@ xdg = "2"
 [target.'cfg(unix)'.dependencies.async-proto]
 version = "0.16.5"
 features = ["chrono", "serde_json", "uuid"]
+
+[target.'cfg(unix)'.dependencies.openssl]
+version = "0.10"
+features = ["vendored"]

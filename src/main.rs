@@ -19,6 +19,7 @@ use {
 };
 #[cfg(unix)] use {
     async_proto::Protocol as _,
+    openssl as _, // `vendored` feature required to fix release build
     tokio::net::UnixStream,
     crate::{
         racetime_bot::SeedRollUpdate,
