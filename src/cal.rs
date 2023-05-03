@@ -2,23 +2,15 @@ use {
     std::{
         borrow::Cow,
         cmp::Ordering,
-        collections::hash_map::{
-            self,
-            HashMap,
-        },
+        collections::HashMap,
         convert::identity,
         iter,
         path::Path,
-        time::{
-            Duration as UDuration,
-            Instant,
-        },
     },
     chrono::{
         Duration,
         prelude::*,
     },
-    chrono_tz::America,
     enum_iterator::all,
     futures::stream::TryStreamExt as _,
     ics::{
@@ -32,7 +24,6 @@ use {
     },
     itertools::Itertools as _,
     lazy_regex::regex_captures,
-    once_cell::sync::Lazy,
     ootr_utils::spoiler::{
         HashIcon,
         SpoilerLog,
@@ -75,10 +66,6 @@ use {
         model::prelude::*,
     },
     serenity_utils::RwFuture,
-    sheets::{
-        Sheets,
-        ValueRange,
-    },
     sqlx::{
         PgPool,
         Postgres,
@@ -94,10 +81,6 @@ use {
             File,
         },
         traits::ReqwestResponseExt as _,
-    },
-    yup_oauth2::{
-        ServiceAccountAuthenticator,
-        read_service_account_key,
     },
     crate::{
         Environment,
@@ -138,10 +121,6 @@ use {
             full_form,
             io_error_from_reqwest,
             natjoin_str,
-            sync::{
-                Mutex,
-                lock,
-            },
         },
     },
 };
@@ -573,102 +552,7 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {
-                "6" => {
-                    // bracket matches
-                    for row in sheet_values(&config.zsr_volunteer_signups, format!("Scheduled Races!B2:D")).await? {
-                        if let [datetime_et, matchup, round] = &*row {
-                            let start = America::New_York.datetime_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}"));
-                            if start < America::New_York.with_ymd_and_hms(2022, 12, 28, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue } //TODO also add an upper bound
-                            add_or_update_race(&mut *transaction, &mut races, Self {
-                                id: None,
-                                series: event.series,
-                                event: event.event.to_string(),
-                                startgg_event: None,
-                                startgg_set: None,
-                                entrants: if let Some((_, p1, p2)) = regex_captures!("^(.+) +(?i:vs?\\.?|x) +(.+)$", matchup) {
-                                    Entrants::Two([
-                                        Entrant::Named(p1.to_owned()),
-                                        Entrant::Named(p2.to_owned()),
-                                    ])
-                                } else {
-                                    Entrants::Named(matchup.clone())
-                                },
-                                phase: None, // main bracket
-                                round: Some(round.clone()),
-                                game: None,
-                                scheduling_thread: None,
-                                schedule: RaceSchedule::Live {
-                                    start: start.with_timezone(&Utc),
-                                    end: None,
-                                    room: None,
-                                },
-                                draft: None,
-                                seed: None,
-                                video_url: None,
-                                restreamer: None,
-                                video_url_fr: None,
-                                restreamer_fr: None,
-                                ignored: false,
-                            }).await?;
-                        }
-                    }
-                    // Challenge Cup bracket matches
-                    for row in sheet_values("1Hp0rg_bV1Ja6oPdFLomTWQmwNy7ivmLMZ1rrVC3gx0Q", format!("Submitted Matches!C2:K")).await? {
-                        if let [group_round, p1, p2, p3, date_et, time_et, is_async, restream_ok, is_cancelled] = &*row {
-                            if group_round.is_empty() { continue }
-                            let is_async = is_async == "Yes";
-                            let _restream_ok = restream_ok == "Yes";
-                            if is_cancelled == "TRUE" { continue }
-                            let start = America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%-m/%-d/%-Y at %I:%M %p").expect(&format!("failed to parse {date_et:?} at {time_et:?}"));
-                            let (round, entrants) = if p3.is_empty() {
-                                (group_round.clone(), Entrants::Two([
-                                    Entrant::Named(p1.clone()),
-                                    Entrant::Named(p2.clone()),
-                                ]))
-                            } else {
-                                (format!("{group_round} Tiebreaker"), Entrants::Three([
-                                    Entrant::Named(p1.clone()),
-                                    Entrant::Named(p2.clone()),
-                                    Entrant::Named(p3.clone()),
-                                ]))
-                            };
-                            add_or_update_race(&mut *transaction, &mut races, Self {
-                                id: None,
-                                series: event.series,
-                                event: event.event.to_string(),
-                                startgg_event: None,
-                                startgg_set: None,
-                                phase: Some(format!("Challenge Cup")),
-                                round: Some(round),
-                                game: None,
-                                scheduling_thread: None,
-                                schedule: if is_async {
-                                    RaceSchedule::Async {
-                                        start1: Some(start.with_timezone(&Utc)),
-                                        start2: None,
-                                        end1: None, end2: None,
-                                        room1: None,
-                                        room2: None,
-                                    }
-                                } else {
-                                    RaceSchedule::Live {
-                                        start: start.with_timezone(&Utc),
-                                        end: None,
-                                        room: None,
-                                    }
-                                },
-                                draft: None,
-                                seed: None,
-                                video_url: None,
-                                restreamer: None,
-                                video_url_fr: None,
-                                restreamer_fr: None,
-                                ignored: false,
-                                entrants,
-                            }).await?;
-                        }
-                    }
-                }
+                "6" => {} // added to database
                 _ => unimplemented!(),
             },
             Series::TriforceBlitz => {} // manually added by organizers pending reply from Challonge support
@@ -1055,7 +939,6 @@ impl Event {
 pub(crate) enum Error {
     #[error(transparent)] Event(#[from] event::DataError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
-    #[error(transparent)] Sheets(#[from] SheetsError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
@@ -1072,38 +955,6 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     fn from(e: E) -> Self {
         Self::Err(e.into())
     }
-}
-
-static SHEETS_CACHE: Lazy<Mutex<HashMap<(String, String), (Instant, ValueRange)>>> = Lazy::new(|| Mutex::default());
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum SheetsError {
-    #[error(transparent)] Api(#[from] sheets::APIError), //TODO adjust status codes, e.g. 502 Bad Gateway for 503 Service Unavailable
-    #[error(transparent)] Io(#[from] tokio::io::Error),
-    #[error(transparent)] OAuth(#[from] yup_oauth2::Error),
-    #[error("empty token is not valid")]
-    EmptyToken,
-    #[error("no values in sheet range")]
-    NoValues,
-}
-
-async fn sheet_values(sheet_id: &str, range: String) -> Result<Vec<Vec<String>>, SheetsError> {
-    let key = (sheet_id.to_owned(), range.clone());
-    let mut cache = lock!(SHEETS_CACHE);
-    cache.retain(|_, (retrieved, _)| retrieved.elapsed() < UDuration::from_secs(5 * 60));
-    match cache.entry(key) {
-        hash_map::Entry::Occupied(entry) => entry.get().1.values.clone(),
-        hash_map::Entry::Vacant(entry) => {
-            let gsuite_secret = read_service_account_key("assets/google-client-secret.json").await?;
-            let auth = ServiceAccountAuthenticator::builder(gsuite_secret)
-                .build()
-                .await?;
-            let token = auth.token(&["https://www.googleapis.com/auth/spreadsheets"]).await?;
-            if token.as_str().is_empty() { return Err(SheetsError::EmptyToken) }
-            let sheets_client = Sheets::new(token);
-            entry.insert((Instant::now(), sheets_client.get_values(sheet_id, range).await?)).1.values.clone()
-        }
-    }.ok_or(SheetsError::NoValues)
 }
 
 fn ics_datetime<Tz: TimeZone>(datetime: DateTime<Tz>) -> String {
