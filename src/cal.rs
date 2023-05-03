@@ -621,6 +621,67 @@ impl Race {
         }
     }
 
+    pub(crate) async fn multistream_url(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Option<Url>, Error> {
+        Ok(if let RaceSchedule::Live { room: Some(_), .. } = self.schedule {
+            match self.entrants {
+                Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => None,
+                Entrants::Two(ref entrants) => {
+                    let mut channels = Vec::default();
+                    for entrant in entrants {
+                        match entrant {
+                            Entrant::MidosHouseTeam(team) => for (member, role) in team.members_roles(&mut *transaction).await? {
+                                if event.team_config().role_is_racing(role) {
+                                    if let Some(twitch_name) = member.racetime_user_data(env, http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_name) {
+                                        channels.push(twitch_name);
+                                    } else {
+                                        return Ok(None)
+                                    }
+                                }
+                            },
+                            Entrant::Named(_) => return Ok(None),
+                        }
+                    }
+                    let mut url = Url::parse("https://multistre.am/").unwrap();
+                    url.path_segments_mut().unwrap().extend(&channels).push(match channels.len() {
+                        0 => return Ok(None),
+                        2 => "layout4",
+                        4 => "layout12",
+                        6 => "layout18",
+                        _ => unimplemented!(),
+                    });
+                    Some(url)
+                }
+                Entrants::Three(ref entrants) => {
+                    let mut channels = Vec::default();
+                    for entrant in entrants {
+                        match entrant {
+                            Entrant::MidosHouseTeam(team) => for (member, role) in team.members_roles(&mut *transaction).await? {
+                                if event.team_config().role_is_racing(role) {
+                                    if let Some(twitch_name) = member.racetime_user_data(env, http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_name) {
+                                        channels.push(twitch_name);
+                                    } else {
+                                        return Ok(None)
+                                    }
+                                }
+                            },
+                            Entrant::Named(_) => return Ok(None),
+                        }
+                    }
+                    let mut url = Url::parse("https://multistre.am/").unwrap();
+                    url.path_segments_mut().unwrap().extend(&channels).push(match channels.len() {
+                        0 => return Ok(None),
+                        3 => "layout7",
+                        6 => "layout17",
+                        _ => unimplemented!(),
+                    });
+                    Some(url)
+                }
+            }
+        } else {
+            None
+        })
+    }
+
     pub(crate) fn has_room_for(&self, team: &Team) -> bool {
         match &self.schedule {
             RaceSchedule::Unscheduled => false,

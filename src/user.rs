@@ -21,7 +21,9 @@ use {
         PgExecutor,
         PgPool,
     },
+    wheel::traits::ReqwestResponseExt as _,
     crate::{
+        Environment,
         auth::{
             DiscordUser,
             Discriminator,
@@ -200,6 +202,19 @@ impl User {
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "her",
             Some(RaceTimePronouns::They | RaceTimePronouns::Other) | None => "their",
         }
+    }
+
+    pub(crate) async fn racetime_user_data(&self, env: Environment, http_client: &reqwest::Client) -> wheel::Result<Option<racetime::model::UserData>> {
+        Ok(if let Some(ref racetime_id) = self.racetime_id {
+            Some(
+                http_client.get(format!("https://{}/user/{racetime_id}/data", env.racetime_host()))
+                    .send().await?
+                    .detailed_error_for_status().await?
+                    .json_with_text_in_error().await?
+            )
+        } else {
+            None
+        })
     }
 }
 

@@ -1028,7 +1028,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, env: &State<Environment>, me: Op
 
 #[rocket::get("/event/<series>/<event>/races")]
 pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    async fn race_table(transaction: &mut Transaction<'_, Postgres>, env: Environment, can_create: bool, can_edit: bool, show_restream_consent: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
+    async fn race_table(transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, data: &Data<'_>, show_multistreams: bool, can_create: bool, can_edit: bool, show_restream_consent: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
         let has_games = races.iter().any(|race| race.game.is_some());
         let has_seeds = races.iter().any(|race| race.seed.is_some());
         let has_buttons = (can_create || can_edit) && races.iter().any(|race| race.id.is_some());
@@ -1124,6 +1124,11 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                     @if let Some(ref video_url_fr) = race.video_url_fr {
                                         a(class = "favicon", href = video_url_fr.to_string()) : favicon(video_url_fr);
                                     }
+                                    @if show_multistreams && race.video_url.is_none() && race.video_url_fr.is_none() {
+                                        @if let Some(multistream_url) = race.multistream_url(&mut *transaction, env, http_client, data).await? {
+                                            a(class = "favicon", href = multistream_url.to_string()) : favicon(&multistream_url);
+                                        }
+                                    }
                                     @if let Some(startgg_url) = race.startgg_set_url()? {
                                         a(class = "favicon", href = startgg_url.to_string()) : favicon(&startgg_url);
                                     }
@@ -1185,13 +1190,13 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
             //TODO split into ongoing and upcoming, show headers for both
-            : race_table(&mut transaction, **env, can_create, can_edit, show_restream_consent, &ongoing_and_upcoming_races).await?;
+            : race_table(&mut transaction, **env, http_client, &data, true, can_create, can_edit, show_restream_consent, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : race_table(&mut transaction, **env, can_create && !any_races_ongoing_or_upcoming, can_edit, false, &past_races).await?;
+            : race_table(&mut transaction, **env, http_client, &data, false, can_create && !any_races_ongoing_or_upcoming, can_edit, false, &past_races).await?;
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 a(class = "button", href = uri!(crate::cal::create_race(series, &event)).to_string()) : "New Race";

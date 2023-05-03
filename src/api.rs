@@ -42,7 +42,6 @@ use {
         Postgres,
         Transaction,
     },
-    wheel::traits::ReqwestResponseExt as _,
     crate::{
         Config,
         Environment,
@@ -425,24 +424,15 @@ pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<re
                 restream_consent: bool,
             }
 
-            let twitch_display_name = if let Some(ref racetime_id) = member.racetime_id {
-                http_client.get(format!("https://{}/user/{racetime_id}/data", env.racetime_host()))
-                    .send().await?
-                    .detailed_error_for_status().await?
-                    .json_with_text_in_error::<racetime::model::UserData>().await?
-                    .twitch_display_name
-            } else {
-                None
-            };
             csv.serialize(Row {
                 id: member.id,
                 display_name: member.display_name(),
+                twitch_display_name: member.racetime_user_data(**env, http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_display_name),
                 discord_display_name: member.discord_display_name.as_deref(),
                 discord_discriminator: member.discord_discriminator,
                 racetime_id: member.racetime_id.as_deref(),
                 qualifier_rank: i + 1,
                 restream_consent: team.restream_consent,
-                twitch_display_name,
             })?;
         }
     }
