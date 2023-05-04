@@ -92,8 +92,6 @@ use {
     },
 };
 
-pub(crate) const GUILD_ID: GuildId = GuildId::new(826935332867276820);
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Wincon { #[default] Meds, Scrubs, Th }
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Dungeons { #[default] Tournament, Skulls, Keyrings }
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Sequence, Deserialize, Serialize)] pub(crate) enum Er { #[default] Off, Dungeon }

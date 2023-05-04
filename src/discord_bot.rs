@@ -113,14 +113,15 @@ pub(crate) struct CommandIds {
     draft: Option<CommandId>,
     first: Option<CommandId>,
     post_status: CommandId,
-    pronoun_roles: Option<CommandId>, //TODO control via event config
+    pronoun_roles: CommandId,
+    racing_role: CommandId,
     pub(crate) schedule: CommandId,
     pub(crate) schedule_async: CommandId,
     pub(crate) schedule_remove: CommandId,
     second: Option<CommandId>,
     skip: Option<CommandId>,
     status: CommandId,
-    watch_roles: Option<CommandId>, //TODO control via event config
+    watch_roles: CommandId,
 }
 
 impl TypeMapKey for CommandIds {
@@ -525,16 +526,26 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 .dm_permission(false)
                 .description("Posts this race's status to the thread, pinging the team whose turn it is in the settings draft.")
             ).await?.id;
-            let pronoun_roles = if guild.id == mw::GUILD_ID {
-                Some(guild.create_command(ctx, CreateCommand::new("pronoun-roles")
-                    .kind(CommandType::ChatInput)
-                    .default_member_permissions(Permissions::ADMINISTRATOR)
-                    .dm_permission(false)
-                    .description("Creates gender pronoun roles and posts a message here that allows members to self-assign them.")
-                ).await?.id)
-            } else {
-                None
-            };
+            let pronoun_roles = guild.create_command(ctx, CreateCommand::new("pronoun-roles")
+                .kind(CommandType::ChatInput)
+                .default_member_permissions(Permissions::ADMINISTRATOR)
+                .dm_permission(false)
+                .description("Creates gender pronoun roles and posts a message here that allows members to self-assign them.")
+            ).await?.id;
+            let racing_role = guild.create_command(ctx, CreateCommand::new("racing-role")
+                .kind(CommandType::ChatInput)
+                .default_member_permissions(Permissions::ADMINISTRATOR)
+                .dm_permission(false)
+                .description("Creates a racing role and posts a message here that allows members to self-assign it.")
+                .add_option(CreateCommandOption::new(
+                    CommandOptionType::Channel,
+                    "race-planning-channel",
+                    "Will be linked to from the description message.",
+                )
+                    .required(true)
+                    .channel_types(vec![ChannelType::Text, ChannelType::News])
+                )
+            ).await?.id;
             let schedule = guild.create_command(ctx, CreateCommand::new("schedule")
                 .kind(CommandType::ChatInput)
                 .dm_permission(false)
@@ -610,36 +621,32 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 .dm_permission(false)
                 .description("Shows you this race's current scheduling and settings draft status.")
             ).await?.id;
-            let watch_roles = if guild.id == mw::GUILD_ID {
-                Some(guild.create_command(ctx, CreateCommand::new("watch-roles")
-                    .kind(CommandType::ChatInput)
-                    .default_member_permissions(Permissions::ADMINISTRATOR)
-                    .dm_permission(false)
-                    .description("Creates watch notification roles and posts a message here that allows members to self-assign them.")
-                    .add_option(CreateCommandOption::new(
-                        CommandOptionType::Channel,
-                        "watch-party-channel",
-                        "Will be linked to from the description message.",
-                    )
-                        .required(true)
-                        .channel_types(vec![ChannelType::Voice, ChannelType::Stage])
-                    )
-                    .add_option(CreateCommandOption::new(
-                        CommandOptionType::Channel,
-                        "race-rooms-channel",
-                        "Will be linked to from the description message.",
-                    )
-                        .required(true)
-                        .channel_types(vec![ChannelType::Text, ChannelType::News])
-                    )
-                ).await?.id)
-            } else {
-                None
-            };
+            let watch_roles = guild.create_command(ctx, CreateCommand::new("watch-roles")
+                .kind(CommandType::ChatInput)
+                .default_member_permissions(Permissions::ADMINISTRATOR)
+                .dm_permission(false)
+                .description("Creates watch notification roles and posts a message here that allows members to self-assign them.")
+                .add_option(CreateCommandOption::new(
+                    CommandOptionType::Channel,
+                    "watch-party-channel",
+                    "Will be linked to from the description message.",
+                )
+                    .required(true)
+                    .channel_types(vec![ChannelType::Voice, ChannelType::Stage])
+                )
+                .add_option(CreateCommandOption::new(
+                    CommandOptionType::Channel,
+                    "race-rooms-channel",
+                    "Will be linked to from the description message.",
+                )
+                    .required(true)
+                    .channel_types(vec![ChannelType::Text, ChannelType::News])
+                )
+            ).await?.id;
             ctx.data.write().await
                 .entry::<CommandIds>()
                 .or_default()
-                .insert(guild.id, CommandIds { assign, ban, delete_after, draft, first, post_status, pronoun_roles, schedule, schedule_async, schedule_remove, second, skip, status, watch_roles });
+                .insert(guild.id, CommandIds { assign, ban, delete_after, draft, first, post_status, pronoun_roles, racing_role, schedule, schedule_async, schedule_remove, second, skip, status, watch_roles });
             transaction.commit().await?;
             Ok(())
         }))
@@ -1085,7 +1092,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     transaction.rollback().await?;
                                 }
                             }
-                        } else if Some(interaction.data.id) == command_ids.pronoun_roles {
+                        } else if interaction.data.id == command_ids.pronoun_roles {
                             guild_id.create_role(ctx, EditRole::new()
                                 .hoist(false)
                                 .mentionable(false)
@@ -1117,6 +1124,27 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 .button(CreateButton::new("pronouns_she").label("she/her"))
                                 .button(CreateButton::new("pronouns_they").label("they/them"))
                                 .button(CreateButton::new("pronouns_other").label("other"))
+                            )).await?;
+                        } else if interaction.data.id == command_ids.racing_role {
+                            let race_planning_channel = match interaction.data.options[0].value {
+                                CommandDataOptionValue::Channel(channel) => channel,
+                                _ => panic!("unexpected slash command option type"),
+                            };
+                            guild_id.create_role(ctx, EditRole::new()
+                                .hoist(false)
+                                .mentionable(true)
+                                .name("racing")
+                                .permissions(Permissions::empty())
+                            ).await?;
+                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                .ephemeral(false)
+                                .content(MessageBuilder::default()
+                                    .push("Click the button below to get notified when a race is being planned. Click again to remove it. Ping this role in ")
+                                    .mention(&race_planning_channel)
+                                    .push(" when planning a race.")
+                                    .build()
+                                )
+                                .button(CreateButton::new("racingrole").label("racing"))
                             )).await?;
                         } else if interaction.data.id == command_ids.schedule {
                             let game = interaction.data.options.get(1).map(|option| match option.value {
@@ -1460,7 +1488,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     transaction.rollback().await?;
                                 }
                             }
-                        } else if Some(interaction.data.id) == command_ids.watch_roles {
+                        } else if interaction.data.id == command_ids.watch_roles {
                             let watch_party_channel = match interaction.data.options[0].value {
                                 CommandDataOptionValue::Channel(channel) => channel,
                                 _ => panic!("unexpected slash command option type"),
@@ -1556,6 +1584,23 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     "pronouns_other" => {
                         let mut member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
                         let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "other pronouns").expect("missing “other pronouns” role");
+                        if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
+                            member.remove_role(ctx, role).await?;
+                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                .ephemeral(true)
+                                .content("Role removed.")
+                            )).await?;
+                        } else {
+                            member.add_role(ctx, role).await?;
+                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                .ephemeral(true)
+                                .content("Role added.")
+                            )).await?;
+                        }
+                    }
+                    "racingrole" => {
+                        let mut member = interaction.member.clone().expect("/racing-role called outside of a guild");
+                        let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "racing").expect("missing “racing” role");
                         if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
                             member.remove_role(ctx, role).await?;
                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
