@@ -394,8 +394,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     .description("Deletes games of the match that are not required.")
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Integer,
-                        "from-game",
-                        "The first game number within the match to remove.",
+                        "game",
+                        "The last game number within the match that should be kept.",
                     )
                         .min_int_value(1)
                         .max_int_value(255)
