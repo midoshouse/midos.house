@@ -1022,7 +1022,7 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     }
 }
 
-fn ics_datetime<Tz: TimeZone>(datetime: DateTime<Tz>) -> String {
+fn ics_datetime<Z: TimeZone>(datetime: DateTime<Z>) -> String {
     datetime.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string()
 }
 

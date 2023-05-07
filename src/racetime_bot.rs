@@ -130,6 +130,7 @@ use {
             ConfigRaceTime,
         },
         discord_bot::{
+            self,
             Draft,
             DraftKind,
         },
@@ -2738,6 +2739,9 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, hos
                 cal::EventKind::Async2 => { sqlx::query!("UPDATE races SET async_room2 = $1 WHERE id = $2", room_url.to_string(), i64::from(cal_event.race.id.expect("created from ID"))).execute(&mut *transaction).await.to_racetime()?; }
             }
             let mut msg = MessageBuilder::default();
+            msg.push("race starting ");
+            msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), discord_bot::TimestampStyle::Relative);
+            msg.push(": ");
             match cal_event.race.entrants {
                 Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {
                     msg.push_safe(prefix);

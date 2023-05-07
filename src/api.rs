@@ -139,8 +139,8 @@ type ArcTransaction = Arc<Mutex<Transaction<'static, Postgres>>>;
 
 struct UtcTimestamp(DateTime<Utc>);
 
-impl<Tz: TimeZone> From<DateTime<Tz>> for UtcTimestamp {
-    fn from(value: DateTime<Tz>) -> Self {
+impl<Z: TimeZone> From<DateTime<Z>> for UtcTimestamp {
+    fn from(value: DateTime<Z>) -> Self {
         Self(value.with_timezone(&Utc))
     }
 }

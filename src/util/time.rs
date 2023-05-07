@@ -123,7 +123,7 @@ pub(crate) struct DateTimeFormat {
     pub(crate) running_text: bool,
 }
 
-pub(crate) fn format_datetime<Tz: TimeZone>(datetime: DateTime<Tz>, format: DateTimeFormat) -> RawHtml<String> {
+pub(crate) fn format_datetime<Z: TimeZone>(datetime: DateTime<Z>, format: DateTimeFormat) -> RawHtml<String> {
     let utc = datetime.with_timezone(&Utc);
     let berlin = datetime.with_timezone(&Europe::Berlin);
     let new_york = datetime.with_timezone(&America::New_York);
@@ -154,8 +154,8 @@ pub(crate) fn format_datetime<Tz: TimeZone>(datetime: DateTime<Tz>, format: Date
     }
 }
 
-pub(crate) fn format_date_range<Tz: TimeZone>(start: DateTime<Tz>, end: DateTime<Tz>) -> RawHtml<String>
-where Tz::Offset: fmt::Display {
+pub(crate) fn format_date_range<Z: TimeZone>(start: DateTime<Z>, end: DateTime<Z>) -> RawHtml<String>
+where Z::Offset: fmt::Display {
     html! {
         span(class = "daterange", data_start = start.timestamp_millis(), data_end = end.timestamp_millis()) {
             @if start.year() != end.year() {

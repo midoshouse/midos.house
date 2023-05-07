@@ -128,6 +128,31 @@ impl TypeMapKey for CommandIds {
     type Value = HashMap<GuildId, CommandIds>;
 }
 
+#[allow(unused)] //TODO move to serenity-utils
+pub(crate) enum TimestampStyle {
+    ShortDate,
+    LongDate,
+    ShortTime,
+    LongTime,
+    ShortDateTime,
+    LongDateTime,
+    Relative,
+}
+
+impl From<TimestampStyle> for char {
+    fn from(style: TimestampStyle) -> Self {
+        match style {
+            TimestampStyle::ShortDate => 'd',
+            TimestampStyle::LongDate => 'D',
+            TimestampStyle::ShortTime => 't',
+            TimestampStyle::LongTime => 'T',
+            TimestampStyle::ShortDateTime => 'f',
+            TimestampStyle::LongDateTime => 'F',
+            TimestampStyle::Relative => 'R',
+        }
+    }
+}
+
 pub(crate) enum DraftKind {
     None,
     MultiworldS3,
