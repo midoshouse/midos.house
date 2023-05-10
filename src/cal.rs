@@ -1436,10 +1436,12 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, e
                 label(for = "restreamer") : "English restreamer:";
                 input(type = "text", name = "restreamer", value? = if let Some(ref ctx) = ctx {
                     ctx.field_value("restreamer")
+                } else if me.as_ref().and_then(|me| me.racetime_id.as_deref()).map_or(false, |racetime_id| race.restreamer.as_deref() == Some(racetime_id)) {
+                    Some("me")
                 } else {
                     race.restreamer.as_deref() //TODO display as racetime.gg profile URL
                 });
-                label(class = "help") : "(racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID. Leave this field blank to assign yourself.)";
+                label(class = "help") : "(racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID. Enter “me” to assign yourself.)";
             });
             : form_field("video_url_fr", &mut errors, html! {
                 label(for = "video_url_fr") : "French restream URL:";
@@ -1454,10 +1456,12 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, e
                 label(for = "restreamer_fr") : "French restreamer:";
                 input(type = "text", name = "restreamer_fr", value? = if let Some(ref ctx) = ctx {
                     ctx.field_value("restreamer_fr")
+                } else if me.as_ref().and_then(|me| me.racetime_id.as_deref()).map_or(false, |racetime_id| race.restreamer_fr.as_deref() == Some(racetime_id)) {
+                    Some("me")
                 } else {
                     race.restreamer_fr.as_deref() //TODO display as racetime.gg profile URL
                 });
-                label(class = "help") : "(racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID. Leave this field blank to assign yourself.)";
+                label(class = "help") : "(racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID. Enter “me” to assign yourself.)";
             });
         }, errors, "Save")
     } else {
@@ -1818,6 +1822,8 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                 form.context.push_error(form::Error::validation(format!("Failed to parse URL: {e}")).with_name("video_url"));
             }
             if value.restreamer.is_empty() {
+                None
+            } else if value.restreamer == "me" {
                 if let Some(ref racetime_id) = me.racetime_id {
                     Some(racetime_id.clone())
                 } else {
@@ -1847,6 +1853,8 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                 form.context.push_error(form::Error::validation(format!("Failed to parse URL: {e}")).with_name("video_url_fr"));
             }
             if value.restreamer_fr.is_empty() {
+                None
+            } else if value.restreamer_fr == "me" {
                 if let Some(ref racetime_id) = me.racetime_id {
                     Some(racetime_id.clone())
                 } else {
