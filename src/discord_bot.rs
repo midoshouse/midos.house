@@ -713,7 +713,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             races.sort_unstable();
                                             races
                                         }.pop() {
-                                            race.id = None; // copy this race
+                                            race.id = Id::new(&mut transaction, IdTable::Races).await?; // copy this race
                                             race.game = Some(game);
                                             race.schedule = RaceSchedule::Unscheduled;
                                             race.draft = match event.draft_kind() {
@@ -777,14 +777,14 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             DraftKind::MultiworldS3 => sqlx::query!("INSERT INTO races
                                                 (id, startgg_set, game, series, event, scheduling_thread, draft_state) VALUES ($1, $2, $3, $4, $5, $6, $7)
                                                 ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread, draft_state = EXCLUDED.draft_state
-                                            ", i64::from(id), &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id), Json(Draft {
+                                            ", id as _, &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id), Json(Draft {
                                                 high_seed: high_seed.as_ref().unwrap().id,
                                                 state: mw::S3Draft::default(),
                                             }) as _).execute(&mut transaction).await?,
                                             DraftKind::None => sqlx::query!("INSERT INTO races
                                                 (id, startgg_set, game, series, event, scheduling_thread) VALUES ($1, $2, $3, $4, $5, $6)
                                                 ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread
-                                            ", i64::from(id), &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id)).execute(&mut transaction).await?,
+                                            ", id as _, &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id)).execute(&mut transaction).await?,
                                         };
                                         let mut response_content = MessageBuilder::default();
                                         response_content.push("This thread is now assigned to ");
@@ -862,7 +862,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     mw::S3Setting::Fountain => draft.state.fountain = Some(mw::Fountain::default()),
                                                     mw::S3Setting::Spawn => draft.state.spawn = Some(mw::Spawn::default()),
                                                 }
-                                                sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                                sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, race.id as _).execute(&mut transaction).await?;
                                                 let response_content = MessageBuilder::default()
                                                     .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                     .push(if team.name_is_plural() { " have locked in " } else { " has locked in " })
@@ -1001,7 +1001,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     mw::S3Setting::Fountain => { let value = all::<mw::Fountain>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.fountain = Some(value); value.to_string() }
                                                     mw::S3Setting::Spawn => { let value = all::<mw::Spawn>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.spawn = Some(value); value.to_string() }
                                                 };
-                                                sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                                sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, race.id as _).execute(&mut transaction).await?;
                                                 let response_content = MessageBuilder::default()
                                                     .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                     .push(if team.name_is_plural() { " have picked " } else { " has picked " })
@@ -1063,7 +1063,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             transaction.rollback().await?;
                                         } else if draft.is_active_team(team.id) {
                                             draft.state.went_first = Some(true);
-                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, race.id as _).execute(&mut transaction).await?;
                                             let response_content = MessageBuilder::default()
                                                 .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                 .push(if team.name_is_plural() { " have" } else { " has" })
@@ -1195,7 +1195,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             )).await?;
                                             transaction.rollback().await?;
                                         } else {
-                                            sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                            sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, race.id as _).execute(&mut transaction).await?;
                                             if start - Utc::now() < Duration::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config) = {
                                                     let data = ctx.data.read().await;
@@ -1271,10 +1271,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             let kind = match race.entrants {
                                                 Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
                                                     if team.as_ref().map_or(false, |team| team1 == team) {
-                                                        sqlx::query!("UPDATE races SET async_start1 = $1, start = NULL WHERE id = $2", start, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                                        sqlx::query!("UPDATE races SET async_start1 = $1, start = NULL WHERE id = $2", start, race.id as _).execute(&mut transaction).await?;
                                                         cal::EventKind::Async1
                                                     } else if team.as_ref().map_or(false, |team| team2 == team) {
-                                                        sqlx::query!("UPDATE races SET async_start2 = $1, start = NULL WHERE id = $2", start, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                                        sqlx::query!("UPDATE races SET async_start2 = $1, start = NULL WHERE id = $2", start, race.id as _).execute(&mut transaction).await?;
                                                         cal::EventKind::Async2
                                                     } else {
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1363,7 +1363,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             RaceSchedule::Live { .. } => false,
                                             RaceSchedule::Async { start1, start2, .. } => start1.is_some() && start2.is_some(),
                                         };
-                                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL WHERE id = $1", i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL WHERE id = $1", race.id as _).execute(&mut transaction).await?;
                                         transaction.commit().await?;
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(false)
@@ -1395,7 +1395,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             transaction.rollback().await?;
                                         } else if draft.is_active_team(team.id) {
                                             draft.state.went_first = Some(false);
-                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, race.id as _).execute(&mut transaction).await?;
                                             let response_content = MessageBuilder::default()
                                                 .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                 .push(if team.name_is_plural() { " have" } else { " has" })
@@ -1458,7 +1458,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 _ => unreachable!(),
                                             };
                                             draft.state.skipped_bans += 1;
-                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, i64::from(race.id.expect("Race::for_scheduling_channel returned race without ID"))).execute(&mut transaction).await?;
+                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, race.id as _).execute(&mut transaction).await?;
                                             let response_content = MessageBuilder::default()
                                                 .mention_team(&mut transaction, Some(guild_id), &team).await?
                                                 .push(if team.name_is_plural() { " have skipped their " } else { " has skipped their " })

@@ -207,7 +207,7 @@ struct Race(cal::Race);
 
 #[Object] impl Race {
     /// The race's internal ID. Unique across all series, but only for races (e.g. a user may have the same ID as a race).
-    async fn id(&self) -> GqlId { self.0.id.unwrap().into() }
+    async fn id(&self) -> GqlId { self.0.id.into() }
 
     /// The scheduled starting time. Null if this race is asynced or not yet scheduled.
     async fn start(&self) -> Option<UtcTimestamp> {

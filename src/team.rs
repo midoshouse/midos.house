@@ -33,7 +33,7 @@ pub(crate) struct Team {
 
 impl Team {
     pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, id: Id) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE id = $1"#, i64::from(id)).fetch_optional(transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE id = $1"#, id as _).fetch_optional(transaction).await
     }
 
     pub(crate) async fn from_discord(transaction: &mut Transaction<'_, Postgres>, discord_role: RoleId) -> sqlx::Result<Option<Self>> {
@@ -96,12 +96,12 @@ impl Team {
     }
 
     async fn member_ids(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<Id>> {
-        sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1"#, i64::from(self.id)).fetch_all(&mut *transaction).await
+        sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1"#, self.id as _).fetch_all(&mut *transaction).await
     }
 
     async fn member_ids_roles(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<(Id, Role)>> {
         Ok(
-            sqlx::query!(r#"SELECT member AS "member: Id", role AS "role: Role" FROM team_members WHERE team = $1"#, i64::from(self.id)).fetch_all(&mut *transaction).await?
+            sqlx::query!(r#"SELECT member AS "member: Id", role AS "role: Role" FROM team_members WHERE team = $1"#, self.id as _).fetch_all(&mut *transaction).await?
                 .into_iter()
                 .map(|row| (row.member, row.role))
                 .collect()

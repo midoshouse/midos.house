@@ -569,7 +569,7 @@ impl<'a> Data<'a> {
                     return Ok(Some(kind))
                 },
                 AsyncKind::Tiebreaker1 | AsyncKind::Tiebreaker2 => if let Some(team_id) = team_id {
-                    if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1 AND kind = $2) AS "exists!""#, i64::from(team_id), kind as _).fetch_one(&mut *transaction).await? {
+                    if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1 AND kind = $2) AS "exists!""#, team_id as _, kind as _).fetch_one(&mut *transaction).await? {
                         return Ok(Some(kind))
                     }
                 },
@@ -1031,7 +1031,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
     async fn race_table(transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, data: &Data<'_>, show_multistreams: bool, can_create: bool, can_edit: bool, show_restream_consent: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
         let has_games = races.iter().any(|race| race.game.is_some());
         let has_seeds = races.iter().any(|race| race.seed.is_some());
-        let has_buttons = (can_create || can_edit) && races.iter().any(|race| race.id.is_some());
+        let has_buttons = can_create || can_edit;
         let now = Utc::now();
         Ok(html! {
             table {
@@ -1141,7 +1141,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                             @if has_seeds {
                                 @if let Some(ref seed) = race.seed {
                                     //TODO hide seed if unfinished async
-                                    : seed::table_cells(now, seed, true, can_edit.then_some(()).and(race.id).map(|id| uri!(cal::add_file_hash(race.series, &*race.event, id)))).await?;
+                                    : seed::table_cells(now, seed, true, can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
                                 } else {
                                     : seed::table_empty_cells(true);
                                 }
@@ -1156,9 +1156,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                             @if has_buttons {
                                 td {
                                     @if can_edit {
-                                        @if let Some(id) = race.id {
-                                            a(class = "button", href = uri!(crate::cal::edit_race(race.series, &race.event, id)).to_string()) : "Edit";
-                                        }
+                                        a(class = "button", href = uri!(crate::cal::edit_race(race.series, &race.event, race.id)).to_string()) : "Edit";
                                     }
                                 }
                             }
@@ -1530,24 +1528,24 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
     form.verify(&csrf);
     if form.context.errors().next().is_some() { return Err(AcceptError::Csrf.into()) }
     if data.is_started(&mut transaction).await? { return Err(AcceptError::EventStarted.into()) }
-    if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, i64::from(team), me.id as _).fetch_optional(&mut transaction).await? {
+    if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, team as _, me.id as _).fetch_optional(&mut transaction).await? {
         if role == Role::Sheikah && me.racetime_id.is_none() {
             return Err(AcceptError::RaceTimeAccountRequired.into())
         }
-        for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, i64::from(team)).fetch_all(&mut transaction).await? {
+        for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, team as _).fetch_all(&mut transaction).await? {
             let id = Id::new(&mut transaction, IdTable::Notifications).await?;
             sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', $3, $4, $5)", id as _, member as _, series as _, event, me.id as _).execute(&mut transaction).await?;
         }
-        sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", i64::from(team), me.id as _).execute(&mut transaction).await?;
-        if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND status = 'unconfirmed') AS "exists!""#, i64::from(team)).fetch_one(&mut transaction).await? {
+        sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", team as _, me.id as _).execute(&mut transaction).await?;
+        if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND status = 'unconfirmed') AS "exists!""#, team as _).fetch_one(&mut transaction).await? {
             // this confirms the team
             // remove all members from looking_for_team
-            sqlx::query!("DELETE FROM looking_for_team WHERE EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND member = user_id)", i64::from(team)).execute(&mut transaction).await?;
+            sqlx::query!("DELETE FROM looking_for_team WHERE EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND member = user_id)", team as _).execute(&mut transaction).await?;
             //TODO also remove all other teams with member overlap, and notify
             // create and assign Discord roles
             if let Some(discord_guild) = data.discord_guild {
                 let discord_ctx = discord_ctx.read().await;
-                for row in sqlx::query!(r#"SELECT discord_id AS "discord_id!: Id", role AS "role: Role" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, i64::from(team)).fetch_all(&mut transaction).await? {
+                for row in sqlx::query!(r#"SELECT discord_id AS "discord_id!: Id", role AS "role: Role" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, team as _).fetch_all(&mut transaction).await? {
                     if let Ok(mut member) = discord_guild.member(&*discord_ctx, UserId::new(row.discord_id.0)).await {
                         let mut roles_to_assign = member.roles.iter().copied().collect::<HashSet<_>>();
                         if let Some(Id(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, i64::from(discord_guild), series as _, event).fetch_optional(&mut transaction).await? {
@@ -1556,11 +1554,11 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
                         if let Some(Id(role_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND role = $2"#, i64::from(discord_guild), row.role as _).fetch_optional(&mut transaction).await? {
                             roles_to_assign.insert(RoleId::new(role_role));
                         }
-                        if let Some(racetime_slug) = sqlx::query_scalar!("SELECT racetime_slug FROM teams WHERE id = $1", i64::from(team)).fetch_one(&mut transaction).await? {
+                        if let Some(racetime_slug) = sqlx::query_scalar!("SELECT racetime_slug FROM teams WHERE id = $1", team as _).fetch_one(&mut transaction).await? {
                             if let Some(Id(team_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(discord_guild), racetime_slug).fetch_optional(&mut transaction).await? {
                                 roles_to_assign.insert(RoleId::new(team_role));
                             } else {
-                                let team_name = sqlx::query_scalar!(r#"SELECT name AS "name!" FROM teams WHERE id = $1"#, i64::from(team)).fetch_one(&mut transaction).await?;
+                                let team_name = sqlx::query_scalar!(r#"SELECT name AS "name!" FROM teams WHERE id = $1"#, team as _).fetch_one(&mut transaction).await?;
                                 let team_role = discord_guild.create_role(&*discord_ctx, EditRole::new().hoist(false).mentionable(true).name(team_name).permissions(Permissions::empty())).await?.id;
                                 sqlx::query!("INSERT INTO discord_roles (id, guild, racetime_team) VALUES ($1, $2, $3)", i64::from(team_role), i64::from(discord_guild), racetime_slug).execute(&mut transaction).await?;
                                 roles_to_assign.insert(team_role);
@@ -1727,7 +1725,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, discord_ctx: &State<RwFu
         "#, series as _, event, me.id as _).fetch_optional(&mut transaction).await?;
         let async_kind = if let Some(ref team) = team {
             if let Some(async_kind) = data.active_async(&mut transaction, Some(team.id)).await? {
-                let requested = sqlx::query_scalar!(r#"SELECT requested IS NOT NULL AS "requested!" FROM async_teams WHERE team = $1 AND kind = $2"#, i64::from(team.id), async_kind as _).fetch_optional(&mut transaction).await?;
+                let requested = sqlx::query_scalar!(r#"SELECT requested IS NOT NULL AS "requested!" FROM async_teams WHERE team = $1 AND kind = $2"#, team.id as _, async_kind as _).fetch_optional(&mut transaction).await?;
                 if requested.map_or(false, identity) {
                     form.context.push_error(form::Error::validation("Your team has already requested this async."));
                 }
@@ -1798,7 +1796,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         "#, series as _, event, me.id as _).fetch_optional(&mut transaction).await?;
         let async_kind = if let Some(ref team) = team {
             if let Some(async_kind) = data.active_async(&mut transaction, Some(team.id)).await? {
-                let row = sqlx::query!(r#"SELECT requested IS NOT NULL AS "requested!", submitted IS NOT NULL AS "submitted!" FROM async_teams WHERE team = $1 AND kind = $2"#, i64::from(team.id), async_kind as _).fetch_optional(&mut transaction).await?;
+                let row = sqlx::query!(r#"SELECT requested IS NOT NULL AS "requested!", submitted IS NOT NULL AS "submitted!" FROM async_teams WHERE team = $1 AND kind = $2"#, team.id as _, async_kind as _).fetch_optional(&mut transaction).await?;
                 if row.as_ref().map_or(false, |row| row.submitted) {
                     form.context.push_error(form::Error::validation("You have already submitted times for this async. To make a correction or add vods, please contact the tournament organizers.")); //TODO allow adding vods via form but no other edits
                 }
@@ -1860,16 +1858,16 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         } else {
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
-            sqlx::query!("UPDATE async_teams SET submitted = NOW(), pieces = $1, fpa = $2 WHERE team = $3 AND kind = $4", value.pieces, (!value.fpa.is_empty()).then(|| &value.fpa), i64::from(team.id), async_kind as _).execute(&mut transaction).await?;
+            sqlx::query!("UPDATE async_teams SET submitted = NOW(), pieces = $1, fpa = $2 WHERE team = $3 AND kind = $4", value.pieces, (!value.fpa.is_empty()).then(|| &value.fpa), team.id as _, async_kind as _).execute(&mut transaction).await?;
             let mut players = Vec::default();
             for (((role, _), time), vod) in data.team_config().roles().iter().zip(&times).zip(&vods) {
-                let player = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = $2"#, i64::from(team.id), role as _).fetch_one(&mut transaction).await?;
+                let player = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = $2"#, team.id as _, role as _).fetch_one(&mut transaction).await?;
                 sqlx::query!("INSERT INTO async_players (series, event, player, kind, time, vod) VALUES ($1, $2, $3, $4, $5, $6)", series as _, event, player as _, async_kind as _, time as _, (!vod.is_empty()).then_some(vod)).execute(&mut transaction).await?;
                 players.push(player);
             }
             if let Some(discord_guild) = data.discord_guild {
                 let asyncs_row = sqlx::query!(r#"SELECT discord_role AS "discord_role: Id", discord_channel AS "discord_channel: Id" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, series as _, event, async_kind as _).fetch_one(&mut transaction).await?;
-                let members = sqlx::query_scalar!(r#"SELECT discord_id AS "discord_id!: Id" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, i64::from(team.id)).fetch_all(&mut transaction).await?;
+                let members = sqlx::query_scalar!(r#"SELECT discord_id AS "discord_id!: Id" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, team.id as _).fetch_all(&mut transaction).await?;
                 if let Some(Id(discord_role)) = asyncs_row.discord_role {
                     for &Id(user_id) in &members {
                         if let Ok(mut member) = discord_guild.member(&*discord_ctx.read().await, user_id).await {

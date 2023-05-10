@@ -93,7 +93,7 @@ impl User {
                 discord_display_name,
                 discord_discriminator AS "discord_discriminator: Discriminator",
                 is_archivist
-            FROM users WHERE id = $1"#, i64::from(id)).fetch_optional(pool).await?
+            FROM users WHERE id = $1"#, id as _).fetch_optional(pool).await?
                 .map(|row| Self {
                     display_source: row.display_source,
                     racetime_id: row.racetime_id,

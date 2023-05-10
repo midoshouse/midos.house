@@ -263,7 +263,7 @@ impl Ord for RaceSchedule {
 
 #[derive(Clone)]
 pub(crate) struct Race {
-    pub(crate) id: Option<Id>, //TODO make required?
+    pub(crate) id: Id,
     pub(crate) series: Series,
     pub(crate) event: String,
     pub(crate) startgg_event: Option<String>,
@@ -326,7 +326,7 @@ impl Race {
             video_url_fr,
             restreamer_fr,
             ignored
-        FROM races WHERE id = $1"#, i64::from(id)).fetch_one(&mut *transaction).await?;
+        FROM races WHERE id = $1"#, id as _).fetch_one(&mut *transaction).await?;
         let (startgg_event, startgg_set, phase, round, slots) = if let Some(startgg_set) = row.startgg_set {
             if row.startgg_event.is_some() && row.phase.is_some() && row.round.is_some() && row.team1.is_some() && row.team2.is_some() {
                 (row.startgg_event, Some(startgg_set), row.phase, row.round, None)
@@ -348,7 +348,7 @@ impl Race {
                     startgg_event = $1,
                     phase = $2,
                     round = $3
-                WHERE id = $4", startgg_event, phase, round, i64::from(id)).execute(&mut *transaction).await?;
+                WHERE id = $4", startgg_event, phase, round, id as _).execute(&mut *transaction).await?;
                 (Some(startgg_event), Some(startgg_set), Some(phase), Some(round), Some(slots))
             } else {
                 (None, None, row.phase, row.round, None)
@@ -385,8 +385,8 @@ impl Race {
                     ] = *slots {
                         let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?;
                         let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
-                        sqlx::query!("UPDATE races SET team1 = $1 WHERE id = $2", team1.id as _, i64::from(id)).execute(&mut *transaction).await?;
-                        sqlx::query!("UPDATE races SET team2 = $1 WHERE id = $2", team2.id as _, i64::from(id)).execute(&mut *transaction).await?;
+                        sqlx::query!("UPDATE races SET team1 = $1 WHERE id = $2", team1.id as _, id as _).execute(&mut *transaction).await?;
+                        sqlx::query!("UPDATE races SET team2 = $1 WHERE id = $2", team2.id as _, id as _).execute(&mut *transaction).await?;
                         Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)])
                     } else {
                         return Err(Error::StartggTeams { startgg_set: startgg_set.clone() })
@@ -408,7 +408,7 @@ impl Race {
                         .json_with_text_in_error::<RaceData>().await?
                         .ended_at;
                     if let Some(end) = end {
-                        sqlx::query!($query, end, i64::from(id)).execute(&mut *transaction).await?;
+                        sqlx::query!($query, end, id as _).execute(&mut *transaction).await?;
                     }
                     end
                 } else {
@@ -432,7 +432,6 @@ impl Race {
             (None, _, _, _, None) => None,
         };
         Ok(Self {
-            id: Some(id),
             series: row.series,
             event: row.event,
             game: row.game,
@@ -456,7 +455,7 @@ impl Race {
             video_url_fr: row.video_url_fr.map(|url| url.parse()).transpose()?,
             restreamer_fr: row.restreamer_fr,
             ignored: row.ignored,
-            startgg_event, startgg_set, entrants, phase, round,
+            id, startgg_event, startgg_set, entrants, phase, round,
         })
     }
 
@@ -470,37 +469,35 @@ impl Race {
                 && iter_race.game == race.game
                 && iter_race.entrants == race.entrants
             ) {
-                if let Some(id) = found_race.id {
-                    if !found_race.schedule.start_matches(&race.schedule) {
-                        match race.schedule {
-                            RaceSchedule::Unscheduled => {
-                                found_race.schedule = RaceSchedule::Unscheduled;
-                                sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL WHERE id = $1", i64::from(id)).execute(transaction).await?;
+                if !found_race.schedule.start_matches(&race.schedule) {
+                    match race.schedule {
+                        RaceSchedule::Unscheduled => {
+                            found_race.schedule = RaceSchedule::Unscheduled;
+                            sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL WHERE id = $1", found_race.id as _).execute(transaction).await?;
+                        }
+                        RaceSchedule::Live { start, .. } => {
+                            match found_race.schedule {
+                                RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
+                                RaceSchedule::Live { start: ref mut old_start, .. } => *old_start = start,
+                                RaceSchedule::Async { .. } => unimplemented!("race listed as async in database was rescheduled as live"), //TODO
                             }
-                            RaceSchedule::Live { start, .. } => {
-                                match found_race.schedule {
-                                    RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
-                                    RaceSchedule::Live { start: ref mut old_start, .. } => *old_start = start,
-                                    RaceSchedule::Async { .. } => unimplemented!("race listed as async in database was rescheduled as live"), //TODO
+                            sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, found_race.id as _).execute(transaction).await?;
+                        },
+                        RaceSchedule::Async { start1, start2, .. } => {
+                            match found_race.schedule {
+                                RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
+                                RaceSchedule::Live { .. } => unimplemented!("race listed as live in database was rescheduled as async"), //TODO
+                                RaceSchedule::Async { start1: ref mut old_start1, start2: ref mut old_start2, .. } => {
+                                    *old_start1 = start1;
+                                    *old_start2 = start2;
                                 }
-                                sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, i64::from(id)).execute(transaction).await?;
-                            },
-                            RaceSchedule::Async { start1, start2, .. } => {
-                                match found_race.schedule {
-                                    RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
-                                    RaceSchedule::Live { .. } => unimplemented!("race listed as live in database was rescheduled as async"), //TODO
-                                    RaceSchedule::Async { start1: ref mut old_start1, start2: ref mut old_start2, .. } => {
-                                        *old_start1 = start1;
-                                        *old_start2 = start2;
-                                    }
-                                }
-                                sqlx::query!("UPDATE races SET start = NULL, async_start1 = $1, async_start2 = $2 WHERE id = $3", start1, start2, i64::from(id)).execute(transaction).await?;
                             }
+                            sqlx::query!("UPDATE races SET start = NULL, async_start1 = $1, async_start2 = $2 WHERE id = $3", start1, start2, found_race.id as _).execute(transaction).await?;
                         }
                     }
                 }
             } else {
-                // add race to database to give it an ID
+                // add race to database
                 race.save(transaction).await?;
                 races.push(race);
             }
@@ -520,6 +517,11 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::NineDaysOfSaws | Series::Pictionary => {
+                let id = if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_optional(&mut *transaction).await? {
+                    id
+                } else {
+                    Id::new(&mut *transaction, IdTable::Races).await?
+                };
                 let schedule = if let Some(start) = event.start(&mut *transaction).await? {
                     RaceSchedule::Live {
                         end: event.end,
@@ -530,7 +532,6 @@ impl Race {
                     RaceSchedule::Unscheduled
                 };
                 add_or_update_race(&mut *transaction, &mut races, Self {
-                    id: None,
                     series: event.series,
                     event: event.event.to_string(),
                     startgg_event: None,
@@ -547,7 +548,7 @@ impl Race {
                     video_url_fr: None, //TODO video_url_fr field on event::Data?
                     restreamer_fr: None,
                     ignored: false,
-                    schedule,
+                    id, schedule,
                 }).await?;
             }
             Series::Rsl => match &*event.event {
@@ -706,143 +707,140 @@ impl Race {
     }
 
     pub(crate) async fn save(&mut self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
-        let id = if self.id.is_some() {
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE id = $1) AS "exists!""#, self.id as _).fetch_one(&mut *transaction).await? {
             unimplemented!("updating existing races not yet implemented") //TODO
         } else {
-            let id = Id::new(&mut *transaction, IdTable::Races).await?;
-            self.id = Some(id);
-            id
-        };
-        let ([team1, team2], [p1, p2, p3], [total, finished]) = match self.entrants {
-            Entrants::Open => ([None; 2], [None; 3], [None; 2]),
-            Entrants::Count { total, finished } => ([None; 2], [None; 3], [Some(total), Some(finished)]),
-            Entrants::Named(ref entrants) => ([None; 2], [Some(entrants), None, None], [None; 2]),
-            Entrants::Two([ref p1, ref p2]) => {
-                let (team1, p1) = match p1 {
-                    Entrant::MidosHouseTeam(team) => (Some(team.id), None),
-                    Entrant::Named(name) => (None, Some(name)),
-                };
-                let (team2, p2) = match p2 {
-                    Entrant::MidosHouseTeam(team) => (Some(team.id), None),
-                    Entrant::Named(name) => (None, Some(name)),
-                };
-                ([team1, team2], [p1, p2, None], [None; 2])
-            }
-            Entrants::Three([ref p1, ref p2, ref p3]) => {
-                (
-                    [None; 2],
-                    [Some(match p1 {
-                        Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
-                        Entrant::Named(name) => name,
-                    }),
-                    Some(match p2 {
-                        Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
-                        Entrant::Named(name) => name,
-                    }),
-                    Some(match p3 {
-                        Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
-                        Entrant::Named(name) => name,
-                    })],
-                    [None; 2],
-                )
-            }
-        };
-        let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match self.schedule {
-            RaceSchedule::Unscheduled => (None, None, None, None, None, None, None, None, None),
-            RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
-            RaceSchedule::Async { start1, start2, end1, end2, ref room1, ref room2 } => (None, start1, start2, None, end1, end2, None, room1.as_ref(), room2.as_ref()),
-        };
-        let (web_id, web_gen_time, file_stem, locked_spoiler_log_path, tfb_uuid) = match self.seed.as_ref().map(|seed| &seed.files) {
-            Some(seed::Files::MidosHouse { file_stem, locked_spoiler_log_path }) => (None, None, Some(file_stem), locked_spoiler_log_path.as_ref(), None),
-            Some(seed::Files::OotrWeb { id, gen_time, file_stem }) => (Some(*id), Some(*gen_time), Some(file_stem), None, None),
-            Some(seed::Files::TriforceBlitz { uuid }) => (None, None, None, None, Some(uuid)),
-            Some(seed::Files::TfbSotd { .. }) => unimplemented!("Triforce Blitz seed of the day not supported for official races"),
-            None => (None, None, None, None, None),
-        };
-        sqlx::query!("INSERT INTO races (
-            startgg_set,
-            start,
-            series,
-            event,
-            async_start2,
-            async_start1,
-            room,
-            async_room1,
-            async_room2,
-            draft_state,
-            async_end1,
-            async_end2,
-            end_time,
-            team1,
-            team2,
-            web_id,
-            web_gen_time,
-            file_stem,
-            hash1,
-            hash2,
-            hash3,
-            hash4,
-            hash5,
-            game,
-            id,
-            p1,
-            p2,
-            video_url,
-            video_url_fr,
-            phase,
-            round,
-            p3,
-            startgg_event,
-            scheduling_thread,
-            total,
-            finished,
-            tfb_uuid,
-            restreamer,
-            restreamer_fr,
-            locked_spoiler_log_path
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40)",
-            self.startgg_set,
-            start,
-            self.series as _,
-            self.event,
-            async_start2,
-            async_start1,
-            room.map(|url| url.to_string()),
-            async_room1.map(|url| url.to_string()),
-            async_room2.map(|url| url.to_string()),
-            self.draft.as_ref().map(Json) as _,
-            async_end1,
-            async_end2,
-            end,
-            team1.map(|id| i64::from(id)),
-            team2.map(|id| i64::from(id)),
-            web_id.map(|web_id| web_id as i64),
-            web_gen_time,
-            file_stem.map(|file_stem| &**file_stem),
-            self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[hash1, _, _, _, _]| hash1) as _,
-            self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, hash2, _, _, _]| hash2) as _,
-            self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, hash3, _, _]| hash3) as _,
-            self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, _, hash4, _]| hash4) as _,
-            self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, _, _, hash5]| hash5) as _,
-            self.game,
-            id as _,
-            p1,
-            p2,
-            self.video_url.as_ref().map(|url| url.to_string()),
-            self.video_url_fr.as_ref().map(|url| url.to_string()),
-            self.phase,
-            self.round,
-            p3,
-            self.startgg_event,
-            self.scheduling_thread.map(|id| i64::from(id)),
-            total.map(|total| total as i32),
-            finished.map(|finished| finished as i32),
-            tfb_uuid,
-            self.restreamer,
-            self.restreamer_fr,
-            locked_spoiler_log_path,
-        ).execute(transaction).await?;
+            let ([team1, team2], [p1, p2, p3], [total, finished]) = match self.entrants {
+                Entrants::Open => ([None; 2], [None; 3], [None; 2]),
+                Entrants::Count { total, finished } => ([None; 2], [None; 3], [Some(total), Some(finished)]),
+                Entrants::Named(ref entrants) => ([None; 2], [Some(entrants), None, None], [None; 2]),
+                Entrants::Two([ref p1, ref p2]) => {
+                    let (team1, p1) = match p1 {
+                        Entrant::MidosHouseTeam(team) => (Some(team.id), None),
+                        Entrant::Named(name) => (None, Some(name)),
+                    };
+                    let (team2, p2) = match p2 {
+                        Entrant::MidosHouseTeam(team) => (Some(team.id), None),
+                        Entrant::Named(name) => (None, Some(name)),
+                    };
+                    ([team1, team2], [p1, p2, None], [None; 2])
+                }
+                Entrants::Three([ref p1, ref p2, ref p3]) => {
+                    (
+                        [None; 2],
+                        [Some(match p1 {
+                            Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
+                            Entrant::Named(name) => name,
+                        }),
+                        Some(match p2 {
+                            Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
+                            Entrant::Named(name) => name,
+                        }),
+                        Some(match p3 {
+                            Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
+                            Entrant::Named(name) => name,
+                        })],
+                        [None; 2],
+                    )
+                }
+            };
+            let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match self.schedule {
+                RaceSchedule::Unscheduled => (None, None, None, None, None, None, None, None, None),
+                RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
+                RaceSchedule::Async { start1, start2, end1, end2, ref room1, ref room2 } => (None, start1, start2, None, end1, end2, None, room1.as_ref(), room2.as_ref()),
+            };
+            let (web_id, web_gen_time, file_stem, locked_spoiler_log_path, tfb_uuid) = match self.seed.as_ref().map(|seed| &seed.files) {
+                Some(seed::Files::MidosHouse { file_stem, locked_spoiler_log_path }) => (None, None, Some(file_stem), locked_spoiler_log_path.as_ref(), None),
+                Some(seed::Files::OotrWeb { id, gen_time, file_stem }) => (Some(*id), Some(*gen_time), Some(file_stem), None, None),
+                Some(seed::Files::TriforceBlitz { uuid }) => (None, None, None, None, Some(uuid)),
+                Some(seed::Files::TfbSotd { .. }) => unimplemented!("Triforce Blitz seed of the day not supported for official races"),
+                None => (None, None, None, None, None),
+            };
+            sqlx::query!("INSERT INTO races (
+                startgg_set,
+                start,
+                series,
+                event,
+                async_start2,
+                async_start1,
+                room,
+                async_room1,
+                async_room2,
+                draft_state,
+                async_end1,
+                async_end2,
+                end_time,
+                team1,
+                team2,
+                web_id,
+                web_gen_time,
+                file_stem,
+                hash1,
+                hash2,
+                hash3,
+                hash4,
+                hash5,
+                game,
+                id,
+                p1,
+                p2,
+                video_url,
+                video_url_fr,
+                phase,
+                round,
+                p3,
+                startgg_event,
+                scheduling_thread,
+                total,
+                finished,
+                tfb_uuid,
+                restreamer,
+                restreamer_fr,
+                locked_spoiler_log_path
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40)",
+                self.startgg_set,
+                start,
+                self.series as _,
+                self.event,
+                async_start2,
+                async_start1,
+                room.map(|url| url.to_string()),
+                async_room1.map(|url| url.to_string()),
+                async_room2.map(|url| url.to_string()),
+                self.draft.as_ref().map(Json) as _,
+                async_end1,
+                async_end2,
+                end,
+                team1.map(|id| i64::from(id)),
+                team2.map(|id| i64::from(id)),
+                web_id.map(|web_id| web_id as i64),
+                web_gen_time,
+                file_stem.map(|file_stem| &**file_stem),
+                self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[hash1, _, _, _, _]| hash1) as _,
+                self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, hash2, _, _, _]| hash2) as _,
+                self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, hash3, _, _]| hash3) as _,
+                self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, _, hash4, _]| hash4) as _,
+                self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, _, _, hash5]| hash5) as _,
+                self.game,
+                self.id as _,
+                p1,
+                p2,
+                self.video_url.as_ref().map(|url| url.to_string()),
+                self.video_url_fr.as_ref().map(|url| url.to_string()),
+                self.phase,
+                self.round,
+                p3,
+                self.startgg_event,
+                self.scheduling_thread.map(|id| i64::from(id)),
+                total.map(|total| total as i32),
+                finished.map(|finished| finished as i32),
+                tfb_uuid,
+                self.restreamer,
+                self.restreamer_fr,
+                locked_spoiler_log_path,
+            ).execute(transaction).await?;
+        }
         Ok(())
     }
 }
@@ -1027,29 +1025,17 @@ fn ics_datetime<Z: TimeZone>(datetime: DateTime<Z>) -> String {
 }
 
 async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: &Environment, config: &Config, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
-    for (i, race) in Race::for_event(transaction, http_client, env, config, event).await?.into_iter().enumerate() {
+    for race in Race::for_event(transaction, http_client, env, config, event).await?.into_iter() {
         for race_event in race.cal_events() {
             if let Some(start) = race_event.start() {
-                let mut cal_event = ics::Event::new(if let Some(id) = race.id {
-                    format!("{id}{}@midos.house",
-                        match race_event.kind {
-                            EventKind::Normal => "",
-                            EventKind::Async1 => "-1",
-                            EventKind::Async2 => "-2",
-                        },
-                    )
-                } else {
-                    format!("{}-{}-{}{}@midos.house",
-                        event.series,
-                        event.event,
-                        race.startgg_set.clone().unwrap_or_else(|| i.to_string()),
-                        match race_event.kind {
-                            EventKind::Normal => "",
-                            EventKind::Async1 => "-1",
-                            EventKind::Async2 => "-2",
-                        },
-                    )
-                }, ics_datetime(Utc::now()));
+                let mut cal_event = ics::Event::new(format!("{}{}@midos.house",
+                    race.id,
+                    match race_event.kind {
+                        EventKind::Normal => "",
+                        EventKind::Async1 => "-1",
+                        EventKind::Async2 => "-2",
+                    },
+                ), ics_datetime(Utc::now()));
                 let summary_prefix = match (&race.phase, &race.round) {
                     (Some(phase), Some(round)) => format!("{} {phase} {round}", event.short_name()),
                     (Some(phase), None) => format!("{} {phase}", event.short_name()),
@@ -1368,7 +1354,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
             };
             for game in 1..=value.game_count {
                 Race {
-                    id: None,
+                    id: Id::new(&mut transaction, IdTable::Races).await?,
                     series: event.series,
                     event: event.event.to_string(),
                     startgg_event: None,
@@ -1403,12 +1389,11 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
 }
 
 pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
-    let id = race.id.expect("race being edited must have an ID");
     let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
     let form = if me.is_some() {
         let mut errors = ctx.as_ref().map(|ctx| ctx.errors().collect()).unwrap_or_default();
-        full_form(uri!(edit_race_post(event.series, &*event.event, id)), csrf, html! {
+        full_form(uri!(edit_race_post(event.series, &*event.event, race.id)), csrf, html! {
             @match race.schedule {
                 RaceSchedule::Unscheduled => {}
                 RaceSchedule::Live { ref room, .. } => : form_field("room", &mut errors, html! {
@@ -1479,7 +1464,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, e
         html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(edit_race(event.series, &*event.event, id))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(edit_race(event.series, &*event.event, race.id))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to edit this race.";
                 }
             }
@@ -1899,22 +1884,22 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                 (!value.video_url_fr.is_empty()).then(|| &value.video_url_fr),
                 restreamer_fr,
                 me.id as _,
-                i64::from(id),
+                id as _,
             ).execute(&mut transaction).await?;
             if let Some([hash1, hash2, hash3, hash4, hash5]) = file_hash {
                 sqlx::query!(
                     "UPDATE races SET hash1 = $1, hash2 = $2, hash3 = $3, hash4 = $4, hash5 = $5 WHERE id = $6",
-                    hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, i64::from(id),
+                    hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, id as _,
                 ).execute(&mut transaction).await?;
             }
             if let Some(web_id) = web_id {
-                sqlx::query!("UPDATE races SET web_id = $1 WHERE id = $2", web_id as i64, i64::from(id)).execute(&mut transaction).await?;
+                sqlx::query!("UPDATE races SET web_id = $1 WHERE id = $2", web_id as i64, id as _).execute(&mut transaction).await?;
             }
             if let Some(web_gen_time) = web_gen_time {
-                sqlx::query!("UPDATE races SET web_gen_time = $1 WHERE id = $2", web_gen_time, i64::from(id)).execute(&mut transaction).await?;
+                sqlx::query!("UPDATE races SET web_gen_time = $1 WHERE id = $2", web_gen_time, id as _).execute(&mut transaction).await?;
             }
             if let Some(file_stem) = file_stem {
-                sqlx::query!("UPDATE races SET file_stem = $1 WHERE id = $2", file_stem, i64::from(id)).execute(&mut transaction).await?;
+                sqlx::query!("UPDATE races SET file_stem = $1 WHERE id = $2", file_stem, id as _).execute(&mut transaction).await?;
             }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
@@ -1925,11 +1910,10 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
 }
 
 pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
-    let id = race.id.expect("race being edited must have an ID");
     let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let form = if me.is_some() {
         let mut errors = ctx.errors().collect();
-        full_form(uri!(add_file_hash_post(event.series, &*event.event, id)), csrf, html! {
+        full_form(uri!(add_file_hash_post(event.series, &*event.event, race.id)), csrf, html! {
             : form_field("hash1", &mut errors, html! {
                 label(for = "hash1") : "Hash Icon 1:";
                 select(name = "hash1") {
@@ -1975,7 +1959,7 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
         html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(edit_race(event.series, &*event.event, id))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(edit_race(event.series, &*event.event, race.id))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to edit this race.";
                 }
             }
@@ -2088,7 +2072,7 @@ pub(crate) async fn add_file_hash_post(env: &State<Environment>, config: &State<
         } else {
             sqlx::query!(
                 "UPDATE races SET hash1 = $1, hash2 = $2, hash3 = $3, hash4 = $4, hash5 = $5 WHERE id = $6",
-                hash1.unwrap() as _, hash2.unwrap() as _, hash3.unwrap() as _, hash4.unwrap() as _, hash5.unwrap() as _, i64::from(id),
+                hash1.unwrap() as _, hash2.unwrap() as _, hash3.unwrap() as _, hash4.unwrap() as _, hash5.unwrap() as _, id as _,
             ).execute(&mut transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))

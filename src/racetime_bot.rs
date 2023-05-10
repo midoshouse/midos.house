@@ -1294,7 +1294,7 @@ impl Handler {
         if let Some(OfficialRaceData { ref event, .. }) = self.official_data {
             if let Some(UserData { ref id, .. }) = msg.user {
                 if let Some(user) = User::from_racetime(&ctx.global_state.db_pool, id).await? {
-                    return sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM organizers WHERE series = $1 AND event = $2 AND organizer = $3) AS "exists!""#, event.series as _, &event.event, i64::from(user.id)).fetch_one(&ctx.global_state.db_pool).await
+                    return sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM organizers WHERE series = $1 AND event = $2 AND organizer = $3) AS "exists!""#, event.series as _, &event.event, user.id as _).fetch_one(&ctx.global_state.db_pool).await
                 }
             }
         }
@@ -1352,7 +1352,7 @@ impl Handler {
         let db_pool = ctx.global_state.db_pool.clone();
         let ctx = ctx.clone();
         let state = self.race_state.clone();
-        let id = self.official_data.as_ref().map(|official_data| official_data.cal_event.race.id.expect("handling room for official race without ID"));
+        let id = self.official_data.as_ref().map(|official_data| official_data.cal_event.race.id);
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         tokio::spawn(async move {
             let mut seed_state = None::<SeedRollUpdate>;
@@ -2734,9 +2734,9 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, hos
             }.start_with_host(host_info, &access_token, &http_client, CATEGORY).await?;
             let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", host_info.hostname))?;
             match cal_event.kind {
-                cal::EventKind::Normal => { sqlx::query!("UPDATE races SET room = $1 WHERE id = $2", room_url.to_string(), i64::from(cal_event.race.id.expect("created from ID"))).execute(&mut *transaction).await.to_racetime()?; }
-                cal::EventKind::Async1 => { sqlx::query!("UPDATE races SET async_room1 = $1 WHERE id = $2", room_url.to_string(), i64::from(cal_event.race.id.expect("created from ID"))).execute(&mut *transaction).await.to_racetime()?; }
-                cal::EventKind::Async2 => { sqlx::query!("UPDATE races SET async_room2 = $1 WHERE id = $2", room_url.to_string(), i64::from(cal_event.race.id.expect("created from ID"))).execute(&mut *transaction).await.to_racetime()?; }
+                cal::EventKind::Normal => { sqlx::query!("UPDATE races SET room = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?; }
+                cal::EventKind::Async1 => { sqlx::query!("UPDATE races SET async_room1 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?; }
+                cal::EventKind::Async2 => { sqlx::query!("UPDATE races SET async_room2 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?; }
             }
             let mut msg = MessageBuilder::default();
             msg.push("race starting ");
