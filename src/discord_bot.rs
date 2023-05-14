@@ -1354,7 +1354,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         let had_multiple_times = match race.schedule {
                                             RaceSchedule::Unscheduled => {
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(false)
+                                                    .ephemeral(true)
                                                     .content("Sorry, this race already doesn't have a starting time.")
                                                 )).await?;
                                                 transaction.rollback().await?;
