@@ -600,10 +600,11 @@ impl GlobalState {
                 repo.reset(&repo.find_branch("origin/master", BranchType::Remote)?.into_reference().peel_to_commit()?.into_object(), ResetType::Hard, None)?;
             }
             // check required randomizer version
-            let local_version_file = BufReader::new(File::open(rsl_script_path.join("rslversion.py")).await?);
+            let local_version_path = rsl_script_path.join("rslversion.py");
+            let local_version_file = BufReader::new(File::open(&local_version_path).await?);
             let mut lines = local_version_file.lines();
             let version = loop {
-                let line = lines.next_line().await?.ok_or(RollError::RslVersion)?;
+                let line = lines.next_line().await.at(&local_version_path)?.ok_or(RollError::RslVersion)?;
                 if let Some((_, local_version)) = regex_captures!("^randomizer_version = '(.+)'$", &line) {
                     break local_version.parse()?
                 }
@@ -643,7 +644,7 @@ impl GlobalState {
 
                     let plando_filename = BufRead::lines(&*output.stdout)
                         .filter_map_ok(|line| Some(regex_captures!("^Plando File: (.+)$", &line)?.1.to_owned()))
-                        .next().ok_or(RollError::RslScriptOutput)??;
+                        .next().ok_or(RollError::RslScriptOutput)?.at_command("RandomSettingsGenerator.py")?;
                     let plando_path = rsl_script_path.join("data").join(plando_filename);
                     let plando_file = fs::read_to_string(&plando_path).await?;
                     let settings = serde_json::from_str::<Plando>(&plando_file)?.settings;
@@ -700,11 +701,11 @@ impl GlobalState {
                 } else {
                     let patch_filename = BufRead::lines(&*output.stdout)
                         .filter_map_ok(|line| Some(regex_captures!("^Creating Patch File: (.+)$", &line)?.1.to_owned()))
-                        .next().ok_or(RollError::RslScriptOutput)??;
+                        .next().ok_or(RollError::RslScriptOutput)?.at_command("RandomSettingsGenerator.py")?;
                     let patch_path = rsl_script_path.join("patches").join(&patch_filename);
                     let spoiler_log_filename = BufRead::lines(&*output.stdout)
                         .filter_map_ok(|line| Some(regex_captures!("^Created spoiler log at: (.+)$", &line)?.1.to_owned()))
-                        .next().ok_or(RollError::RslScriptOutput)??;
+                        .next().ok_or(RollError::RslScriptOutput)?.at_command("RandomSettingsGenerator.py")?;
                     let spoiler_log_path = rsl_script_path.join("patches").join(spoiler_log_filename);
                     let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(RollError::RslScriptOutput)?;
                     for extra_output_filename in [format!("{file_stem}_Cosmetics.json"), format!("{file_stem}_Distribution.json")] {
@@ -795,10 +796,10 @@ async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Ma
     settings.insert(format!("create_compressed_rom"), json!(false));
     for _ in 0..3 {
         let rando_path = version.dir()?;
-        let mut rando_process = Command::new(PYTHON).arg("OoTRandomizer.py").arg("--no_log").arg("--settings=-").current_dir(rando_path).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
-        rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await?;
-        let output = rando_process.wait_with_output().await?;
-        let stderr = if output.status.success() { BufRead::lines(&*output.stderr).try_collect::<_, Vec<_>, _>()? } else { continue };
+        let mut rando_process = Command::new(PYTHON).arg("OoTRandomizer.py").arg("--no_log").arg("--settings=-").current_dir(rando_path).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().at_command(PYTHON)?;
+        rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await.at_command(PYTHON)?;
+        let output = rando_process.wait_with_output().await.at_command(PYTHON)?;
+        let stderr = if output.status.success() { BufRead::lines(&*output.stderr).try_collect::<_, Vec<_>, _>().at_command(PYTHON)? } else { continue };
         let patch_path = Path::new(stderr.iter().rev().find_map(|line| line.strip_prefix("Created patch file archive at: ")).ok_or(RollError::PatchPath)?);
         let spoiler_log_path = Path::new(stderr.iter().rev().find_map(|line| line.strip_prefix("Created spoiler log at: ")).ok_or(RollError::SpoilerLogPath)?);
         let patch_filename = patch_path.file_name().expect("patch file path with no file name");
@@ -818,7 +819,6 @@ pub(crate) enum RollError {
     #[error(transparent)] Dir(#[from] rando::DirError),
     #[error(transparent)] Git(#[from] git2::Error),
     #[error(transparent)] Header(#[from] reqwest::header::ToStrError),
-    #[error(transparent)] Io(#[from] std::io::Error),
     #[error(transparent)] Json(#[from] serde_json::Error),
     #[error(transparent)] RandoVersion(#[from] rando::VersionParseError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -1027,6 +1027,7 @@ impl SeedRollUpdate {
             }
             Self::Error(msg) => {
                 eprintln!("seed roll error: {msg:?}");
+                let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
                 ctx.send_message("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl.").await?;
             }
         }
@@ -1195,7 +1196,8 @@ impl OotrApiClient {
                         let (_, patch_file_name) = regex_captures!("^attachment; filename=(.+)$", patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION).ok_or(RollError::PatchPath)?.to_str()?).ok_or(RollError::PatchPath)?;
                         let patch_file_name = patch_file_name.to_owned();
                         let (_, patch_file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_file_name).ok_or(RollError::PatchPath)?;
-                        io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut File::create(Path::new(seed::DIR).join(&patch_file_name)).await?).await?;
+                        let patch_path = Path::new(seed::DIR).join(&patch_file_name);
+                        io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut File::create(&patch_path).await?).await.at(patch_path)?;
                         return Ok((id, creation_timestamp, settings_log.file_hash, patch_file_stem.to_owned()))
                     }
                     2 => unreachable!(), // generated with link (not possible from API)

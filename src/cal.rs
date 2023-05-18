@@ -511,7 +511,11 @@ impl Race {
         }
         match event.series {
             Series::League => {} //TODO get from League website somehow
-            Series::MixedPools => {} //TODO
+            Series::MixedPools => match &*event.event {
+                "1" => {} // added to database
+                "2" => {} //TODO
+                _ => unimplemented!(),
+            }
             Series::Multiworld => match &*event.event {
                 "1" => {} // no match data available
                 "2" | "3" => {} // added to database
