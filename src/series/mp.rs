@@ -21,10 +21,25 @@ use {
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     Ok(match &*data.event {
+        "1" => Some(html! {
+            article {
+                p {
+                    : "This is an archive of the 1st season of the Mixed Pools tournament, organized by WTHH, ";
+                    : natjoin_html(data.organizers(transaction).await?);
+                    : ".";
+                }
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = "https://docs.google.com/spreadsheets/d/1EoRh37QOKbTT86Jdo97KnvdJ66Y7oKjbIplwYY8qRYs/edit#gid=130670252") : "Swiss pairings and results, and tiebreaker results";
+                    }
+                }
+            }
+        }),
         "2" => Some(html! {
             article {
                 p {
-                    : "This is Mixed Pools season 2, organized by WTHH, ";
+                    : "This is the 2nd season of the Mixed Pools tournament, organized by WTHH, ";
                     : natjoin_html(data.organizers(transaction).await?);
                     : ". Join ";
                     a(href = "https://discord.gg/cpvPMTPZtP") : "the Discord server";
