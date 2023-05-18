@@ -180,6 +180,7 @@ impl Role {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Series {
     League,
+    MixedPools,
     Multiworld,
     NineDaysOfSaws,
     Pictionary,
@@ -192,6 +193,7 @@ impl Series {
     pub(crate) fn to_str(&self) -> &'static str {
         match self {
             Self::League => "league",
+            Self::MixedPools => "mp",
             Self::Multiworld => "mw",
             Self::NineDaysOfSaws => "9dos",
             Self::Pictionary => "pic",
@@ -209,6 +211,7 @@ impl FromStr for Series {
         match s {
             "league" => Ok(Self::League),
             "9dos" => Ok(Self::NineDaysOfSaws),
+            "mp" => Ok(Self::MixedPools),
             "mw" => Ok(Self::Multiworld),
             "pic" => Ok(Self::Pictionary),
             "rsl" => Ok(Self::Rsl),
@@ -424,6 +427,8 @@ impl<'a> Data<'a> {
         match (self.series, &*self.event) {
             (Series::League, "4") => from_file!("../../assets/event/league/chests-4-7.1.94.json"),
             (Series::League, _) => unimplemented!(),
+            (Series::MixedPools, "2") => unimplemented!(), //TODO
+            (Series::MixedPools, _) => unimplemented!(),
             (Series::Multiworld, "1" | "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
             (Series::Multiworld, "3") => mw::S3Settings::random(&mut thread_rng()).chests(),
             (Series::Multiworld, _) => unimplemented!(),
@@ -450,6 +455,7 @@ impl<'a> Data<'a> {
     pub(crate) fn is_single_race(&self) -> bool {
         match self.series {
             Series::League => false,
+            Series::MixedPools => false,
             Series::Multiworld => false,
             Series::NineDaysOfSaws => true,
             Series::Pictionary => true,
@@ -462,6 +468,7 @@ impl<'a> Data<'a> {
     pub(crate) fn team_config(&self) -> TeamConfig {
         match self.series {
             Series::League => TeamConfig::Solo,
+            Series::MixedPools => TeamConfig::Solo,
             Series::Multiworld => TeamConfig::Multiworld,
             Series::NineDaysOfSaws => match &*self.event {
                 "1" => TeamConfig::Solo,
@@ -805,6 +812,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
     let header = data.header(&mut transaction, me.as_ref(), Tab::Info, false).await?;
     let content = match data.series {
         Series::League => league::info(&mut transaction, &data).await?,
+        Series::MixedPools => mp::info(&mut transaction, &data).await?,
         Series::Multiworld => mw::info(&mut transaction, &data).await?,
         Series::NineDaysOfSaws => Some(ndos::info(&mut transaction, &data).await?),
         Series::Pictionary => pic::info(&mut transaction, &data).await?,
@@ -1282,6 +1290,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, discord_ctx: &D
                 } else {
                     @match data.series {
                         Series::League => @unimplemented // no signups on Mido's House
+                        Series::MixedPools => @unimplemented // no signups on Mido's House
                         Series::Multiworld => : mw::status(&mut transaction, discord_ctx, csrf, &data, row.id, &mut ctx).await?;
                         Series::NineDaysOfSaws => @if data.is_ended() {
                             p : "This race has been completed."; //TODO ranking and finish time

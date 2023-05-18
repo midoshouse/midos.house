@@ -140,12 +140,7 @@ use {
             TeamConfig,
         },
         seed,
-        series::{
-            mw,
-            ndos,
-            rsl,
-            tfb,
-        },
+        series::*,
         team::Team,
         user::User,
         util::{
@@ -350,6 +345,7 @@ impl VersionedRslPreset {
 
 #[derive(Sequence)]
 pub(crate) enum Goal {
+    MixedPoolsS2,
     MultiworldS3,
     NineDaysOfSaws,
     PicRs2,
@@ -364,6 +360,7 @@ pub(crate) struct GoalFromStrError;
 impl Goal {
     fn matches_event(&self, series: Series, event: &str) -> bool {
         match self {
+            Self::MixedPoolsS2 => series == Series::MixedPools && event == "2",
             Self::MultiworldS3 => series == Series::Multiworld && event == "3",
             Self::NineDaysOfSaws => series == Series::NineDaysOfSaws,
             Self::PicRs2 => series == Series::Pictionary && event == "rs2",
@@ -374,6 +371,7 @@ impl Goal {
 
     pub(crate) fn is_custom(&self) -> bool {
         match self {
+            Self::MixedPoolsS2 => true,
             Self::MultiworldS3 => true,
             Self::NineDaysOfSaws => true,
             Self::PicRs2 => true,
@@ -384,6 +382,7 @@ impl Goal {
 
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
+            Self::MixedPoolsS2 => "2nd Mixed Pools Tournament",
             Self::MultiworldS3 => "3rd Multiworld Tournament",
             Self::NineDaysOfSaws => "9 Days of SAWS",
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
@@ -395,12 +394,13 @@ impl Goal {
     fn draft_kind(&self) -> DraftKind {
         match self {
             Self::MultiworldS3 => DraftKind::MultiworldS3,
-            Self::NineDaysOfSaws | Self::PicRs2 | Self::Rsl | Self::TriforceBlitz => DraftKind::None,
+            Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::PicRs2 | Self::Rsl | Self::TriforceBlitz => DraftKind::None,
         }
     }
 
     fn rando_version(&self) -> rando::Version {
         match self {
+            Self::MixedPoolsS2 => rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17),
             Self::MultiworldS3 => rando::Version::from_dev(6, 2, 205),
             Self::NineDaysOfSaws => rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2),
             Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
@@ -408,8 +408,16 @@ impl Goal {
         }
     }
 
+    fn should_create_rooms(&self) -> bool {
+        match self {
+            Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::Rsl => false,
+            Self::MultiworldS3 | Self::PicRs2 | Self::TriforceBlitz => true,
+        }
+    }
+
     async fn send_presets(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         match self {
+            Self::MixedPoolsS2 => ctx.send_message("!seed: The settings used for the tournament").await?,
             Self::MultiworldS3 => {
                 ctx.send_message("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
                 ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
@@ -1612,6 +1620,10 @@ impl RaceHandler<GlobalState> for Handler {
             } else {
                 match race_state {
                     RaceState::Init => match goal {
+                        Goal::MixedPoolsS2 => {
+                            ctx.send_message("Welcome! This is a practice room for the 2nd Mixed Pools Tournament. Learn more about the tournament at https://midos.house/event/mp/2").await?;
+                            ctx.send_message("Create a seed with !seed").await?;
+                        }
                         Goal::MultiworldS3 => {
                             ctx.send_message("Welcome! This is a practice room for the 3rd Multiworld Tournament. Learn more about the tournament at https://midos.house/event/mw/3").await?;
                             ctx.send_message("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials 2 wincon scrubs). For more info about these options, use !presets").await?;
@@ -1711,6 +1723,7 @@ impl RaceHandler<GlobalState> for Handler {
                         let state = lock!(@write_owned this.race_state.clone());
                         if let RaceState::Init = *state {
                             match goal {
+                                Goal::MixedPoolsS2 => unreachable!(), // no official race rooms
                                 Goal::MultiworldS3 => unreachable!(), // uses DraftKind::MultiworldS3
                                 Goal::NineDaysOfSaws => unreachable!(), // 9dos series has concluded
                                 Goal::PicRs2 => this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
@@ -2096,6 +2109,7 @@ impl RaceHandler<GlobalState> for Handler {
                         ctx.send_message(&format!("Sorry {reply_to}, seed rolling is locked. Only {} may roll a seed for this race.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })).await?;
                     } else {
                         match goal {
+                            Goal::MixedPoolsS2 => self.roll_seed(ctx, state, goal.rando_version(), mp::s2_settings(), spoiler_log, "a", format!("mixed pools seed")),
                             Goal::MultiworldS3 => match args[..] {
                                 [] => {
                                     ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
@@ -2477,7 +2491,7 @@ impl RaceHandler<GlobalState> for Handler {
                             })
                         });
                     }
-                    Goal::MultiworldS3 | Goal::NineDaysOfSaws | Goal::Rsl => {}
+                    Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::NineDaysOfSaws | Goal::Rsl => {}
                 }
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx).await? {
@@ -2804,7 +2818,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                 let rooms_to_open = cal::Event::rooms_to_open(&mut transaction, &global_state.http_client, &global_state.startgg_token).await.to_racetime()?;
                 for cal_event in rooms_to_open {
                     let Some(goal) = all::<Goal>().find(|goal| goal.matches_event(cal_event.race.series, &cal_event.race.event)) else { continue };
-                    if let Goal::Rsl = goal { continue } // we're currently not opening rooms for RSL bracket matches despite having a goal for it
+                    if !goal.should_create_rooms() { continue }
                     let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
                     if let Some((race_slug, msg)) = create_room(&mut transaction, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.http_client, &cal_event, &event).await? {
                         let _ = lock!(@read global_state.extra_room_tx).send(race_slug).await;
