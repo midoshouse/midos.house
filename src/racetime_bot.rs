@@ -799,6 +799,12 @@ impl GlobalState {
 
 async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
     version.clone_repo().await?;
+    #[cfg(unix)] {
+        settings.insert(format!("rom"), json!(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join("oot-ntscu-1.0.z64")).ok_or(RollError::RomPath)?));
+        if settings.get("language").and_then(|language| language.as_str()).map_or(false, |language| matches!(language, "french" | "german")) {
+            settings.insert(format!("pal_rom"), json!(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join("oot-pal-1.0.z64")).ok_or(RollError::RomPath)?));
+        }
+    }
     settings.insert(format!("create_patch_file"), json!(true));
     settings.insert(format!("create_compressed_rom"), json!(false));
     let mut last_error = None;
@@ -855,6 +861,9 @@ pub(crate) enum RollError {
     PatchPath,
     #[error("attempted to roll a random settings seed on web, but this branch isn't available with hidden settings on web")]
     RandomSettingsWeb,
+    #[cfg(unix)]
+    #[error("base rom not found")]
+    RomPath,
     #[cfg(unix)]
     #[error("RSL script not found")]
     RslPath,
