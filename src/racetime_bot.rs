@@ -817,7 +817,9 @@ async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Ma
             last_error = Some(String::from_utf8_lossy(&output.stderr).into_owned());
             continue
         };
-        let patch_path = Path::new(stderr.iter().rev().find_map(|line| line.strip_prefix("Created patch file archive at: ")).ok_or(RollError::PatchPath)?);
+        let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
+        let patch_path_prefix = if world_count > 1 { "Created patch file archive at: " } else { "Creating Patch File: " };
+        let patch_path = Path::new(stderr.iter().rev().find_map(|line| line.strip_prefix(patch_path_prefix)).ok_or(RollError::PatchPath)?);
         let spoiler_log_path = Path::new(stderr.iter().rev().find_map(|line| line.strip_prefix("Created spoiler log at: ")).ok_or(RollError::SpoilerLogPath)?);
         let patch_filename = patch_path.file_name().expect("patch file path with no file name");
         fs::rename(patch_path, Path::new(seed::DIR).join(patch_filename)).await?;
