@@ -427,7 +427,7 @@ impl<'a> Data<'a> {
         match (self.series, &*self.event) {
             (Series::League, "4") => from_file!("../../assets/event/league/chests-4-7.1.94.json"),
             (Series::League, _) => unimplemented!(),
-            (Series::MixedPools, "1") => ChestAppearances::random(), //TODO
+            (Series::MixedPools, "1") => from_file!("../../assets/event/mp/chests-1-6.2.100-fenhl.4.json"),
             (Series::MixedPools, "2") => from_file!("../../assets/event/mp/chests-2-7.1.117-fenhl.17.json"),
             (Series::MixedPools, _) => unimplemented!(),
             (Series::Multiworld, "1" | "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
