@@ -633,7 +633,10 @@ impl GlobalState {
                 let output = rsl_cmd.current_dir(&rsl_script_path).output().await.at_command("RandomSettingsGenerator.py")?;
                 match output.status.code() {
                     Some(0) => {}
-                    Some(2) => return Err(RollError::Retries(15)),
+                    Some(2) => return Err(RollError::Retries {
+                        num_retries: 15,
+                        last_error: Some(String::from_utf8_lossy(&output.stderr).into_owned()),
+                    }),
                     _ => return Err(RollError::Wheel(wheel::Error::CommandExit { name: Cow::Borrowed("RandomSettingsGenerator.py"), output })),
                 }
                 if can_roll_on_web {
@@ -681,7 +684,7 @@ impl GlobalState {
                     };
                     let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), version.clone(), true, spoiler_log, settings).await {
                         Ok(data) => data,
-                        Err(RollError::Retries(_)) => continue,
+                        Err(RollError::Retries { .. }) => continue,
                         Err(e) => return Err(e),
                     };
                     drop(mw_permit);
@@ -729,7 +732,10 @@ impl GlobalState {
                     return Ok(())
                 }
             }
-            let _ = update_tx.send(SeedRollUpdate::Error(RollError::Retries(15))).await;
+            let _ = update_tx.send(SeedRollUpdate::Error(RollError::Retries {
+                num_retries: 15,
+                last_error: None,
+            })).await;
             Ok(())
         }.then(|res| async move {
             match res {
@@ -795,12 +801,16 @@ async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Ma
     version.clone_repo().await?;
     settings.insert(format!("create_patch_file"), json!(true));
     settings.insert(format!("create_compressed_rom"), json!(false));
+    let mut last_error = None;
     for _ in 0..3 {
         let rando_path = version.dir()?;
         let mut rando_process = Command::new(PYTHON).arg("OoTRandomizer.py").arg("--no_log").arg("--settings=-").current_dir(rando_path).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().at_command(PYTHON)?;
         rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await.at_command(PYTHON)?;
         let output = rando_process.wait_with_output().await.at_command(PYTHON)?;
-        let stderr = if output.status.success() { BufRead::lines(&*output.stderr).try_collect::<_, Vec<_>, _>().at_command(PYTHON)? } else { continue };
+        let stderr = if output.status.success() { BufRead::lines(&*output.stderr).try_collect::<_, Vec<_>, _>().at_command(PYTHON)? } else {
+            last_error = Some(String::from_utf8_lossy(&output.stderr).into_owned());
+            continue
+        };
         let patch_path = Path::new(stderr.iter().rev().find_map(|line| line.strip_prefix("Created patch file archive at: ")).ok_or(RollError::PatchPath)?);
         let spoiler_log_path = Path::new(stderr.iter().rev().find_map(|line| line.strip_prefix("Created spoiler log at: ")).ok_or(RollError::SpoilerLogPath)?);
         let patch_filename = patch_path.file_name().expect("patch file path with no file name");
@@ -810,7 +820,10 @@ async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Ma
             spoiler_log_path.to_owned(),
         ))
     }
-    Err(RollError::Retries(3))
+    Err(RollError::Retries {
+        num_retries: 3,
+        last_error,
+    })
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -846,7 +859,10 @@ pub(crate) enum RollError {
     #[error("RSL script not found")]
     RslPath,
     #[error("max retries exceeded")]
-    Retries(u8),
+    Retries {
+        num_retries: u8,
+        last_error: Option<String>,
+    },
     #[error("failed to parse random settings script output")]
     RslScriptOutput,
     #[error("failed to parse randomizer version from RSL script")]
@@ -1023,7 +1039,12 @@ impl SeedRollUpdate {
                 )).await?;
                 *lock!(@write state) = RaceState::Rolled(seed);
             }
-            Self::Error(RollError::Retries(num_retries)) => {
+            Self::Error(RollError::Retries { num_retries, last_error }) => {
+                if let Some(last_error) = last_error {
+                    eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
+                } else {
+                    eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
+                }
                 ctx.send_message(&format!("Sorry @entrants, the randomizer reported an error {num_retries} times, so I'm giving up on rolling the seed. Please try again. If this error persists, please report it to Fenhl.")).await?;
                 *lock!(@write state) = RaceState::Init;
             }
@@ -1208,7 +1229,10 @@ impl OotrApiClient {
                 }
             }
         }
-        Err(RollError::Retries(3))
+        Err(RollError::Retries {
+            num_retries: 3,
+            last_error: None,
+        })
     }
 }
 
