@@ -792,6 +792,7 @@ impl GlobalState {
 }
 
 async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
+    version.clone_repo().await?;
     settings.insert(format!("create_patch_file"), json!(true));
     settings.insert(format!("create_compressed_rom"), json!(false));
     for _ in 0..3 {
@@ -816,6 +817,7 @@ async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Ma
 #[cfg_attr(unix, derive(Protocol))]
 #[cfg_attr(unix, async_proto(via = (String, String)))]
 pub(crate) enum RollError {
+    #[error(transparent)] Clone(#[from] rando::CloneError),
     #[error(transparent)] Dir(#[from] rando::DirError),
     #[error(transparent)] Git(#[from] git2::Error),
     #[error(transparent)] Header(#[from] reqwest::header::ToStrError),
