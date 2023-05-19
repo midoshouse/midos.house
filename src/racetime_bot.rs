@@ -504,16 +504,17 @@ impl GlobalState {
     }
 
     pub(crate) fn roll_seed(self: Arc<Self>, version: rando::Version, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+        let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
-            let can_roll_on_web = match self.ootr_api_client.can_roll_on_web(None, &version, settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"))).await {
+            let can_roll_on_web = match self.ootr_api_client.can_roll_on_web(None, &version, world_count).await {
                 Ok(can_roll_on_web) => can_roll_on_web,
                 Err(e) => {
                     update_tx.send(SeedRollUpdate::Error(e)).await?;
                     return Ok(())
                 }
             };
-            let mw_permit = if can_roll_on_web && settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1 {
+            let mw_permit = if can_roll_on_web && world_count > 1 {
                 Some(match self.ootr_api_client.mw_seed_rollers.try_acquire() {
                     Ok(permit) => permit,
                     Err(TryAcquireError::Closed) => unreachable!(),
@@ -810,7 +811,7 @@ async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Ma
     let mut last_error = None;
     for _ in 0..3 {
         let rando_path = version.dir()?;
-        let mut rando_process = Command::new(PYTHON).arg("OoTRandomizer.py").arg("--no_log").arg("--settings=-").current_dir(rando_path).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().at_command(PYTHON)?;
+        let mut rando_process = Command::new(PYTHON).arg("OoTRandomizer.py").arg("--no_log").arg("--settings=-").current_dir(&rando_path).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().at_command(PYTHON)?;
         rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await.at_command(PYTHON)?;
         let output = rando_process.wait_with_output().await.at_command(PYTHON)?;
         let stderr = if output.status.success() { BufRead::lines(&*output.stderr).try_collect::<_, Vec<_>, _>().at_command(PYTHON)? } else {
@@ -819,10 +820,10 @@ async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Ma
         };
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let patch_path_prefix = if world_count > 1 { "Created patch file archive at: " } else { "Creating Patch File: " };
-        let patch_path = Path::new(stderr.iter().rev().find_map(|line| line.strip_prefix(patch_path_prefix)).ok_or(RollError::PatchPath)?);
-        let spoiler_log_path = Path::new(stderr.iter().rev().find_map(|line| line.strip_prefix("Created spoiler log at: ")).ok_or(RollError::SpoilerLogPath)?);
+        let patch_path = rando_path.join(stderr.iter().rev().find_map(|line| line.strip_prefix(patch_path_prefix)).ok_or(RollError::PatchPath)?);
+        let spoiler_log_path = rando_path.join(stderr.iter().rev().find_map(|line| line.strip_prefix("Created spoiler log at: ")).ok_or(RollError::SpoilerLogPath)?);
         let patch_filename = patch_path.file_name().expect("patch file path with no file name");
-        fs::rename(patch_path, Path::new(seed::DIR).join(patch_filename)).await?;
+        fs::rename(&patch_path, Path::new(seed::DIR).join(patch_filename)).await?;
         return Ok((
             patch_filename.to_str().expect("non-UTF-8 patch filename").to_owned(),
             spoiler_log_path.to_owned(),
