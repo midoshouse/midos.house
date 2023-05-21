@@ -134,5 +134,11 @@ pub(crate) fn s2_settings() -> serde_json::Map<String, Json> {
         format!("hint_dist") => json!("mixed_pools"),
         format!("junk_ice_traps") => json!("off"),
         format!("ice_trap_appearance") => json!("junk_only"),
+        format!("adult_trade_start") => json!([
+            "Prescription",
+            "Eyeball Frog",
+            "Eyedrops",
+            "Claim Check",
+        ]),
     ]
 }
