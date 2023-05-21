@@ -396,6 +396,66 @@ async fn mw(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResu
     }).await
 }
 
+#[rocket::get("/mw/platforms")]
+async fn mw_platforms(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
+    let transaction = pool.begin().await?;
+    page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::default() }, "platform support — Mido's House Multiworld", html! {
+        h1 : "Mido's House Multiworld platform support status";
+        table {
+            tr {
+                th;
+                th : "Windows";
+                th : "Linux";
+                th : "macOS";
+            }
+            tr {
+                th : "EverDrive";
+                td(colspan = "3") {
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/issues/23") : "Planned";
+                }
+            }
+            tr {
+                th : "Wii Virtual Console";
+                td(colspan = "3") : "Would require a modification to Virtual Console itself. The “Multiworld 2.0” project claims to have solved this issue but has not shared any details.";
+            }
+            tr {
+                th : "BizHawk";
+                td {
+                    : "✓ (";
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "download";
+                    : ")";
+                }
+                td {
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/issues/22") : "In progress";
+                }
+                td {
+                    a(href = "https://github.com/tasemulators/bizHawk#macos-legacy-bizhawk") : "Not supported by BizHawk itself";
+                }
+            }
+            tr {
+                th : "Project64";
+                td {
+                    : "✓ (";
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "download";
+                    : ")";
+                }
+                td(colspan = "2") : "Not supported by Project64 itself";
+            }
+            tr {
+                th : "RetroArch";
+                td(colspan = "3") {
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/issues/23") : "Planned";
+                }
+            }
+        }
+        p {
+            : "If your operating system, console, or emulator is not listed here, please ";
+            a(href = "https://github.com/midoshouse/ootr-multiworld/issues/new") : "open an issue";
+            : " to request support.";
+        }
+    }).await
+}
+
 #[rocket::get("/robots.txt")]
 async fn robots_txt() -> RawText<&'static str> {
     RawText("User-agent: *\nDisallow: /seed/\nDisallow: /static/\n")
@@ -490,6 +550,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         archive,
         new_event,
         mw,
+        mw_platforms,
         robots_txt,
         api::graphql_request,
         api::graphql_query,

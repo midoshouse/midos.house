@@ -66,6 +66,10 @@ body > div {
     text-align: center;
 }
 
+.center table {
+    margin-inline: auto;
+}
+
 .button-row {
     flex-flow: row wrap;
 }
