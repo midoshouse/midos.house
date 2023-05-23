@@ -372,7 +372,7 @@ async fn mw(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResu
             a(href = uri!(mw_platforms).to_string()) : "different platforms";
             : ", and does not require port forwarding.";
         }
-        div(class = "button-row") {
+        div(class = "button-row download-button-row") {
             a(class = "button", href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") {
                 : "Download for Windows";
                 br;

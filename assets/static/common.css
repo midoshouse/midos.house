@@ -345,6 +345,32 @@ footer,
     }
 }
 
+@media (max-width: 1023px) {
+    .button-row.download-button-row {
+        display: grid;
+    }
+
+    .download-button-row .button {
+        display: block;
+    }
+
+    .download-button-row .button {
+        border-block-start-width: 0;
+        border-inline-start-width: 1px;
+    }
+
+    .download-button-row .button:nth-child(1) {
+        border-block-start-width: 1px;
+        border-start-end-radius: 8px;
+        border-end-start-radius: 0;
+    }
+
+    .download-button-row .button:nth-last-child(1) {
+        border-end-start-radius: 8px;
+        border-start-end-radius: 0;
+    }
+}
+
 @media (min-width: 1152px) {
     nav.index h1 {
         font-size: 128px;
