@@ -369,24 +369,26 @@ async fn mw(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResu
             : " seeds of the ";
             a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
             : ". It supports cross-platform play between ";
-            a(href = "https://tasvideos.org/BizHawk") : "BizHawk";
-            : " and ";
-            a(href = "https://pj64-emu.com/") : "Project64";
+            a(href = uri!(mw_platforms).to_string()) : "different platforms";
             : ", and does not require port forwarding.";
         }
         div(class = "button-row") {
-            a(class = "button", href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "Download";
+            a(class = "button", href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") {
+                : "Download for Windows";
+                br;
+                small : "supports BizHawk and Project64";
+            }
+            a(class = "button", href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer-linux") {
+                : "Download for Linux";
+                br;
+                small : "supports BizHawk";
+            }
         }
         p {
             : "If you need help, please ask in ";
             a(href = "https://discord.gg/BGRrKKn") : "#setup-support on the OoTR Discord";
             : " (feel free to ping @Fenhl#4813) or ";
             a(href = "https://github.com/midoshouse/ootr-multiworld/issues/new") : "open an issue";
-            : ".";
-        }
-        p {
-            : "If you can't use the installer due to antivirus software blocking it, you can follow ";
-            a(href = "https://github.com/midoshouse/ootr-multiworld/blob/main/assets/doc/manual-install.md") : "the manual install instructions";
             : ".";
         }
         p {
@@ -426,7 +428,9 @@ async fn mw_platforms(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -
                     : ")";
                 }
                 td {
-                    a(href = "https://github.com/midoshouse/ootr-multiworld/issues/22") : "In progress";
+                    : "✓ (";
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer-linux") : "download";
+                    : ")";
                 }
                 td {
                     a(href = "https://github.com/tasemulators/bizHawk#macos-legacy-bizhawk") : "Not supported by BizHawk itself";
@@ -444,7 +448,7 @@ async fn mw_platforms(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -
             tr {
                 th : "RetroArch";
                 td(colspan = "3") {
-                    a(href = "https://github.com/midoshouse/ootr-multiworld/issues/23") : "Planned";
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/issues/25") : "Planned";
                 }
             }
         }
