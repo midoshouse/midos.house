@@ -98,18 +98,15 @@ features = ["json"]
 
 [dependencies.serenity]
 #version = "0.11.5" # waiting for https://github.com/serenity-rs/serenity/pull/2357 and https://github.com/serenity-rs/serenity/pull/2400 to be published
-#git = "https://github.com/serenity-rs/serenity" # waiting for https://github.com/serenity-rs/serenity/pull/2400 to be merged
-#branch = "next"
-git = "https://github.com/kangalio/serenity"
-branch = "fix-shutdown"
+git = "https://github.com/serenity-rs/serenity"
+branch = "next"
 default-features = false
 features = ["client", "gateway", "model", "rustls_backend"]
 
 [dependencies.serenity-utils]
 git = "https://github.com/fenhl/serenity-utils"
 #branch = "main" # waiting for https://github.com/serenity-rs/serenity/pull/2357 and https://github.com/serenity-rs/serenity/pull/2400 to be published
-#branch = "next" # waiting for https://github.com/serenity-rs/serenity/pull/2400 to be merged
-branch = "fix-shutdown"
+branch = "next"
 
 [dependencies.sqlx]
 version = "0.6"
