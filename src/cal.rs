@@ -4,6 +4,7 @@ use {
         cmp::Ordering,
         collections::HashMap,
         convert::identity,
+        fmt,
         iter,
         path::Path,
     },
@@ -11,11 +12,15 @@ use {
         Duration,
         prelude::*,
     },
-    enum_iterator::all,
+    enum_iterator::{
+        Sequence,
+        all,
+    },
     futures::stream::TryStreamExt as _,
     ics::{
         ICalendar,
         properties::{
+            Description,
             DtEnd,
             DtStart,
             Summary,
@@ -32,6 +37,7 @@ use {
     reqwest::StatusCode,
     rocket::{
         FromForm,
+        FromFormField,
         State,
         form::{
             self,
@@ -52,7 +58,7 @@ use {
         CsrfForm,
         Origin,
         Response,
-        ToHtml as _,
+        ToHtml,
         html,
     },
     serenity::{
@@ -261,6 +267,44 @@ impl Ord for RaceSchedule {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Sequence, FromFormField)]
+pub(crate) enum Language {
+    #[field(value = "en")]
+    English,
+    #[field(value = "fr")]
+    French,
+    #[field(value = "pt")]
+    Portuguese,
+}
+
+impl Language {
+    fn short_code(&self) -> &'static str {
+        match self {
+            Self::English => "en",
+            Self::French => "fr",
+            Self::Portuguese => "pt",
+        }
+    }
+}
+
+impl fmt::Display for Language {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::English => write!(f, "English"),
+            Self::French => write!(f, "French"),
+            Self::Portuguese => write!(f, "Portuguese"),
+        }
+    }
+}
+
+impl ToHtml for Language {
+    fn to_html(&self) -> RawHtml<String> {
+        html! {
+            : self.to_string();
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct Race {
     pub(crate) id: Id,
@@ -276,10 +320,8 @@ pub(crate) struct Race {
     pub(crate) schedule: RaceSchedule,
     pub(crate) draft: Option<Draft>,
     pub(crate) seed: Option<seed::Data>,
-    pub(crate) video_url: Option<Url>,
-    pub(crate) restreamer: Option<String>,
-    pub(crate) video_url_fr: Option<Url>,
-    pub(crate) restreamer_fr: Option<String>,
+    pub(crate) video_urls: HashMap<Language, Url>,
+    pub(crate) restreamers: HashMap<Language, String>,
     pub(crate) ignored: bool,
 }
 
@@ -325,6 +367,8 @@ impl Race {
             restreamer,
             video_url_fr,
             restreamer_fr,
+            video_url_pt,
+            restreamer_pt,
             ignored
         FROM races WHERE id = $1"#, id as _).fetch_one(&mut *transaction).await?;
         let (startgg_event, startgg_set, phase, round, slots) = if let Some(startgg_set) = row.startgg_set {
@@ -450,10 +494,32 @@ impl Race {
                 },
                 files,
             }),
-            video_url: row.video_url.map(|url| url.parse()).transpose()?,
-            restreamer: row.restreamer,
-            video_url_fr: row.video_url_fr.map(|url| url.parse()).transpose()?,
-            restreamer_fr: row.restreamer_fr,
+            video_urls: {
+                let mut video_urls = HashMap::default();
+                if let Some(video_url_en) = row.video_url {
+                    video_urls.insert(Language::English, video_url_en.parse()?);
+                }
+                if let Some(video_url_fr) = row.video_url_fr {
+                    video_urls.insert(Language::French, video_url_fr.parse()?);
+                }
+                if let Some(video_url_pt) = row.video_url_pt {
+                    video_urls.insert(Language::Portuguese, video_url_pt.parse()?);
+                }
+                video_urls
+            },
+            restreamers: {
+                let mut restreamers = HashMap::default();
+                if let Some(restreamer_en) = row.restreamer {
+                    restreamers.insert(Language::English, restreamer_en);
+                }
+                if let Some(restreamer_fr) = row.restreamer_fr {
+                    restreamers.insert(Language::French, restreamer_fr);
+                }
+                if let Some(restreamer_pt) = row.restreamer_pt {
+                    restreamers.insert(Language::Portuguese, restreamer_pt);
+                }
+                restreamers
+            },
             ignored: row.ignored,
             id, startgg_event, startgg_set, entrants, phase, round,
         })
@@ -548,10 +614,8 @@ impl Race {
                     scheduling_thread: None,
                     draft: None,
                     seed: None, //TODO
-                    video_url: event.video_url.clone(), //TODO sync between event and race?
-                    restreamer: None,
-                    video_url_fr: None, //TODO video_url_fr field on event::Data?
-                    restreamer_fr: None,
+                    video_urls: event.video_url.iter().map(|video_url| (Language::English, video_url.clone())).collect(), //TODO sync between event and race? Video URL fields for other languages on event::Data?
+                    restreamers: HashMap::default(),
                     ignored: false,
                     id, schedule,
                 }).await?;
@@ -790,7 +854,6 @@ impl Race {
                 p1,
                 p2,
                 video_url,
-                video_url_fr,
                 phase,
                 round,
                 p3,
@@ -799,11 +862,14 @@ impl Race {
                 total,
                 finished,
                 tfb_uuid,
+                video_url_fr,
                 restreamer,
                 restreamer_fr,
-                locked_spoiler_log_path
+                locked_spoiler_log_path,
+                video_url_pt,
+                restreamer_pt
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40)",
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42)",
                 self.startgg_set,
                 start,
                 self.series as _,
@@ -831,8 +897,7 @@ impl Race {
                 self.id as _,
                 p1,
                 p2,
-                self.video_url.as_ref().map(|url| url.to_string()),
-                self.video_url_fr.as_ref().map(|url| url.to_string()),
+                self.video_urls.get(&Language::English).map(|url| url.to_string()),
                 self.phase,
                 self.round,
                 p3,
@@ -841,9 +906,12 @@ impl Race {
                 total.map(|total| total as i32),
                 finished.map(|finished| finished as i32),
                 tfb_uuid,
-                self.restreamer,
-                self.restreamer_fr,
+                self.video_urls.get(&Language::French).map(|url| url.to_string()),
+                self.restreamers.get(&Language::English),
+                self.restreamers.get(&Language::French),
                 locked_spoiler_log_path,
+                self.video_urls.get(&Language::Portuguese).map(|url| url.to_string()),
+                self.restreamers.get(&Language::Portuguese),
             ).execute(transaction).await?;
         }
         Ok(())
@@ -1093,17 +1161,25 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                     Series::Multiworld | Series::Pictionary => Duration::hours(4),
                     Series::Rsl => Duration::hours(4) + Duration::minutes(30),
                 })))); //TODO better fallback duration estimates depending on participants
-                cal_event.push(URL::new(if let Some(ref video_url) = race.video_url {
-                    video_url.to_string()
-                } else if let Some(ref video_url_fr) = race.video_url_fr {
-                    video_url_fr.to_string()
-                } else if let Some(room) = race_event.room() {
-                    room.to_string()
-                } else if let Some(set_url) = race.startgg_set_url()? {
-                    set_url.to_string()
+                let mut urls = Vec::default();
+                for (language, video_url) in &race.video_urls {
+                    urls.push((Cow::Owned(format!("{language} restream")), video_url.clone()));
+                }
+                if let Some(room) = race_event.room() {
+                    urls.push((Cow::Borrowed("race room"), room.clone()));
+                }
+                if let Some(set_url) = race.startgg_set_url()? {
+                    urls.push((Cow::Borrowed("start.gg set"), set_url));
+                }
+                if let Some((_, url)) = urls.get(0) {
+                    cal_event.push(URL::new(url.to_string()));
+                    urls.remove(0);
+                    if !urls.is_empty() {
+                        cal_event.push(Description::new(urls.into_iter().map(|(description, url)| format!("{description}: {url}")).join("\n")));
+                    }
                 } else {
-                    uri!(event::info(event.series, &*event.event)).to_string()
-                }));
+                    cal_event.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string()));
+                }
                 cal.add_event(cal_event);
             }
         }
@@ -1378,10 +1454,8 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
                         DraftKind::None => None,
                     },
                     seed: None,
-                    video_url: None,
-                    restreamer: None,
-                    video_url_fr: None,
-                    restreamer_fr: None,
+                    video_urls: HashMap::default(),
+                    restreamers: HashMap::default(),
                     ignored: false,
                     scheduling_thread,
                 }.save(&mut transaction).await?;
@@ -1429,46 +1503,36 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, e
                     });
                 }
             }
-            : form_field("video_url", &mut errors, html! {
-                label(for = "video_url") : "English restream URL:";
-                input(type = "text", name = "video_url", value? = if let Some(ref ctx) = ctx {
-                    ctx.field_value("video_url").map(|room| room.to_string())
-                } else {
-                    race.video_url.map(|video_url| video_url.to_string())
+            @for language in all::<Language>() {
+                @let field_name = format!("video_urls.{}", language.short_code());
+                : form_field(&field_name, &mut errors, html! {
+                    label(for = &field_name) {
+                        : language;
+                        : " restream URL:";
+                    }
+                    input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {
+                        ctx.field_value(&*field_name).map(|room| room.to_string())
+                    } else {
+                        race.video_urls.get(&language).map(|video_url| video_url.to_string())
+                    });
+                    label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
                 });
-                label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
-            });
-            : form_field("restreamer", &mut errors, html! {
-                label(for = "restreamer") : "English restreamer:";
-                input(type = "text", name = "restreamer", value? = if let Some(ref ctx) = ctx {
-                    ctx.field_value("restreamer")
-                } else if me.as_ref().and_then(|me| me.racetime_id.as_deref()).map_or(false, |racetime_id| race.restreamer.as_deref() == Some(racetime_id)) {
-                    Some("me")
-                } else {
-                    race.restreamer.as_deref() //TODO display as racetime.gg profile URL
+                @let field_name = format!("restreamers.{}", language.short_code());
+                : form_field(&field_name, &mut errors, html! {
+                    label(for = &field_name) {
+                        : language;
+                        : " restreamer:";
+                    }
+                    input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {
+                        ctx.field_value(&*field_name)
+                    } else if me.as_ref().and_then(|me| me.racetime_id.as_deref()).map_or(false, |racetime_id| race.restreamers.get(&language).map_or(false, |restreamer| restreamer == racetime_id)) {
+                        Some("me")
+                    } else {
+                        race.restreamers.get(&language).map(|restreamer| restreamer.as_str()) //TODO display as racetime.gg profile URL
+                    });
+                    label(class = "help") : "(racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID. Enter “me” to assign yourself.)";
                 });
-                label(class = "help") : "(racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID. Enter “me” to assign yourself.)";
-            });
-            : form_field("video_url_fr", &mut errors, html! {
-                label(for = "video_url_fr") : "French restream URL:";
-                input(type = "text", name = "video_url_fr", value? = if let Some(ref ctx) = ctx {
-                    ctx.field_value("video_url_fr").map(|room| room.to_string())
-                } else {
-                    race.video_url_fr.map(|video_url_fr| video_url_fr.to_string())
-                });
-                label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
-            });
-            : form_field("restreamer_fr", &mut errors, html! {
-                label(for = "restreamer_fr") : "French restreamer:";
-                input(type = "text", name = "restreamer_fr", value? = if let Some(ref ctx) = ctx {
-                    ctx.field_value("restreamer_fr")
-                } else if me.as_ref().and_then(|me| me.racetime_id.as_deref()).map_or(false, |racetime_id| race.restreamer_fr.as_deref() == Some(racetime_id)) {
-                    Some("me")
-                } else {
-                    race.restreamer_fr.as_deref() //TODO display as racetime.gg profile URL
-                });
-                label(class = "help") : "(racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID. Enter “me” to assign yourself.)";
-            });
+            }
         }, errors, "Save")
     } else {
         html! {
@@ -1624,14 +1688,10 @@ pub(crate) struct EditRaceForm {
     async_room1: String,
     #[field(default = String::new())]
     async_room2: String,
-    #[field(default = String::new())]
-    video_url: String,
-    #[field(default = String::new())]
-    restreamer: String,
-    #[field(default = String::new())]
-    video_url_fr: String,
-    #[field(default = String::new())]
-    restreamer_fr: String,
+    #[field(default = HashMap::new())]
+    video_urls: HashMap<Language, String>,
+    #[field(default = HashMap::new())]
+    restreamers: HashMap<Language, String>,
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit", data = "<form>")]
@@ -1823,80 +1883,67 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                 }
             }
         }
-        let restreamer = if !value.video_url.is_empty() {
-            if let Err(e) = Url::parse(&value.video_url) {
-                form.context.push_error(form::Error::validation(format!("Failed to parse URL: {e}")).with_name("video_url"));
-            }
-            if value.restreamer.is_empty() {
-                None
-            } else if value.restreamer == "me" {
-                if let Some(ref racetime_id) = me.racetime_id {
-                    Some(racetime_id.clone())
-                } else {
-                    form.context.push_error(form::Error::validation("A racetime.gg account is required to restream races. Go to your profile and select “Connect a racetime.gg account”.").with_name("restreamer"));
-                    None
-                }
-            } else {
-                match racetime_bot::parse_user(&mut transaction, http_client, env.racetime_host(), &value.restreamer).await {
-                    Ok(racetime_id) => Some(racetime_id),
-                    Err(e @ (racetime_bot::ParseUserError::Format | racetime_bot::ParseUserError::IdNotFound | racetime_bot::ParseUserError::InvalidUrl | racetime_bot::ParseUserError::MidosHouseId | racetime_bot::ParseUserError::MidosHouseUserNoRacetime | racetime_bot::ParseUserError::UrlNotFound)) => {
-                        form.context.push_error(form::Error::validation(e.to_string()).with_name("restreamer"));
-                        None
+        let mut restreamers = HashMap::new();
+        for language in all() {
+            if let Some(video_url) = value.video_urls.get(&language) {
+                if video_url.is_empty() {
+                    if let Err(e) = Url::parse(video_url) {
+                        form.context.push_error(form::Error::validation(format!("Failed to parse URL: {e}")).with_name(format!("video_urls.{}", language.short_code())));
                     }
-                    Err(racetime_bot::ParseUserError::Reqwest(e)) => return Err(e.into()),
-                    Err(racetime_bot::ParseUserError::Sql(e)) => return Err(e.into()),
-                    Err(racetime_bot::ParseUserError::Wheel(e)) => return Err(e.into()),
-                }
-            }
-        } else {
-            if !value.restreamer.is_empty() {
-                form.context.push_error(form::Error::validation("Please either add a restream URL or remove the restreamer.").with_name("restreamer"));
-            }
-            None
-        };
-        let restreamer_fr = if !value.video_url_fr.is_empty() {
-            if let Err(e) = Url::parse(&value.video_url_fr) {
-                form.context.push_error(form::Error::validation(format!("Failed to parse URL: {e}")).with_name("video_url_fr"));
-            }
-            if value.restreamer_fr.is_empty() {
-                None
-            } else if value.restreamer_fr == "me" {
-                if let Some(ref racetime_id) = me.racetime_id {
-                    Some(racetime_id.clone())
-                } else {
-                    form.context.push_error(form::Error::validation("A racetime.gg account is required to restream races. Go to your profile and select “Connect a racetime.gg account”.").with_name("restreamer_fr"));
-                    None
-                }
-            } else {
-                match racetime_bot::parse_user(&mut transaction, http_client, env.racetime_host(), &value.restreamer_fr).await {
-                    Ok(racetime_id) => Some(racetime_id),
-                    Err(e @ (racetime_bot::ParseUserError::Format | racetime_bot::ParseUserError::IdNotFound | racetime_bot::ParseUserError::InvalidUrl | racetime_bot::ParseUserError::MidosHouseId | racetime_bot::ParseUserError::MidosHouseUserNoRacetime | racetime_bot::ParseUserError::UrlNotFound)) => {
-                        form.context.push_error(form::Error::validation(e.to_string()).with_name("restreamer_fr"));
-                        None
+                    if let Some(restreamer) = value.restreamers.get(&language) {
+                        if !restreamer.is_empty() {
+                            if restreamer == "me" {
+                                if let Some(ref racetime_id) = me.racetime_id {
+                                    restreamers.insert(language, racetime_id.clone());
+                                } else {
+                                    form.context.push_error(form::Error::validation("A racetime.gg account is required to restream races. Go to your profile and select “Connect a racetime.gg account”.").with_name(format!("restreamers.{}", language.short_code())));
+                                }
+                            } else {
+                                match racetime_bot::parse_user(&mut transaction, http_client, env.racetime_host(), restreamer).await {
+                                    Ok(racetime_id) => { restreamers.insert(language, racetime_id); }
+                                    Err(e @ (racetime_bot::ParseUserError::Format | racetime_bot::ParseUserError::IdNotFound | racetime_bot::ParseUserError::InvalidUrl | racetime_bot::ParseUserError::MidosHouseId | racetime_bot::ParseUserError::MidosHouseUserNoRacetime | racetime_bot::ParseUserError::UrlNotFound)) => {
+                                        form.context.push_error(form::Error::validation(e.to_string()).with_name(format!("restreamers.{}", language.short_code())));
+                                    }
+                                    Err(racetime_bot::ParseUserError::Reqwest(e)) => return Err(e.into()),
+                                    Err(racetime_bot::ParseUserError::Sql(e)) => return Err(e.into()),
+                                    Err(racetime_bot::ParseUserError::Wheel(e)) => return Err(e.into()),
+                                }
+                            }
+                        }
                     }
-                    Err(racetime_bot::ParseUserError::Reqwest(e)) => return Err(e.into()),
-                    Err(racetime_bot::ParseUserError::Sql(e)) => return Err(e.into()),
-                    Err(racetime_bot::ParseUserError::Wheel(e)) => return Err(e.into()),
+                } else {
+                    if value.restreamers.get(&language).map_or(false, |restreamer| !restreamer.is_empty()) {
+                        form.context.push_error(form::Error::validation("Please either add a restream URL or remove the restreamer.").with_name(format!("restreamers.{}", language.short_code())));
+                    }
                 }
             }
-        } else {
-            if !value.restreamer_fr.is_empty() {
-                form.context.push_error(form::Error::validation("Please either add a restream URL or remove the restreamer.").with_name("restreamer_fr"));
-            }
-            None
-        };
+        }
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(edit_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
         } else {
             sqlx::query!(
-                "UPDATE races SET room = $1, async_room1 = $2, async_room2 = $3, video_url = $4, restreamer = $5, video_url_fr = $6, restreamer_fr = $7, last_edited_by = $8, last_edited_at = NOW() WHERE id = $9",
+                "UPDATE races SET
+                    room = $1,
+                    async_room1 = $2,
+                    async_room2 = $3,
+                    video_url = $4,
+                    restreamer = $5,
+                    video_url_fr = $6,
+                    restreamer_fr = $7,
+                    video_url_pt = $8,
+                    restreamer_pt = $9,
+                    last_edited_by = $10,
+                    last_edited_at = NOW()
+                WHERE id = $11",
                 (!value.room.is_empty()).then(|| &value.room),
                 (!value.async_room1.is_empty()).then(|| &value.async_room1),
                 (!value.async_room2.is_empty()).then(|| &value.async_room2),
-                (!value.video_url.is_empty()).then(|| &value.video_url),
-                restreamer,
-                (!value.video_url_fr.is_empty()).then(|| &value.video_url_fr),
-                restreamer_fr,
+                value.video_urls.get(&Language::English).filter(|video_url| !video_url.is_empty()),
+                restreamers.get(&Language::English),
+                value.video_urls.get(&Language::French).filter(|video_url| !video_url.is_empty()),
+                restreamers.get(&Language::French),
+                value.video_urls.get(&Language::Portuguese).filter(|video_url| !video_url.is_empty()),
+                restreamers.get(&Language::Portuguese),
                 me.id as _,
                 id as _,
             ).execute(&mut transaction).await?;

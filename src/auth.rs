@@ -126,7 +126,7 @@ async fn handle_discord_token_response(client: &reqwest::Client, cookies: &Cooki
             .permanent()
             .finish());
     }
-    Ok(client.get("https://discord.com/api/v9/users/@me")
+    Ok(client.get("https://discord.com/api/v10/users/@me")
         .bearer_auth(token.access_token())
         .send().await?
         .detailed_error_for_status().await?
@@ -248,7 +248,7 @@ impl<'r> FromRequest<'r> for DiscordUser {
         match req.guard::<&CookieJar<'_>>().await {
             Outcome::Success(cookies) => match req.guard::<&State<reqwest::Client>>().await {
                 Outcome::Success(client) => if let Some(token) = cookies.get_private("discord_token") {
-                    match client.get("https://discord.com/api/v9/users/@me")
+                    match client.get("https://discord.com/api/v10/users/@me")
                         .bearer_auth(token.value())
                         .send()
                         .err_into::<UserFromRequestError>()

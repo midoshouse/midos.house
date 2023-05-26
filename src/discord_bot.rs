@@ -721,10 +721,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 DraftKind::None => None,
                                             };
                                             race.seed = None;
-                                            race.video_url = None;
-                                            race.video_url_fr = None;
-                                            race.restreamer = None;
-                                            race.restreamer_fr = None;
+                                            race.video_urls = HashMap::default();
+                                            race.restreamers = HashMap::default();
                                             race.save(&mut transaction).await?;
                                             let mut response_content = MessageBuilder::default();
                                             response_content.push("Game ");

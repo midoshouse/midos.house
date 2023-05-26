@@ -1127,13 +1127,10 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                             }
                             td {
                                 div(class = "favicon-container") {
-                                    @if let Some(ref video_url) = race.video_url {
+                                    @for video_url in race.video_urls.values() {
                                         a(class = "favicon", href = video_url.to_string()) : favicon(video_url);
                                     }
-                                    @if let Some(ref video_url_fr) = race.video_url_fr {
-                                        a(class = "favicon", href = video_url_fr.to_string()) : favicon(video_url_fr);
-                                    }
-                                    @if show_multistreams && race.video_url.is_none() && race.video_url_fr.is_none() {
+                                    @if show_multistreams && race.video_urls.is_empty() {
                                         @if let Some(multistream_url) = race.multistream_url(&mut *transaction, env, http_client, data).await? {
                                             a(class = "favicon", href = multistream_url.to_string()) : favicon(&multistream_url);
                                         }
@@ -1406,7 +1403,7 @@ pub(crate) async fn status_post(env: &State<Environment>, config: &State<Config>
     Ok(if let Some(ref value) = form.value {
         if row.restream_consent && !value.restream_consent {
             //TODO check if restream consent can still be revoked according to tournament rules, offer to resign if not
-            if Race::for_event(&mut transaction, http_client, env, config, &data).await?.into_iter().any(|race| !race.schedule.is_ended() && (race.video_url.is_some() || race.video_url_fr.is_some())) {
+            if Race::for_event(&mut transaction, http_client, env, config, &data).await?.into_iter().any(|race| !race.schedule.is_ended() && !race.video_urls.is_empty()) {
                 form.context.push_error(form::Error::validation("There is a restream planned for one of your upcoming races. Please contact an event organizer if you would like to cancel.").with_name("restream_consent"));
             }
         }

@@ -124,6 +124,7 @@ use {
             self,
             Entrant,
             Entrants,
+            Language,
         },
         config::{
             Config,
@@ -1299,7 +1300,7 @@ struct OfficialRaceData {
 
 #[derive(Default)]
 struct RestreamState {
-    language: Option<&'static str>,
+    language: Option<Language>,
     restreamer_racetime_id: Option<String>,
     ready: bool,
 }
@@ -1594,21 +1595,11 @@ impl RaceHandler<GlobalState> for Handler {
                 }
                 DraftKind::None => (RaceState::Init, format!("Team A"), format!("Team B")),
             };
-            let mut restreams = HashMap::default();
-            if let Some(video_url) = cal_event.race.video_url.clone() {
-                restreams.insert(video_url, RestreamState {
-                    language: Some("English"),
-                    restreamer_racetime_id: cal_event.race.restreamer.clone(),
-                    ready: false,
-                });
-            }
-            if let Some(video_url_fr) = cal_event.race.video_url_fr.clone() {
-                restreams.insert(video_url_fr, RestreamState {
-                    language: Some("French"),
-                    restreamer_racetime_id: cal_event.race.restreamer_fr.clone(),
-                    ready: false,
-                });
-            }
+            let restreams = cal_event.race.video_urls.iter().map(|(&language, video_url)| (video_url.clone(), RestreamState {
+                language: Some(language),
+                restreamer_racetime_id: cal_event.race.restreamers.get(&language).cloned(),
+                ready: false,
+            })).collect();
             (
                 cal_event.race.seed.clone(),
                 Some(OfficialRaceData {
@@ -2777,7 +2768,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, hos
                 time_limit: 24,
                 time_limit_auto_complete: false,
                 streaming_required: !cal_event.is_first_async_half(),
-                auto_start: cal_event.is_first_async_half() || (cal_event.race.video_url.is_none() && cal_event.race.video_url_fr.is_none()),
+                auto_start: cal_event.is_first_async_half() || cal_event.race.video_urls.is_empty(),
                 allow_comments: true,
                 hide_comments: true,
                 allow_prerace_chat: true,
