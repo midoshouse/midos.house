@@ -1886,7 +1886,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
         let mut restreamers = HashMap::new();
         for language in all() {
             if let Some(video_url) = value.video_urls.get(&language) {
-                if video_url.is_empty() {
+                if !video_url.is_empty() {
                     if let Err(e) = Url::parse(video_url) {
                         form.context.push_error(form::Error::validation(format!("Failed to parse URL: {e}")).with_name(format!("video_urls.{}", language.short_code())));
                     }
