@@ -170,7 +170,7 @@ use {
 #[cfg(unix)] const PYTHON: &str = "python3";
 #[cfg(windows)] const PYTHON: &str = "py";
 
-const CATEGORY: &str = "ootr";
+pub(crate) const CATEGORY: &str = "ootr";
 
 /// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
 const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 4] = [
@@ -359,6 +359,10 @@ pub(crate) enum Goal {
 pub(crate) struct GoalFromStrError;
 
 impl Goal {
+    pub(crate) fn for_event(series: Series, event: &str) -> Option<Self> {
+        all::<Self>().find(|goal| goal.matches_event(series, event))
+    }
+
     fn matches_event(&self, series: Series, event: &str) -> bool {
         match self {
             Self::MixedPoolsS2 => series == Series::MixedPools && event == "2",
@@ -2721,7 +2725,7 @@ impl RaceHandler<GlobalState> for Handler {
 }
 
 pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, host_info: &racetime::HostInfo, client_id: &str, client_secret: &str, http_client: &reqwest::Client, cal_event: &cal::Event, event: &event::Data<'_>) -> Result<Option<(String, String)>, Error> {
-    let Some(goal) = all::<Goal>().find(|goal| goal.matches_event(cal_event.race.series, &cal_event.race.event)) else { return Ok(None) };
+    let Some(goal) = Goal::for_event(cal_event.race.series, &cal_event.race.event) else { return Ok(None) };
     match racetime::authorize_with_host(host_info, client_id, client_secret, http_client).await {
         Ok((access_token, _)) => {
             let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
@@ -2894,7 +2898,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                 let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
                 let rooms_to_open = cal::Event::rooms_to_open(&mut transaction, &global_state.http_client, &global_state.startgg_token).await.to_racetime()?;
                 for cal_event in rooms_to_open {
-                    let Some(goal) = all::<Goal>().find(|goal| goal.matches_event(cal_event.race.series, &cal_event.race.event)) else { continue };
+                    let Some(goal) = Goal::for_event(cal_event.race.series, &cal_event.race.event) else { continue };
                     if !goal.should_create_rooms() { continue }
                     let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
                     if let Some((race_slug, msg)) = create_room(&mut transaction, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.http_client, &cal_event, &event).await? {

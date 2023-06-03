@@ -1221,8 +1221,8 @@ pub(crate) async fn for_event(env: &State<Environment>, config: &State<Config>, 
     Ok(Response(cal))
 }
 
-pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
+pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, env, me.as_ref(), Tab::Races, true).await?;
     let form = if me.is_some() {
         let teams = Team::for_event(&mut transaction, event.series, &event.event).await?;
         let mut team_data = Vec::with_capacity(teams.len());
@@ -1318,10 +1318,10 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
 }
 
 #[rocket::get("/event/<series>/<event>/races/new")]
-pub(crate) async fn create_race(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn create_race(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(RedirectOrContent::Content(create_race_form(transaction, me, uri, csrf.as_ref(), event, Context::default()).await?))
+    Ok(RedirectOrContent::Content(create_race_form(transaction, **env, me, uri, csrf.as_ref(), event, Context::default()).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1338,7 +1338,7 @@ pub(crate) struct CreateRaceForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/new", data = "<form>")]
-pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1367,7 +1367,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
             form.context.push_error(form::Error::validation("Can't choose the same team twice.").with_name("team2"));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(create_race_form(transaction, Some(me), uri, csrf.as_ref(), event, form.context).await?)
+            RedirectOrContent::Content(create_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, form.context).await?)
         } else {
             let [team1, team2] = [team1, team2].map(|team| team.expect("validated"));
             let scheduling_thread = if let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) {
@@ -1464,12 +1464,12 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(create_race_form(transaction, Some(me), uri, csrf.as_ref(), event, form.context).await?)
+        RedirectOrContent::Content(create_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, form.context).await?)
     })
 }
 
 pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
+    let header = event.header(&mut transaction, env, me.as_ref(), Tab::Races, true).await?;
     let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
     let form = if me.is_some() {
         let mut errors = ctx.as_ref().map(|ctx| ctx.errors().collect()).unwrap_or_default();
@@ -1970,8 +1970,8 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
     })
 }
 
-pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
+pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, env, me.as_ref(), Tab::Races, true).await?;
     let form = if me.is_some() {
         let mut errors = ctx.errors().collect();
         full_form(uri!(add_file_hash_post(event.series, &*event.event, race.id)), csrf, html! {
@@ -2069,7 +2069,7 @@ pub(crate) async fn add_file_hash(env: &State<Environment>, config: &State<Confi
     if race.series != event.series || race.event != event.event {
         return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(add_file_hash(race.series, race.event, id)))))
     }
-    Ok(RedirectOrContent::Content(add_file_hash_form(transaction, me, uri, csrf.as_ref(), event, race, Context::default()).await?))
+    Ok(RedirectOrContent::Content(add_file_hash_form(transaction, **env, me, uri, csrf.as_ref(), event, race, Context::default()).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -2129,7 +2129,7 @@ pub(crate) async fn add_file_hash_post(env: &State<Environment>, config: &State<
             None
         };
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(add_file_hash_form(transaction, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
+            RedirectOrContent::Content(add_file_hash_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
         } else {
             sqlx::query!(
                 "UPDATE races SET hash1 = $1, hash2 = $2, hash3 = $3, hash4 = $4, hash5 = $5 WHERE id = $6",
@@ -2139,6 +2139,6 @@ pub(crate) async fn add_file_hash_post(env: &State<Environment>, config: &State<
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(add_file_hash_form(transaction, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
+        RedirectOrContent::Content(add_file_hash_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
     })
 }

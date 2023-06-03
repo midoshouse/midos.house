@@ -59,6 +59,7 @@ use {
     },
     wheel::traits::ReqwestResponseExt as _,
     crate::{
+        Environment,
         auth,
         event::{
             self,
@@ -802,8 +803,8 @@ pub(crate) struct RaceTimeTeamMember {
     pub(crate) name: String,
 }
 
-pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>, client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
-    let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
+pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>, client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
+    let header = data.header(&mut transaction, env, me.as_ref(), Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
         if let Some(ref racetime_id) = me.racetime_id {
             let racetime_user = client.get(format!("https://racetime.gg/user/{racetime_id}/data"))
@@ -937,8 +938,8 @@ impl<'v> EnterFormStep2Defaults<'v> {
     }
 }
 
-pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
-    let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
+pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+    let header = data.header(&mut transaction, env, me.as_ref(), Tab::FindTeam, false).await?;
     let mut me_listed = false;
     let mut looking_for_team = Vec::default();
     for row in sqlx::query!(r#"SELECT user_id AS "user!: Id", availability, notes FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {
