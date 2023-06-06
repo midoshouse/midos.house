@@ -21,6 +21,7 @@ use {
     },
     async_trait::async_trait,
     chrono::prelude::*,
+    either::Either,
     enum_iterator::all,
     itertools::Itertools as _,
     rocket::{
@@ -422,17 +423,22 @@ pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<re
                 racetime_id: Option<&'a str>,
                 qualifier_rank: usize,
                 restream_consent: bool,
+                discord_username: Option<&'a str>,
             }
 
+            let (discord_username, discord_discriminator) = match member.discord_username_or_discriminator {
+                Either::Left(ref username) => (Some(&**username), None),
+                Either::Right(discriminator) => (None, Some(discriminator)),
+            };
             csv.serialize(Row {
                 id: member.id,
                 display_name: member.display_name(),
                 twitch_display_name: member.racetime_user_data(**env, http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_display_name),
                 discord_display_name: member.discord_display_name.as_deref(),
-                discord_discriminator: member.discord_discriminator,
                 racetime_id: member.racetime_id.as_deref(),
                 qualifier_rank: i + 1,
                 restream_consent: team.restream_consent,
+                discord_username, discord_discriminator,
             })?;
         }
     }

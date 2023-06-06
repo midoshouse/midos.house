@@ -1988,6 +1988,7 @@ dependencies = [
  "csv",
  "derivative",
  "derive_more",
+ "either",
  "enum-iterator",
  "futures",
  "git2",

@@ -4,6 +4,7 @@ use {
         Case,
         Casing as _,
     },
+    either::Either,
     rocket::{
         State,
         http::Status,
@@ -76,7 +77,7 @@ pub(crate) struct User {
     pub(crate) racetime_pronouns: Option<RaceTimePronouns>,
     pub(crate) discord_id: Option<UserId>,
     pub(crate) discord_display_name: Option<String>,
-    pub(crate) discord_discriminator: Option<Discriminator>,
+    pub(crate) discord_username_or_discriminator: Either<String, Discriminator>,
     pub(crate) is_archivist: bool,
 }
 
@@ -92,6 +93,7 @@ impl User {
                 discord_id AS "discord_id: Id",
                 discord_display_name,
                 discord_discriminator AS "discord_discriminator: Discriminator",
+                discord_username,
                 is_archivist
             FROM users WHERE id = $1"#, id as _).fetch_optional(pool).await?
                 .map(|row| Self {
@@ -102,7 +104,11 @@ impl User {
                     racetime_pronouns: row.racetime_pronouns,
                     discord_id: row.discord_id.map(|Id(id)| id.into()),
                     discord_display_name: row.discord_display_name,
-                    discord_discriminator: row.discord_discriminator,
+                    discord_username_or_discriminator: match (row.discord_username, row.discord_discriminator) {
+                        (Some(username), None) => Either::Left(username),
+                        (None, Some(discriminator)) => Either::Right(discriminator),
+                        (_, _) => unreachable!("database constraint"),
+                    },
                     is_archivist: row.is_archivist,
                     id,
                 })
@@ -120,6 +126,7 @@ impl User {
                 discord_id AS "discord_id: Id",
                 discord_display_name,
                 discord_discriminator AS "discord_discriminator: Discriminator",
+                discord_username,
                 is_archivist
             FROM users WHERE racetime_id = $1"#, racetime_id).fetch_optional(pool).await?
                 .map(|row| Self {
@@ -131,7 +138,11 @@ impl User {
                     racetime_pronouns: row.racetime_pronouns,
                     discord_id: row.discord_id.map(|Id(id)| id.into()),
                     discord_display_name: row.discord_display_name,
-                    discord_discriminator: row.discord_discriminator,
+                    discord_username_or_discriminator: match (row.discord_username, row.discord_discriminator) {
+                        (Some(username), None) => Either::Left(username),
+                        (None, Some(discriminator)) => Either::Right(discriminator),
+                        (_, _) => unreachable!("database constraint"),
+                    },
                     is_archivist: row.is_archivist,
                 })
         )
@@ -148,6 +159,7 @@ impl User {
                 racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
                 discord_display_name,
                 discord_discriminator AS "discord_discriminator: Discriminator",
+                discord_username,
                 is_archivist
             FROM users WHERE discord_id = $1"#, i64::from(discord_id)).fetch_optional(pool).await?
                 .map(|row| Self {
@@ -159,7 +171,11 @@ impl User {
                     racetime_pronouns: row.racetime_pronouns,
                     discord_id: Some(discord_id),
                     discord_display_name: row.discord_display_name,
-                    discord_discriminator: row.discord_discriminator,
+                    discord_username_or_discriminator: match (row.discord_username, row.discord_discriminator) {
+                        (Some(username), None) => Either::Left(username),
+                        (None, Some(discriminator)) => Either::Right(discriminator),
+                        (_, _) => unreachable!("database constraint"),
+                    },
                     is_archivist: row.is_archivist,
                 })
         )
@@ -321,10 +337,18 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
             p {
                 : "Discord: ";
                 a(href = format!("https://discord.com/users/{discord_id}")) {
-                    : user.discord_display_name;
-                    @if let Some(discriminator) = user.discord_discriminator {
-                        : "#";
-                        : discriminator;
+                    @match user.discord_username_or_discriminator {
+                        Either::Left(ref username) => {
+                            : user.discord_display_name;
+                            : "(@";
+                            : username;
+                            : ")";
+                        }
+                        Either::Right(discriminator) => {
+                            : user.discord_display_name;
+                            : "#";
+                            : discriminator;
+                        }
                     }
                 }
                 //TODO if this may be outdated, link to racetime.gg login page for refreshing
@@ -338,10 +362,18 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                     p {
                         : "You are also signed in via Discord as ";
                         a(href = format!("https://discord.com/users/{}", discord_user.discord_id.expect("Discord user without Discord ID"))) {
-                            : discord_user.discord_display_name;
-                            @if let Some(discriminator) = discord_user.discord_discriminator {
-                                : "#";
-                                : discriminator;
+                            @match discord_user.discord_username_or_discriminator {
+                                Either::Left(ref username) => {
+                                    : discord_user.discord_display_name;
+                                    : "(@";
+                                    : username;
+                                    : ")";
+                                }
+                                Either::Right(discriminator) => {
+                                    : discord_user.discord_display_name;
+                                    : "#";
+                                    : discriminator;
+                                }
                             }
                         }
                         : " which belongs to a different Mido's House account. ";
@@ -361,9 +393,18 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                     p {
                         : "You are also signed in via Discord as ";
                         a(href = format!("https://discord.com/users/{}", discord_user.id)) {
-                            : discord_user.username;
-                            : "#";
-                            : discord_user.discriminator;
+                            @if let Some(global_name) = discord_user.global_name {
+                                : global_name;
+                                : "(@";
+                                : discord_user.username;
+                                : ")";
+                            } else if let Some(discriminator) = discord_user.discriminator {
+                                : discord_user.username;
+                                : "#";
+                                : discriminator;
+                            } else {
+                                : discord_user.username;
+                            }
                         }
                         : " which does not belong to a Mido's House account. ";
                         span { //HACK fix button styling (nth-child)
