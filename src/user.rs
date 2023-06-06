@@ -340,7 +340,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                     @match user.discord_username_or_discriminator {
                         Either::Left(ref username) => {
                             : user.discord_display_name;
-                            : "(@";
+                            : " (@";
                             : username;
                             : ")";
                         }
@@ -365,7 +365,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                             @match discord_user.discord_username_or_discriminator {
                                 Either::Left(ref username) => {
                                     : discord_user.discord_display_name;
-                                    : "(@";
+                                    : " (@";
                                     : username;
                                     : ")";
                                 }
@@ -395,7 +395,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                         a(href = format!("https://discord.com/users/{}", discord_user.id)) {
                             @if let Some(global_name) = discord_user.global_name {
                                 : global_name;
-                                : "(@";
+                                : " (@";
                                 : discord_user.username;
                                 : ")";
                             } else if let Some(discriminator) = discord_user.discriminator {
