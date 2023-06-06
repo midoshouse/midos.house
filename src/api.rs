@@ -427,8 +427,9 @@ pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<re
             }
 
             let (discord_username, discord_discriminator) = match member.discord_username_or_discriminator {
-                Either::Left(ref username) => (Some(&**username), None),
-                Either::Right(discriminator) => (None, Some(discriminator)),
+                Some(Either::Left(ref username)) => (Some(&**username), None),
+                Some(Either::Right(discriminator)) => (None, Some(discriminator)),
+                None => (None, None),
             };
             csv.serialize(Row {
                 id: member.id,

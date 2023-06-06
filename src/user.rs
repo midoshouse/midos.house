@@ -77,7 +77,7 @@ pub(crate) struct User {
     pub(crate) racetime_pronouns: Option<RaceTimePronouns>,
     pub(crate) discord_id: Option<UserId>,
     pub(crate) discord_display_name: Option<String>,
-    pub(crate) discord_username_or_discriminator: Either<String, Discriminator>,
+    pub(crate) discord_username_or_discriminator: Option<Either<String, Discriminator>>,
     pub(crate) is_archivist: bool,
 }
 
@@ -105,9 +105,10 @@ impl User {
                     discord_id: row.discord_id.map(|Id(id)| id.into()),
                     discord_display_name: row.discord_display_name,
                     discord_username_or_discriminator: match (row.discord_username, row.discord_discriminator) {
-                        (Some(username), None) => Either::Left(username),
-                        (None, Some(discriminator)) => Either::Right(discriminator),
-                        (_, _) => unreachable!("database constraint"),
+                        (Some(_), Some(_)) => unreachable!("database constraint"),
+                        (Some(username), None) => Some(Either::Left(username)),
+                        (None, Some(discriminator)) => Some(Either::Right(discriminator)),
+                        (None, None) => None,
                     },
                     is_archivist: row.is_archivist,
                     id,
@@ -139,9 +140,10 @@ impl User {
                     discord_id: row.discord_id.map(|Id(id)| id.into()),
                     discord_display_name: row.discord_display_name,
                     discord_username_or_discriminator: match (row.discord_username, row.discord_discriminator) {
-                        (Some(username), None) => Either::Left(username),
-                        (None, Some(discriminator)) => Either::Right(discriminator),
-                        (_, _) => unreachable!("database constraint"),
+                        (Some(_), Some(_)) => unreachable!("database constraint"),
+                        (Some(username), None) => Some(Either::Left(username)),
+                        (None, Some(discriminator)) => Some(Either::Right(discriminator)),
+                        (None, None) => None,
                     },
                     is_archivist: row.is_archivist,
                 })
@@ -172,9 +174,10 @@ impl User {
                     discord_id: Some(discord_id),
                     discord_display_name: row.discord_display_name,
                     discord_username_or_discriminator: match (row.discord_username, row.discord_discriminator) {
-                        (Some(username), None) => Either::Left(username),
-                        (None, Some(discriminator)) => Either::Right(discriminator),
-                        (_, _) => unreachable!("database constraint"),
+                        (Some(_), Some(_)) => unreachable!("database constraint"),
+                        (Some(username), None) => Some(Either::Left(username)),
+                        (None, Some(discriminator)) => Some(Either::Right(discriminator)),
+                        (None, None) => None,
                     },
                     is_archivist: row.is_archivist,
                 })
@@ -337,8 +340,8 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
             p {
                 : "Discord: ";
                 a(href = format!("https://discord.com/users/{discord_id}")) {
-                    @match user.discord_username_or_discriminator {
-                        Either::Left(ref username) => {
+                    @match user.discord_username_or_discriminator.as_ref().expect("user has Discord ID but not username/discriminator") {
+                        Either::Left(username) => {
                             : user.discord_display_name;
                             : " (@";
                             : username;
@@ -362,8 +365,8 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                     p {
                         : "You are also signed in via Discord as ";
                         a(href = format!("https://discord.com/users/{}", discord_user.discord_id.expect("Discord user without Discord ID"))) {
-                            @match discord_user.discord_username_or_discriminator {
-                                Either::Left(ref username) => {
+                            @match discord_user.discord_username_or_discriminator.as_ref().expect("user has Discord ID but not username/discriminator") {
+                                Either::Left(username) => {
                                     : discord_user.discord_display_name;
                                     : " (@";
                                     : username;

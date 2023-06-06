@@ -525,7 +525,7 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, racetime_user
         (Some(_), None) => if let Some(discord_user) = discord_user {
             if let Ok(Some(discord_user)) = User::from_discord(&mut transaction, discord_user.id).await {
                 if discord_user.racetime_id.is_none() {
-                    sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3, discord_username = $4 WHERE id = $5", i64::from(discord_user.discord_id.expect("Discord user without Discord ID")), discord_user.discord_display_name, discord_user.discord_username_or_discriminator.as_ref().right() as _, discord_user.discord_username_or_discriminator.as_ref().left(), me.id as _).execute(&mut transaction).await?;
+                    sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3, discord_username = $4 WHERE id = $5", i64::from(discord_user.discord_id.expect("Discord user without Discord ID")), discord_user.discord_display_name, discord_user.discord_username_or_discriminator.as_ref().and_then(|uod| uod.as_ref().right()) as _, discord_user.discord_username_or_discriminator.as_ref().and_then(|uod| uod.as_ref().left()), me.id as _).execute(&mut transaction).await?;
                     sqlx::query!("DELETE FROM users WHERE id = $1", discord_user.id as _).execute(&mut transaction).await?;
                     transaction.commit().await?;
                     return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
