@@ -739,7 +739,7 @@ impl<'a> Data<'a> {
                         }
                     }
                 }
-                @if let Series::TriforceBlitz = self.series {
+                @if matches!(self.series, Series::League | Series::TriforceBlitz) && !self.is_ended() {
                     @if let Tab::Volunteer = tab {
                         a(class = "button selected", href? = is_subpage.then(|| uri!(volunteer(self.series, &*self.event)).to_string())) : "Volunteer";
                     } else {
@@ -1959,6 +1959,25 @@ pub(crate) async fn volunteer(pool: &State<PgPool>, env: &State<Environment>, me
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Volunteer, false).await?;
     let content = match data.series {
+        Series::League => html! {
+            @let chuckles = User::from_id(&mut transaction, Id(3480396938053963767)).await?.ok_or(Error::OrganizerUserData)?;
+            article {
+                p {
+                    : "The primary role of league volunteers is to complete race reviews to ensure runners are following league rules and to conduct initial FPA checks on races where FPA was called. If you are interested in being a volunteer for league, please complete ";
+                    a(href = "https://forms.gle/8fr8jk3eXXQ1xeEEA") : "this form";
+                    : ", then DM ";
+                    : chuckles;
+                    : " on Discord.";
+                }
+                p {
+                    : "If you or an organised restream team want to restream matches, please complete ";
+                    a(href = "https://forms.gle/eCJsvdE7CQY7Wofp6") : "this form";
+                    : " (only one person from the team needs to complete it), then DM ";
+                    : chuckles;
+                    : " on Discord.";
+                }
+            }
+        },
         Series::TriforceBlitz => html! {
             article {
                 p {
