@@ -1525,7 +1525,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, e
                     }
                     input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {
                         ctx.field_value(&*field_name)
-                    } else if me.as_ref().and_then(|me| me.racetime_id.as_deref()).map_or(false, |racetime_id| race.restreamers.get(&language).map_or(false, |restreamer| restreamer == racetime_id)) {
+                    } else if me.as_ref().and_then(|me| me.racetime.as_ref()).map_or(false, |racetime| race.restreamers.get(&language).map_or(false, |restreamer| *restreamer == racetime.id)) {
                         Some("me")
                     } else {
                         race.restreamers.get(&language).map(|restreamer| restreamer.as_str()) //TODO display as racetime.gg profile URL
@@ -1893,10 +1893,10 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                     if let Some(restreamer) = value.restreamers.get(&language) {
                         if !restreamer.is_empty() {
                             if restreamer == "me" {
-                                if let Some(ref racetime_id) = me.racetime_id {
-                                    restreamers.insert(language, racetime_id.clone());
+                                if let Some(ref racetime) = me.racetime {
+                                    restreamers.insert(language, racetime.id.clone());
                                 } else {
-                                    form.context.push_error(form::Error::validation("A racetime.gg account is required to restream races. Go to your profile and select “Connect a racetime.gg account”.").with_name(format!("restreamers.{}", language.short_code())));
+                                    form.context.push_error(form::Error::validation("A racetime.gg account is required to restream races. Go to your profile and select “Connect a racetime.gg account”.").with_name(format!("restreamers.{}", language.short_code()))); //TODO direct link
                                 }
                             } else {
                                 match racetime_bot::parse_user(&mut transaction, http_client, env.racetime_host(), restreamer).await {

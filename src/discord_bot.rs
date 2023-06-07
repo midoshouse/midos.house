@@ -259,7 +259,7 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
         Ok(Some(race)) => {
             let mut team = None;
             for iter_team in race.teams() {
-                if iter_team.members(&mut transaction).await?.into_iter().any(|member| member.discord_id == Some(interaction.user.id)) {
+                if iter_team.members(&mut transaction).await?.into_iter().any(|member| member.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
                     team = Some(iter_team.clone());
                 }
             }
@@ -691,7 +691,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             };
                             if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
-                                if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id)) {
+                                if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
                                         .content("Sorry, only event organizers can use this command.")
@@ -920,7 +920,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
                             if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
-                                if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id)) {
+                                if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
                                         .content("Sorry, only event organizers can use this command.")
@@ -1176,7 +1176,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             });
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
-                                if team.is_some() || event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id)) {
+                                if team.is_some() || event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
                                     let start = match interaction.data.options[0].value {
                                         CommandDataOptionValue::String(ref start) => start,
                                         _ => panic!("unexpected slash command option type"),
@@ -1249,7 +1249,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             });
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
-                                if team.is_some() || event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id)) {
+                                if team.is_some() || event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
                                     let start = match interaction.data.options[0].value {
                                         CommandDataOptionValue::String(ref start) => start,
                                         _ => panic!("unexpected slash command option type"),
@@ -1340,7 +1340,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 _ => panic!("unexpected slash command option type"),
                             });
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
-                                let is_organizer = race.event(&mut transaction).await?.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord_id == Some(interaction.user.id));
+                                let is_organizer = race.event(&mut transaction).await?.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
                                 if team.is_some() || is_organizer {
                                     if !is_organizer && race.has_room_for(team.as_ref().expect("checked above")) {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()

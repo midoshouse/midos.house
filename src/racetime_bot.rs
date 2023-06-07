@@ -204,8 +204,8 @@ pub(crate) enum ParseUserError {
 pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, host: &str, id_or_url: &str) -> Result<String, ParseUserError> {
     if let Ok(id) = id_or_url.parse() {
         return if let Some(user) = User::from_id(transaction, id).await? {
-            if let Some(racetime_id) = user.racetime_id {
-                Ok(racetime_id)
+            if let Some(racetime) = user.racetime {
+                Ok(racetime.id)
             } else {
                 Err(ParseUserError::MidosHouseUserNoRacetime)
             }
@@ -1530,10 +1530,10 @@ impl RaceHandler<GlobalState> for Handler {
             for team in cal_event.active_teams() {
                 for (member, role) in team.members_roles(&mut transaction).await.to_racetime()? {
                     if event.team_config().role_is_racing(role) {
-                        if let Some(member) = member.racetime_id {
-                            if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
+                        if let Some(member) = member.racetime {
+                            if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member.id) {
                                 match entrant.status.value {
-                                    EntrantStatusValue::Requested => ctx.accept_request(&member).await?,
+                                    EntrantStatusValue::Requested => ctx.accept_request(&member.id).await?,
                                     EntrantStatusValue::Invited |
                                     EntrantStatusValue::Declined |
                                     EntrantStatusValue::Ready |
@@ -1544,9 +1544,9 @@ impl RaceHandler<GlobalState> for Handler {
                                     EntrantStatusValue::Dq => {}
                                 }
                             } else {
-                                ctx.invite_user(&member).await?;
+                                ctx.invite_user(&member.id).await?;
                             }
-                            entrants.push(member);
+                            entrants.push(member.id);
                         } else {
                             ctx.send_message(&format!(
                                 "Warning: {name} could not be invited because {subj} {has_not} linked {poss} racetime.gg account to {poss} Mido's House account. Please contact an organizer to invite {obj} manually for now.",

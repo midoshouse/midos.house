@@ -117,12 +117,12 @@ impl Requirement {
 
     async fn is_checked(&self, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>) -> Result<bool, Error> {
         Ok(match self {
-            Self::RaceTime => me.map_or(false, |me| me.racetime_id.is_some()),
-            Self::Discord => me.map_or(false, |me| me.discord_id.is_some()),
+            Self::RaceTime => me.map_or(false, |me| me.racetime.is_some()),
+            Self::Discord => me.map_or(false, |me| me.discord.is_some()),
             Self::DiscordGuild { .. } => {
                 let discord_guild = data.discord_guild.ok_or(Error::DiscordGuild)?;
-                if let Some(discord_id) = me.and_then(|me| me.discord_id) {
-                    discord_guild.member(&*discord_ctx.read().await, discord_id).await.is_ok()
+                if let Some(discord) = me.and_then(|me| me.discord.as_ref()) {
+                    discord_guild.member(&*discord_ctx.read().await, discord.id).await.is_ok()
                 } else {
                     false
                 }
@@ -297,7 +297,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: Environment
                                             : " to participate in this race.";
                                         } else {
                                             : "The race room will be opened around 30 minutes before the scheduled starting time. ";
-                                            @if me.as_ref().map_or(false, |me| me.racetime_id.is_some()) {
+                                            @if me.as_ref().map_or(false, |me| me.racetime.is_some()) {
                                                 : "You don't need to sign up beforehand.";
                                             } else {
                                                 : "You will need a ";
@@ -524,7 +524,7 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                         ) AS "exists!""#, series as _, event, value.team_name).fetch_one(&mut transaction).await? {
                             form.context.push_error(form::Error::validation("A team with this name is already signed up for this race.").with_name("team_name"));
                         }
-                        if my_role == pic::Role::Sheikah && me.racetime_id.is_none() {
+                        if my_role == pic::Role::Sheikah && me.racetime.is_none() {
                             form.context.push_error(form::Error::validation("A racetime.gg account is required to enter as runner. Go to your profile and select “Connect a racetime.gg account”.").with_name("my_role")); //TODO direct link?
                         }
                         if teammate == me.id {
@@ -570,8 +570,8 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
             }
             _ => {
                 let racetime_team = if let Some(ref racetime_team) = value.racetime_team {
-                    if let Some(ref racetime_id) = me.racetime_id {
-                        let user = client.get(format!("https://racetime.gg/user/{racetime_id}/data"))
+                    if let Some(ref racetime) = me.racetime {
+                        let user = client.get(format!("https://racetime.gg/user/{}/data", racetime.id))
                             .send().await?
                             .detailed_error_for_status().await?
                             .json_with_text_in_error::<mw::RaceTimeUser>().await?;
@@ -606,9 +606,9 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                         let mut startgg_ids = Vec::default();
                         for member in &racetime_team.members {
                             if let Some(user) = User::from_racetime(&mut transaction, &member.id).await? {
-                                if let Some(discord_id) = user.discord_id {
+                                if let Some(ref discord) = user.discord {
                                     if let Some(discord_guild) = data.discord_guild {
-                                        if discord_guild.member(&*discord_ctx.read().await, discord_id).await.is_err() {
+                                        if discord_guild.member(&*discord_ctx.read().await, discord.id).await.is_err() {
                                             //TODO only check if Requirement::DiscordGuild is present
                                             form.context.push_error(form::Error::validation("This user has not joined the tournament's Discord server.").with_name(format!("roles[{}]", member.id)));
                                         }

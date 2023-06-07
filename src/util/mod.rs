@@ -124,8 +124,8 @@ impl MessageBuilderExt for MessageBuilder {
     }
 
     fn mention_user(&mut self, user: &User) -> &mut Self {
-        if let Some(discord_id) = user.discord_id {
-            self.mention(&discord_id)
+        if let Some(ref discord) = user.discord {
+            self.mention(&discord.id)
         } else {
             self.push_safe(user.display_name())
         }

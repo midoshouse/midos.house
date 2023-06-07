@@ -1552,7 +1552,7 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
     if form.context.errors().next().is_some() { return Err(AcceptError::Csrf.into()) }
     if data.is_started(&mut transaction).await? { return Err(AcceptError::EventStarted.into()) }
     if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, team as _, me.id as _).fetch_optional(&mut transaction).await? {
-        if role == Role::Sheikah && me.racetime_id.is_none() {
+        if role == Role::Sheikah && me.racetime.is_none() {
             return Err(AcceptError::RaceTimeAccountRequired.into())
         }
         for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, team as _).fetch_all(&mut transaction).await? {

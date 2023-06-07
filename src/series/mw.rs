@@ -806,8 +806,8 @@ pub(crate) struct RaceTimeTeamMember {
 pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>, client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, env, me.as_ref(), Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
-        if let Some(ref racetime_id) = me.racetime_id {
-            let racetime_user = client.get(format!("https://racetime.gg/user/{racetime_id}/data"))
+        if let Some(ref racetime) = me.racetime {
+            let racetime_user = client.get(format!("https://racetime.gg/user/{}/data", racetime.id))
                 .send().await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error::<RaceTimeUser>().await?;
