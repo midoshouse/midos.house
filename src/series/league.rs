@@ -69,7 +69,7 @@ pub(crate) struct Schedule {
 }
 
 fn deserialize_datetime<'de, D: Deserializer<'de>>(deserializer: D) -> Result<DateTime<Utc>, D::Error> {
-    Ok(DateTime::parse_from_str(<_>::deserialize(deserializer)?, "%Y-%m-%d %H:%M").map_err(D::Error::custom)?.with_timezone(&Utc))
+    Ok(NaiveDateTime::parse_from_str(&format!("{}:00", <&str>::deserialize(deserializer)?), "%Y-%m-%d %H:%M:%S").map_err(D::Error::custom)?.and_utc())
 }
 
 #[derive(Deserialize)]
