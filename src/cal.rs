@@ -136,20 +136,21 @@ use {
 pub(crate) enum Entrant {
     MidosHouseTeam(Team),
     Named(String),
+    NamedWithTwitch(String, String),
 }
 
 impl Entrant {
     pub(crate) async fn name(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Option<Cow<'_, str>>> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.name(transaction).await?,
-            Self::Named(name) => Some(Cow::Borrowed(name)),
+            Self::Named(name) | Self::NamedWithTwitch(name, _) => Some(Cow::Borrowed(name)),
         })
     }
 
     pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, running_text: bool) -> sqlx::Result<RawHtml<String>> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.to_html(transaction, env, running_text).await?,
-            Self::Named(name) => name.to_html(),
+            Self::Named(name) | Self::NamedWithTwitch(name, _) => name.to_html(),
         })
     }
 }
@@ -339,6 +340,8 @@ impl Race {
             p1,
             p2,
             p3,
+            p1_twitch,
+            p2_twitch,
             total,
             finished,
             phase,
@@ -419,8 +422,8 @@ impl Race {
                     Entrant::Named(p3),
                 ]),
                 [Some(p1), Some(p2), None] => Entrants::Two([
-                    Entrant::Named(p1),
-                    Entrant::Named(p2),
+                    if let Some(p1_twitch) = row.p1_twitch { Entrant::NamedWithTwitch(p1, p1_twitch) } else { Entrant::Named(p1) },
+                    if let Some(p2_twitch) = row.p2_twitch { Entrant::NamedWithTwitch(p2, p2_twitch) } else { Entrant::Named(p2) },
                 ]),
                 [Some(p1), None, None] => Entrants::Named(p1),
                 _ => if let (Some(startgg_set), Some(slots)) = (&startgg_set, slots) {
@@ -737,23 +740,34 @@ impl Race {
     }
 
     pub(crate) async fn multistream_url(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Option<Url>, Error> {
+        async fn entrant_twitch_names<'a>(transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, event: &event::Data<'_>, entrant: &'a Entrant) -> Result<Option<Vec<Cow<'a, str>>>, Error> {
+            let mut channels = Vec::default();
+            match entrant {
+                Entrant::MidosHouseTeam(team) => for (member, role) in team.members_roles(&mut *transaction).await? {
+                    if event.team_config().role_is_racing(role) {
+                        if let Some(twitch_name) = member.racetime_user_data(env, http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_name) {
+                            channels.push(Cow::Owned(twitch_name));
+                        } else {
+                            return Ok(None)
+                        }
+                    }
+                },
+                Entrant::Named(_) => return Ok(None),
+                Entrant::NamedWithTwitch(_, twitch_name) => channels.push(Cow::Borrowed(&**twitch_name)),
+            }
+            Ok(Some(channels))
+        }
+
         Ok(if let RaceSchedule::Live { room: Some(_), .. } = self.schedule {
             match self.entrants {
                 Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => None,
                 Entrants::Two(ref entrants) => {
                     let mut channels = Vec::default();
                     for entrant in entrants {
-                        match entrant {
-                            Entrant::MidosHouseTeam(team) => for (member, role) in team.members_roles(&mut *transaction).await? {
-                                if event.team_config().role_is_racing(role) {
-                                    if let Some(twitch_name) = member.racetime_user_data(env, http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_name) {
-                                        channels.push(twitch_name);
-                                    } else {
-                                        return Ok(None)
-                                    }
-                                }
-                            },
-                            Entrant::Named(_) => return Ok(None),
+                        if let Some(twitch_names) = entrant_twitch_names(&mut *transaction, env, http_client, event, entrant).await? {
+                            channels.extend(twitch_names);
+                        } else {
+                            return Ok(None)
                         }
                     }
                     let mut url = Url::parse("https://multistre.am/").unwrap();
@@ -769,17 +783,10 @@ impl Race {
                 Entrants::Three(ref entrants) => {
                     let mut channels = Vec::default();
                     for entrant in entrants {
-                        match entrant {
-                            Entrant::MidosHouseTeam(team) => for (member, role) in team.members_roles(&mut *transaction).await? {
-                                if event.team_config().role_is_racing(role) {
-                                    if let Some(twitch_name) = member.racetime_user_data(env, http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_name) {
-                                        channels.push(twitch_name);
-                                    } else {
-                                        return Ok(None)
-                                    }
-                                }
-                            },
-                            Entrant::Named(_) => return Ok(None),
+                        if let Some(twitch_names) = entrant_twitch_names(&mut *transaction, env, http_client, event, entrant).await? {
+                            channels.extend(twitch_names);
+                        } else {
+                            return Ok(None)
                         }
                     }
                     let mut url = Url::parse("https://multistre.am/").unwrap();
@@ -824,20 +831,22 @@ impl Race {
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE id = $1) AS "exists!""#, self.id as _).fetch_one(&mut *transaction).await? {
             unimplemented!("updating existing races not yet implemented") //TODO
         } else {
-            let ([team1, team2], [p1, p2, p3], [total, finished]) = match self.entrants {
-                Entrants::Open => ([None; 2], [None; 3], [None; 2]),
-                Entrants::Count { total, finished } => ([None; 2], [None; 3], [Some(total), Some(finished)]),
-                Entrants::Named(ref entrants) => ([None; 2], [Some(entrants), None, None], [None; 2]),
+            let ([team1, team2], [p1, p2, p3], [p1_twitch, p2_twitch], [total, finished]) = match self.entrants {
+                Entrants::Open => ([None; 2], [None; 3], [None; 2], [None; 2]),
+                Entrants::Count { total, finished } => ([None; 2], [None; 3], [None; 2], [Some(total), Some(finished)]),
+                Entrants::Named(ref entrants) => ([None; 2], [Some(entrants), None, None], [None; 2], [None; 2]),
                 Entrants::Two([ref p1, ref p2]) => {
-                    let (team1, p1) = match p1 {
-                        Entrant::MidosHouseTeam(team) => (Some(team.id), None),
-                        Entrant::Named(name) => (None, Some(name)),
+                    let (team1, p1, p1_twitch) = match p1 {
+                        Entrant::MidosHouseTeam(team) => (Some(team.id), None, None),
+                        Entrant::Named(name) => (None, Some(name), None),
+                        Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), Some(twitch)),
                     };
-                    let (team2, p2) = match p2 {
-                        Entrant::MidosHouseTeam(team) => (Some(team.id), None),
-                        Entrant::Named(name) => (None, Some(name)),
+                    let (team2, p2, p2_twitch) = match p2 {
+                        Entrant::MidosHouseTeam(team) => (Some(team.id), None, None),
+                        Entrant::Named(name) => (None, Some(name), None),
+                        Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), Some(twitch)),
                     };
-                    ([team1, team2], [p1, p2, None], [None; 2])
+                    ([team1, team2], [p1, p2, None], [p1_twitch, p2_twitch], [None; 2])
                 }
                 Entrants::Three([ref p1, ref p2, ref p3]) => {
                     (
@@ -845,15 +854,19 @@ impl Race {
                         [Some(match p1 {
                             Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
                             Entrant::Named(name) => name,
+                            Entrant::NamedWithTwitch(_, _) => unimplemented!(), //TODO
                         }),
                         Some(match p2 {
                             Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
                             Entrant::Named(name) => name,
+                            Entrant::NamedWithTwitch(_, _) => unimplemented!(), //TODO
                         }),
                         Some(match p3 {
                             Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
                             Entrant::Named(name) => name,
+                            Entrant::NamedWithTwitch(_, _) => unimplemented!(), //TODO
                         })],
+                        [None; 2],
                         [None; 2],
                     )
                 }
@@ -912,9 +925,11 @@ impl Race {
                 restreamer_fr,
                 locked_spoiler_log_path,
                 video_url_pt,
-                restreamer_pt
+                restreamer_pt,
+                p1_twitch,
+                p2_twitch
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42)",
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44)",
                 self.startgg_set,
                 start,
                 self.series as _,
@@ -957,6 +972,8 @@ impl Race {
                 locked_spoiler_log_path,
                 self.video_urls.get(&Language::Portuguese).map(|url| url.to_string()),
                 self.restreamers.get(&Language::Portuguese),
+                p1_twitch,
+                p2_twitch,
             ).execute(transaction).await?;
         }
         Ok(())
