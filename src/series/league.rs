@@ -69,6 +69,7 @@ pub(crate) struct Schedule {
 }
 
 fn deserialize_datetime<'de, D: Deserializer<'de>>(deserializer: D) -> Result<DateTime<Utc>, D::Error> {
+    // workaround for https://github.com/chronotope/chrono/issues/330
     Ok(NaiveDateTime::parse_from_str(&format!("{}:00", <&str>::deserialize(deserializer)?), "%Y-%m-%d %H:%M:%S").map_err(D::Error::custom)?.and_utc())
 }
 
@@ -80,8 +81,7 @@ pub(crate) struct Match {
     pub(crate) player_a: User,
     pub(crate) player_b: User,
     pub(crate) division: String,
-    #[allow(unused)] // only one variant
-    status: MatchStatus,
+    pub(crate) status: MatchStatus,
     pub(crate) restreamers: Vec<User>,
 }
 
@@ -93,6 +93,7 @@ pub(crate) struct User {
 }
 
 #[derive(Deserialize)]
-enum MatchStatus {
+pub(crate) enum MatchStatus {
+    Canceled,
     Confirmed,
 }

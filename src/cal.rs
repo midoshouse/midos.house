@@ -612,7 +612,10 @@ impl Race {
                                 HashMap::default()
                             },
                             restreamers: HashMap::default(),
-                            ignored: false,
+                            ignored: match race.status {
+                                league::MatchStatus::Canceled => true,
+                                league::MatchStatus::Confirmed => false,
+                            },
                             id,
                         }).await?;
                     }
