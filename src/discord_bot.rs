@@ -107,7 +107,7 @@ impl TypeMapKey for NewRoomLock {
 
 #[derive(Clone, Copy)]
 pub(crate) struct CommandIds {
-    assign: CommandId,
+    assign: Option<CommandId>,
     ban: Option<CommandId>,
     delete_after: Option<CommandId>,
     draft: Option<CommandId>,
@@ -319,22 +319,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             });
             let match_source = all().find(|match_source| guild_events.iter().all(|event| event.match_source() == *match_source));
             let assign = match match_source {
-                Some(MatchSource::Manual) => guild.create_command(ctx, CreateCommand::new("assign")
-                    .kind(CommandType::ChatInput)
-                    .dm_permission(false)
-                    .description("Marks this thread as the scheduling thread for the given game of the match.")
-                    .add_option(CreateCommandOption::new(
-                        CommandOptionType::Integer,
-                        "game",
-                        "The game number within the match.",
-                    )
-                        .min_int_value(1)
-                        .max_int_value(255)
-                        .required(true)
-                    )
-                    //TODO high-seed option
-                ).await?.id,
-                Some(MatchSource::StartGG) => guild.create_command(ctx, {
+                Some(MatchSource::Manual | MatchSource::League) => None, //TODO remove existing /assign command if any
+                Some(MatchSource::StartGG) => Some(guild.create_command(ctx, { //TODO automatically create threads, then remove this command
                     let mut c = CreateCommand::new("assign")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
@@ -360,7 +346,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .max_int_value(255)
                         .required(false)
                     )
-                }).await?.id,
+                }).await?.id),
                 None => unimplemented!("Discord guilds with mixed match sources not yet supported (guild ID: {}, events: {})", guild.id, guild_events.iter().map(|event| format!("{}/{}", event.series, event.event)).format(", ")),
             };
             let ban = if has_draft {
@@ -402,7 +388,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .required(true)
                     )
                 ).await?.id),
-                Some(MatchSource::StartGG) => None,
+                Some(MatchSource::League | MatchSource::StartGG) => None,
                 None => unimplemented!("Discord guilds with mixed match sources not yet supported (guild ID: {}, events: {})", guild.id, guild_events.iter().map(|event| format!("{}/{}", event.series, event.event)).format(", ")),
             };
             let draft = if has_draft {
@@ -680,7 +666,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 Interaction::Command(interaction) => {
                     let guild_id = interaction.guild_id.expect("Discord slash command called outside of a guild");
                     if let Some(&command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)) {
-                        if interaction.data.id == command_ids.assign {
+                        if Some(interaction.data.id) == command_ids.assign {
                             let (http_client, mut transaction, startgg_token) = {
                                 let data = ctx.data.read().await;
                                 (
@@ -741,6 +727,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             )).await?;
                                         }
                                     }
+                                    MatchSource::League => unreachable!(),
                                     MatchSource::StartGG => {
                                         let startgg_set = match interaction.data.options[0].value {
                                             CommandDataOptionValue::String(ref startgg_set) => startgg_set.clone(),
@@ -945,6 +932,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             })
                                         )).await?;
                                     }
+                                    MatchSource::League => unreachable!(), // races are managed via league.ootrandomizer.com
                                     MatchSource::StartGG => unreachable!(), // races are managed via the start.gg tournament
                                 }
                             } else {

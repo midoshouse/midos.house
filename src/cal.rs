@@ -111,6 +111,7 @@ use {
         },
         racetime_bot,
         seed,
+        series::league,
         startgg,
         team::Team,
         user::User,
@@ -576,12 +577,53 @@ impl Race {
             races.push(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?);
         }
         match event.series {
-            Series::League => {} //TODO get from League website somehow
+            Series::League => match &*event.event {
+                "4" => {
+                    let schedule = http_client.get("https://league.ootrandomizer.com/scheduleJson")
+                        .send().await?
+                        .detailed_error_for_status().await?
+                        .json_with_text_in_error::<league::Schedule>().await?;
+                    for race in schedule.matches {
+                        let id = Id::new(&mut *transaction, IdTable::Races).await?;
+                        add_or_update_race(&mut *transaction, &mut races, Self {
+                            series: event.series,
+                            event: event.event.to_string(),
+                            startgg_event: None,
+                            startgg_set: None,
+                            entrants: Entrants::Two([
+                                Entrant::Named(race.player_a.username),
+                                Entrant::Named(race.player_b.username),
+                            ]),
+                            phase: None,
+                            round: Some(race.division),
+                            game: None,
+                            scheduling_thread: None,
+                            schedule: RaceSchedule::Live {
+                                start: race.time_utc,
+                                end: None,
+                                room: None,
+                            },
+                            draft: None,
+                            seed: None,
+                            video_urls: if let Some(restreamer) = race.restreamers.into_iter().at_most_one().expect("multiple restreams for a League race") {
+                                //HACK: League schedule does not include language info, mark as English
+                                iter::once((Language::English, Url::parse(&format!("https://twitch.tv/{}", restreamer.twitch_username))?)).collect()
+                            } else {
+                                HashMap::default()
+                            },
+                            restreamers: HashMap::default(),
+                            ignored: false,
+                            id,
+                        }).await?;
+                    }
+                }
+                _ => unimplemented!(),
+            },
             Series::MixedPools => match &*event.event {
                 "1" => {} // added to database
                 "2" => {} //TODO
                 _ => unimplemented!(),
-            }
+            },
             Series::Multiworld => match &*event.event {
                 "1" => {} // no match data available
                 "2" | "3" => {} // added to database
@@ -1348,6 +1390,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
     }
     match event.match_source() {
         MatchSource::Manual => {}
+        MatchSource::League => form.context.push_error(form::Error::validation("This event's races are generated automatically from league.ootrandomizer.com and cannot be edited manually. Please contact Fenhl if a race needs to be added that's not listed at league.ootrandomizer.com.")),
         MatchSource::StartGG => form.context.push_error(form::Error::validation("This event's races are generated automatically from start.gg and cannot be edited manually. Please contact Fenhl if a race needs to be added that's not represented by a start.gg match.")),
     }
     Ok(if let Some(ref value) = form.value {

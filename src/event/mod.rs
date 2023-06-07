@@ -283,6 +283,7 @@ impl_from_uri_param_identity!([Path] Series);
 #[derive(PartialEq, Eq, Sequence)]
 pub(crate) enum MatchSource {
     Manual,
+    League, //TODO automatically scan for new matches and create scheduling threads
     StartGG, //TODO automatically scan for new matches and create scheduling threads
 }
 
@@ -494,6 +495,7 @@ impl<'a> Data<'a> {
     pub(crate) fn match_source(&self) -> MatchSource {
         match self.url.as_ref().and_then(Url::host_str) {
             //TODO challonge.com support? (waiting for reply from support regarding API errors)
+            Some("league.ootrandomizer.com") => MatchSource::League,
             Some("start.gg" | "www.start.gg") => MatchSource::StartGG,
             _ => MatchSource::Manual,
         }
