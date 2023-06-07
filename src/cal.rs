@@ -605,9 +605,9 @@ impl Race {
                             },
                             draft: None,
                             seed: None,
-                            video_urls: if let Some(restreamer) = race.restreamers.into_iter().at_most_one().expect("multiple restreams for a League race") {
+                            video_urls: if let Some(twitch_username) = race.restreamers.into_iter().filter_map(|restreamer| restreamer.twitch_username).at_most_one().expect("multiple restreams for a League race") {
                                 //HACK: League schedule does not include language info, mark as English
-                                iter::once((Language::English, Url::parse(&format!("https://twitch.tv/{}", restreamer.twitch_username))?)).collect()
+                                iter::once((Language::English, Url::parse(&format!("https://twitch.tv/{twitch_username}"))?)).collect()
                             } else {
                                 HashMap::default()
                             },

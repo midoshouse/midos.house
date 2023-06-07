@@ -89,7 +89,7 @@ pub(crate) struct Match {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct User {
     pub(crate) username: String,
-    pub(crate) twitch_username: String,
+    pub(crate) twitch_username: Option<String>,
 }
 
 #[derive(Deserialize)]
