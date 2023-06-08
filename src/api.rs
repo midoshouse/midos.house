@@ -223,7 +223,7 @@ struct Race(cal::Race);
     async fn phase(&self) -> Option<&str> { self.0.phase.as_deref() }
 
     /// A categorization of races within the phase, e.g. “Round 1”, “Openers”, or “Losers Quarterfinal”. Combine with phase, entrants, and game for a human-readable description of the race.
-    /// Null if this phase only has one match.
+    /// Null if this phase only has one match or if all matches in this phase are equivalent (e.g. a leaderboard phase).
     async fn round(&self) -> Option<&str> { self.0.round.as_deref() }
 
     /// If this race is part of a best-of-N-races match, the ordinal of the race within the match. Null for best-of-1 matches.

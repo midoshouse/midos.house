@@ -16,7 +16,7 @@ use {
             Data,
             InfoError,
         },
-        util::natjoin_html,
+        lang::Language::English,
     },
 };
 
@@ -26,7 +26,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is OoTR League season 4, organized by shaun1e, ";
-                    : natjoin_html(data.organizers(transaction).await?);
+                    : English.join_html(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://league.ootrandomizer.com/") : "the official website";
                     : " for details.";

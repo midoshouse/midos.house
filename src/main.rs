@@ -37,6 +37,7 @@ mod discord_bot;
 mod event;
 mod favicon;
 #[macro_use] mod http;
+mod lang;
 mod notification;
 mod racetime_bot;
 mod seed;

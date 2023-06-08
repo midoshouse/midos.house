@@ -12,7 +12,7 @@ use {
     rocket::response::content::RawHtml,
     rocket_util::html,
     sqlx::postgres::types::PgInterval,
-    super::natjoin_str,
+    crate::lang::Language::English,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -112,7 +112,7 @@ pub(crate) fn format_duration(duration: Duration, running_text: bool) -> String 
         let parts = (hours > 0).then(|| format!("{hours} hour{}", if hours == 1 { "" } else { "s" })).into_iter()
             .chain((mins > 0).then(|| format!("{mins} minute{}", if mins == 1 { "" } else { "s" })))
             .chain((secs > 0).then(|| format!("{secs} second{}", if secs == 1 { "" } else { "s" })));
-        natjoin_str(parts).unwrap_or_else(|| format!("0 seconds"))
+        English.join_str(parts).unwrap_or_else(|| format!("0 seconds"))
     } else {
         format!("{hours}:{mins:02}:{secs:02}")
     }

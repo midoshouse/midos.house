@@ -98,6 +98,8 @@ enum Requirement {
         async_end: DateTime<Utc>,
         live_start: DateTime<Utc>,
     },
+    /// A signup requirement that cannot be checked automatically
+    External(String),
 }
 
 struct RequirementStatus {
@@ -112,29 +114,31 @@ impl Requirement {
             Self::Discord => true,
             Self::DiscordGuild { .. } => true,
             Self::Qualifier { .. } => true,
+            Self::External(_) => false,
         }
     }
 
-    async fn is_checked(&self, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>) -> Result<bool, Error> {
+    async fn is_checked(&self, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>) -> Result<Option<bool>, Error> {
         Ok(match self {
-            Self::RaceTime => me.map_or(false, |me| me.racetime.is_some()),
-            Self::Discord => me.map_or(false, |me| me.discord.is_some()),
-            Self::DiscordGuild { .. } => {
+            Self::RaceTime => Some(me.map_or(false, |me| me.racetime.is_some())),
+            Self::Discord => Some(me.map_or(false, |me| me.discord.is_some())),
+            Self::DiscordGuild { .. } => Some({
                 let discord_guild = data.discord_guild.ok_or(Error::DiscordGuild)?;
                 if let Some(discord) = me.and_then(|me| me.discord.as_ref()) {
                     discord_guild.member(&*discord_ctx.read().await, discord.id).await.is_ok()
                 } else {
                     false
                 }
-            }
-            Self::Qualifier { .. } => false,
+            }),
+            Self::Qualifier { .. } => Some(false),
+            Self::External(_) => None,
         })
     }
 
     async fn check_get(&self, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>, redirect_uri: rocket::http::uri::Origin<'_>) -> Result<RequirementStatus, Error> {
         Ok(match self {
             Self::RaceTime => {
-                let is_checked = self.is_checked(discord_ctx, me, data).await?;
+                let is_checked = self.is_checked(discord_ctx, me, data).await?.unwrap();
                 let mut html_content = html! {
                     : "Connect a racetime.gg account to your Mido's House account";
                 };
@@ -150,7 +154,7 @@ impl Requirement {
                 }
             }
             Self::Discord => {
-                let is_checked = self.is_checked(discord_ctx, me, data).await?;
+                let is_checked = self.is_checked(discord_ctx, me, data).await?.unwrap();
                 let mut html_content = html! {
                     : "Connect a Discord account to your Mido's House account";
                 };
@@ -167,7 +171,7 @@ impl Requirement {
             }
             Self::DiscordGuild { name } => {
                 let name = name.clone();
-                let is_checked = self.is_checked(discord_ctx, me, data).await?;
+                let is_checked = self.is_checked(discord_ctx, me, data).await?.unwrap();
                 RequirementStatus {
                     blocks_submit: !is_checked,
                     html_content: Box::new(move |_| html! {
@@ -182,7 +186,7 @@ impl Requirement {
                 let async_available = now >= async_start && now < async_end;
                 let series = data.series;
                 RequirementStatus {
-                    blocks_submit: !async_available || self.is_checked(discord_ctx, me, data).await?,
+                    blocks_submit: !async_available || self.is_checked(discord_ctx, me, data).await?.unwrap(),
                     html_content: Box::new(move |errors| html! {
                         @if async_available {
                             : "Play the qualifier seed, either live on ";
@@ -212,6 +216,15 @@ impl Requirement {
                     }),
                 }
             }
+            Self::External(text) => {
+                let text = text.clone();
+                RequirementStatus {
+                    blocks_submit: true,
+                    html_content: Box::new(move |_| html! {
+                        : text;
+                    }),
+                }
+            }
         })
     }
 
@@ -227,12 +240,14 @@ impl Requirement {
                     form_ctx.push_error(form::Error::validation("The qualifier seed is not yet available."));
                 }
             }
-            _ => if !self.is_checked(discord_ctx, Some(me), data).await? {
+            Self::External(_) => form_ctx.push_error(form::Error::validation("Please complete event entry via the external method.")),
+            _ => if !self.is_checked(discord_ctx, Some(me), data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation(match self {
                     Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.", //TODO direct link?
                     Self::Discord => "A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.", //TODO direct link?
                     Self::DiscordGuild { .. } => "You must join the event's Discord server to enter.", //TODO invite link?
                     Self::Qualifier { .. } => unreachable!(),
+                    Self::External(_) => unreachable!(),
                 }));
             }
         }
@@ -335,8 +350,10 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: Environment
                                 @for (is_checked, html_content) in requirements_display {
                                     div(class = "check-item") {
                                         div(class = "checkmark") {
-                                            @if is_checked {
-                                                : "✓";
+                                            @match is_checked {
+                                                Some(true) => : "✓";
+                                                Some(false) => {}
+                                                None => : "?";
                                             }
                                         }
                                         div : html_content(&mut errors);
@@ -350,8 +367,10 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: Environment
                                     @for (is_checked, html_content) in requirements_display {
                                         div(class = "check-item") {
                                             div(class = "checkmark") {
-                                                @if is_checked {
-                                                    : "✓";
+                                                @match is_checked {
+                                                    Some(true) => : "✓";
+                                                    Some(false) => {}
+                                                    None => : "?";
                                                 }
                                             }
                                             div : html_content(&mut Vec::default());

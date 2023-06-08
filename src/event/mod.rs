@@ -11,7 +11,10 @@ use {
     },
     anyhow::anyhow,
     chrono::prelude::*,
-    enum_iterator::Sequence,
+    enum_iterator::{
+        Sequence,
+        all,
+    },
     futures::stream::TryStreamExt as _,
     itertools::Itertools as _,
     once_cell::sync::Lazy,
@@ -94,6 +97,7 @@ use {
             PageStyle,
             page,
         },
+        lang::Language::*,
         notification::SimpleNotificationKind,
         racetime_bot,
         seed,
@@ -115,7 +119,6 @@ use {
             format_datetime,
             format_duration,
             full_form,
-            natjoin_html,
             parse_duration,
         },
     },
@@ -178,7 +181,7 @@ impl Role {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Sequence)]
 pub(crate) enum Series {
     League,
     MixedPools,
@@ -187,6 +190,7 @@ pub(crate) enum Series {
     Pictionary,
     Rsl,
     Standard,
+    TournoiFrancophone,
     TriforceBlitz,
 }
 
@@ -200,6 +204,7 @@ impl Series {
             Self::Pictionary => "pic",
             Self::Rsl => "rsl",
             Self::Standard => "s",
+            Self::TournoiFrancophone => "fr",
             Self::TriforceBlitz => "tfb",
         }
     }
@@ -209,17 +214,7 @@ impl FromStr for Series {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, ()> {
-        match s {
-            "league" => Ok(Self::League),
-            "9dos" => Ok(Self::NineDaysOfSaws),
-            "mp" => Ok(Self::MixedPools),
-            "mw" => Ok(Self::Multiworld),
-            "pic" => Ok(Self::Pictionary),
-            "rsl" => Ok(Self::Rsl),
-            "s" => Ok(Self::Standard),
-            "tfb" => Ok(Self::TriforceBlitz),
-            _ => Err(()),
-        }
+        all::<Self>().find(|series| series.to_str() == s).ok_or(())
     }
 }
 
@@ -450,6 +445,8 @@ impl<'a> Data<'a> {
             (Series::Rsl, _) => unimplemented!(),
             (Series::Standard, "6") => from_file!("../../assets/event/s/chests-6-6.9.10.json"),
             (Series::Standard, _) => unimplemented!(),
+            (Series::TournoiFrancophone, "3") => ChestAppearances::random(), //TODO draft random settings like for mw/3
+            (Series::TournoiFrancophone, _) => unimplemented!(),
             (Series::TriforceBlitz, "2") => from_file!("../../assets/event/tfb/chests-2-7.1.3-blitz.42.json"),
             (Series::TriforceBlitz, _) => unimplemented!(),
         }
@@ -464,6 +461,7 @@ impl<'a> Data<'a> {
             Series::Pictionary => true,
             Series::Rsl => false,
             Series::Standard => false,
+            Series::TournoiFrancophone => false,
             Series::TriforceBlitz => false,
         }
     }
@@ -488,6 +486,7 @@ impl<'a> Data<'a> {
             Series::Pictionary => TeamConfig::Pictionary,
             Series::Rsl => TeamConfig::Solo,
             Series::Standard => TeamConfig::Solo,
+            Series::TournoiFrancophone => TeamConfig::Solo,
             Series::TriforceBlitz => TeamConfig::Solo,
         }
     }
@@ -837,13 +836,14 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
         Series::Pictionary => pic::info(&mut transaction, &data).await?,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
         Series::Standard => s::info(event),
+        Series::TournoiFrancophone => fr::info(&mut transaction, &data).await?,
         Series::TriforceBlitz => tfb::info(&mut transaction, &data).await?,
     };
     let content = html! {
         : header;
         @if let Some(content) = content {
             : content;
-        } else if let Some(organizers) = natjoin_html(data.organizers(&mut transaction).await?) {
+        } else if let Some(organizers) = English.join_html(data.organizers(&mut transaction).await?) {
             article {
                 p {
                     : "This event ";
@@ -1339,6 +1339,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                         }
                         Series::Rsl => @unimplemented // no signups on Mido's House
                         Series::Standard => @unimplemented // no signups on Mido's House
+                        Series::TournoiFrancophone => p : "Planifiez vos matches dans les fils du canal dédié.";
                         Series::TriforceBlitz => : tfb::status(&mut transaction, csrf, &data, Some(row.id), &mut ctx).await?;
                     }
                     @if !data.is_ended() {

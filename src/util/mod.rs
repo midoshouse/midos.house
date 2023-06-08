@@ -1,9 +1,5 @@
 use {
-    std::{
-        fmt,
-        io,
-        iter,
-    },
+    std::io,
     async_trait::async_trait,
     chrono::prelude::*,
     itertools::Itertools as _,
@@ -15,10 +11,7 @@ use {
             content::RawHtml,
         },
     },
-    rocket_util::{
-        ToHtml,
-        html,
-    },
+    rocket_util::html,
     serenity::{
         all::MessageBuilder,
         model::prelude::*,
@@ -137,50 +130,6 @@ impl MessageBuilderExt for MessageBuilder {
             .push(":")
             .push(char::from(format).to_string())
             .push(">")
-    }
-}
-
-pub(crate) fn natjoin_html<T: ToHtml>(elts: impl IntoIterator<Item = T>) -> Option<RawHtml<String>> {
-    let mut elts = elts.into_iter().fuse();
-    match (elts.next(), elts.next(), elts.next()) {
-        (None, _, _) => None,
-        (Some(elt), None, _) => Some(html! {
-            : elt;
-        }),
-        (Some(elt1), Some(elt2), None) => Some(html! {
-            : elt1;
-            : " and ";
-            : elt2;
-        }),
-        (Some(elt1), Some(elt2), Some(elt3)) => {
-            let mut rest = iter::once(elt3).chain(elts).collect_vec();
-            let last = rest.pop().expect("rest contains at least elt3");
-            Some(html! {
-                : elt1;
-                : ", ";
-                : elt2;
-                @for elt in rest {
-                    : ", ";
-                    : elt;
-                }
-                : ", and ";
-                : last;
-            })
-        }
-    }
-}
-
-pub(crate) fn natjoin_str<T: fmt::Display>(elts: impl IntoIterator<Item = T>) -> Option<String> {
-    let mut elts = elts.into_iter().fuse();
-    match (elts.next(), elts.next(), elts.next()) {
-        (None, _, _) => None,
-        (Some(elt), None, _) => Some(elt.to_string()),
-        (Some(elt1), Some(elt2), None) => Some(format!("{elt1} and {elt2}")),
-        (Some(elt1), Some(elt2), Some(elt3)) => {
-            let mut rest = [elt2, elt3].into_iter().chain(elts).collect_vec();
-            let last = rest.pop().expect("rest contains at least elt2 and elt3");
-            Some(format!("{elt1}, {}, and {last}", rest.into_iter().format(", ")))
-        }
     }
 }
 

@@ -79,6 +79,7 @@ use {
             PageStyle,
             page,
         },
+        lang::Language::English,
         seed,
         user::User,
         util::{
@@ -87,8 +88,6 @@ use {
             form_field,
             format_datetime,
             full_form,
-            natjoin_html,
-            natjoin_str,
         },
     },
 };
@@ -445,7 +444,7 @@ impl fmt::Display for S3Settings {
         if self.scrubs != Scrubs::default() { not_default.push(self.scrubs.to_string()) }
         if self.fountain != Fountain::default() { not_default.push(self.fountain.to_string()) }
         if self.spawn != Spawn::default() { not_default.push(self.spawn.to_string()) }
-        if let Some(not_default) = natjoin_str(not_default) {
+        if let Some(not_default) = English.join_str(not_default) {
             not_default.fmt(f)
         } else {
             write!(f, "base settings")
@@ -459,7 +458,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the first Ocarina of Time randomizer multiworld tournament, organized by ";
-                    : natjoin_html(data.organizers(transaction).await?);
+                    : English.join_html(data.organizers(transaction).await?);
                     : ".";
                 }
             }
@@ -468,7 +467,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the second Ocarina of Time randomizer multiworld tournament, organized by ";
-                    : natjoin_html(data.organizers(transaction).await?);
+                    : English.join_html(data.organizers(transaction).await?);
                     : ". Click the “teams” link above to see the results of the qualifier async.";
                 }
                 h2 : "See also";
@@ -492,7 +491,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "Hello and welcome to the official rules document for the Ocarina of Time Randomizer Multiworld Tournament Season 3, organized by ";
-                    : natjoin_html(data.organizers(transaction).await?);
+                    : English.join_html(data.organizers(transaction).await?);
                     : ".";
                 }
                 h2 : "Tournament Format";

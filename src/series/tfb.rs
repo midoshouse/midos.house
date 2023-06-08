@@ -28,6 +28,7 @@ use {
             Series,
             StatusContext,
         },
+        lang::Language::English,
         seed,
         util::{
             DateTimeFormat,
@@ -35,7 +36,6 @@ use {
             form_field,
             format_datetime,
             full_form,
-            natjoin_html,
         },
     },
 };
@@ -62,7 +62,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is the 2nd season of the Triforce Blitz tournament, organized by ";
-                    : natjoin_html(data.organizers(transaction).await?);
+                    : English.join_html(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1p8HAwWsjsLW7tjfDl2SK-yQ35pVqbAS9GB72bkOIDFI/edit") : "the official document";
                     : " for details.";

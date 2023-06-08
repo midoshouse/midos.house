@@ -7,7 +7,6 @@ use {
             HashMap,
         },
         convert::identity,
-        fmt,
         iter,
         path::Path,
         time::{
@@ -20,10 +19,7 @@ use {
         prelude::*,
     },
     chrono_tz::America,
-    enum_iterator::{
-        Sequence,
-        all,
-    },
+    enum_iterator::all,
     futures::stream::TryStreamExt as _,
     ics::{
         ICalendar,
@@ -46,7 +42,6 @@ use {
     reqwest::StatusCode,
     rocket::{
         FromForm,
-        FromFormField,
         State,
         form::{
             self,
@@ -126,6 +121,10 @@ use {
             PageStyle,
             page,
         },
+        lang::Language::{
+            self,
+            *,
+        },
         racetime_bot,
         seed,
         series::league,
@@ -144,7 +143,6 @@ use {
             format_datetime,
             full_form,
             io_error_from_reqwest,
-            natjoin_str,
             sync::{
                 Mutex,
                 lock,
@@ -287,44 +285,6 @@ impl Ord for RaceSchedule {
                 start_a1.map_or(start_a2, |start_a1| start_a2.map_or(Some(start_a1), |start_a2| Some(start_a1.max(start_a2))))
                 .cmp(&start_b1.map_or(start_b2, |start_b1| start_b2.map_or(Some(start_b1), |start_b2| Some(start_b1.max(start_b2)))))
             ) // races whose second half started earlier first
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Sequence, FromFormField)]
-pub(crate) enum Language {
-    #[field(value = "en")]
-    English,
-    #[field(value = "fr")]
-    French,
-    #[field(value = "pt")]
-    Portuguese,
-}
-
-impl Language {
-    fn short_code(&self) -> &'static str {
-        match self {
-            Self::English => "en",
-            Self::French => "fr",
-            Self::Portuguese => "pt",
-        }
-    }
-}
-
-impl fmt::Display for Language {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::English => write!(f, "English"),
-            Self::French => write!(f, "French"),
-            Self::Portuguese => write!(f, "Portuguese"),
-        }
-    }
-}
-
-impl ToHtml for Language {
-    fn to_html(&self) -> RawHtml<String> {
-        html! {
-            : self.to_string();
-        }
     }
 }
 
@@ -522,26 +482,26 @@ impl Race {
             video_urls: {
                 let mut video_urls = HashMap::default();
                 if let Some(video_url_en) = row.video_url {
-                    video_urls.insert(Language::English, video_url_en.parse()?);
+                    video_urls.insert(English, video_url_en.parse()?);
                 }
                 if let Some(video_url_fr) = row.video_url_fr {
-                    video_urls.insert(Language::French, video_url_fr.parse()?);
+                    video_urls.insert(French, video_url_fr.parse()?);
                 }
                 if let Some(video_url_pt) = row.video_url_pt {
-                    video_urls.insert(Language::Portuguese, video_url_pt.parse()?);
+                    video_urls.insert(Portuguese, video_url_pt.parse()?);
                 }
                 video_urls
             },
             restreamers: {
                 let mut restreamers = HashMap::default();
                 if let Some(restreamer_en) = row.restreamer {
-                    restreamers.insert(Language::English, restreamer_en);
+                    restreamers.insert(English, restreamer_en);
                 }
                 if let Some(restreamer_fr) = row.restreamer_fr {
-                    restreamers.insert(Language::French, restreamer_fr);
+                    restreamers.insert(French, restreamer_fr);
                 }
                 if let Some(restreamer_pt) = row.restreamer_pt {
-                    restreamers.insert(Language::Portuguese, restreamer_pt);
+                    restreamers.insert(Portuguese, restreamer_pt);
                 }
                 restreamers
             },
@@ -631,7 +591,7 @@ impl Race {
                             seed: None,
                             video_urls: if let Some(twitch_username) = race.restreamers.into_iter().filter_map(|restreamer| restreamer.twitch_username).at_most_one().expect("multiple restreams for a League race") {
                                 //HACK: League schedule does not include language info, mark as English
-                                iter::once((Language::English, Url::parse(&format!("https://twitch.tv/{twitch_username}"))?)).collect()
+                                iter::once((English, Url::parse(&format!("https://twitch.tv/{twitch_username}"))?)).collect()
                             } else {
                                 HashMap::default()
                             },
@@ -712,7 +672,7 @@ impl Race {
                     scheduling_thread: None,
                     draft: None,
                     seed: None, //TODO
-                    video_urls: event.video_url.iter().map(|video_url| (Language::English, video_url.clone())).collect(), //TODO sync between event and race? Video URL fields for other languages on event::Data?
+                    video_urls: event.video_url.iter().map(|video_url| (English, video_url.clone())).collect(), //TODO sync between event and race? Video URL fields for other languages on event::Data?
                     restreamers: HashMap::default(),
                     ignored: false,
                     id, schedule,
@@ -725,6 +685,10 @@ impl Race {
             },
             Series::Standard => match &*event.event {
                 "6" => {} // added to database
+                _ => unimplemented!(),
+            },
+            Series::TournoiFrancophone => match &*event.event {
+                "3" => {} // added to database
                 _ => unimplemented!(),
             },
             Series::TriforceBlitz => {} // manually added by organizers pending reply from Challonge support
@@ -1007,7 +971,7 @@ impl Race {
                 self.id as _,
                 p1,
                 p2,
-                self.video_urls.get(&Language::English).map(|url| url.to_string()),
+                self.video_urls.get(&English).map(|url| url.to_string()),
                 self.phase,
                 self.round,
                 p3,
@@ -1016,12 +980,12 @@ impl Race {
                 total.map(|total| total as i32),
                 finished.map(|finished| finished as i32),
                 tfb_uuid,
-                self.video_urls.get(&Language::French).map(|url| url.to_string()),
-                self.restreamers.get(&Language::English),
-                self.restreamers.get(&Language::French),
+                self.video_urls.get(&French).map(|url| url.to_string()),
+                self.restreamers.get(&English),
+                self.restreamers.get(&French),
                 locked_spoiler_log_path,
-                self.video_urls.get(&Language::Portuguese).map(|url| url.to_string()),
-                self.restreamers.get(&Language::Portuguese),
+                self.video_urls.get(&Portuguese).map(|url| url.to_string()),
+                self.restreamers.get(&Portuguese),
                 p1_twitch,
                 p2_twitch,
             ).execute(transaction).await?;
@@ -1301,7 +1265,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                 cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + match event.series {
                     Series::TriforceBlitz => Duration::hours(2),
                     Series::MixedPools => Duration::hours(3),
-                    Series::League | Series::NineDaysOfSaws | Series::Standard => Duration::hours(3) + Duration::minutes(30),
+                    Series::League | Series::NineDaysOfSaws | Series::Standard | Series::TournoiFrancophone => Duration::hours(3) + Duration::minutes(30),
                     Series::Multiworld | Series::Pictionary => Duration::hours(4),
                     Series::Rsl => Duration::hours(4) + Duration::minutes(30),
                 })))); //TODO better fallback duration estimates depending on participants
@@ -1374,7 +1338,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
             let name = if let Some(name) = team.name(&mut transaction).await? {
                 name.into_owned()
             } else {
-                format!("unnamed team ({})", natjoin_str(team.members(&mut transaction).await?).unwrap_or_else(|| format!("no members")))
+                format!("unnamed team ({})", English.join_str(team.members(&mut transaction).await?).unwrap_or_else(|| format!("no members")))
             };
             team_data.push((team.id.to_string(), name));
         }
@@ -2083,12 +2047,12 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
                 (!value.room.is_empty()).then(|| &value.room),
                 (!value.async_room1.is_empty()).then(|| &value.async_room1),
                 (!value.async_room2.is_empty()).then(|| &value.async_room2),
-                value.video_urls.get(&Language::English).filter(|video_url| !video_url.is_empty()),
-                restreamers.get(&Language::English),
-                value.video_urls.get(&Language::French).filter(|video_url| !video_url.is_empty()),
-                restreamers.get(&Language::French),
-                value.video_urls.get(&Language::Portuguese).filter(|video_url| !video_url.is_empty()),
-                restreamers.get(&Language::Portuguese),
+                value.video_urls.get(&English).filter(|video_url| !video_url.is_empty()),
+                restreamers.get(&English),
+                value.video_urls.get(&French).filter(|video_url| !video_url.is_empty()),
+                restreamers.get(&French),
+                value.video_urls.get(&Portuguese).filter(|video_url| !video_url.is_empty()),
+                restreamers.get(&Portuguese),
                 me.id as _,
                 id as _,
             ).execute(&mut transaction).await?;

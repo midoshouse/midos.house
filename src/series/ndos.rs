@@ -35,12 +35,12 @@ use {
             PageStyle,
             page,
         },
+        lang::Language::English,
         user::User,
         util::{
             Id,
             form_field,
             full_form,
-            natjoin_html,
         },
     },
 };
@@ -54,7 +54,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 : " of the ";
                 a(href = "https://docs.google.com/document/d/1xELThZtIctwN-vYtYhUqtd88JigNzabk8OZHANa0gqY/edit") : "9 Days of SAWS";
                 : " event, organized by ";
-                : natjoin_html(data.organizers(transaction).await?);
+                : English.join_html(data.organizers(transaction).await?);
                 : ", will be a ";
                 a(href = "https://docs.google.com/document/d/1sbL6Zju943F5qyx4QbTLUsqZqOTMmvqKVbDwJl08SGc/edit") : "Standard Anti-Weekly Settings";
                 @match &*data.event {

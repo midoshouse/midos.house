@@ -39,6 +39,7 @@ use {
             PageStyle,
             page,
         },
+        lang::Language::English,
         series::{
             mw,
             pic,
@@ -47,7 +48,6 @@ use {
         util::{
             EmptyForm,
             Id,
-            natjoin_html,
         },
     },
 };
@@ -200,7 +200,7 @@ impl Notification {
                             }
                             : " for ";
                             : event;
-                            @if let Some(teammates) = natjoin_html(teammates) {
+                            @if let Some(teammates) = English.join_html(teammates) {
                                 : " together with ";
                                 : teammates;
                             }
@@ -222,7 +222,7 @@ impl Notification {
                             : event;
                             : " as ";
                             : pic::Role::try_from(my_role).expect("non-Pictionary role in Pictionary team");
-                            @if let Some(teammates) = natjoin_html(teammates) {
+                            @if let Some(teammates) = English.join_html(teammates) {
                                 : " together with ";
                                 : teammates;
                             }
@@ -238,7 +238,7 @@ impl Notification {
                             : mw::Role::try_from(my_role).expect("non-multiworld role in multiworld team");
                             : " for team ";
                             a(href = format!("https://{}/team/{}", env.racetime_host(), team_row.racetime_slug.expect("multiworld team without racetime slug"))) : team_row.name; //TODO use Team type
-                            @if let Some(teammates) = natjoin_html(teammates) {
+                            @if let Some(teammates) = English.join_html(teammates) {
                                 : " together with ";
                                 : teammates;
                             }

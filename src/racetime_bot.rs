@@ -124,7 +124,6 @@ use {
             self,
             Entrant,
             Entrants,
-            Language,
         },
         config::{
             Config,
@@ -140,6 +139,10 @@ use {
             Series,
             TeamConfig,
         },
+        lang::Language::{
+            self,
+            English,
+        },
         seed,
         series::*,
         team::Team,
@@ -150,7 +153,6 @@ use {
             MessageBuilderExt as _,
             format_duration,
             io_error_from_reqwest,
-            natjoin_str,
             parse_duration,
             sync::{
                 ArcRwLock,
@@ -1709,7 +1711,7 @@ impl RaceHandler<GlobalState> for Handler {
             official_data, high_seed_name, low_seed_name, fpa_enabled,
         };
         if let Some(OfficialRaceData { ref event, ref restreams, .. }) = this.official_data {
-            if let Some(restreams_text) = natjoin_str(restreams.iter().map(|(video_url, state)| format!("in {} at {video_url}", state.language.expect("preset restreams should have languages assigned")))) {
+            if let Some(restreams_text) = English.join_str(restreams.iter().map(|(video_url, state)| format!("in {} at {video_url}", state.language.expect("preset restreams should have languages assigned")))) {
                 for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
                     let data = ctx.data().await;
                     if data.monitors.iter().find(|monitor| monitor.id == *restreamer).is_some() { continue }

@@ -12,7 +12,7 @@ use {
             Data,
             InfoError,
         },
-        util::natjoin_html,
+        lang::Language::English,
     },
 };
 #[cfg(unix)] use async_proto::Protocol;
@@ -80,7 +80,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the 1st season of the Random Settings League tournament, organized by Cubsrule21, ";
-                    : natjoin_html(data.organizers(transaction).await?);
+                    : English.join_html(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1wmoZHdwYijJwXLYgZbadjRYOGBNXio2hhKEIkFNgDgU/edit") : "the official document";
                     : " for details.";
@@ -91,7 +91,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the 2nd season of the Random Settings League tournament, organized by Cubsrule21, ";
-                    : natjoin_html(data.organizers(transaction).await?);
+                    : English.join_html(data.organizers(transaction).await?);
                     : ".";
                 }
                 h2 : "See also";
@@ -106,7 +106,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the 3rd season of the Random Settings League tournament, organized by Cubsrule21, ";
-                    : natjoin_html(data.organizers(transaction).await?);
+                    : English.join_html(data.organizers(transaction).await?);
                     : ".";
                 }
                 h2 : "See also";
@@ -121,7 +121,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the 4th season of the Random Settings League tournament, organized by Cubsrule21, ";
-                    : natjoin_html(data.organizers(transaction).await?);
+                    : English.join_html(data.organizers(transaction).await?);
                     : ".";
                 }
                 h2 : "See also";
@@ -139,7 +139,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is the 5th season of the Random Settings League tournament, organized by Cubsrule21, ";
-                    : natjoin_html(data.organizers(transaction).await?);
+                    : English.join_html(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1Js03yFcMw_mWx4UO_3UJB39CNCKa0bsxlBEYrHPq5Os/edit") : "the official document";
                     : " for details.";
