@@ -2,16 +2,24 @@ use {
     std::{
         borrow::Cow,
         cmp::Ordering,
-        collections::HashMap,
+        collections::hash_map::{
+            self,
+            HashMap,
+        },
         convert::identity,
         fmt,
         iter,
         path::Path,
+        time::{
+            Duration as UDuration,
+            Instant,
+        },
     },
     chrono::{
         Duration,
         prelude::*,
     },
+    chrono_tz::America,
     enum_iterator::{
         Sequence,
         all,
@@ -29,6 +37,7 @@ use {
     },
     itertools::Itertools as _,
     lazy_regex::regex_captures,
+    once_cell::sync::Lazy,
     ootr_utils::spoiler::{
         HashIcon,
         SpoilerLog,
@@ -72,6 +81,10 @@ use {
         model::prelude::*,
     },
     serenity_utils::RwFuture,
+    sheets::{
+        Sheets,
+        ValueRange,
+    },
     sqlx::{
         PgPool,
         Postgres,
@@ -87,6 +100,10 @@ use {
             File,
         },
         traits::ReqwestResponseExt as _,
+    },
+    yup_oauth2::{
+        ServiceAccountAuthenticator,
+        read_service_account_key,
     },
     crate::{
         Environment,
@@ -128,6 +145,10 @@ use {
             full_form,
             io_error_from_reqwest,
             natjoin_str,
+            sync::{
+                Mutex,
+                lock,
+            },
         },
     },
 };
@@ -627,7 +648,36 @@ impl Race {
             },
             Series::MixedPools => match &*event.event {
                 "1" => {} // added to database
-                "2" => {} //TODO
+                "2" => for row in sheet_values(http_client.clone(), "1nz43jWsDrTgsnMzdLdXI13l9J6b8xHx9Ycpp8PAv9E8", format!("Schedule!B2:F")).await? {
+                    if let [p1, p2, round, date_et, time_et] = &*row {
+                        let id = Id::new(&mut *transaction, IdTable::Races).await?;
+                        add_or_update_race(&mut *transaction, &mut races, Self {
+                            series: event.series,
+                            event: event.event.to_string(),
+                            startgg_event: None,
+                            startgg_set: None,
+                            entrants: Entrants::Two([
+                                Entrant::Named(p1.clone()),
+                                Entrant::Named(p2.clone()),
+                            ]),
+                            phase: Some(format!("Swiss")),
+                            round: Some(round.clone()),
+                            game: None,
+                            scheduling_thread: None,
+                            schedule: RaceSchedule::Live {
+                                start: America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%d.%m.%Y at %H:%M:%S").expect(&format!("failed to parse {date_et:?} at {time_et:?}")).with_timezone(&Utc),
+                                end: None,
+                                room: None,
+                            },
+                            draft: None,
+                            seed: None,
+                            video_urls: HashMap::default(),
+                            restreamers: HashMap::default(),
+                            ignored: false,
+                            id,
+                        }).await?;
+                    }
+                },
                 _ => unimplemented!(),
             },
             Series::Multiworld => match &*event.event {
@@ -1137,6 +1187,7 @@ impl Event {
 pub(crate) enum Error {
     #[error(transparent)] Event(#[from] event::DataError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Sheets(#[from] SheetsError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
@@ -1153,6 +1204,37 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     fn from(e: E) -> Self {
         Self::Err(e.into())
     }
+}
+
+static SHEETS_CACHE: Lazy<Mutex<HashMap<(String, String), (Instant, ValueRange)>>> = Lazy::new(|| Mutex::default());
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum SheetsError {
+    #[error(transparent)] Api(#[from] sheets::APIError), //TODO adjust status codes, e.g. 502 Bad Gateway for 503 Service Unavailable
+    #[error(transparent)] Io(#[from] tokio::io::Error),
+    #[error(transparent)] OAuth(#[from] yup_oauth2::Error),
+    #[error("empty token is not valid")]
+    EmptyToken,
+    #[error("no values in sheet range")]
+    NoValues,
+}
+
+async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: String) -> Result<Vec<Vec<String>>, SheetsError> {
+    let key = (sheet_id.to_owned(), range.clone());
+    let mut cache = lock!(SHEETS_CACHE);
+    cache.retain(|_, (retrieved, _)| retrieved.elapsed() < UDuration::from_secs(5 * 60));
+    match cache.entry(key) {
+        hash_map::Entry::Occupied(entry) => entry.get().1.values.clone(),
+        hash_map::Entry::Vacant(entry) => {
+            let gsuite_secret = read_service_account_key("assets/google-client-secret.json").await?;
+            let auth = ServiceAccountAuthenticator::builder(gsuite_secret)
+                .build().await?;
+            let token = auth.token(&["https://www.googleapis.com/auth/spreadsheets"]).await?;
+            if token.token().map_or(true, |token| token.is_empty()) { return Err(SheetsError::EmptyToken) }
+            let sheets_client = Sheets::new(http_client, token);
+            entry.insert((Instant::now(), sheets_client.get_values(sheet_id, range).await?)).1.values.clone()
+        }
+    }.ok_or(SheetsError::NoValues)
 }
 
 fn ics_datetime<Z: TimeZone>(datetime: DateTime<Z>) -> String {
