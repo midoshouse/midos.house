@@ -99,7 +99,9 @@ enum Requirement {
         live_start: DateTime<Utc>,
     },
     /// A signup requirement that cannot be checked automatically
-    External(String),
+    External {
+        text: String,
+    },
 }
 
 struct RequirementStatus {
@@ -114,7 +116,7 @@ impl Requirement {
             Self::Discord => true,
             Self::DiscordGuild { .. } => true,
             Self::Qualifier { .. } => true,
-            Self::External(_) => false,
+            Self::External { .. } => false,
         }
     }
 
@@ -131,7 +133,7 @@ impl Requirement {
                 }
             }),
             Self::Qualifier { .. } => Some(false),
-            Self::External(_) => None,
+            Self::External { .. } => None,
         })
     }
 
@@ -216,7 +218,7 @@ impl Requirement {
                     }),
                 }
             }
-            Self::External(text) => {
+            Self::External { text } => {
                 let text = text.clone();
                 RequirementStatus {
                     blocks_submit: true,
@@ -240,14 +242,13 @@ impl Requirement {
                     form_ctx.push_error(form::Error::validation("The qualifier seed is not yet available."));
                 }
             }
-            Self::External(_) => form_ctx.push_error(form::Error::validation("Please complete event entry via the external method.")),
+            Self::External { .. } => form_ctx.push_error(form::Error::validation("Please complete event entry via the external method.")),
             _ => if !self.is_checked(discord_ctx, Some(me), data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation(match self {
                     Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.", //TODO direct link?
                     Self::Discord => "A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.", //TODO direct link?
                     Self::DiscordGuild { .. } => "You must join the event's Discord server to enter.", //TODO invite link?
-                    Self::Qualifier { .. } => unreachable!(),
-                    Self::External(_) => unreachable!(),
+                    Self::Qualifier { .. } | Self::External { .. } => unreachable!(),
                 }));
             }
         }
