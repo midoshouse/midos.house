@@ -66,6 +66,14 @@ impl Team {
         self.plural_name.unwrap_or(false)
     }
 
+    pub(crate) async fn possessive_determiner(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<&'static str> {
+        Ok(if let Ok(member) = self.members(transaction).await?.into_iter().exactly_one() {
+            member.possessive_determiner()
+        } else {
+            "their"
+        })
+    }
+
     pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, running_text: bool) -> sqlx::Result<RawHtml<String>> {
         Ok(if let Ok(member) = self.members(transaction).await?.into_iter().exactly_one() {
             member.to_html()

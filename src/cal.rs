@@ -19,6 +19,7 @@ use {
         prelude::*,
     },
     chrono_tz::America,
+    collect_mac::collect,
     enum_iterator::all,
     futures::stream::TryStreamExt as _,
     ics::{
@@ -31,6 +32,7 @@ use {
             URL,
         },
     },
+    if_chain::if_chain,
     itertools::Itertools as _,
     lazy_regex::regex_captures,
     once_cell::sync::Lazy,
@@ -39,6 +41,7 @@ use {
         SpoilerLog,
     },
     racetime::model::RaceData,
+    rand::prelude::*,
     reqwest::StatusCode,
     rocket::{
         FromForm,
@@ -75,7 +78,10 @@ use {
         },
         model::prelude::*,
     },
-    serenity_utils::RwFuture,
+    serenity_utils::{
+        RwFuture,
+        message::MessageBuilderExt as _,
+    },
     sheets::{
         Sheets,
         ValueRange,
@@ -104,10 +110,10 @@ use {
         Environment,
         auth,
         config::Config,
-        discord_bot::{
+        discord_bot,
+        draft::{
             self,
             Draft,
-            DraftKind,
         },
         event::{
             self,
@@ -1418,7 +1424,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(), ..PageStyle::default() }, &format!("New Race — {}", event.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await, ..PageStyle::default() }, &format!("New Race — {}", event.display_name), html! {
         : header;
         h2 : "Create race";
         : form;
@@ -1479,9 +1485,10 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
             RedirectOrContent::Content(create_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, form.context).await?)
         } else {
             let [team1, team2] = [team1, team2].map(|team| team.expect("validated"));
-            let scheduling_thread = if let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) {
-                let command_ids = discord_ctx.read().await.data.read().await.get::<discord_bot::CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied());
-                if let Some(command_ids) = command_ids {
+            let (scheduling_thread, draft) = if_chain! {
+                if let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel);
+                if let Some(command_ids) = discord_ctx.read().await.data.read().await.get::<discord_bot::CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied());
+                then {
                     let info_prefix = format!("{}{}{}",
                         value.phase,
                         if value.phase.is_empty() && value.round.is_empty() { "" } else { " " },
@@ -1518,30 +1525,75 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                         content.push_mono("game:");
                         content.push(" parameter with these commands to schedule subsequent games ahead of time.");
                     }
-                    match event.draft_kind() {
-                        DraftKind::MultiworldS3 => unimplemented!(), //TODO
-                        DraftKind::None => {}
-                    }
+                    let draft = match event.draft_kind() {
+                        Some(draft::Kind::MultiworldS3) => unimplemented!(), //TODO
+                        Some(draft::Kind::TournoiFrancoS3) => {
+                            let high_seed = *[&team1, &team2].choose(&mut thread_rng()).unwrap();
+                            let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", team1.id as _, team2.id as _).fetch_all(&mut transaction).await?;
+                            let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
+                            let mq_ok = team_rows.iter().all(|row| row.mq_ok);
+                            if let (Some(first), Some(second)) = (command_ids.first, command_ids.second) {
+                                content.push_line("");
+                                content.mention_team(&mut transaction, Some(guild_id), high_seed).await?;
+                                content.push(": you have won the coin flip. Choose whether you want to go ");
+                                content.mention_command(first, "first");
+                                content.push(" or ");
+                                content.mention_command(second, "second");
+                                content.push(" in the settings draft.");
+                                if mq_ok { content.push(" Please include the number of MQ dungeons."); }
+                            }
+                            Some(Draft {
+                                high_seed: high_seed.id,
+                                went_first: None,
+                                skipped_bans: 0,
+                                settings: collect![as HashMap<_, _>:
+                                    Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
+                                    Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_ok { "ok" } else { "no" }),
+                                ],
+                            })
+                        }
+                        None => None,
+                    };
                     let content = content.build(); //TODO remove code duplication with /assign
-                    if let Some(ChannelType::Forum) = scheduling_channel.to_channel(&*discord_ctx.read().await).await?.guild().map(|c| c.kind) {
-                        Some(scheduling_channel.create_forum_post(&*discord_ctx.read().await, CreateForumPost::new(
+                    (Some(if let Some(ChannelType::Forum) = scheduling_channel.to_channel(&*discord_ctx.read().await).await?.guild().map(|c| c.kind) {
+                        scheduling_channel.create_forum_post(&*discord_ctx.read().await, CreateForumPost::new(
                             title,
                             CreateMessage::new().content(content),
-                        ).auto_archive_duration(10080)).await?.id)
+                        ).auto_archive_duration(AutoArchiveDuration::OneWeek)).await?.id
                     } else {
                         // must post the thread as a reply to a message since there currently doesn't seem to be a way to create a standalone public thread in serenity
+                        //TODO add API to serenity to create a standalone public thread: POST /channels/{channel.id}/threads with type 11 (PUBLIC_THREAD)
                         let msg = scheduling_channel.say(&*discord_ctx.read().await, &title).await?;
                         let thread = scheduling_channel.create_public_thread(&*discord_ctx.read().await, msg, CreateThread::new(
                             title,
-                        ).auto_archive_duration(10080)).await?;
+                        ).auto_archive_duration(AutoArchiveDuration::OneWeek)).await?;
                         thread.say(&*discord_ctx.read().await, content).await?;
-                        Some(thread.id)
-                    }
+                        thread.id
+                    }), draft)
                 } else {
-                    None //TODO still create scheduling thread, just without posting command info?
+                    //TODO deduplicate draft code (move scheduling thread creation to separate function in discord_bot.rs?)
+                    (None, match event.draft_kind() {
+                        Some(draft::Kind::MultiworldS3) => unimplemented!(), //TODO
+                        Some(draft::Kind::TournoiFrancoS3) => {
+                            let high_seed = *[team1.id, team2.id].choose(&mut thread_rng()).unwrap();
+                            Some(Draft {
+                                went_first: None,
+                                skipped_bans: 0,
+                                settings: {
+                                    let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", team1.id as _, team2.id as _).fetch_all(&mut transaction).await?;
+                                    let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
+                                    let mq_ok = team_rows.iter().all(|row| row.mq_ok);
+                                    collect![as HashMap<_, _>:
+                                        Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
+                                        Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_ok { "ok" } else { "no" }),
+                                    ]
+                                },
+                                high_seed,
+                            })
+                        }
+                        None => None,
+                    })
                 }
-            } else {
-                None
             };
             for game in 1..=value.game_count {
                 Race {
@@ -1558,10 +1610,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                     round: (!value.round.is_empty()).then(|| value.round.clone()),
                     game: (value.game_count > 1).then_some(game),
                     schedule: RaceSchedule::Unscheduled,
-                    draft: match event.draft_kind() {
-                        DraftKind::MultiworldS3 => unimplemented!(), //TODO
-                        DraftKind::None => None,
-                    },
+                    draft: draft.clone(),
                     seed: None,
                     video_urls: HashMap::default(),
                     restreamers: HashMap::default(),
@@ -1772,7 +1821,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, e
         }
         : form;
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(), ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit")]
@@ -2175,7 +2224,7 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
         }
         : form;
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(), ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit-hash")]

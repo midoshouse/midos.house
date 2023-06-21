@@ -203,7 +203,7 @@ pub(crate) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgre
             }
         })
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
         : header;
         : form;
         table {

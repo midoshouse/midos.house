@@ -1,7 +1,6 @@
 use {
     std::io,
     async_trait::async_trait,
-    chrono::prelude::*,
     itertools::Itertools as _,
     rocket::{
         Responder,
@@ -23,7 +22,6 @@ use {
     url::Url,
     crate::{
         cal::Entrant,
-        discord_bot,
         http::static_url,
         team::Team,
         user::User,
@@ -73,19 +71,13 @@ pub(crate) use as_variant;
 
 #[async_trait]
 pub(crate) trait MessageBuilderExt {
-    fn mention_command(&mut self, command_id: CommandId, name: &str) -> &mut Self;
     async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self>;
     async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, team: &Team) -> sqlx::Result<&mut Self>;
     fn mention_user(&mut self, user: &User) -> &mut Self;
-    fn push_timestamp<Z: TimeZone>(&mut self, timestamp: DateTime<Z>, format: discord_bot::TimestampStyle) -> &mut Self;
 }
 
 #[async_trait]
 impl MessageBuilderExt for MessageBuilder {
-    fn mention_command(&mut self, command_id: CommandId, name: &str) -> &mut Self {
-        self.push("</").push(name).push(':').push(command_id.to_string()).push('>')
-    }
-
     async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self> {
         match entrant {
             Entrant::MidosHouseTeam(team) => { self.mention_team(transaction, guild, team).await?; }
@@ -122,14 +114,6 @@ impl MessageBuilderExt for MessageBuilder {
         } else {
             self.push_safe(user.display_name())
         }
-    }
-
-    fn push_timestamp<Z: TimeZone>(&mut self, timestamp: DateTime<Z>, format: discord_bot::TimestampStyle) -> &mut Self {
-        self.push("<t:")
-            .push(timestamp.timestamp().to_string())
-            .push(":")
-            .push(char::from(format).to_string())
-            .push(">")
     }
 }
 

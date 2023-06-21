@@ -394,7 +394,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: Environment
         }
     };
     let header = data.header(&mut transaction, env, me.as_ref(), Tab::Enter, false).await?;
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
         : header;
         : content;
     }).await?)
@@ -455,7 +455,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                 }, errors, "Enter");
             }
         };
-        Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(), ..PageStyle::default() }, &format!("Enter — {}", data.display_name), page_content).await?)
+        Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), page_content).await?)
     })
 }
 

@@ -34,6 +34,7 @@ mod auth;
 mod cal;
 mod config;
 mod discord_bot;
+mod draft;
 mod event;
 mod favicon;
 #[macro_use] mod http;

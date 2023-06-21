@@ -7,6 +7,7 @@ use {
         },
         fmt,
         io::prelude::*,
+        iter,
         path::{
             Path,
             PathBuf,
@@ -55,7 +56,6 @@ use {
         },
         model::*,
     },
-    rand::prelude::*,
     reqwest::{
         IntoUrl,
         StatusCode,
@@ -79,7 +79,10 @@ use {
         MessageBuilder,
         UserId,
     },
-    serenity_utils::RwFuture,
+    serenity_utils::{
+        RwFuture,
+        message::MessageBuilderExt as _,
+    },
     sqlx::{
         PgPool,
         Postgres,
@@ -129,10 +132,9 @@ use {
             Config,
             ConfigRaceTime,
         },
-        discord_bot::{
+        draft::{
             self,
             Draft,
-            DraftKind,
         },
         event::{
             self,
@@ -175,10 +177,11 @@ use {
 pub(crate) const CATEGORY: &str = "ootr";
 
 /// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
-const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 4] = [
+const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 5] = [
     rando::Version::from_dev(6, 2, 181),
     rando::Version::from_dev(6, 2, 205),
     rando::Version::from_branch(rando::Branch::DevR, 6, 2, 238, 1),
+    rando::Version::from_branch(rando::Branch::DevR, 7, 1, 83, 1), // commit 578a64f4c78a831cde4215e0ac31565d3bf9bc46
     rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2),
 ];
 
@@ -398,10 +401,10 @@ impl Goal {
         }
     }
 
-    fn draft_kind(&self) -> DraftKind {
+    fn draft_kind(&self) -> Option<draft::Kind> {
         match self {
-            Self::MultiworldS3 => DraftKind::MultiworldS3,
-            Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::PicRs2 | Self::Rsl | Self::TriforceBlitz => DraftKind::None,
+            Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
+            Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::PicRs2 | Self::Rsl | Self::TriforceBlitz => None,
         }
     }
 
@@ -1292,7 +1295,7 @@ enum RaceState {
     #[default]
     Init,
     Draft {
-        state: mw::S3Draft,
+        state: Draft,
         spoiler_log: bool,
     },
     Rolling,
@@ -1360,47 +1363,78 @@ impl Handler {
         Ok(false)
     }
 
-    async fn send_settings(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
-        let available_settings = {
-            let state = lock!(@read self.race_state);
-            if let RaceState::Draft { ref state, .. } = *state {
-                state.available_settings()
+    async fn send_settings(&self, ctx: &RaceContext<GlobalState>, preface: &str, reply_to: &str) -> Result<(), Error> {
+        let goal = self.goal(ctx).await;
+        if let Some(draft_kind) = goal.draft_kind() {
+            let available_settings = if let RaceState::Draft { state: ref draft, .. } = *lock!(@read self.race_state) {
+                match draft.next_step(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }).await.to_racetime()?.kind {
+                    draft::StepKind::GoFirst => None,
+                    draft::StepKind::Ban { available_settings, .. } => Some(available_settings.all().map(|setting| setting.description).collect()),
+                    draft::StepKind::Pick { available_choices, .. } => Some(available_choices.all().map(|setting| setting.description).collect()),
+                    draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) => Some(Vec::default()),
+                }
             } else {
-                mw::S3Draft::default().available_settings()
+                None
+            };
+            let available_settings = available_settings.unwrap_or_else(|| match draft_kind {
+                draft::Kind::MultiworldS3 => mw::S3_SETTINGS.into_iter().map(|mw::S3Setting { description, .. }| description).collect(),
+                draft::Kind::TournoiFrancoS3 => fr::S3_SETTINGS.into_iter().map(|fr::S3Setting { description, .. }| description).collect(),
+            });
+            if available_settings.is_empty() {
+                ctx.send_message(&format!("Sorry {reply_to}, no settings are currently available.")).await?;
+            } else {
+                ctx.send_message(preface).await?;
+                for setting in available_settings {
+                    ctx.send_message(setting).await?;
+                }
             }
-        };
-        for setting in available_settings {
-            match setting {
-                mw::S3Setting::Wincon => ctx.send_message("wincon: meds (default: 6 Medallion Bridge + Keysy BK), scrubs (3 Stone Bridge + LACS BK), or th (Triforce Hunt 25/30)").await?,
-                mw::S3Setting::Dungeons => ctx.send_message("dungeons: tournament (default: keys shuffled in own dungeon), skulls (vanilla keys, dungeon tokens), or keyrings (small keyrings anywhere, vanilla boss keys)").await?,
-                mw::S3Setting::Er => ctx.send_message("er: off (default) or dungeon").await?,
-                mw::S3Setting::Trials => ctx.send_message("trials: 0 (default) or 2").await?,
-                mw::S3Setting::Shops => ctx.send_message("shops: 4 (default) or off").await?,
-                mw::S3Setting::Scrubs => ctx.send_message("scrubs: affordable (default) or off").await?,
-                mw::S3Setting::Fountain => ctx.send_message("fountain: closed (default) or open").await?,
-                mw::S3Setting::Spawn => ctx.send_message("spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)").await?,
-            }
+        } else {
+            ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?;
         }
         Ok(())
     }
 
     async fn advance_draft(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
+        let goal = self.goal(ctx).await;
         let state = lock!(@write_owned self.race_state.clone());
-        if let RaceState::Draft { state: ref draft, spoiler_log } = *state {
-            match draft.next_step() {
-                mw::DraftStep::GoFirst => ctx.send_message(&format!("{}, you have the higher seed. Choose whether you want to go !first or !second", self.high_seed_name)).await?,
-                mw::DraftStep::Ban { prev_bans, team } => ctx.send_message(&format!("{}, lock a setting to its default using “!ban <setting>”, or use “!skip” if you don't want to ban anything.{}", team.choose(&self.high_seed_name, &self.low_seed_name), if prev_bans == 0 { " Use “!settings” for a list of available settings." } else { "" })).await?,
-                mw::DraftStep::Pick { prev_picks, team } => ctx.send_message(&match prev_picks {
-                    0 => format!("{}, pick a setting using “!draft <setting> <value>”", team.choose(&self.high_seed_name, &self.low_seed_name)),
-                    1 => format!("{}, pick two settings.", team.choose(&self.high_seed_name, &self.low_seed_name)),
-                    2 => format!("And your second pick?"),
-                    3 => format!("{}, pick the final setting. You can also use “!skip” if you want to leave the settings as they are.", team.choose(&self.high_seed_name, &self.low_seed_name)),
-                    _ => unreachable!(),
-                }).await?,
-                mw::DraftStep::Done(settings) => self.roll_seed(ctx, state, self.goal(ctx).await.rando_version(), settings.resolve(), spoiler_log, "a", format!("seed with {settings}")),
+        let Some(draft_kind) = goal.draft_kind() else { unreachable!() };
+        let RaceState::Draft { state: ref draft, spoiler_log } = *state else { unreachable!() };
+        let step = draft.next_step(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to: "friend" }).await.to_racetime()?;
+        if let draft::StepKind::Done(settings) = step.kind {
+            self.roll_seed(ctx, state, goal.rando_version(), settings, spoiler_log, "a", format!("seed with {}", step.message));
+        } else {
+            ctx.send_message(&step.message).await?;
+        }
+        Ok(())
+    }
+
+    async fn draft_action(&self, ctx: &RaceContext<GlobalState>, reply_to: &str, action: draft::Action) -> Result<(), Error> {
+        let goal = self.goal(ctx).await;
+        if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
+            let mut state = lock!(@write self.race_state);
+            if let Some(draft_kind) = goal.draft_kind() {
+                match *state {
+                    RaceState::Init => match draft_kind {
+                        draft::Kind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
+                        draft::Kind::TournoiFrancoS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one. For more info about these options, use !presets")).await?, //TODO French translation
+                    },
+                    RaceState::Draft { state: ref mut draft, .. } => match draft.apply(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }, action).await.to_racetime()? {
+                        Ok(_) => {
+                            drop(state);
+                            self.advance_draft(ctx).await?;
+                        }
+                        Err(error_msg) => {
+                            drop(state);
+                            ctx.send_message(&error_msg).await?;
+                        }
+                    },
+                    RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                }
+            } else {
+                ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?;
             }
         } else {
-            unreachable!()
+            ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
         }
         Ok(())
     }
@@ -1577,33 +1611,31 @@ impl RaceHandler<GlobalState> for Handler {
                 event.series,
                 event.event,
             )).await?;
-            let (race_state, high_seed_name, low_seed_name) = match event.draft_kind() {
-                DraftKind::MultiworldS3 => {
-                    let Draft { high_seed, .. } = cal_event.race.draft.as_ref().expect("missing draft state");
-                    let [high_seed_name, low_seed_name] = match cal_event.race.entrants {
-                        Entrants::Open | Entrants::Count { .. } => [format!("Team A"), format!("Team B")],
-                        Entrants::Named(_) => unimplemented!("official race with opaque participants text"), //TODO
-                        Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => if team1.id == *high_seed {
-                            [
-                                team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
-                                team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
-                            ]
-                        } else {
-                            [
-                                team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
-                                team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
-                            ]
-                        },
-                        Entrants::Two([_, _]) => unimplemented!("MW S3 draft style with non-MH teams"), //TODO
-                        Entrants::Three([_, _, _]) => unimplemented!("MW S3 draft style with 3 teams"),
-                    };
-                    (RaceState::Draft {
-                        state: cal_event.race.draft.as_ref().map(|draft| draft.state.clone()).unwrap_or_default(),
-                        spoiler_log: false,
-                        //TODO restrict draft picks
-                    }, high_seed_name, low_seed_name)
-                }
-                DraftKind::None => (RaceState::Init, format!("Team A"), format!("Team B")),
+            let (race_state, high_seed_name, low_seed_name) = if event.draft_kind().is_some() {
+                let state = cal_event.race.draft.clone().expect("missing draft state");
+                let [high_seed_name, low_seed_name] = match cal_event.race.entrants {
+                    Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => [format!("Team A"), format!("Team B")],
+                    Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => if team1.id == state.high_seed {
+                        [
+                            team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
+                            team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
+                        ]
+                    } else {
+                        [
+                            team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
+                            team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
+                        ]
+                    },
+                    Entrants::Two([_, _]) => unimplemented!("MW S3 draft style with non-MH teams"), //TODO
+                    Entrants::Three([_, _, _]) => unimplemented!("MW S3 draft style with 3 teams"),
+                };
+                (RaceState::Draft {
+                    spoiler_log: false,
+                    //TODO restrict draft picks
+                    state,
+                }, high_seed_name, low_seed_name)
+            } else {
+                (RaceState::Init, format!("Team A"), format!("Team B"))
             };
             let restreams = cal_event.race.video_urls.iter().map(|(&language, video_url)| (video_url.clone(), RestreamState {
                 language: Some(language),
@@ -1710,7 +1742,7 @@ impl RaceHandler<GlobalState> for Handler {
             race_state: ArcRwLock::new(race_state),
             official_data, high_seed_name, low_seed_name, fpa_enabled,
         };
-        if let Some(OfficialRaceData { ref event, ref restreams, .. }) = this.official_data {
+        if let Some(OfficialRaceData { ref restreams, .. }) = this.official_data {
             if let Some(restreams_text) = English.join_str(restreams.iter().map(|(video_url, state)| format!("in {} at {video_url}", state.language.expect("preset restreams should have languages assigned")))) {
                 for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
                     let data = ctx.data().await;
@@ -1748,34 +1780,27 @@ impl RaceHandler<GlobalState> for Handler {
                 };
                 ctx.send_message(&text).await?;
             }
+            let state = lock!(@write_owned this.race_state.clone());
             if let Some(seed) = existing_seed {
-                let state = lock!(@write_owned this.race_state.clone());
                 this.queue_existing_seed(ctx, state, seed, "a", format!("seed")).await;
             } else {
-                match event.draft_kind() {
-                    DraftKind::MultiworldS3 => {
-                        let state = lock!(@read this.race_state);
-                        if let RaceState::Draft { .. } = *state {
-                            drop(state);
-                            this.advance_draft(ctx).await?;
-                        }
+                match *state {
+                    RaceState::Init => match goal {
+                        Goal::MixedPoolsS2 => unreachable!("no official race rooms"),
+                        Goal::MultiworldS3 => unreachable!("should have draft state set"),
+                        Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
+                        Goal::PicRs2 => this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
+                            version: Some((Version::new(2, 3, 8), 10)),
+                            preset: RslDevFenhlPreset::Pictionary,
+                        }, 1, true, "a", format!("random settings Pictionary seed")),
+                        Goal::Rsl => unreachable!("no official race rooms"),
+                        Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, false, "a", format!("Triforce Blitz seed")).await,
+                    },
+                    RaceState::Draft { .. } => {
+                        drop(state);
+                        this.advance_draft(ctx).await?;
                     }
-                    DraftKind::None => {
-                        let state = lock!(@write_owned this.race_state.clone());
-                        if let RaceState::Init = *state {
-                            match goal {
-                                Goal::MixedPoolsS2 => unreachable!(), // no official race rooms
-                                Goal::MultiworldS3 => unreachable!(), // uses DraftKind::MultiworldS3
-                                Goal::NineDaysOfSaws => unreachable!(), // 9dos series has concluded
-                                Goal::PicRs2 => this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
-                                    version: Some((Version::new(2, 3, 8), 10)),
-                                    preset: RslDevFenhlPreset::Pictionary,
-                                }, 1, true, "a", format!("random settings Pictionary seed")),
-                                Goal::Rsl => unreachable!(), // no official race rooms
-                                Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, false, "a", format!("Triforce Blitz seed")).await,
-                            }
-                        }
-                    }
+                    RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => {}
                 }
             }
         }
@@ -1786,55 +1811,10 @@ impl RaceHandler<GlobalState> for Handler {
         let goal = self.goal(ctx).await;
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match &*cmd_name.to_ascii_lowercase() {
-            "ban" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = lock!(@write self.race_state);
-                match *state {
-                    RaceState::Init => match goal.draft_kind() {
-                        DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        DraftKind::None => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
-                    },
-                    RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_none() {
-                        ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
-                    } else if draft.pick_count() >= 2 {
-                        ctx.send_message(&format!("Sorry {reply_to}, bans have already been chosen.")).await?;
-                    } else {
-                        match args[..] {
-                            [] => {
-                                drop(state);
-                                ctx.send_message(&format!("Sorry {reply_to}, the setting is required. Use one of the following:")).await?;
-                                self.send_settings(ctx).await?;
-                            }
-                            [ref setting] => {
-                                if let Ok(setting) = setting.parse() {
-                                    if draft.available_settings().contains(&setting) {
-                                        match setting {
-                                            mw::S3Setting::Wincon => draft.wincon = Some(mw::Wincon::default()),
-                                            mw::S3Setting::Dungeons => draft.dungeons = Some(mw::Dungeons::default()),
-                                            mw::S3Setting::Er => draft.er = Some(mw::Er::default()),
-                                            mw::S3Setting::Trials => draft.trials = Some(mw::Trials::default()),
-                                            mw::S3Setting::Shops => draft.shops = Some(mw::Shops::default()),
-                                            mw::S3Setting::Scrubs => draft.scrubs = Some(mw::Scrubs::default()),
-                                            mw::S3Setting::Fountain => draft.fountain = Some(mw::Fountain::default()),
-                                            mw::S3Setting::Spawn => draft.spawn = Some(mw::Spawn::default()),
-                                        }
-                                        drop(state);
-                                        self.advance_draft(ctx).await?;
-                                    } else {
-                                        ctx.send_message(&format!("Sorry {reply_to}, that setting is already locked in. Use “!skip” if you don't want to ban anything.")).await?;
-                                    }
-                                } else {
-                                    drop(state);
-                                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that setting. Use one of the following:")).await?;
-                                    self.send_settings(ctx).await?;
-                                }
-                            }
-                            [..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!ban <setting>”")).await?,
-                        }
-                    },
-                    RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
-                }
-            } else {
-                ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
+            "ban" => match args[..] {
+                [] => self.send_settings(ctx, &format!("Sorry {reply_to}, the setting is required. Use one of the following:"), reply_to).await?,
+                [ref setting] => self.draft_action(ctx, reply_to, draft::Action::Ban { setting: setting.clone() }).await?,
+                [..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!ban <setting>”")).await?,
             },
             "breaks" => match args[..] {
                 [] => if let Some(breaks) = self.breaks {
@@ -1863,93 +1843,13 @@ impl RaceHandler<GlobalState> for Handler {
                     ctx.send_message(&format!("Sorry {reply_to}, I don't recognise that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off")).await?;
                 },
             },
-            "draft" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = lock!(@write self.race_state);
-                match *state {
-                    RaceState::Init => match goal.draft_kind() {
-                        DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        DraftKind::None => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
-                    },
-                    RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_none() {
-                        ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
-                    } else if draft.pick_count() < 2 {
-                        ctx.send_message(&format!("Sorry {reply_to}, bans haven't been chosen yet, use “!ban <setting>”")).await?;
-                    } else {
-                        match args[..] {
-                            [] => {
-                                drop(state);
-                                ctx.send_message(&format!("Sorry {reply_to}, the setting is required. Use one of the following:")).await?;
-                                self.send_settings(ctx).await?;
-                            }
-                            [ref setting] => {
-                                if let Ok(setting) = setting.parse() {
-                                    ctx.send_message(&format!("Sorry {reply_to}, the value is required. Use {}", match setting {
-                                        mw::S3Setting::Wincon => all::<mw::Wincon>().map(|option| format!("“!draft wincon {}”", option.arg())).join(" or "),
-                                        mw::S3Setting::Dungeons => all::<mw::Dungeons>().map(|option| format!("“!draft dungeons {}”", option.arg())).join(" or "),
-                                        mw::S3Setting::Er => all::<mw::Er>().map(|option| format!("“!draft er {}”", option.arg())).join(" or "),
-                                        mw::S3Setting::Trials => all::<mw::Trials>().map(|option| format!("“!draft trials {}”", option.arg())).join(" or "),
-                                        mw::S3Setting::Shops => all::<mw::Shops>().map(|option| format!("“!draft shops {}”", option.arg())).join(" or "),
-                                        mw::S3Setting::Scrubs => all::<mw::Scrubs>().map(|option| format!("“!draft scrubs {}”", option.arg())).join(" or "),
-                                        mw::S3Setting::Fountain => all::<mw::Fountain>().map(|option| format!("“!draft fountain {}”", option.arg())).join(" or "),
-                                        mw::S3Setting::Spawn => all::<mw::Spawn>().map(|option| format!("“!draft spawn {}”", option.arg())).join(" or "),
-                                    })).await?;
-                                } else {
-                                    drop(state);
-                                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that setting. Use one of the following:")).await?;
-                                    self.send_settings(ctx).await?;
-                                }
-                            }
-                            [ref setting, ref value] => {
-                                if let Ok(setting) = setting.parse() {
-                                    if draft.available_settings().contains(&setting) {
-                                        match setting {
-                                            mw::S3Setting::Wincon => if let Some(value) = all::<mw::Wincon>().find(|option| option.arg() == value) { draft.wincon = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Wincon>().map(|option| format!("“!draft wincon {}”", option.arg())).join(" or "))).await? },
-                                            mw::S3Setting::Dungeons => if let Some(value) = all::<mw::Dungeons>().find(|option| option.arg() == value) { draft.dungeons = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Dungeons>().map(|option| format!("“!draft dungeons {}”", option.arg())).join(" or "))).await? },
-                                            mw::S3Setting::Er => if let Some(value) = all::<mw::Er>().find(|option| option.arg() == value) { draft.er = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Er>().map(|option| format!("“!draft er {}”", option.arg())).join(" or "))).await? },
-                                            mw::S3Setting::Trials => if let Some(value) = all::<mw::Trials>().find(|option| option.arg() == value) { draft.trials = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Trials>().map(|option| format!("“!draft trials {}”", option.arg())).join(" or "))).await? },
-                                            mw::S3Setting::Shops => if let Some(value) = all::<mw::Shops>().find(|option| option.arg() == value) { draft.shops = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Shops>().map(|option| format!("“!draft shops {}”", option.arg())).join(" or "))).await? },
-                                            mw::S3Setting::Scrubs => if let Some(value) = all::<mw::Scrubs>().find(|option| option.arg() == value) { draft.scrubs = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Scrubs>().map(|option| format!("“!draft scrubs {}”", option.arg())).join(" or "))).await? },
-                                            mw::S3Setting::Fountain => if let Some(value) = all::<mw::Fountain>().find(|option| option.arg() == value) { draft.fountain = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Fountain>().map(|option| format!("“!draft fountain {}”", option.arg())).join(" or "))).await? },
-                                            mw::S3Setting::Spawn => if let Some(value) = all::<mw::Spawn>().find(|option| option.arg() == value) { draft.spawn = Some(value); drop(state); self.advance_draft(ctx).await? } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Spawn>().map(|option| format!("“!draft spawn {}”", option.arg())).join(" or "))).await? },
-                                        }
-                                    } else {
-                                        drop(state);
-                                        ctx.send_message(&format!("Sorry {reply_to}, that setting is already locked in. Use one of the following:")).await?;
-                                        self.send_settings(ctx).await?;
-                                    }
-                                } else {
-                                    drop(state);
-                                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that setting. Use one of the following:")).await?;
-                                    self.send_settings(ctx).await?;
-                                }
-                            }
-                            [..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!draft <setting> <value>”")).await?,
-                        }
-                    },
-                    RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
-                }
-            } else {
-                ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
+            "draft" => match args[..] {
+                [] => self.send_settings(ctx, &format!("Sorry {reply_to}, the setting is required. Use one of the following:"), reply_to).await?,
+                [_] => ctx.send_message(&format!("Sorry {reply_to}, the value is required.")).await?, //TODO list available values
+                [ref setting, ref value] => self.draft_action(ctx, reply_to, draft::Action::Pick { setting: setting.clone(), value: value.clone() }).await?,
+                [..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!draft <setting> <value>”")).await?,
             },
-            "first" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = lock!(@write self.race_state);
-                match *state {
-                    RaceState::Init => match goal.draft_kind() {
-                        DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        DraftKind::None => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
-                    },
-                    RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_some() {
-                        ctx.send_message(&format!("Sorry {reply_to}, first pick has already been chosen.")).await?;
-                    } else {
-                        draft.went_first = Some(true);
-                        drop(state);
-                        self.advance_draft(ctx).await?;
-                    },
-                    RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
-                }
-            } else {
-                ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
-            },
+            "first" => self.draft_action(ctx, reply_to, draft::Action::GoFirst(true)).await?,
             "fpa" => match args[..] {
                 [] => if self.fpa_enabled {
                     if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
@@ -2123,25 +2023,7 @@ impl RaceHandler<GlobalState> for Handler {
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
             },
-            "second" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = lock!(@write self.race_state);
-                match *state {
-                    RaceState::Init => match goal.draft_kind() {
-                        DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        DraftKind::None => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
-                    },
-                    RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_some() {
-                        ctx.send_message(&format!("Sorry {reply_to}, first pick has already been chosen.")).await?;
-                    } else {
-                        draft.went_first = Some(false);
-                        drop(state);
-                        self.advance_draft(ctx).await?;
-                    },
-                    RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
-                }
-            } else {
-                ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
-            },
+            "second" => self.draft_action(ctx, reply_to, draft::Action::GoFirst(false)).await?,
             "seed" | "spoilerseed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let spoiler_log = cmd_name.to_ascii_lowercase() == "spoilerseed";
                 let mut state = lock!(@write_owned self.race_state.clone());
@@ -2156,62 +2038,73 @@ impl RaceHandler<GlobalState> for Handler {
                             } else {
                                 self.roll_seed(ctx, state, goal.rando_version(), mp::s2_settings(), spoiler_log, "a", format!("mixed pools seed"));
                             },
-                            Goal::MultiworldS3 => match args[..] {
-                                [] => {
-                                    ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
-                                    goal.send_presets(ctx).await?;
-                                }
-                                [ref arg] if arg == "base" => self.roll_seed(ctx, state, goal.rando_version(), mw::S3Settings::default().resolve(), spoiler_log, "a", format!("seed with {}", mw::S3Settings::default())),
-                                [ref arg] if arg == "random" => {
-                                    let settings = mw::S3Settings::random(&mut thread_rng());
-                                    self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), spoiler_log, "a", format!("seed with {settings}"));
-                                }
-                                [ref arg] if arg == "draft" => {
-                                    *state = RaceState::Draft { state: mw::S3Draft::default(), spoiler_log };
-                                    drop(state);
-                                    self.advance_draft(ctx).await?;
-                                }
-                                [ref arg] if arg.parse::<mw::S3Setting>().is_ok() => {
-                                    drop(state);
-                                    ctx.send_message(&format!("Sorry {reply_to}, you need to pair each setting with a value.")).await?;
-                                    self.send_settings(ctx).await?;
-                                }
-                                [_] => {
-                                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
-                                    goal.send_presets(ctx).await?;
-                                }
-                                ref args => {
-                                    let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
-                                    let mut settings = mw::S3Settings::default();
-                                    let mut tuples = args.into_iter().tuples();
-                                    for (setting, value) in &mut tuples {
-                                        if let Ok(setting) = setting.parse() {
-                                            match setting {
-                                                mw::S3Setting::Wincon => if let Some(value) = all::<mw::Wincon>().find(|option| option.arg() == value) { settings.wincon = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Wincon>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                                mw::S3Setting::Dungeons => if let Some(value) = all::<mw::Dungeons>().find(|option| option.arg() == value) { settings.dungeons = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Dungeons>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                                mw::S3Setting::Er => if let Some(value) = all::<mw::Er>().find(|option| option.arg() == value) { settings.er = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Er>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                                mw::S3Setting::Trials => if let Some(value) = all::<mw::Trials>().find(|option| option.arg() == value) { settings.trials = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Trials>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                                mw::S3Setting::Shops => if let Some(value) = all::<mw::Shops>().find(|option| option.arg() == value) { settings.shops = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Shops>().map(|option| option.arg()).join(" or "),)).await?; return Ok(()) },
-                                                mw::S3Setting::Scrubs => if let Some(value) = all::<mw::Scrubs>().find(|option| option.arg() == value) { settings.scrubs = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Scrubs>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                                mw::S3Setting::Fountain => if let Some(value) = all::<mw::Fountain>().find(|option| option.arg() == value) { settings.fountain = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Fountain>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
-                                                mw::S3Setting::Spawn => if let Some(value) = all::<mw::Spawn>().find(|option| option.arg() == value) { settings.spawn = value; } else { ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value. Use {}", all::<mw::Spawn>().map(|option| option.arg()).join(" or "))).await?; return Ok(()) },
+                            Goal::MultiworldS3 => {
+                                let settings = match args[..] {
+                                    [] => {
+                                        ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
+                                        goal.send_presets(ctx).await?;
+                                        return Ok(())
+                                    }
+                                    [ref arg] if arg == "base" => HashMap::default(),
+                                    [ref arg] if arg == "random" => Draft {
+                                        high_seed: Id(0), // Draft::complete_randomly doesn't check for active team
+                                        went_first: None,
+                                        skipped_bans: 0,
+                                        settings: HashMap::default(),
+                                    }.complete_randomly(draft::Kind::MultiworldS3).await.to_racetime()?.0,
+                                    [ref arg] if arg == "draft" => {
+                                        *state = RaceState::Draft {
+                                            state: Draft {
+                                                high_seed: Id(0), // racetime.gg bot doesn't check for active team
+                                                went_first: None,
+                                                skipped_bans: 0,
+                                                settings: HashMap::default(),
+                                            },
+                                            spoiler_log,
+                                        };
+                                        drop(state);
+                                        self.advance_draft(ctx).await?;
+                                        return Ok(())
+                                    }
+                                    [ref arg] if mw::S3_SETTINGS.into_iter().any(|mw::S3Setting { name, .. }| name == arg) => {
+                                        drop(state);
+                                        self.send_settings(ctx, &format!("Sorry {reply_to}, you need to pair each setting with a value."), reply_to).await?;
+                                        return Ok(())
+                                    }
+                                    [_] => {
+                                        ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                        goal.send_presets(ctx).await?;
+                                        return Ok(())
+                                    }
+                                    ref args => {
+                                        let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
+                                        let mut settings = HashMap::default();
+                                        let mut tuples = args.into_iter().tuples();
+                                        for (setting, value) in &mut tuples {
+                                            if let Some(mw::S3Setting { default, other, .. }) = mw::S3_SETTINGS.into_iter().find(|mw::S3Setting { name, .. }| **name == setting) {
+                                                if value == default || other.iter().any(|(other, _)| value == **other) {
+                                                    settings.insert(Cow::Owned(setting), Cow::Owned(value));
+                                                } else {
+                                                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value for the {setting} setting. Use {}", iter::once(default).chain(other.iter().map(|&(other, _)| other)).join(" or "))).await?;
+                                                    return Ok(())
+                                                }
+                                            } else {
+                                                drop(state);
+                                                self.send_settings(ctx, &format!("Sorry {reply_to}, I don't recognize one of those settings. Use one of the following:"), reply_to).await?;
+                                                return Ok(())
                                             }
-                                        } else {
+                                        }
+                                        if tuples.into_buffer().next().is_some() {
                                             drop(state);
-                                            ctx.send_message(&format!("Sorry {reply_to}, I don't recognize one of those settings. Use one of the following:")).await?;
-                                            self.send_settings(ctx).await?;
+                                            self.send_settings(ctx, &format!("Sorry {reply_to}, you need to pair each setting with a value."), reply_to).await?;
                                             return Ok(())
+                                        } else {
+                                            settings
                                         }
                                     }
-                                    if tuples.into_buffer().next().is_some() {
-                                        drop(state);
-                                        ctx.send_message(&format!("Sorry {reply_to}, you need to pair each setting with a value.")).await?;
-                                        self.send_settings(ctx).await?;
-                                    } else {
-                                        self.roll_seed(ctx, state, goal.rando_version(), settings.resolve(), spoiler_log, "a", format!("seed with {settings}"));
-                                    }
-                                }
-                            },
+                                };
+                                self.roll_seed(ctx, state, goal.rando_version(), mw::resolve_draft_settings(&settings), spoiler_log, "a", format!("seed with {}", mw::display_draft_picks(&settings)));
+                            }
                             Goal::NineDaysOfSaws => match args[..] {
                                 [] => {
                                     ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
@@ -2423,28 +2316,12 @@ impl RaceHandler<GlobalState> for Handler {
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
             },
-            "settings" => self.send_settings(ctx).await?,
-            "skip" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let mut state = lock!(@write self.race_state);
-                match *state {
-                    RaceState::Init => match goal.draft_kind() {
-                        DraftKind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        DraftKind::None => ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?,
-                    },
-                    RaceState::Draft { state: ref mut draft, .. } => if draft.went_first.is_none() {
-                        ctx.send_message(&format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")).await?;
-                    } else if let 0 | 1 | 5 = draft.pick_count() {
-                        draft.skipped_bans += 1;
-                        drop(state);
-                        self.advance_draft(ctx).await?;
-                    } else {
-                        ctx.send_message(&format!("Sorry {reply_to}, this part of the draft can't be skipped.")).await?;
-                    },
-                    RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
-                }
+            "settings" => self.send_settings(ctx, if let RaceState::Draft { .. } = *lock!(@read self.race_state) {
+                "Currently draftable settings:"
             } else {
-                ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
-            },
+                "Draftable settings:"
+            }, reply_to).await?,
+            "skip" => self.draft_action(ctx, reply_to, draft::Action::Skip).await?,
             "unlock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 self.locked = false;
                 ctx.send_message("Lock released. Anyone may now roll a seed.").await?;
@@ -2800,7 +2677,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, hos
             }
             let mut msg = MessageBuilder::default();
             msg.push("race starting ");
-            msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), discord_bot::TimestampStyle::Relative);
+            msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
             msg.push(": ");
             match cal_event.race.entrants {
                 Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {

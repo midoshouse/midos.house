@@ -5,6 +5,7 @@ use {
         sync::Arc,
         time::Duration as UDuration,
     },
+    async_trait::async_trait,
     chrono::{
         Duration,
         prelude::*,
@@ -12,10 +13,6 @@ use {
     enum_iterator::all,
     itertools::Itertools as _,
     lazy_regex::regex_captures,
-    serde::{
-        Deserialize,
-        Serialize,
-    },
     serenity::{
         all::{
             CreateButton,
@@ -32,6 +29,7 @@ use {
     serenity_utils::{
         builder::ErrorNotifier,
         handler::HandlerMethods as _,
+        message::MessageBuilderExt as _,
     },
     sqlx::{
         PgPool,
@@ -52,13 +50,17 @@ use {
             Config,
             ConfigRaceTime,
         },
+        draft::{
+            self,
+            Draft,
+        },
         event::{
             self,
             MatchSource,
             Series,
+            TeamConfig,
         },
         racetime_bot,
-        series::mw,
         team::Team,
         util::{
             Id,
@@ -74,6 +76,7 @@ use {
 };
 
 const FENHL: UserId = UserId::new(86841168427495424);
+const BUTTONS_PER_PAGE: usize = 25;
 
 enum DbPool {}
 
@@ -108,128 +111,59 @@ impl TypeMapKey for NewRoomLock {
 #[derive(Clone, Copy)]
 pub(crate) struct CommandIds {
     assign: Option<CommandId>,
-    ban: Option<CommandId>,
+    pub(crate) ban: Option<CommandId>,
     delete_after: Option<CommandId>,
-    draft: Option<CommandId>,
-    first: Option<CommandId>,
+    pub(crate) draft: Option<CommandId>,
+    pub(crate) first: Option<CommandId>,
+    pub(crate) no: Option<CommandId>,
     post_status: CommandId,
     pronoun_roles: CommandId,
     racing_role: CommandId,
     pub(crate) schedule: CommandId,
     pub(crate) schedule_async: CommandId,
     pub(crate) schedule_remove: CommandId,
-    second: Option<CommandId>,
-    skip: Option<CommandId>,
+    pub(crate) second: Option<CommandId>,
+    pub(crate) skip: Option<CommandId>,
     status: CommandId,
     watch_roles: CommandId,
+    pub(crate) yes: Option<CommandId>,
 }
 
 impl TypeMapKey for CommandIds {
     type Value = HashMap<GuildId, CommandIds>;
 }
 
-#[allow(unused)] //TODO move to serenity-utils
-pub(crate) enum TimestampStyle {
-    ShortDate,
-    LongDate,
-    ShortTime,
-    LongTime,
-    ShortDateTime,
-    LongDateTime,
-    Relative,
+#[async_trait]
+trait GenericInteraction {
+    fn channel_id(&self) -> ChannelId;
+    fn guild_id(&self) -> Option<GuildId>;
+    fn user_id(&self) -> UserId;
+    async fn create_response(&self, cache_http: impl CacheHttp, builder: CreateInteractionResponse) -> serenity::Result<()>;
 }
 
-impl From<TimestampStyle> for char {
-    fn from(style: TimestampStyle) -> Self {
-        match style {
-            TimestampStyle::ShortDate => 'd',
-            TimestampStyle::LongDate => 'D',
-            TimestampStyle::ShortTime => 't',
-            TimestampStyle::LongTime => 'T',
-            TimestampStyle::ShortDateTime => 'f',
-            TimestampStyle::LongDateTime => 'F',
-            TimestampStyle::Relative => 'R',
-        }
+#[async_trait]
+impl GenericInteraction for CommandInteraction {
+    fn channel_id(&self) -> ChannelId { self.channel_id }
+    fn guild_id(&self) -> Option<GuildId> { self.guild_id }
+    fn user_id(&self) -> UserId { self.user.id }
+
+    async fn create_response(&self, cache_http: impl CacheHttp, builder: CreateInteractionResponse) -> serenity::Result<()> {
+        self.create_response(cache_http, builder).await
     }
 }
 
-pub(crate) enum DraftKind {
-    None,
-    MultiworldS3,
-}
+#[async_trait]
+impl GenericInteraction for ComponentInteraction {
+    fn channel_id(&self) -> ChannelId { self.channel_id }
+    fn guild_id(&self) -> Option<GuildId> { self.guild_id }
+    fn user_id(&self) -> UserId { self.user.id }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-pub(crate) struct Draft { //TODO move to cal.rs?
-    pub(crate) high_seed: Id,
-    pub(crate) state: mw::S3Draft,
-}
-
-impl Draft {
-    /// Assumes that the caller has checked that the team is part of the race in the first place.
-    fn is_active_team(&self, team: Id) -> bool {
-        match self.state.active_team() {
-            Some(mw::Team::HighSeed) => team == self.high_seed,
-            Some(mw::Team::LowSeed) => team != self.high_seed,
-            None => false,
-        }
-    }
-
-    async fn next_step(&self, transaction: &mut Transaction<'_, Postgres>, guild: GuildId, command_ids: &CommandIds, teams: impl Iterator<Item = &Team>) -> sqlx::Result<String> {
-        let (mut high_seed, mut low_seed) = teams.partition::<Vec<_>, _>(|team| team.id == self.high_seed);
-        let high_seed = high_seed.remove(0);
-        let low_seed = low_seed.remove(0);
-        Ok(match self.state.next_step() {
-            mw::DraftStep::GoFirst => MessageBuilder::default()
-                .mention_team(transaction, Some(guild), high_seed).await?
-                .push(": you have the higher seed. Choose whether you want to go ")
-                .mention_command(command_ids.first.unwrap(), "first")
-                .push(" or ")
-                .mention_command(command_ids.second.unwrap(), "second")
-                .push(" in the settings draft.")
-                .build(),
-            mw::DraftStep::Ban { team, .. } => MessageBuilder::default()
-                .mention_team(transaction, Some(guild), team.choose(high_seed, low_seed)).await?
-                .push(": lock a setting to its default using ")
-                .mention_command(command_ids.ban.unwrap(), "ban")
-                .push(", or use ")
-                .mention_command(command_ids.skip.unwrap(), "skip")
-                .push(" if you don't want to ban anything.")
-                .build(),
-            mw::DraftStep::Pick { prev_picks, team } => match prev_picks {
-                0 => MessageBuilder::default()
-                    .mention_team(transaction, Some(guild), team.choose(high_seed, low_seed)).await?
-                    .push(": pick a setting using ")
-                    .mention_command(command_ids.draft.unwrap(), "draft")
-                    .push('.')
-                    .build(),
-                1 => MessageBuilder::default()
-                    .mention_team(transaction, Some(guild), team.choose(high_seed, low_seed)).await?
-                    .push(": pick a setting using ")
-                    .mention_command(command_ids.draft.unwrap(), "draft")
-                    .push(". You will have another pick after this.")
-                    .build(),
-                2 => MessageBuilder::default()
-                    .mention_team(transaction, Some(guild), team.choose(high_seed, low_seed)).await?
-                    .push(": pick your second setting using ")
-                    .mention_command(command_ids.draft.unwrap(), "draft")
-                    .push('.')
-                    .build(),
-                3 => MessageBuilder::default()
-                    .mention_team(transaction, Some(guild), team.choose(high_seed, low_seed)).await?
-                    .push(": pick a setting using ")
-                    .mention_command(command_ids.draft.unwrap(), "draft")
-                    .push(". You can also use ")
-                    .mention_command(command_ids.skip.unwrap(), "skip")
-                    .push(" if you want to leave the settings as they are.")
-                    .build(),
-                _ => unreachable!(),
-            },
-            mw::DraftStep::Done(settings) => format!("Settings draft completed. You will be playing with {settings}."),
-        })
+    async fn create_response(&self, cache_http: impl CacheHttp, builder: CreateInteractionResponse) -> serenity::Result<()> {
+        self.create_response(cache_http, builder).await
     }
 }
 
-async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: &CommandInteraction, game: Option<i16>) -> Result<Option<(Transaction<'a, Postgres>, Race, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
+async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: &impl GenericInteraction, game: Option<i16>) -> Result<Option<(Transaction<'a, Postgres>, Race, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
     let (mut transaction, http_client, startgg_token) = {
         let data = ctx.data.read().await;
         (
@@ -238,7 +172,7 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
             data.get::<StartggToken>().expect("start.gg auth token missing from Discord context").clone(),
         )
     };
-    let mut applicable_races = Race::for_scheduling_channel(&mut transaction, &http_client, &startgg_token, interaction.channel_id, game).await?;
+    let mut applicable_races = Race::for_scheduling_channel(&mut transaction, &http_client, &startgg_token, interaction.channel_id(), game).await?;
     if let Some(Some(min_game)) = applicable_races.iter().map(|race| race.game).min() {
         // None < Some(_) so this code only runs if all applicable races are best-of-N
         applicable_races.retain(|race| race.game == Some(min_game));
@@ -259,7 +193,7 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
         Ok(Some(race)) => {
             let mut team = None;
             for iter_team in race.teams() {
-                if iter_team.members(&mut transaction).await?.into_iter().any(|member| member.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
+                if iter_team.members(&mut transaction).await?.into_iter().any(|member| member.discord.map_or(false, |discord| discord.id == interaction.user_id())) {
                     team = Some(iter_team.clone());
                 }
             }
@@ -284,6 +218,145 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
             None
         }
     })
+}
+
+async fn check_draft_permissions<'a>(ctx: &'a Context, interaction: &impl GenericInteraction) -> Result<Option<(event::Data<'static>, Race, draft::Kind, draft::MessageContext<'a>)>, Box<dyn std::error::Error + Send + Sync>> {
+    let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? else { return Ok(None) };
+    let guild_id = interaction.guild_id().expect("Received interaction from outside of a guild");
+    Ok(if let Some(team) = team {
+        let event = race.event(&mut transaction).await?;
+        if let Some(draft_kind) = event.draft_kind() {
+            if let Some(ref draft) = race.draft {
+                if draft.is_active_team(draft_kind, team.id).await? {
+                    let msg_ctx = draft::MessageContext::Discord {
+                        command_ids: *ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)).expect("draft action called from outside registered guild"),
+                        teams: race.teams().cloned().collect(),
+                        transaction, guild_id, team,
+                    };
+                    Some((event, race, draft_kind, msg_ctx))
+                } else {
+                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                        .ephemeral(true)
+                        .content(format!("Sorry, it's not {} turn in the settings draft.", if let TeamConfig::Solo = event.team_config() { "your" } else { "your team's" }))
+                    )).await?;
+                    transaction.rollback().await?;
+                    None
+                }
+            } else {
+                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                    .ephemeral(true)
+                    .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
+                )).await?;
+                transaction.rollback().await?;
+                None
+            }
+        } else {
+            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                .ephemeral(true)
+                .content("Sorry, there is no settings draft for this event.")
+            )).await?;
+            transaction.rollback().await?;
+            None
+        }
+    } else {
+        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+            .ephemeral(true)
+            .content("Sorry, only participants in this race can use this command.")
+        )).await?;
+        transaction.rollback().await?;
+        None
+    })
+}
+
+async fn send_draft_settings_page(ctx: &Context, interaction: &impl GenericInteraction, action: &str, page: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let Some((_, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
+    match race.draft.as_ref().unwrap().next_step(draft_kind, &mut msg_ctx).await?.kind {
+        draft::StepKind::GoFirst | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) => match race.draft.as_mut().unwrap().apply(draft_kind, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
+            Ok(_) => unreachable!(),
+            Err(error_msg) => {
+                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                    .ephemeral(true)
+                    .content(error_msg)
+                )).await?;
+                msg_ctx.into_transaction().rollback().await?;
+                return Ok(())
+            }
+        },
+        draft::StepKind::Ban { available_settings, .. } => {
+            let mut response_msg = CreateInteractionResponseMessage::new()
+                .ephemeral(true)
+                .content("Select the setting to {action}:");
+            if available_settings.num_settings() <= BUTTONS_PER_PAGE {
+                for draft::BanSetting { name, display, .. } in available_settings.all() {
+                    response_msg = response_msg.button(CreateButton::new(format!("{action}_setting_{name}")).label(display));
+                }
+            } else {
+                if let Some((page_name, _)) = page.checked_sub(1).and_then(|prev_page| available_settings.page(prev_page)) {
+                    response_msg = response_msg.button(CreateButton::new(format!("{action}_page_{}", page - 1)).label(page_name).style(ButtonStyle::Secondary));
+                }
+                for draft::BanSetting { name, display, .. } in available_settings.page(page).unwrap().1 {
+                    response_msg = response_msg.button(CreateButton::new(format!("{action}_setting_{name}")).label(*display));
+                }
+                if let Some((page_name, _)) = page.checked_add(1).and_then(|next_page| available_settings.page(next_page)) {
+                    response_msg = response_msg.button(CreateButton::new(format!("{action}_page_{}", page + 1)).label(page_name).style(ButtonStyle::Secondary));
+                }
+            }
+            interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
+        }
+        draft::StepKind::Pick { available_choices, .. } => {
+            let mut response_msg = CreateInteractionResponseMessage::new()
+                .ephemeral(true)
+                .content("Select the setting to {action}:");
+            if available_choices.num_settings() <= BUTTONS_PER_PAGE {
+                for draft::DraftSetting { name, display, .. } in available_choices.all() {
+                    response_msg = response_msg.button(CreateButton::new(format!("{action}_setting_{name}")).label(display));
+                }
+            } else {
+                if let Some((page_name, _)) = page.checked_sub(1).and_then(|prev_page| available_choices.page(prev_page)) {
+                    response_msg = response_msg.button(CreateButton::new(format!("{action}_page_{}", page - 1)).label(page_name).style(ButtonStyle::Secondary));
+                }
+                for draft::DraftSetting { name, display, .. } in available_choices.page(page).unwrap().1 {
+                    response_msg = response_msg.button(CreateButton::new(format!("{action}_setting_{name}")).label(*display));
+                }
+                if let Some((page_name, _)) = page.checked_add(1).and_then(|next_page| available_choices.page(next_page)) {
+                    response_msg = response_msg.button(CreateButton::new(format!("{action}_page_{}", page + 1)).label(page_name).style(ButtonStyle::Secondary));
+                }
+            }
+            interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
+        }
+    }
+    msg_ctx.into_transaction().commit().await?;
+    Ok(())
+}
+
+async fn draft_action(ctx: &Context, interaction: &impl GenericInteraction, action: draft::Action) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
+    match race.draft.as_mut().unwrap().apply(draft_kind, &mut msg_ctx, action).await? {
+        Ok(apply_response) => {
+            let mut response_content = MessageBuilder::default();
+            response_content.push(apply_response);
+            if let Some(draft_kind) = event.draft_kind() {
+                response_content.push_line("");
+                response_content.push(race.draft.as_ref().unwrap().next_step(draft_kind, &mut msg_ctx).await?.message);
+            }
+            let response_content = response_content.build();
+            let mut transaction = msg_ctx.into_transaction();
+            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut transaction).await?;
+            transaction.commit().await?;
+            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                .ephemeral(false)
+                .content(response_content)
+            )).await?;
+        }
+        Err(error_msg) => {
+            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                .ephemeral(true)
+                .content(error_msg)
+            )).await?;
+            msg_ctx.into_transaction().rollback().await?;
+        }
+    }
+    Ok(())
 }
 
 fn parse_timestamp(timestamp: &str) -> Option<DateTime<Utc>> {
@@ -311,16 +384,24 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             for row in guild_event_rows {
                 guild_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("just received from database"));
             }
-            // if different kinds of draft are added in the future, this has to be refactored since they'll require different slash command setups
-            // (and we'll have to make sure there's no conflicting draft kinds in the same guild)
-            let has_draft = guild_events.iter().any(|event| match event.draft_kind() {
-                DraftKind::MultiworldS3 => true,
-                DraftKind::None => false,
-            });
+            let mut commands = Vec::default();
+            let mut draft_kind = None;
+            for event in &guild_events {
+                if let Some(new_kind) = event.draft_kind() {
+                    if draft_kind.map_or(false, |prev_kind| prev_kind != new_kind) {
+                        #[derive(Debug, thiserror::Error)]
+                        #[error("multiple conflicting draft kinds in the same Discord guild")]
+                        struct DraftKindsError;
+
+                        return Err(Box::new(DraftKindsError) as Box<dyn std::error::Error + Send + Sync>)
+                    }
+                    draft_kind = Some(new_kind);
+                }
+            }
             let match_source = all().find(|match_source| guild_events.iter().all(|event| event.match_source() == *match_source));
             let assign = match match_source {
-                Some(MatchSource::Manual | MatchSource::League) => None, //TODO remove existing /assign command if any
-                Some(MatchSource::StartGG) => Some(guild.create_command(ctx, { //TODO automatically create threads, then remove this command
+                Some(MatchSource::Manual | MatchSource::League) => None,
+                Some(MatchSource::StartGG) => { //TODO automatically create threads, then remove this command
                     let mut c = CreateCommand::new("assign")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
@@ -330,14 +411,16 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             "startgg-set", //TODO Challonge support?
                             "The start.gg set (match) ID",
                         ).required(true));
-                    if has_draft {
-                        c = c.add_option(CreateCommandOption::new(
+                    match draft_kind {
+                        Some(draft::Kind::MultiworldS3) => c = c.add_option(CreateCommandOption::new(
                             CommandOptionType::Role,
                             "high-seed",
                             "The team that decides which team starts the settings draft. If the teams are tied, flip a coin.",
-                        ).required(true));
+                        ).required(true)),
+                        Some(draft::Kind::TournoiFrancoS3) => unreachable!(), // this event uses MatchSource::Manual
+                        None => {}
                     }
-                    c.add_option(CreateCommandOption::new(
+                    c = c.add_option(CreateCommandOption::new(
                         CommandOptionType::Integer,
                         "game",
                         "The game number within the match, if this is a best-of-n-races match.",
@@ -345,319 +428,439 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .min_int_value(1)
                         .max_int_value(255)
                         .required(false)
-                    )
-                }).await?.id),
+                    );
+                    let idx = commands.len();
+                    commands.push(c);
+                    Some(idx)
+                },
                 None => unimplemented!("Discord guilds with mixed match sources not yet supported (guild ID: {}, events: {})", guild.id, guild_events.iter().map(|event| format!("{}/{}", event.series, event.event)).format(", ")),
             };
-            let ban = if has_draft {
-                Some(guild.create_command(ctx, CreateCommand::new("ban")
-                    .kind(CommandType::ChatInput)
-                    .dm_permission(false)
-                    .description("Locks a setting for this match to its default value.")
-                    .add_option(CreateCommandOption::new(
-                        CommandOptionType::String,
-                        "setting",
-                        "The setting to lock in",
-                    )
-                        .required(true)
-                        .add_string_choice("win conditions", "wincon")
-                        .add_string_choice("dungeons", "dungeons")
-                        .add_string_choice("entrance rando", "er")
-                        .add_string_choice("trials", "trials")
-                        .add_string_choice("shops", "shops")
-                        .add_string_choice("scrubs", "scrubs")
-                        .add_string_choice("fountain", "fountain")
-                        .add_string_choice("spawns", "spawn")
-                    )
-                ).await?.id)
-            } else {
-                None
-            };
+            let ban = draft_kind.map(|draft_kind| {
+                let idx = commands.len();
+                commands.push(match draft_kind {
+                    draft::Kind::MultiworldS3 => CreateCommand::new("ban")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Locks a setting for this race to its default value.")
+                        .add_option(CreateCommandOption::new( //TODO migrate to button flow
+                            CommandOptionType::String,
+                            "setting",
+                            "The setting to lock in",
+                        )
+                            .required(true)
+                            .add_string_choice("win conditions", "wincon")
+                            .add_string_choice("dungeons", "dungeons")
+                            .add_string_choice("entrance rando", "er")
+                            .add_string_choice("trials", "trials")
+                            .add_string_choice("shops", "shops")
+                            .add_string_choice("scrubs", "scrubs")
+                            .add_string_choice("fountain", "fountain")
+                            .add_string_choice("spawns", "spawn")
+                        ),
+                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("ban")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Locks a setting for this race to its default value."),
+                });
+                idx
+            });
             let delete_after = match match_source {
-                Some(MatchSource::Manual) => Some(guild.create_command(ctx, CreateCommand::new("delete-after")
-                    .kind(CommandType::ChatInput)
-                    .dm_permission(false)
-                    .description("Deletes games of the match that are not required.")
-                    .add_option(CreateCommandOption::new(
-                        CommandOptionType::Integer,
-                        "game",
-                        "The last game number within the match that should be kept.",
-                    )
-                        .min_int_value(1)
-                        .max_int_value(255)
-                        .required(true)
-                    )
-                ).await?.id),
+                Some(MatchSource::Manual) => {
+                    let idx = commands.len();
+                    commands.push(CreateCommand::new("delete-after")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Deletes games of the match that are not required.")
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::Integer,
+                            "game",
+                            "The last game number within the match that should be kept.",
+                        )
+                            .min_int_value(1)
+                            .max_int_value(255)
+                            .required(true)
+                        )
+                    );
+                    Some(idx)
+                }
                 Some(MatchSource::League | MatchSource::StartGG) => None,
                 None => unimplemented!("Discord guilds with mixed match sources not yet supported (guild ID: {}, events: {})", guild.id, guild_events.iter().map(|event| format!("{}/{}", event.series, event.event)).format(", ")),
             };
-            let draft = if has_draft {
-                Some(guild.create_command(ctx, CreateCommand::new("draft")
+            let draft = draft_kind.map(|draft_kind| {
+                let idx = commands.len();
+                commands.push(match draft_kind {
+                    draft::Kind::MultiworldS3 => CreateCommand::new("draft")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Chooses a setting for this race.")
+                        .add_option(CreateCommandOption::new( //TODO migrate to button flow
+                            CommandOptionType::SubCommand,
+                            "wincon",
+                            "win conditions",
+                        )
+                            .add_sub_option(CreateCommandOption::new(
+                                CommandOptionType::String,
+                                "value",
+                                "Your choice for the win condition settings",
+                            )
+                                .required(true)
+                                .add_string_choice("default wincons", "meds")
+                                .add_string_choice("Scrubs wincons", "scrubs")
+                                .add_string_choice("Triforce Hunt", "th")
+                            )
+                        )
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::SubCommand,
+                            "dungeons",
+                            "dungeons",
+                        )
+                            .add_sub_option(CreateCommandOption::new(
+                                CommandOptionType::String,
+                                "value",
+                                "Your choice for the dungeon item settings",
+                            )
+                                .required(true)
+                                .add_string_choice("tournament dungeons", "tournament")
+                                .add_string_choice("dungeon tokens", "skulls")
+                                .add_string_choice("keyrings", "keyrings")
+                            )
+                        )
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::SubCommand,
+                            "er",
+                            "entrance rando",
+                        )
+                            .add_sub_option(CreateCommandOption::new(
+                                CommandOptionType::String,
+                                "value",
+                                "Your choice for entrance randomizer",
+                            )
+                                .required(true)
+                                .add_string_choice("no ER", "off")
+                                .add_string_choice("dungeon ER", "dungeon")
+                            )
+                        )
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::SubCommand,
+                            "trials",
+                            "trials",
+                        )
+                            .add_sub_option(CreateCommandOption::new(
+                                CommandOptionType::String,
+                                "value",
+                                "Your choice for the Ganon's Trials setting",
+                            )
+                                .required(true)
+                                .add_string_choice("0 trials", "0")
+                                .add_string_choice("2 trials", "2")
+                            )
+                        )
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::SubCommand,
+                            "shops",
+                            "shops",
+                        )
+                            .add_sub_option(CreateCommandOption::new(
+                                CommandOptionType::String,
+                                "value",
+                                "Your choice for the Shop Shuffle setting",
+                            )
+                                .required(true)
+                                .add_string_choice("shops 4", "4")
+                                .add_string_choice("no shops", "off")
+                            )
+                        )
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::SubCommand,
+                            "scrubs",
+                            "scrubs",
+                        )
+                            .add_sub_option(CreateCommandOption::new(
+                                CommandOptionType::String,
+                                "value",
+                                "Your choice for the Scrub Shuffle setting",
+                            )
+                                .required(true)
+                                .add_string_choice("affordable scrubs", "affordable")
+                                .add_string_choice("no scrubs", "off")
+                            )
+                        )
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::SubCommand,
+                            "fountain",
+                            "fountain",
+                        )
+                            .add_sub_option(CreateCommandOption::new(
+                                CommandOptionType::String,
+                                "value",
+                                "Your choice for the Zora's Fountain setting",
+                            )
+                                .required(true)
+                                .add_string_choice("closed fountain", "closed")
+                                .add_string_choice("open fountain", "open")
+                            )
+                        )
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::SubCommand,
+                            "spawn",
+                            "spawns",
+                        )
+                            .add_sub_option(CreateCommandOption::new(
+                                CommandOptionType::String,
+                                "value",
+                                "Your choice for the spawn settings",
+                            )
+                                .required(true)
+                                .add_string_choice("ToT spawns", "tot")
+                                .add_string_choice("random spawns & starting age", "random")
+                            )
+                        ),
+                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("draft")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Chooses a setting for this race."),
+                });
+                idx
+            });
+            let first = draft_kind.map(|draft_kind| {
+                let idx = commands.len();
+                commands.push(match draft_kind {
+                    draft::Kind::MultiworldS3 => CreateCommand::new("first")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Go first in the settings draft."),
+                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("first")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Go first in the settings draft.")
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::Integer,
+                            "mq",
+                            "Number of MQ dungeons",
+                        )
+                            .min_int_value(0)
+                            .max_int_value(12)
+                            .required(false)
+                        ),
+                });
+                idx
+            });
+            let no = draft_kind.and_then(|draft_kind| {
+                let idx = commands.len();
+                commands.push(match draft_kind {
+                    draft::Kind::MultiworldS3 => return None,
+                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("no")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Answers no to a yes/no question in the settings draft."),
+                });
+                Some(idx)
+            });
+            let post_status = {
+                let idx = commands.len();
+                commands.push(CreateCommand::new("post-status")
+                    .kind(CommandType::ChatInput)
+                    .default_member_permissions(Permissions::ADMINISTRATOR)
+                    .dm_permission(false)
+                    .description("Posts this race's status to the thread, pinging the team whose turn it is in the settings draft.")
+                );
+                idx
+            };
+            let pronoun_roles = {
+                let idx = commands.len();
+                commands.push(CreateCommand::new("pronoun-roles")
+                    .kind(CommandType::ChatInput)
+                    .default_member_permissions(Permissions::ADMINISTRATOR)
+                    .dm_permission(false)
+                    .description("Creates gender pronoun roles and posts a message here that allows members to self-assign them.")
+                );
+                idx
+            };
+            let racing_role = {
+                let idx = commands.len();
+                commands.push(CreateCommand::new("racing-role")
+                    .kind(CommandType::ChatInput)
+                    .default_member_permissions(Permissions::ADMINISTRATOR)
+                    .dm_permission(false)
+                    .description("Creates a racing role and posts a message here that allows members to self-assign it.")
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::Channel,
+                        "race-planning-channel",
+                        "Will be linked to from the description message.",
+                    )
+                        .required(true)
+                        .channel_types(vec![ChannelType::Text, ChannelType::News])
+                    )
+                );
+                idx
+            };
+            let schedule = {
+                let idx = commands.len();
+                commands.push(CreateCommand::new("schedule")
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
-                    .description("Chooses a setting for this match.")
+                    .description("Submits a starting time for this race.")
                     .add_option(CreateCommandOption::new(
-                        CommandOptionType::SubCommand,
-                        "wincon",
-                        "win conditions",
-                    )
-                        .add_sub_option(CreateCommandOption::new(
-                            CommandOptionType::String,
-                            "value",
-                            "Your choice for the win condition settings",
-                        )
-                            .required(true)
-                            .add_string_choice("default wincons", "meds")
-                            .add_string_choice("Scrubs wincons", "scrubs")
-                            .add_string_choice("Triforce Hunt", "th")
-                        )
-                    )
+                        CommandOptionType::String,
+                        "start",
+                        "The starting time as a Discord timestamp",
+                    ).required(true))
                     .add_option(CreateCommandOption::new(
-                        CommandOptionType::SubCommand,
-                        "dungeons",
-                        "dungeons",
+                        CommandOptionType::Integer,
+                        "game",
+                        "The game number within the match. Defaults to the next upcoming game.",
                     )
-                        .add_sub_option(CreateCommandOption::new(
-                            CommandOptionType::String,
-                            "value",
-                            "Your choice for the dungeon item settings",
-                        )
-                            .required(true)
-                            .add_string_choice("tournament dungeons", "tournament")
-                            .add_string_choice("dungeon tokens", "skulls")
-                            .add_string_choice("keyrings", "keyrings")
-                        )
+                        .min_int_value(1)
+                        .max_int_value(255)
+                        .required(false)
                     )
-                    .add_option(CreateCommandOption::new(
-                        CommandOptionType::SubCommand,
-                        "er",
-                        "entrance rando",
-                    )
-                        .add_sub_option(CreateCommandOption::new(
-                            CommandOptionType::String,
-                            "value",
-                            "Your choice for entrance randomizer",
-                        )
-                            .required(true)
-                            .add_string_choice("no ER", "off")
-                            .add_string_choice("dungeon ER", "dungeon")
-                        )
-                    )
-                    .add_option(CreateCommandOption::new(
-                        CommandOptionType::SubCommand,
-                        "trials",
-                        "trials",
-                    )
-                        .add_sub_option(CreateCommandOption::new(
-                            CommandOptionType::String,
-                            "value",
-                            "Your choice for the Ganon's Trials setting",
-                        )
-                            .required(true)
-                            .add_string_choice("0 trials", "0")
-                            .add_string_choice("2 trials", "2")
-                        )
-                    )
-                    .add_option(CreateCommandOption::new(
-                        CommandOptionType::SubCommand,
-                        "shops",
-                        "shops",
-                    )
-                        .add_sub_option(CreateCommandOption::new(
-                            CommandOptionType::String,
-                            "value",
-                            "Your choice for the Shop Shuffle setting",
-                        )
-                            .required(true)
-                            .add_string_choice("shops 4", "4")
-                            .add_string_choice("no shops", "off")
-                        )
-                    )
-                    .add_option(CreateCommandOption::new(
-                        CommandOptionType::SubCommand,
-                        "scrubs",
-                        "scrubs",
-                    )
-                        .add_sub_option(CreateCommandOption::new(
-                            CommandOptionType::String,
-                            "value",
-                            "Your choice for the Scrub Shuffle setting",
-                        )
-                            .required(true)
-                            .add_string_choice("affordable scrubs", "affordable")
-                            .add_string_choice("no scrubs", "off")
-                        )
-                    )
-                    .add_option(CreateCommandOption::new(
-                        CommandOptionType::SubCommand,
-                        "fountain",
-                        "fountain",
-                    )
-                        .add_sub_option(CreateCommandOption::new(
-                            CommandOptionType::String,
-                            "value",
-                            "Your choice for the Zora's Fountain setting",
-                        )
-                            .required(true)
-                            .add_string_choice("closed fountain", "closed")
-                            .add_string_choice("open fountain", "open")
-                        )
-                    )
-                    .add_option(CreateCommandOption::new(
-                        CommandOptionType::SubCommand,
-                        "spawn",
-                        "spawns",
-                    )
-                        .add_sub_option(CreateCommandOption::new(
-                            CommandOptionType::String,
-                            "value",
-                            "Your choice for the spawn settings",
-                        )
-                            .required(true)
-                            .add_string_choice("ToT spawns", "tot")
-                            .add_string_choice("random spawns & starting age", "random")
-                        )
-                    )
-                ).await?.id)
-            } else {
-                None
+                );
+                idx
             };
-            let first = if has_draft {
-                Some(guild.create_command(ctx, CreateCommand::new("first")
+            let schedule_async = {
+                let idx = commands.len();
+                commands.push(CreateCommand::new("schedule-async")
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
-                    .description("Go first in the settings draft.")
-                ).await?.id)
-            } else {
-                None
+                    .description("Submits a starting time for your half of this race.")
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::String,
+                        "start",
+                        "The starting time as a Discord timestamp",
+                    ).required(true))
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::Integer,
+                        "game",
+                        "The game number within the match. Defaults to the next upcoming game.",
+                    )
+                        .min_int_value(1)
+                        .max_int_value(255)
+                        .required(false)
+                    )
+                );
+                idx
             };
-            let post_status = guild.create_command(ctx, CreateCommand::new("post-status")
-                .kind(CommandType::ChatInput)
-                .default_member_permissions(Permissions::ADMINISTRATOR)
-                .dm_permission(false)
-                .description("Posts this race's status to the thread, pinging the team whose turn it is in the settings draft.")
-            ).await?.id;
-            let pronoun_roles = guild.create_command(ctx, CreateCommand::new("pronoun-roles")
-                .kind(CommandType::ChatInput)
-                .default_member_permissions(Permissions::ADMINISTRATOR)
-                .dm_permission(false)
-                .description("Creates gender pronoun roles and posts a message here that allows members to self-assign them.")
-            ).await?.id;
-            let racing_role = guild.create_command(ctx, CreateCommand::new("racing-role")
-                .kind(CommandType::ChatInput)
-                .default_member_permissions(Permissions::ADMINISTRATOR)
-                .dm_permission(false)
-                .description("Creates a racing role and posts a message here that allows members to self-assign it.")
-                .add_option(CreateCommandOption::new(
-                    CommandOptionType::Channel,
-                    "race-planning-channel",
-                    "Will be linked to from the description message.",
-                )
-                    .required(true)
-                    .channel_types(vec![ChannelType::Text, ChannelType::News])
-                )
-            ).await?.id;
-            let schedule = guild.create_command(ctx, CreateCommand::new("schedule")
-                .kind(CommandType::ChatInput)
-                .dm_permission(false)
-                .description("Submits a starting time for this race.")
-                .add_option(CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "start",
-                    "The starting time as a Discord timestamp",
-                ).required(true))
-                .add_option(CreateCommandOption::new(
-                    CommandOptionType::Integer,
-                    "game",
-                    "The game number within the match. Defaults to the next upcoming game.",
-                )
-                    .min_int_value(1)
-                    .max_int_value(255)
-                    .required(false)
-                )
-            ).await?.id;
-            let schedule_async = guild.create_command(ctx, CreateCommand::new("schedule-async")
-                .kind(CommandType::ChatInput)
-                .dm_permission(false)
-                .description("Submits a starting time for your half of this race.")
-                .add_option(CreateCommandOption::new(
-                    CommandOptionType::String,
-                    "start",
-                    "The starting time as a Discord timestamp",
-                ).required(true))
-                .add_option(CreateCommandOption::new(
-                    CommandOptionType::Integer,
-                    "game",
-                    "The game number within the match. Defaults to the next upcoming game.",
-                )
-                    .min_int_value(1)
-                    .max_int_value(255)
-                    .required(false)
-                )
-            ).await?.id;
-            let schedule_remove = guild.create_command(ctx, CreateCommand::new("schedule-remove")
-                .kind(CommandType::ChatInput)
-                .dm_permission(false)
-                .description("Removes the starting time(s) for this race from the schedule.")
-                .add_option(CreateCommandOption::new(
-                    CommandOptionType::Integer,
-                    "game",
-                    "The game number within the match. Defaults to the next upcoming game.",
-                )
-                    .min_int_value(1)
-                    .max_int_value(255)
-                    .required(false)
-                )
-            ).await?.id;
-            let second = if has_draft {
-                Some(guild.create_command(ctx, CreateCommand::new("second")
+            let schedule_remove = {
+                let idx = commands.len();
+                commands.push(CreateCommand::new("schedule-remove")
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
-                    .description("Go second in the settings draft.")
-                ).await?.id)
-            } else {
-                None
+                    .description("Removes the starting time(s) for this race from the schedule.")
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::Integer,
+                        "game",
+                        "The game number within the match. Defaults to the next upcoming game.",
+                    )
+                        .min_int_value(1)
+                        .max_int_value(255)
+                        .required(false)
+                    )
+                );
+                idx
             };
-            let skip = if has_draft {
-                Some(guild.create_command(ctx, CreateCommand::new("skip")
+            let second = draft_kind.map(|draft_kind| {
+                let idx = commands.len();
+                commands.push(match draft_kind {
+                    draft::Kind::MultiworldS3 => CreateCommand::new("second")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Go second in the settings draft."),
+                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("second")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Go second in the settings draft.")
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::Integer,
+                            "mq",
+                            "Number of MQ dungeons",
+                        )
+                            .min_int_value(0)
+                            .max_int_value(12)
+                            .required(false)
+                        ),
+                });
+                idx
+            });
+            let skip = draft_kind.map(|draft_kind| {
+                let idx = commands.len();
+                commands.push(match draft_kind {
+                    draft::Kind::MultiworldS3 => CreateCommand::new("skip")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Skips your ban or the final pick of the settings draft."),
+                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("skip")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Skips the final pick of the settings draft."),
+                });
+                idx
+            });
+            let status = {
+                let idx = commands.len();
+                commands.push(CreateCommand::new("status")
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
-                    .description("Skip your ban or the final pick of the settings draft.")
-                ).await?.id)
-            } else {
-                None
+                    .description("Shows you this race's current scheduling and settings draft status.")
+                );
+                idx
             };
-            let status = guild.create_command(ctx, CreateCommand::new("status")
-                .kind(CommandType::ChatInput)
-                .dm_permission(false)
-                .description("Shows you this race's current scheduling and settings draft status.")
-            ).await?.id;
-            let watch_roles = guild.create_command(ctx, CreateCommand::new("watch-roles")
-                .kind(CommandType::ChatInput)
-                .default_member_permissions(Permissions::ADMINISTRATOR)
-                .dm_permission(false)
-                .description("Creates watch notification roles and posts a message here that allows members to self-assign them.")
-                .add_option(CreateCommandOption::new(
-                    CommandOptionType::Channel,
-                    "watch-party-channel",
-                    "Will be linked to from the description message.",
-                )
-                    .required(true)
-                    .channel_types(vec![ChannelType::Voice, ChannelType::Stage])
-                )
-                .add_option(CreateCommandOption::new(
-                    CommandOptionType::Channel,
-                    "race-rooms-channel",
-                    "Will be linked to from the description message.",
-                )
-                    .required(true)
-                    .channel_types(vec![ChannelType::Text, ChannelType::News])
-                )
-            ).await?.id;
-            ctx.data.write().await
-                .entry::<CommandIds>()
-                .or_default()
-                .insert(guild.id, CommandIds { assign, ban, delete_after, draft, first, post_status, pronoun_roles, racing_role, schedule, schedule_async, schedule_remove, second, skip, status, watch_roles });
+            let watch_roles = {
+                let idx = commands.len();
+                commands.push(CreateCommand::new("watch-roles")
+                    .kind(CommandType::ChatInput)
+                    .default_member_permissions(Permissions::ADMINISTRATOR)
+                    .dm_permission(false)
+                    .description("Creates watch notification roles and posts a message here that allows members to self-assign them.")
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::Channel,
+                        "watch-party-channel",
+                        "Will be linked to from the description message.",
+                    )
+                        .required(true)
+                        .channel_types(vec![ChannelType::Voice, ChannelType::Stage])
+                    )
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::Channel,
+                        "race-rooms-channel",
+                        "Will be linked to from the description message.",
+                    )
+                        .required(true)
+                        .channel_types(vec![ChannelType::Text, ChannelType::News])
+                    )
+                );
+                idx
+            };
+            let yes = draft_kind.and_then(|draft_kind| {
+                let idx = commands.len();
+                commands.push(match draft_kind {
+                    draft::Kind::MultiworldS3 => return None,
+                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("yes")
+                        .kind(CommandType::ChatInput)
+                        .dm_permission(false)
+                        .description("Answers yes to a yes/no question in the settings draft."),
+                });
+                Some(idx)
+            });
+            let commands = guild.set_commands(ctx, commands).await?;
+            ctx.data.write().await.entry::<CommandIds>().or_default().insert(guild.id, CommandIds {
+                assign: assign.map(|idx| commands[idx].id),
+                ban: ban.map(|idx| commands[idx].id),
+                delete_after: delete_after.map(|idx| commands[idx].id),
+                draft: draft.map(|idx| commands[idx].id),
+                first: first.map(|idx| commands[idx].id),
+                no: no.map(|idx| commands[idx].id),
+                post_status: commands[post_status].id,
+                pronoun_roles: commands[pronoun_roles].id,
+                racing_role: commands[racing_role].id,
+                schedule: commands[schedule].id,
+                schedule_async: commands[schedule_async].id,
+                schedule_remove: commands[schedule_remove].id,
+                second: second.map(|idx| commands[idx].id),
+                skip: skip.map(|idx| commands[idx].id),
+                status: commands[status].id,
+                watch_roles: commands[watch_roles].id,
+                yes: yes.map(|idx| commands[idx].id),
+            });
             transaction.commit().await?;
             Ok(())
         }))
@@ -667,14 +870,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     let guild_id = interaction.guild_id.expect("Discord slash command called outside of a guild");
                     if let Some(&command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)) {
                         if Some(interaction.data.id) == command_ids.assign {
-                            let (http_client, mut transaction, startgg_token) = {
-                                let data = ctx.data.read().await;
-                                (
-                                    data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
-                                    data.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?,
-                                    data.get::<StartggToken>().expect("start.gg auth token missing from Discord context").clone(),
-                                )
-                            };
+                            let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
                             if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
                                 if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
@@ -685,60 +881,19 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     return Ok(())
                                 }
                                 match event.match_source() {
-                                    MatchSource::Manual => { //TODO unregister existing, then this becomes unreachable
-                                        let game = match interaction.data.options[0].value {
-                                            CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
-                                            _ => panic!("unexpected slash command option type"),
-                                        };
-                                        if let Some(mut race) = {
-                                            let mut races = Vec::default();
-                                            for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE scheduling_thread = $1"#, i64::from(interaction.channel_id)).fetch_all(&mut transaction).await? {
-                                                races.push(Race::from_id(&mut transaction, &http_client, &startgg_token, id).await?);
-                                            }
-                                            races.retain(|race| !race.ignored);
-                                            races.sort_unstable();
-                                            races
-                                        }.pop() {
-                                            race.id = Id::new(&mut transaction, IdTable::Races).await?; // copy this race
-                                            race.game = Some(game);
-                                            race.schedule = RaceSchedule::Unscheduled;
-                                            race.draft = match event.draft_kind() {
-                                                DraftKind::MultiworldS3 => unimplemented!(), //TODO
-                                                DraftKind::None => None,
-                                            };
-                                            race.seed = None;
-                                            race.video_urls = HashMap::default();
-                                            race.restreamers = HashMap::default();
-                                            race.save(&mut transaction).await?;
-                                            let mut response_content = MessageBuilder::default();
-                                            response_content.push("Game ");
-                                            response_content.push(game.to_string());
-                                            response_content.push(" has been added to this match.");
-                                            let response_content = response_content.build();
-                                            transaction.commit().await?;
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(false)
-                                                .content(response_content)
-                                            )).await?;
-                                        } else {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content("Sorry, this thread isn't assigned to any races.")
-                                            )).await?;
-                                        }
-                                    }
-                                    MatchSource::League => unreachable!(),
+                                    MatchSource::Manual | MatchSource::League => unreachable!(), // no /assign command registered
                                     MatchSource::StartGG => {
                                         let startgg_set = match interaction.data.options[0].value {
                                             CommandDataOptionValue::String(ref startgg_set) => startgg_set.clone(),
                                             _ => panic!("unexpected slash command option type"),
                                         };
                                         let high_seed = match event.draft_kind() {
-                                            DraftKind::MultiworldS3 => Some(match interaction.data.options[1].value {
+                                            Some(draft::Kind::MultiworldS3) => Some(match interaction.data.options[1].value {
                                                 CommandDataOptionValue::Role(discord_role) => discord_role,
                                                 _ => panic!("unexpected slash command option type"),
                                             }),
-                                            DraftKind::None => None,
+                                            Some(draft::Kind::TournoiFrancoS3) => unreachable!(), // this event does not use start.gg
+                                            None => None,
                                         };
                                         let game = interaction.data.options.get(2).map(|option| match option.value {
                                             CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
@@ -759,14 +914,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         };
                                         let id = Id::new(&mut transaction, IdTable::Races).await?;
                                         match event.draft_kind() {
-                                            DraftKind::MultiworldS3 => sqlx::query!("INSERT INTO races
+                                            Some(draft::Kind::MultiworldS3) => sqlx::query!("INSERT INTO races
                                                 (id, startgg_set, game, series, event, scheduling_thread, draft_state) VALUES ($1, $2, $3, $4, $5, $6, $7)
                                                 ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread, draft_state = EXCLUDED.draft_state
                                             ", id as _, &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id), Json(Draft {
                                                 high_seed: high_seed.as_ref().unwrap().id,
-                                                state: mw::S3Draft::default(),
+                                                went_first: None,
+                                                skipped_bans: 0,
+                                                settings: HashMap::default(),
                                             }) as _).execute(&mut transaction).await?,
-                                            DraftKind::None => sqlx::query!("INSERT INTO races
+                                            Some(draft::Kind::TournoiFrancoS3) => unreachable!(), // this event does not use start.gg
+                                            None => sqlx::query!("INSERT INTO races
                                                 (id, startgg_set, game, series, event, scheduling_thread) VALUES ($1, $2, $3, $4, $5, $6)
                                                 ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread
                                             ", id as _, &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id)).execute(&mut transaction).await?,
@@ -809,99 +967,16 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 )).await?;
                             }
                         } else if Some(interaction.data.id) == command_ids.ban {
-                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
-                                if let Some(team) = team {
-                                    if let Some(mut draft) = race.draft.take() {
-                                        if draft.state.went_first.is_none() {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content(MessageBuilder::default()
-                                                    .push("Sorry, first pick hasn't been chosen yet, use ")
-                                                    .mention_command(command_ids.first.unwrap(), "first")
-                                                    .push(" or ")
-                                                    .mention_command(command_ids.second.unwrap(), "second")
-                                                    .push('.')
-                                                    .build()
-                                                )
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                        } else if draft.state.pick_count() >= 2 {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content("Sorry, bans have already been chosen.")
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                        } else if draft.is_active_team(team.id) {
-                                            let setting = match interaction.data.options[0].value {
-                                                CommandDataOptionValue::String(ref setting) => setting.parse().expect("unknown setting in /ban"),
-                                                _ => panic!("unexpected slash command option type"),
-                                            };
-                                            if draft.state.available_settings().contains(&setting) {
-                                                match setting {
-                                                    mw::S3Setting::Wincon => draft.state.wincon = Some(mw::Wincon::default()),
-                                                    mw::S3Setting::Dungeons => draft.state.dungeons = Some(mw::Dungeons::default()),
-                                                    mw::S3Setting::Er => draft.state.er = Some(mw::Er::default()),
-                                                    mw::S3Setting::Trials => draft.state.trials = Some(mw::Trials::default()),
-                                                    mw::S3Setting::Shops => draft.state.shops = Some(mw::Shops::default()),
-                                                    mw::S3Setting::Scrubs => draft.state.scrubs = Some(mw::Scrubs::default()),
-                                                    mw::S3Setting::Fountain => draft.state.fountain = Some(mw::Fountain::default()),
-                                                    mw::S3Setting::Spawn => draft.state.spawn = Some(mw::Spawn::default()),
-                                                }
-                                                sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, race.id as _).execute(&mut transaction).await?;
-                                                let response_content = MessageBuilder::default()
-                                                    .mention_team(&mut transaction, Some(guild_id), &team).await?
-                                                    .push(if team.name_is_plural() { " have locked in " } else { " has locked in " })
-                                                    .push(match setting {
-                                                        mw::S3Setting::Wincon => "default wincons",
-                                                        mw::S3Setting::Dungeons => "tournament dungeons",
-                                                        mw::S3Setting::Er => "no ER",
-                                                        mw::S3Setting::Trials => "0 trials",
-                                                        mw::S3Setting::Shops => "shops 4",
-                                                        mw::S3Setting::Scrubs => "affordable scrubs",
-                                                        mw::S3Setting::Fountain => "closed fountain",
-                                                        mw::S3Setting::Spawn => "ToT spawns",
-                                                    })
-                                                    .push_line('.')
-                                                    .push(draft.next_step(&mut transaction, guild_id, &command_ids, race.teams()).await?)
-                                                    .build();
-                                                transaction.commit().await?;
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(false)
-                                                    .content(response_content)
-                                                )).await?;
-                                            } else {
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(true)
-                                                    .content(MessageBuilder::default()
-                                                        .push("Sorry, that setting is already locked in. Use ")
-                                                        .mention_command(command_ids.skip.unwrap(), "skip")
-                                                        .push(" if you don't want to ban anything.")
-                                                        .build()
-                                                    )
-                                                )).await?;
-                                                transaction.rollback().await?;
-                                            }
-                                        } else {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content("Sorry, it's not your team's turn in the settings draft.")
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                        }
-                                    } else {
-                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                            .ephemeral(true)
-                                            .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
-                                        )).await?;
-                                        transaction.rollback().await?;
-                                    }
-                                } else {
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content("Sorry, only participants in this race can use this command.")
-                                    )).await?;
-                                    transaction.rollback().await?;
-                                }
+                            if interaction.data.options.is_empty() {
+                                // new draft command system with buttons
+                                send_draft_settings_page(ctx, interaction, "ban", 0).await?;
+                            } else {
+                                // old draft command system with parameters
+                                let setting = match interaction.data.options[0].value {
+                                    CommandDataOptionValue::String(ref setting) => setting.parse().expect("unknown setting in /ban"),
+                                    _ => panic!("unexpected slash command option type"),
+                                };
+                                draft_action(ctx, interaction, draft::Action::Ban { setting }).await?;
                             }
                         } else if Some(interaction.data.id) == command_ids.delete_after {
                             let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
@@ -942,132 +1017,87 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 )).await?;
                             }
                         } else if Some(interaction.data.id) == command_ids.draft {
-                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
-                                if let Some(team) = team {
-                                    if let Some(mut draft) = race.draft.take() {
-                                        if draft.state.went_first.is_none() {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content(MessageBuilder::default()
-                                                    .push("Sorry, first pick hasn't been chosen yet, use ")
-                                                    .mention_command(command_ids.first.unwrap(), "first")
-                                                    .push(" or ")
-                                                    .mention_command(command_ids.second.unwrap(), "second")
-                                                    .build()
-                                                )
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                        } else if draft.state.pick_count() < 2 {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content(MessageBuilder::default()
-                                                    .push("Sorry, bans haven't been chosen yet, use ")
-                                                    .mention_command(command_ids.ban.unwrap(), "ban")
-                                                    .build()
-                                                )
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                        } else if draft.is_active_team(team.id) {
-                                            let setting = interaction.data.options[0].name.parse().expect("unknown setting in /draft");
-                                            let value = match interaction.data.options[0].value {
-                                                CommandDataOptionValue::SubCommand(ref value) => match value[0].value {
-                                                    CommandDataOptionValue::String(ref value) => value,
-                                                    _ => panic!("unexpected slash command option type"),
-                                                },
-                                                _ => panic!("unexpected slash command option type"),
-                                            };
-                                            if draft.state.available_settings().contains(&setting) {
-                                                let value = match setting {
-                                                    mw::S3Setting::Wincon => { let value = all::<mw::Wincon>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.wincon = Some(value); value.to_string() }
-                                                    mw::S3Setting::Dungeons => { let value = all::<mw::Dungeons>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.dungeons = Some(value); value.to_string() }
-                                                    mw::S3Setting::Er => { let value = all::<mw::Er>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.er = Some(value); value.to_string() }
-                                                    mw::S3Setting::Trials => { let value = all::<mw::Trials>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.trials = Some(value); value.to_string() }
-                                                    mw::S3Setting::Shops => { let value = all::<mw::Shops>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.shops = Some(value); value.to_string() }
-                                                    mw::S3Setting::Scrubs => { let value = all::<mw::Scrubs>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.scrubs = Some(value); value.to_string() }
-                                                    mw::S3Setting::Fountain => { let value = all::<mw::Fountain>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.fountain = Some(value); value.to_string() }
-                                                    mw::S3Setting::Spawn => { let value = all::<mw::Spawn>().find(|option| option.arg() == value).expect("unknown value in /draft"); draft.state.spawn = Some(value); value.to_string() }
-                                                };
-                                                sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, race.id as _).execute(&mut transaction).await?;
-                                                let response_content = MessageBuilder::default()
-                                                    .mention_team(&mut transaction, Some(guild_id), &team).await?
-                                                    .push(if team.name_is_plural() { " have picked " } else { " has picked " })
-                                                    .push(value)
-                                                    .push_line('.')
-                                                    .push(draft.next_step(&mut transaction, guild_id, &command_ids, race.teams()).await?)
-                                                    .build();
-                                                transaction.commit().await?;
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(false)
-                                                    .content(response_content)
-                                                )).await?;
-                                            } else {
-                                                let mut content = MessageBuilder::default();
-                                                content.push("Sorry, that setting is already locked in. Use one of the following: ");
-                                                for (i, setting) in draft.state.available_settings().into_iter().enumerate() {
-                                                    if i > 0 {
-                                                        content.push(" or ");
-                                                    }
-                                                    content.mention_command(command_ids.draft.unwrap(), &format!("draft {setting}"));
-                                                }
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(true)
-                                                    .content(content.build())
-                                                )).await?;
-                                                transaction.rollback().await?;
-                                            }
-                                        } else {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content("Sorry, it's not your team's turn in the settings draft.")
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                        }
-                                    } else {
-                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                            .ephemeral(true)
-                                            .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
-                                        )).await?;
-                                        transaction.rollback().await?;
-                                    }
-                                } else {
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content("Sorry, only participants in this race can use this command.")
-                                    )).await?;
-                                    transaction.rollback().await?;
-                                }
+                            if interaction.data.options.is_empty() {
+                                // new draft command system with buttons
+                                send_draft_settings_page(ctx, interaction, "draft", 0).await?;
+                            } else {
+                                // old draft command system with parameters
+                                let setting = interaction.data.options[0].name.parse().expect("unknown setting in /draft");
+                                let value = match interaction.data.options[0].value {
+                                    CommandDataOptionValue::SubCommand(ref value) => match value[0].value {
+                                        CommandDataOptionValue::String(ref value) => value.clone(),
+                                        _ => panic!("unexpected slash command option type"),
+                                    },
+                                    _ => panic!("unexpected slash command option type"),
+                                };
+                                draft_action(ctx, interaction, draft::Action::Pick { setting, value }).await?;
                             }
                         } else if Some(interaction.data.id) == command_ids.first {
-                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
-                                if let Some(team) = team {
-                                    if let Some(mut draft) = race.draft.take() {
-                                        if draft.state.went_first.is_some() {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content("Sorry, first pick has already been chosen.")
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                        } else if draft.is_active_team(team.id) {
-                                            draft.state.went_first = Some(true);
-                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, race.id as _).execute(&mut transaction).await?;
-                                            let response_content = MessageBuilder::default()
-                                                .mention_team(&mut transaction, Some(guild_id), &team).await?
-                                                .push(if team.name_is_plural() { " have" } else { " has" })
-                                                .push_line(" chosen to go first in the settings draft.")
-                                                .push(draft.next_step(&mut transaction, guild_id, &command_ids, race.teams()).await?)
-                                                .build();
+                            if let Some((_, mut race, draft_kind, msg_ctx)) = check_draft_permissions(ctx, interaction).await? {
+                                if let draft::Kind::TournoiFrancoS3 = draft_kind {
+                                    let settings = &mut race.draft.as_mut().unwrap().settings;
+                                    if settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
+                                        let mut transaction = msg_ctx.into_transaction();
+                                        let mq = interaction.data.options.get(0).map(|option| match option.value {
+                                            CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
+                                            _ => panic!("unexpected slash command option type"),
+                                        });
+                                        if let Some(mq) = mq {
+                                            settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq.to_string()));
+                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut transaction).await?;
                                             transaction.commit().await?;
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(false)
-                                                .content(response_content)
-                                            )).await?;
                                         } else {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
-                                                .content("Sorry, it's not your team's turn in the settings draft.")
+                                                .content("Sorry, please specify the number of MQ dungeons.")
                                             )).await?;
                                             transaction.rollback().await?;
+                                            return Ok(())
                                         }
+                                    } else {
+                                        let mq = interaction.data.options.get(0).map(|option| match option.value {
+                                            CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
+                                            _ => panic!("unexpected slash command option type"),
+                                        });
+                                        if mq.map_or(false, |mq| mq != 0) {
+                                            //TODO different error messages depending on which player(s) didn't opt into MQ
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(true)
+                                                .content("Sorry, either you or your opponent didn't opt into MQ dungeons.")
+                                            )).await?;
+                                            return Ok(())
+                                        }
+                                    }
+                                }
+                                draft_action(ctx, interaction, draft::Action::GoFirst(true)).await?; //TODO adjust reply to include MQ count
+                            }
+                        } else if Some(interaction.data.id) == command_ids.no {
+                            draft_action(ctx, interaction, draft::Action::BooleanChoice(false)).await?;
+                        } else if interaction.data.id == command_ids.post_status {
+                            if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
+                                let event = race.event(&mut transaction).await?;
+                                if let Some(draft_kind) = event.draft_kind() {
+                                    if let Some(ref draft) = race.draft {
+                                        let mut msg_ctx = draft::MessageContext::Discord {
+                                            teams: race.teams().cloned().collect(),
+                                            team: team.unwrap_or_else(|| Team {
+                                                name: None,
+                                                id: Id(0), // team unused in next_step
+                                                racetime_slug: None,
+                                                plural_name: None,
+                                                restream_consent: false,
+                                            }),
+                                            transaction, guild_id, command_ids,
+                                        };
+                                        let response_content = MessageBuilder::default()
+                                            //TODO include scheduling status, both for regular races and for asyncs
+                                            .push(draft.next_step(draft_kind, &mut msg_ctx).await?.message)
+                                            .build();
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(false)
+                                            .content(response_content)
+                                        )).await?;
+                                        msg_ctx.into_transaction().commit().await?;
                                     } else {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
@@ -1078,27 +1108,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 } else {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
-                                        .content("Sorry, only participants in this race can use this command.")
-                                    )).await?;
-                                    transaction.rollback().await?;
-                                }
-                            }
-                        } else if interaction.data.id == command_ids.post_status {
-                            if let Some((mut transaction, mut race, _)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
-                                if let Some(draft) = race.draft.take() {
-                                    let response_content = MessageBuilder::default()
-                                        //TODO include scheduling status, both for regular races and for asyncs
-                                        .push(draft.next_step(&mut transaction, guild_id, &command_ids, race.teams()).await?)
-                                        .build();
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(false)
-                                        .content(response_content)
-                                    )).await?;
-                                    transaction.commit().await?;
-                                } else {
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
+                                        .content("Sorry, this command is currently only available for events with settings drafts.") //TODO
                                     )).await?;
                                     transaction.rollback().await?;
                                 }
@@ -1225,7 +1235,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 } else {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
-                                        .content("Sorry, only participants in this race and administrators can use this command.")
+                                        .content("Sorry, only participants in this race and organizers can use this command.")
                                     )).await?;
                                     transaction.rollback().await?;
                                 }
@@ -1265,7 +1275,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     } else {
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                             .ephemeral(true)
-                                                            .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to schedule as async
+                                                            .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to schedule as async (with team parameter)
                                                         )).await?;
                                                         transaction.rollback().await?;
                                                         return Ok(())
@@ -1317,7 +1327,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 } else {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
-                                        .content("Sorry, only participants in this race and administrators can use this command.")
+                                        .content("Sorry, only participants in this race and organizers can use this command.")
                                     )).await?;
                                     transaction.rollback().await?;
                                 }
@@ -1364,106 +1374,77 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 } else {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
-                                        .content("Sorry, only participants in this race and administrators can use this command.")
+                                        .content("Sorry, only participants in this race and organizers can use this command.")
                                     )).await?;
                                     transaction.rollback().await?;
                                 }
                             }
                         } else if Some(interaction.data.id) == command_ids.second {
-                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
-                                if let Some(team) = team {
-                                    if let Some(mut draft) = race.draft.take() {
-                                        if draft.state.went_first.is_some() {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content("Sorry, first pick has already been chosen.")
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                        } else if draft.is_active_team(team.id) {
-                                            draft.state.went_first = Some(false);
-                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, race.id as _).execute(&mut transaction).await?;
-                                            let response_content = MessageBuilder::default()
-                                                .mention_team(&mut transaction, Some(guild_id), &team).await?
-                                                .push(if team.name_is_plural() { " have" } else { " has" })
-                                                .push_line(" chosen to go second in the settings draft.")
-                                                .push(draft.next_step(&mut transaction, guild_id, &command_ids, race.teams()).await?)
-                                                .build();
+                            if let Some((_, mut race, draft_kind, msg_ctx)) = check_draft_permissions(ctx, interaction).await? {
+                                if let draft::Kind::TournoiFrancoS3 = draft_kind {
+                                    let settings = &mut race.draft.as_mut().unwrap().settings;
+                                    if settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
+                                        let mut transaction = msg_ctx.into_transaction();
+                                        let mq = interaction.data.options.get(0).map(|option| match option.value {
+                                            CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
+                                            _ => panic!("unexpected slash command option type"),
+                                        });
+                                        if let Some(mq) = mq {
+                                            settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq.to_string()));
+                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut transaction).await?;
                                             transaction.commit().await?;
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(false)
-                                                .content(response_content)
-                                            )).await?;
                                         } else {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
-                                                .content("Sorry, it's not your team's turn in the settings draft.")
+                                                .content("Sorry, please specify the number of MQ dungeons.")
                                             )).await?;
                                             transaction.rollback().await?;
+                                            return Ok(())
                                         }
                                     } else {
-                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                            .ephemeral(true)
-                                            .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
-                                        )).await?;
-                                        transaction.rollback().await?;
+                                        let mq = interaction.data.options.get(0).map(|option| match option.value {
+                                            CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
+                                            _ => panic!("unexpected slash command option type"),
+                                        });
+                                        if mq.map_or(false, |mq| mq != 0) {
+                                            //TODO different error messages depending on which player(s) didn't opt into MQ
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(true)
+                                                .content("Sorry, either you or your opponent didn't opt into MQ dungeons.")
+                                            )).await?;
+                                            return Ok(())
+                                        }
                                     }
-                                } else {
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content("Sorry, only participants in this race can use this command.")
-                                    )).await?;
-                                    transaction.rollback().await?;
                                 }
+                                draft_action(ctx, interaction, draft::Action::GoFirst(false)).await?; //TODO adjust reply to include MQ count
                             }
                         } else if Some(interaction.data.id) == command_ids.skip {
-                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
-                                if let Some(team) = team {
-                                    if let Some(mut draft) = race.draft.take() {
-                                        if draft.state.went_first.is_none() {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content(MessageBuilder::default()
-                                                    .push("Sorry, first pick hasn't been chosen yet, use ")
-                                                    .mention_command(command_ids.first.unwrap(), "first")
-                                                    .push(" or ")
-                                                    .mention_command(command_ids.second.unwrap(), "second")
-                                                    .build()
-                                                )
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                        } else if !matches!(draft.state.pick_count(), 0 | 1 | 5) {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content("Sorry, this part of the draft can't be skipped.")
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                        } else if draft.is_active_team(team.id) {
-                                            let skip_kind = match draft.state.pick_count() {
-                                                0 | 1 => "ban",
-                                                5 => "final pick",
-                                                _ => unreachable!(),
-                                            };
-                                            draft.state.skipped_bans += 1;
-                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(&draft) as _, race.id as _).execute(&mut transaction).await?;
-                                            let response_content = MessageBuilder::default()
-                                                .mention_team(&mut transaction, Some(guild_id), &team).await?
-                                                .push(if team.name_is_plural() { " have skipped their " } else { " has skipped their " })
-                                                .push(skip_kind)
-                                                .push_line('.')
-                                                .push(draft.next_step(&mut transaction, guild_id, &command_ids, race.teams()).await?)
-                                                .build();
-                                            transaction.commit().await?;
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(false)
-                                                .content(response_content)
-                                            )).await?;
-                                        } else {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content("Sorry, it's not your team's turn in the settings draft.")
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                        }
+                            draft_action(ctx, interaction, draft::Action::Skip).await?;
+                        } else if interaction.data.id == command_ids.status {
+                            if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
+                                let event = race.event(&mut transaction).await?;
+                                if let Some(draft_kind) = event.draft_kind() {
+                                    if let Some(ref draft) = race.draft {
+                                        let mut msg_ctx = draft::MessageContext::Discord {
+                                            teams: race.teams().cloned().collect(),
+                                            team: team.unwrap_or_else(|| Team {
+                                                name: None,
+                                                id: Id(0), // team unused in next_step
+                                                racetime_slug: None,
+                                                plural_name: None,
+                                                restream_consent: false,
+                                            }),
+                                            transaction, guild_id, command_ids,
+                                        };
+                                        let response_content = MessageBuilder::default()
+                                            //TODO include scheduling status, both for regular races and for asyncs
+                                            .push(draft.next_step(draft_kind, &mut msg_ctx).await?.message)
+                                            .build();
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content(response_content)
+                                        )).await?;
+                                        msg_ctx.into_transaction().commit().await?;
                                     } else {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
@@ -1474,27 +1455,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 } else {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
-                                        .content("Sorry, only participants in this race can use this command.")
-                                    )).await?;
-                                    transaction.rollback().await?;
-                                }
-                            }
-                        } else if interaction.data.id == command_ids.status {
-                            if let Some((mut transaction, race, _)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
-                                if let Some(ref draft) = race.draft {
-                                    let response_content = MessageBuilder::default()
-                                        //TODO include scheduling status, both for regular races and for asyncs
-                                        .push(draft.next_step(&mut transaction, guild_id, &command_ids, race.teams()).await?)
-                                        .build();
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content(response_content)
-                                    )).await?;
-                                    transaction.rollback().await?;
-                                } else {
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
+                                        .content("Sorry, this command is currently only available for events with settings drafts.") //TODO
                                     )).await?;
                                     transaction.rollback().await?;
                                 }
@@ -1537,6 +1498,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 .button(CreateButton::new("watchrole_restream").label("restream watcher"))
                                 .button(CreateButton::new("watchrole_party").label("watch party watcher"))
                             )).await?;
+                        } else if Some(interaction.data.id) == command_ids.yes {
+                            draft_action(ctx, interaction, draft::Action::BooleanChoice(true)).await?;
                         }
                     }
                 }
@@ -1660,7 +1623,53 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             )).await?;
                         }
                     }
-                    custom_id => panic!("received message component interaction with unknown custom ID {custom_id:?}"),
+                    custom_id => if let Some(page) = custom_id.strip_prefix("ban_page_") {
+                        send_draft_settings_page(ctx, interaction, "ban", page.parse().unwrap()).await?;
+                    } else if let Some(setting) = custom_id.strip_prefix("ban_setting_") {
+                        draft_action(ctx, interaction, draft::Action::Ban { setting: setting.to_owned() }).await?;
+                    } else if let Some(page) = custom_id.strip_prefix("draft_page_") {
+                        send_draft_settings_page(ctx, interaction, "draft", page.parse().unwrap()).await?;
+                    } else if let Some(setting) = custom_id.strip_prefix("draft_setting_") {
+                        let Some((_, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
+                        match race.draft.as_ref().unwrap().next_step(draft_kind, &mut msg_ctx).await?.kind {
+                            draft::StepKind::Ban { available_settings, .. } if available_settings.get(setting).is_some() => {
+                                let setting = available_settings.get(setting).unwrap(); // `if let` guards are experimental
+                                msg_ctx.into_transaction().commit().await?;
+                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                    .ephemeral(true)
+                                    .content(format!("Select the value for the {} setting:", setting.display))
+                                    .button(CreateButton::new(format!("draft_option_{}_{}", setting.name, setting.default)).label(setting.default_display))
+                                    .button(CreateButton::new("draft_page_0").label("Back").style(ButtonStyle::Secondary)) //TODO remember page?
+                                )).await?;
+                            }
+                            draft::StepKind::Pick { available_choices, .. } if available_choices.get(setting).is_some() => {
+                                let setting = available_choices.get(setting).unwrap(); // `if let` guards are experimental
+                                msg_ctx.into_transaction().commit().await?;
+                                let mut response_msg = CreateInteractionResponseMessage::new()
+                                    .ephemeral(true)
+                                    .content(format!("Select the value for the {} setting:", setting.display));
+                                for option in setting.options {
+                                    response_msg = response_msg.button(CreateButton::new(format!("draft_option_{}_{}", setting.name, option.name)).label(option.display));
+                                }
+                                response_msg = response_msg.button(CreateButton::new("draft_page_0").label("Back").style(ButtonStyle::Secondary)); //TODO remember page?
+                                interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
+                            }
+                            draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) => match race.draft.as_mut().unwrap().apply(draft_kind, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
+                                Ok(_) => unreachable!(),
+                                Err(error_msg) => {
+                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                        .ephemeral(true)
+                                        .content(error_msg)
+                                    )).await?;
+                                    msg_ctx.into_transaction().rollback().await?;
+                                }
+                            },
+                        }
+                    } else if let Some((setting, value)) = custom_id.strip_prefix("draft_option_").and_then(|setting_value| setting_value.split_once('_')) {
+                        draft_action(ctx, interaction, draft::Action::Pick { setting: setting.to_owned(), value: value.to_owned() }).await?;
+                    } else {
+                        panic!("received message component interaction with unknown custom ID {custom_id:?}")
+                    },
                 },
                 _ => {}
             }
