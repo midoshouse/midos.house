@@ -416,6 +416,11 @@ impl Race {
                 Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?),
                 Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?),
             ])
+        } else if let [Some(Id(p1_discord)), Some(Id(p2_discord))] = [row.p1_discord, row.p2_discord] {
+            Entrants::Two([
+                if let Some(p1_twitch) = row.p1_twitch { Entrant::DiscordTwitch(UserId::new(p1_discord), p1_twitch) } else { Entrant::Discord(UserId::new(p1_discord)) },
+                if let Some(p2_twitch) = row.p2_twitch { Entrant::DiscordTwitch(UserId::new(p2_discord), p2_twitch) } else { Entrant::Discord(UserId::new(p2_discord)) },
+            ])
         } else if let (Some(total), Some(finished)) = (row.total, row.finished) {
             Entrants::Count {
                 total: total as u32,
@@ -429,18 +434,8 @@ impl Race {
                     Entrant::Named(p3),
                 ]),
                 [Some(p1), Some(p2), None] => Entrants::Two([
-                    match (row.p1_discord, row.p1_twitch) {
-                        (None, None) => Entrant::Named(p1),
-                        (None, Some(p1_twitch)) => Entrant::NamedWithTwitch(p1, p1_twitch),
-                        (Some(Id(p1_discord)), None) => Entrant::Discord(UserId::new(p1_discord)),
-                        (Some(Id(p1_discord)), Some(p1_twitch)) => Entrant::DiscordTwitch(UserId::new(p1_discord), p1_twitch),
-                    },
-                    match (row.p2_discord, row.p2_twitch) {
-                        (None, None) => Entrant::Named(p2),
-                        (None, Some(p2_twitch)) => Entrant::NamedWithTwitch(p2, p2_twitch),
-                        (Some(Id(p2_discord)), None) => Entrant::Discord(UserId::new(p2_discord)),
-                        (Some(Id(p2_discord)), Some(p2_twitch)) => Entrant::DiscordTwitch(UserId::new(p2_discord), p2_twitch),
-                    },
+                    if let Some(p1_twitch) = row.p1_twitch { Entrant::NamedWithTwitch(p1, p1_twitch) } else { Entrant::Named(p1) },
+                    if let Some(p2_twitch) = row.p2_twitch { Entrant::NamedWithTwitch(p2, p2_twitch) } else { Entrant::Named(p2) },
                 ]),
                 [Some(p1), None, None] => Entrants::Named(p1),
                 _ => if let (Some(startgg_set), Some(slots)) = (&startgg_set, slots) {
