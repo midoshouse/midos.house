@@ -389,7 +389,7 @@ async fn mw(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResu
         p {
             : "If you need help, please ask in ";
             a(href = "https://discord.gg/BGRrKKn") : "#setup-support on the OoTR Discord";
-            : " (feel free to ping @Fenhl#4813) or ";
+            : " (feel free to ping @fenhl) or ";
             a(href = "https://github.com/midoshouse/ootr-multiworld/issues/new") : "open an issue";
             : ".";
         }

@@ -7,6 +7,6 @@ Discord invite link with appropriate permissions (only useable by members of the
 
 # Contributing
 
-The Mido's House codebase is currently a one-person project, but it doesn't have to remain that way! If you're interested in contributing to the codebase but don't know where to start, contact me on Discord (Fenhl#4813) so we can figure out how you can help.
+The Mido's House codebase is currently a one-person project, but it doesn't have to remain that way! If you're interested in contributing to the codebase but don't know where to start, contact me on Discord (@fenhl) so we can figure out how you can help.
 
 I'm also always looking for trusted members of the OoTR community willing to help out as “archivists”, i.e. for the task of manually adding race room and restream/vod links to races for events where this isn't automated. Again, contact me on Discord if you're interested.
