@@ -81,6 +81,7 @@ impl MessageBuilderExt for MessageBuilder {
     async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self> {
         match entrant {
             Entrant::MidosHouseTeam(team) => { self.mention_team(transaction, guild, team).await?; }
+            Entrant::Discord(user_id) | Entrant::DiscordTwitch(user_id, _) => { self.mention(user_id); }
             Entrant::Named(name) | Entrant::NamedWithTwitch(name, _) => { self.push_safe(name); }
         }
         Ok(self)

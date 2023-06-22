@@ -146,28 +146,57 @@ use {
     },
 };
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub(crate) enum Entrant {
     MidosHouseTeam(Team),
+    Discord(UserId),
+    DiscordTwitch(UserId, String),
     Named(String),
     NamedWithTwitch(String, String),
 }
 
 impl Entrant {
-    pub(crate) async fn name(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Option<Cow<'_, str>>> {
+    pub(crate) async fn name(&self, transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx) -> Result<Option<Cow<'_, str>>, discord_bot::Error> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.name(transaction).await?,
+            Self::Discord(user_id) | Self::DiscordTwitch(user_id, _) => {
+                let user = user_id.to_user(discord_ctx).await?;
+                Some(Cow::Owned(user.global_name.unwrap_or(user.name)))
+            }
             Self::Named(name) | Self::NamedWithTwitch(name, _) => Some(Cow::Borrowed(name)),
         })
     }
 
-    pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, running_text: bool) -> sqlx::Result<RawHtml<String>> {
+    pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, discord_ctx: &DiscordCtx, running_text: bool) -> Result<RawHtml<String>, discord_bot::Error> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.to_html(transaction, env, running_text).await?,
+            Self::Discord(user_id) | Self::DiscordTwitch(user_id, _) => {
+                let user = user_id.to_user(discord_ctx).await?;
+                html! {
+                    a(href = format!("https://discord.com/users/{user_id}")) {
+                        : user.global_name.unwrap_or(user.name);
+                    }
+                }
+            }
             Self::Named(name) | Self::NamedWithTwitch(name, _) => name.to_html(),
         })
     }
 }
+
+impl PartialEq for Entrant {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::MidosHouseTeam(lhs), Self::MidosHouseTeam(rhs)) => lhs == rhs,
+            (Self::Discord(lhs) | Self::DiscordTwitch(lhs, _), Self::Discord(rhs) | Self::DiscordTwitch(rhs, _)) => lhs == rhs,
+            (Self::Named(lhs) | Self::NamedWithTwitch(lhs, _), Self::Named(rhs) | Self::NamedWithTwitch(rhs, _)) => lhs == rhs,
+            (Self::MidosHouseTeam(_), Self::Discord(_) | Self::DiscordTwitch(_, _) | Self::Named(_) | Self::NamedWithTwitch(_, _)) |
+            (Self::Discord(_) | Self::DiscordTwitch(_, _), Self::MidosHouseTeam(_) | Self::Named(_) | Self::NamedWithTwitch(_, _)) |
+            (Self::Named(_) | Self::NamedWithTwitch(_, _), Self::MidosHouseTeam(_) | Self::Discord(_) | Self::DiscordTwitch(_, _)) => false,
+        }
+    }
+}
+
+impl Eq for Entrant {}
 
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) enum Entrants {
@@ -316,6 +345,8 @@ impl Race {
             p1,
             p2,
             p3,
+            p1_discord AS "p1_discord: Id",
+            p2_discord AS "p2_discord: Id",
             p1_twitch,
             p2_twitch,
             total,
@@ -398,8 +429,18 @@ impl Race {
                     Entrant::Named(p3),
                 ]),
                 [Some(p1), Some(p2), None] => Entrants::Two([
-                    if let Some(p1_twitch) = row.p1_twitch { Entrant::NamedWithTwitch(p1, p1_twitch) } else { Entrant::Named(p1) },
-                    if let Some(p2_twitch) = row.p2_twitch { Entrant::NamedWithTwitch(p2, p2_twitch) } else { Entrant::Named(p2) },
+                    match (row.p1_discord, row.p1_twitch) {
+                        (None, None) => Entrant::Named(p1),
+                        (None, Some(p1_twitch)) => Entrant::NamedWithTwitch(p1, p1_twitch),
+                        (Some(Id(p1_discord)), None) => Entrant::Discord(UserId::new(p1_discord)),
+                        (Some(Id(p1_discord)), Some(p1_twitch)) => Entrant::DiscordTwitch(UserId::new(p1_discord), p1_twitch),
+                    },
+                    match (row.p2_discord, row.p2_twitch) {
+                        (None, None) => Entrant::Named(p2),
+                        (None, Some(p2_twitch)) => Entrant::NamedWithTwitch(p2, p2_twitch),
+                        (Some(Id(p2_discord)), None) => Entrant::Discord(UserId::new(p2_discord)),
+                        (Some(Id(p2_discord)), Some(p2_twitch)) => Entrant::DiscordTwitch(UserId::new(p2_discord), p2_twitch),
+                    },
                 ]),
                 [Some(p1), None, None] => Entrants::Named(p1),
                 _ => if let (Some(startgg_set), Some(slots)) = (&startgg_set, slots) {
@@ -570,8 +611,8 @@ impl Race {
                             startgg_event: None,
                             startgg_set: None,
                             entrants: Entrants::Two([
-                                Entrant::Named(race.player_a.username),
-                                Entrant::Named(race.player_b.username),
+                                race.player_a.into_entrant(),
+                                race.player_b.into_entrant(),
                             ]),
                             phase: None,
                             round: Some(race.division),
@@ -762,7 +803,8 @@ impl Race {
                     }
                 },
                 Entrant::Named(_) => return Ok(None),
-                Entrant::NamedWithTwitch(_, twitch_name) => channels.push(Cow::Borrowed(&**twitch_name)),
+                Entrant::Discord(_) => return Ok(None), //TODO if this Discord account is associated with a Mido's House account, check racetime.gg for a Twitch username
+                Entrant::NamedWithTwitch(_, twitch_name) | Entrant::DiscordTwitch(_, twitch_name) => channels.push(Cow::Borrowed(&**twitch_name)),
             }
             Ok(Some(channels))
         }
@@ -840,41 +882,43 @@ impl Race {
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE id = $1) AS "exists!""#, self.id as _).fetch_one(&mut *transaction).await? {
             unimplemented!("updating existing races not yet implemented") //TODO
         } else {
-            let ([team1, team2], [p1, p2, p3], [p1_twitch, p2_twitch], [total, finished]) = match self.entrants {
-                Entrants::Open => ([None; 2], [None; 3], [None; 2], [None; 2]),
-                Entrants::Count { total, finished } => ([None; 2], [None; 3], [None; 2], [Some(total), Some(finished)]),
-                Entrants::Named(ref entrants) => ([None; 2], [Some(entrants), None, None], [None; 2], [None; 2]),
+            let ([team1, team2], [p1, p2, p3], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [total, finished]) = match self.entrants {
+                Entrants::Open => ([None; 2], [None; 3], [None; 2], [None; 2], [None; 2]),
+                Entrants::Count { total, finished } => ([None; 2], [None; 3], [None; 2], [None; 2], [Some(total), Some(finished)]),
+                Entrants::Named(ref entrants) => ([None; 2], [Some(entrants), None, None], [None; 2], [None; 2], [None; 2]),
                 Entrants::Two([ref p1, ref p2]) => {
-                    let (team1, p1, p1_twitch) = match p1 {
-                        Entrant::MidosHouseTeam(team) => (Some(team.id), None, None),
-                        Entrant::Named(name) => (None, Some(name), None),
-                        Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), Some(twitch)),
+                    let (team1, p1, p1_discord, p1_twitch) = match p1 {
+                        Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None),
+                        Entrant::Discord(discord_id) => (None, None, Some(*discord_id), None),
+                        Entrant::DiscordTwitch(discord_id, twitch) => (None, None, Some(*discord_id), Some(twitch)),
+                        Entrant::Named(name) => (None, Some(name), None, None),
+                        Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), None, Some(twitch)),
                     };
-                    let (team2, p2, p2_twitch) = match p2 {
-                        Entrant::MidosHouseTeam(team) => (Some(team.id), None, None),
-                        Entrant::Named(name) => (None, Some(name), None),
-                        Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), Some(twitch)),
+                    let (team2, p2, p2_discord, p2_twitch) = match p2 {
+                        Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None),
+                        Entrant::Discord(discord_id) => (None, None, Some(*discord_id), None),
+                        Entrant::DiscordTwitch(discord_id, twitch) => (None, None, Some(*discord_id), Some(twitch)),
+                        Entrant::Named(name) => (None, Some(name), None, None),
+                        Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), None, Some(twitch)),
                     };
-                    ([team1, team2], [p1, p2, None], [p1_twitch, p2_twitch], [None; 2])
+                    ([team1, team2], [p1, p2, None], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [None; 2])
                 }
                 Entrants::Three([ref p1, ref p2, ref p3]) => {
                     (
                         [None; 2],
                         [Some(match p1 {
-                            Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
                             Entrant::Named(name) => name,
-                            Entrant::NamedWithTwitch(_, _) => unimplemented!(), //TODO
+                            _ => unimplemented!(), //TODO
                         }),
                         Some(match p2 {
-                            Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
                             Entrant::Named(name) => name,
-                            Entrant::NamedWithTwitch(_, _) => unimplemented!(), //TODO
+                            _ => unimplemented!(), //TODO
                         }),
                         Some(match p3 {
-                            Entrant::MidosHouseTeam(_) => unimplemented!(), //TODO
                             Entrant::Named(name) => name,
-                            Entrant::NamedWithTwitch(_, _) => unimplemented!(), //TODO
+                            _ => unimplemented!(), //TODO
                         })],
+                        [None; 2],
                         [None; 2],
                         [None; 2],
                     )
@@ -936,9 +980,11 @@ impl Race {
                 video_url_pt,
                 restreamer_pt,
                 p1_twitch,
-                p2_twitch
+                p2_twitch,
+                p1_discord,
+                p2_discord
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44)",
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46)",
                 self.startgg_set,
                 start,
                 self.series as _,
@@ -983,6 +1029,8 @@ impl Race {
                 self.restreamers.get(&Portuguese),
                 p1_twitch,
                 p2_twitch,
+                p1_discord.map(|id| i64::from(id)),
+                p2_discord.map(|id| i64::from(id)),
             ).execute(transaction).await?;
         }
         Ok(())
@@ -1144,6 +1192,7 @@ impl Event {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum Error {
+    #[error(transparent)] Discord(#[from] discord_bot::Error),
     #[error(transparent)] Event(#[from] event::DataError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sheets(#[from] SheetsError),
@@ -1200,7 +1249,7 @@ fn ics_datetime<Z: TimeZone>(datetime: DateTime<Z>) -> String {
     datetime.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string()
 }
 
-async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: &Environment, config: &Config, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
+async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, http_client: &reqwest::Client, env: &Environment, config: &Config, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
     for race in Race::for_event(transaction, http_client, env, config, event).await?.into_iter() {
         for race_event in race.cal_events() {
             if let Some(start) = race_event.start() {
@@ -1227,26 +1276,26 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
                     Entrants::Two([ref team1, ref team2]) => match race_event.kind {
                         EventKind::Normal => format!(
                             "{summary_prefix}: {} vs {}",
-                            team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
                         EventKind::Async1 => format!(
                             "{summary_prefix} (async): {} vs {}",
-                            team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
                         EventKind::Async2 => format!(
                             "{summary_prefix} (async): {} vs {}",
-                            team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
                     },
                     Entrants::Three([ref team1, ref team2, ref team3]) => match race_event.kind {
                         EventKind::Normal => format!(
                             "{summary_prefix}: {} vs {} vs {}",
-                            team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team3.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team3.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
                         EventKind::Async1 | EventKind::Async2 => unimplemented!(), //TODO
                     },
@@ -1291,35 +1340,35 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, http_clien
 }
 
 #[rocket::get("/calendar.ics")]
-pub(crate) async fn index(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>) -> Result<Response<ICalendar<'static>>, Error> {
+pub(crate) async fn index(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>) -> Result<Response<ICalendar<'static>>, Error> {
     let mut transaction = pool.begin().await?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for row in sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed"#).fetch_all(&mut transaction).await? {
         let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, http_client, env, config, &mut cal, &event).await?;
+        add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, env, config, &mut cal, &event).await?;
     }
     transaction.commit().await?;
     Ok(Response(cal))
 }
 
 #[rocket::get("/series/<series>/calendar.ics")]
-pub(crate) async fn for_series(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series) -> Result<Response<ICalendar<'static>>, Error> {
+pub(crate) async fn for_series(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series) -> Result<Response<ICalendar<'static>>, Error> {
     let mut transaction = pool.begin().await?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for event in sqlx::query_scalar!(r#"SELECT event FROM events WHERE listed AND series = $1"#, series as _).fetch_all(&mut transaction).await? {
         let event = event::Data::new(&mut transaction, series, event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, http_client, env, config, &mut cal, &event).await?;
+        add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, env, config, &mut cal, &event).await?;
     }
     transaction.commit().await?;
     Ok(Response(cal))
 }
 
 #[rocket::get("/event/<series>/<event>/calendar.ics")]
-pub(crate) async fn for_event(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series, event: &str) -> Result<Response<ICalendar<'static>>, StatusOrError<Error>> {
+pub(crate) async fn for_event(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series, event: &str) -> Result<Response<ICalendar<'static>>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
-    add_event_races(&mut transaction, http_client, env, config, &mut cal, &event).await?;
+    add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, env, config, &mut cal, &event).await?;
     transaction.commit().await?;
     Ok(Response(cal))
 }
@@ -1539,7 +1588,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
     })
 }
 
-pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
+pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
     let header = event.header(&mut transaction, env, me.as_ref(), Tab::Races, true).await?;
     let fenhl = User::from_id(&mut transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
     let form = if me.is_some() {
@@ -1645,16 +1694,16 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, e
             Entrants::Two([p1, p2]) => {
                 p : "Entrants:";
                 ol {
-                    li : p1.to_html(&mut transaction, env, false).await?;
-                    li : p2.to_html(&mut transaction, env, false).await?;
+                    li : p1.to_html(&mut transaction, env, discord_ctx, false).await?;
+                    li : p2.to_html(&mut transaction, env, discord_ctx, false).await?;
                 }
             }
             Entrants::Three([p1, p2, p3]) => {
                 p : "Entrants:";
                 ol {
-                    li : p1.to_html(&mut transaction, env, false).await?;
-                    li : p2.to_html(&mut transaction, env, false).await?;
-                    li : p3.to_html(&mut transaction, env, false).await?;
+                    li : p1.to_html(&mut transaction, env, discord_ctx, false).await?;
+                    li : p2.to_html(&mut transaction, env, discord_ctx, false).await?;
+                    li : p3.to_html(&mut transaction, env, discord_ctx, false).await?;
                 }
             }
         }
@@ -1738,7 +1787,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, e
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit")]
-pub(crate) async fn edit_race(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn edit_race(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
@@ -1746,7 +1795,7 @@ pub(crate) async fn edit_race(env: &State<Environment>, config: &State<Config>, 
     if race.series != event.series || race.event != event.event {
         return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(edit_race(race.series, race.event, id)))))
     }
-    Ok(RedirectOrContent::Content(edit_race_form(transaction, **env, me, uri, csrf.as_ref(), event, race, None).await?))
+    Ok(RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, **env, me, uri, csrf.as_ref(), event, race, None).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1766,7 +1815,7 @@ pub(crate) struct EditRaceForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit", data = "<form>")]
-pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
@@ -1999,7 +2048,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
             }
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(edit_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
+            RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, **env, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
         } else {
             sqlx::query!(
                 "UPDATE races SET
@@ -2046,7 +2095,7 @@ pub(crate) async fn edit_race_post(env: &State<Environment>, config: &State<Conf
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(edit_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
+        RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, **env, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
     })
 }
 

@@ -1209,7 +1209,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 };
                                                 let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
                                                 let new_room_lock = lock!(new_room_lock);
-                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
+                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)
                                                         .content(msg)
@@ -1300,7 +1300,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 };
                                                 let cal_event = cal::Event { race, kind };
                                                 let new_room_lock = lock!(new_room_lock);
-                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
+                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)
                                                         .content(msg)
@@ -1686,10 +1686,19 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
         })
 }
 
-pub(crate) async fn create_scheduling_thread(ctx: &Context, transaction: &mut Transaction<'_, Postgres>, race: &mut Race, game_count: i16) -> Result<(), event::Error> {
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum Error {
+    #[error(transparent)] EventData(#[from] event::DataError),
+    #[error(transparent)] Serenity(#[from] serenity::Error),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("attempted to create scheduling thread in Discord guild without command IDs")]
+    UnregisteredDiscordGuild,
+}
+
+pub(crate) async fn create_scheduling_thread(ctx: &Context, transaction: &mut Transaction<'_, Postgres>, race: &mut Race, game_count: i16) -> Result<(), Error> {
     let event = race.event(&mut *transaction).await?;
     let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) else { return Ok(()) };
-    let Some(command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied()) else { return Err(event::Error::UnregisteredDiscordGuild) };
+    let Some(command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied()) else { return Err(Error::UnregisteredDiscordGuild) };
     let title = if_chain! {
         if let French = event.language;
         if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
@@ -1700,14 +1709,14 @@ pub(crate) async fn create_scheduling_thread(ctx: &Context, transaction: &mut Tr
                 Entrants::Named(ref entrants) => format!("{info_prefix} : {entrants}"),
                 Entrants::Two([ref team1, ref team2]) => format!(
                     "{info_prefix} : {} vs {}",
-                    team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team1.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team2.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                 ),
                 Entrants::Three([ref team1, ref team2, ref team3]) => format!(
                     "{info_prefix} : {} vs {} vs {}",
-                    team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team3.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team1.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team2.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team3.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                 ),
             }
         } else {
@@ -1722,15 +1731,15 @@ pub(crate) async fn create_scheduling_thread(ctx: &Context, transaction: &mut Tr
                 Entrants::Two([ref team1, ref team2]) => format!(
                     "{info_prefix}{}{} vs {}",
                     if info_prefix.is_empty() { "" } else { ": " },
-                    team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team1.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team2.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                 ),
                 Entrants::Three([ref team1, ref team2, ref team3]) => format!(
                     "{info_prefix}{}{} vs {} vs {}",
                     if info_prefix.is_empty() { "" } else { ": " },
-                    team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team3.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team1.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team2.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team3.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                 ),
             }
         }

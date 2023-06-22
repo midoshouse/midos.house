@@ -106,7 +106,7 @@ features = ["json"]
 git = "https://github.com/fenhl/serenity"
 branch = "standalone-public-thread"
 default-features = false
-features = ["client", "gateway", "model", "rustls_backend"]
+features = ["client", "gateway", "model", "rustls_backend", "temp_cache"]
 
 [dependencies.serenity-utils]
 git = "https://github.com/fenhl/serenity-utils"

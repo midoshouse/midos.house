@@ -805,11 +805,12 @@ pub(crate) enum Tab {
 pub(crate) enum Error {
     #[error(transparent)] Calendar(#[from] cal::Error),
     #[error(transparent)] Data(#[from] DataError),
-    #[error(transparent)] Discord(#[from] serenity::Error),
+    #[error(transparent)] Discord(#[from] crate::discord_bot::Error),
     #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
+    #[error(transparent)] Serenity(#[from] serenity::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
@@ -817,8 +818,6 @@ pub(crate) enum Error {
     OrganizerUserData,
     #[error("missing user data for a restreamer")]
     RestreamerUserData,
-    #[error("attempted to create scheduling thread in Discord guild without command IDs")]
-    UnregisteredDiscordGuild,
 }
 
 impl<E: Into<Error>> From<E> for StatusOrError<Error> {
@@ -1073,8 +1072,8 @@ pub(crate) async fn teams(pool: &State<PgPool>, env: &State<Environment>, me: Op
 }
 
 #[rocket::get("/event/<series>/<event>/races")]
-pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    async fn race_table(transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, data: &Data<'_>, show_multistreams: bool, can_create: bool, can_edit: bool, show_restream_consent: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    async fn race_table(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, env: Environment, http_client: &reqwest::Client, data: &Data<'_>, show_multistreams: bool, can_create: bool, can_edit: bool, show_restream_consent: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
         let has_games = races.iter().any(|race| race.game.is_some());
         let has_seeds = races.iter().any(|race| race.seed.is_some());
         let has_buttons = can_create || can_edit;
@@ -1138,7 +1137,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                 Entrants::Named(ref entrants) => td(colspan = "6") : entrants;
                                 Entrants::Two([ref team1, ref team2]) => {
                                     td(class = "vs1", colspan = "3") {
-                                        : team1.to_html(&mut *transaction, env, false).await?;
+                                        : team1.to_html(&mut *transaction, env, discord_ctx, false).await?;
                                         @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {
                                             br;
                                             small {
@@ -1147,7 +1146,7 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                         }
                                     }
                                     td(class = "vs2", colspan = "3") {
-                                        : team2.to_html(&mut *transaction, env, false).await?;
+                                        : team2.to_html(&mut *transaction, env, discord_ctx, false).await?;
                                         @if let RaceSchedule::Async { start2: Some(start), .. } = race.schedule {
                                             br;
                                             small {
@@ -1157,9 +1156,9 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
                                     }
                                 }
                                 Entrants::Three([ref team1, ref team2, ref team3]) => {
-                                    td(colspan = "2") : team1.to_html(&mut *transaction, env, false).await?;
-                                    td(colspan = "2") : team2.to_html(&mut *transaction, env, false).await?;
-                                    td(colspan = "2") : team3.to_html(&mut *transaction, env, false).await?;
+                                    td(colspan = "2") : team1.to_html(&mut *transaction, env, discord_ctx, false).await?;
+                                    td(colspan = "2") : team2.to_html(&mut *transaction, env, discord_ctx, false).await?;
+                                    td(colspan = "2") : team3.to_html(&mut *transaction, env, discord_ctx, false).await?;
                                 }
                             }
                             td {
@@ -1231,13 +1230,13 @@ pub(crate) async fn races(env: &State<Environment>, config: &State<Config>, pool
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
             //TODO split into ongoing and upcoming, show headers for both
-            : race_table(&mut transaction, **env, http_client, &data, true, can_create, can_edit, show_restream_consent, &ongoing_and_upcoming_races).await?;
+            : race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, &data, true, can_create, can_edit, show_restream_consent, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : race_table(&mut transaction, **env, http_client, &data, false, can_create && !any_races_ongoing_or_upcoming, can_edit, false, &past_races).await?;
+            : race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, &data, false, can_create && !any_races_ongoing_or_upcoming, can_edit, false, &past_races).await?;
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 a(class = "button", href = uri!(crate::cal::create_race(series, &event)).to_string()) : "New Race";

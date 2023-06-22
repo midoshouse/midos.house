@@ -7,11 +7,13 @@ use {
         Deserializer,
         de::Error as _,
     },
+    serenity::model::prelude::*,
     sqlx::{
         Postgres,
         Transaction,
     },
     crate::{
+        cal::Entrant,
         event::{
             Data,
             InfoError,
@@ -88,8 +90,20 @@ pub(crate) struct Match {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct User {
+    pub(crate) discord_id: Option<UserId>,
     pub(crate) username: String,
     pub(crate) twitch_username: Option<String>,
+}
+
+impl User {
+    pub(crate) fn into_entrant(self) -> Entrant {
+        match (self.discord_id, self.twitch_username) {
+            (None, None) => Entrant::Named(self.username),
+            (None, Some(twitch_username)) => Entrant::NamedWithTwitch(self.username, twitch_username),
+            (Some(discord_id), None) => Entrant::Discord(discord_id),
+            (Some(discord_id), Some(twitch_username)) => Entrant::DiscordTwitch(discord_id, twitch_username),
+        }
+    }
 }
 
 #[derive(Deserialize)]
