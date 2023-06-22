@@ -159,10 +159,12 @@ impl Entrant {
     pub(crate) async fn name(&self, transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx) -> Result<Option<Cow<'_, str>>, discord_bot::Error> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.name(transaction).await?,
-            Self::Discord(user_id) | Self::DiscordTwitch(user_id, _) => {
+            Self::Discord(user_id) | Self::DiscordTwitch(user_id, _) => if let Some(user) = User::from_discord(transaction, *user_id).await? {
+                Some(Cow::Owned(user.discord.unwrap().display_name))
+            } else {
                 let user = user_id.to_user(discord_ctx).await?;
                 Some(Cow::Owned(user.global_name.unwrap_or(user.name)))
-            }
+            },
             Self::Named(name) | Self::NamedWithTwitch(name, _) => Some(Cow::Borrowed(name)),
         })
     }
@@ -170,14 +172,20 @@ impl Entrant {
     pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, discord_ctx: &DiscordCtx, running_text: bool) -> Result<RawHtml<String>, discord_bot::Error> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.to_html(transaction, env, running_text).await?,
-            Self::Discord(user_id) | Self::DiscordTwitch(user_id, _) => {
+            Self::Discord(user_id) | Self::DiscordTwitch(user_id, _) => if let Some(user) = User::from_discord(transaction, *user_id).await? {
+                html! {
+                    a(href = format!("https://discord.com/users/{user_id}")) {
+                        : user.discord.unwrap().display_name;
+                    }
+                }
+            } else {
                 let user = user_id.to_user(discord_ctx).await?;
                 html! {
                     a(href = format!("https://discord.com/users/{user_id}")) {
                         : user.global_name.unwrap_or(user.name);
                     }
                 }
-            }
+            },
             Self::Named(name) | Self::NamedWithTwitch(name, _) => name.to_html(),
         })
     }
@@ -411,34 +419,35 @@ impl Race {
         } else {
             (None, None, row.phase, row.round, None)
         };
-        let entrants = if let [Some(team1), Some(team2)] = [row.team1, row.team2] {
-            Entrants::Two([
-                Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?),
-                Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?),
-            ])
-        } else if let [Some(Id(p1_discord)), Some(Id(p2_discord))] = [row.p1_discord, row.p2_discord] {
-            Entrants::Two([
-                if let Some(p1_twitch) = row.p1_twitch { Entrant::DiscordTwitch(UserId::new(p1_discord), p1_twitch) } else { Entrant::Discord(UserId::new(p1_discord)) },
-                if let Some(p2_twitch) = row.p2_twitch { Entrant::DiscordTwitch(UserId::new(p2_discord), p2_twitch) } else { Entrant::Discord(UserId::new(p2_discord)) },
-            ])
-        } else if let (Some(total), Some(finished)) = (row.total, row.finished) {
-            Entrants::Count {
-                total: total as u32,
-                finished: finished as u32,
-            }
-        } else {
-            match [row.p1, row.p2, row.p3] {
-                [Some(p1), Some(p2), Some(p3)] => Entrants::Three([
-                    Entrant::Named(p1),
-                    Entrant::Named(p2),
-                    Entrant::Named(p3),
-                ]),
-                [Some(p1), Some(p2), None] => Entrants::Two([
-                    if let Some(p1_twitch) = row.p1_twitch { Entrant::NamedWithTwitch(p1, p1_twitch) } else { Entrant::Named(p1) },
-                    if let Some(p2_twitch) = row.p2_twitch { Entrant::NamedWithTwitch(p2, p2_twitch) } else { Entrant::Named(p2) },
-                ]),
-                [Some(p1), None, None] => Entrants::Named(p1),
-                _ => if let (Some(startgg_set), Some(slots)) = (&startgg_set, slots) {
+        let entrants = {
+            let p1 = if let Some(team1) = row.team1 {
+                Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?))
+            } else if let Some(Id(p1_discord)) = row.p1_discord {
+                Some(if let Some(p1_twitch) = row.p1_twitch { Entrant::DiscordTwitch(UserId::new(p1_discord), p1_twitch) } else { Entrant::Discord(UserId::new(p1_discord)) })
+            } else if let Some(p1) = row.p1 {
+                Some(if let Some(p1_twitch) = row.p1_twitch { Entrant::NamedWithTwitch(p1, p1_twitch) } else { Entrant::Named(p1) })
+            } else {
+                None
+            };
+            let p2 = if let Some(team2) = row.team2 {
+                Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?))
+            } else if let Some(Id(p2_discord)) = row.p2_discord {
+                Some(if let Some(p2_twitch) = row.p2_twitch { Entrant::DiscordTwitch(UserId::new(p2_discord), p2_twitch) } else { Entrant::Discord(UserId::new(p2_discord)) })
+            } else if let Some(p2) = row.p2 {
+                Some(if let Some(p2_twitch) = row.p2_twitch { Entrant::NamedWithTwitch(p2, p2_twitch) } else { Entrant::Named(p2) })
+            } else {
+                None
+            };
+            let p3 = if let Some(p3) = row.p3 {
+                Some(Entrant::Named(p3))
+            } else {
+                None
+            };
+            match [p1, p2, p3] {
+                [Some(p1), Some(p2), Some(p3)] => Entrants::Three([p1, p2, p3]),
+                [Some(p1), Some(p2), None] => Entrants::Two([p1, p2]),
+                [Some(Entrant::Named(p1)), None, None] => Entrants::Named(p1),
+                [None, None, None] => if let (Some(startgg_set), Some(slots)) = (&startgg_set, slots) {
                     if let [
                         Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team1)), on: _ }) }) }),
                         Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team2)), on: _ }) }) }),
@@ -451,9 +460,15 @@ impl Race {
                     } else {
                         return Err(Error::StartggTeams { startgg_set: startgg_set.clone() })
                     }
+                } else if let (Some(total), Some(finished)) = (row.total, row.finished) {
+                    Entrants::Count {
+                        total: total as u32,
+                        finished: finished as u32,
+                    }
                 } else {
                     Entrants::Open
                 },
+                _ => panic!("unexpected configuration of entrants"),
             }
         };
 
