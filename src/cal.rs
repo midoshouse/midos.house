@@ -32,7 +32,6 @@ use {
             URL,
         },
     },
-    if_chain::if_chain,
     itertools::Itertools as _,
     lazy_regex::regex_captures,
     once_cell::sync::Lazy,
@@ -69,19 +68,10 @@ use {
         html,
     },
     serenity::{
-        all::{
-            CreateForumPost,
-            CreateMessage,
-            CreateThread,
-            Context as DiscordCtx,
-            MessageBuilder,
-        },
+        all::Context as DiscordCtx,
         model::prelude::*,
     },
-    serenity_utils::{
-        RwFuture,
-        message::MessageBuilderExt as _,
-    },
+    serenity_utils::RwFuture,
     sheets::{
         Sheets,
         ValueRange,
@@ -141,7 +131,6 @@ use {
             DateTimeFormat,
             Id,
             IdTable,
-            MessageBuilderExt as _,
             RedirectOrContent,
             StatusOrError,
             as_variant,
@@ -1348,8 +1337,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
             };
             team_data.push((team.id.to_string(), name));
         }
-        let phase_options = sqlx::query_scalar!("SELECT option FROM phase_options WHERE series = $1 AND event = $2", event.series as _, &event.event).fetch_all(&mut transaction).await?;
-        let round_options = sqlx::query_scalar!("SELECT option FROM round_options WHERE series = $1 AND event = $2", event.series as _, &event.event).fetch_all(&mut transaction).await?;
+        let phase_round_options = sqlx::query!("SELECT phase, round FROM phase_round_options WHERE series = $1 AND event = $2", event.series as _, &event.event).fetch_all(&mut transaction).await?;
         let mut errors = ctx.errors().collect_vec();
         full_form(uri!(create_race_post(event.series, &*event.event)), csrf, html! {
             : form_field("team1", &mut errors, html! {
@@ -1380,30 +1368,26 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
                     }
                 }
             });
-            : form_field("phase", &mut errors, html! {
-                label(for = "phase") : "Phase:";
-                @if phase_options.is_empty() {
+            @if phase_round_options.is_empty() {
+                : form_field("phase", &mut errors, html! {
+                    label(for = "phase") : "Phase:";
                     input(type = "text", name = "phase", value? = ctx.field_value("phase"));
-                } else {
-                    select(name = "phase") {
-                        @for option in phase_options {
-                            option(value = option, selected? = ctx.field_value("phase") == Some(&option)) : option;
-                        }
-                    }
-                }
-            });
-            : form_field("round", &mut errors, html! {
-                label(for = "round") : "Round:";
-                @if round_options.is_empty() {
+                });
+                : form_field("round", &mut errors, html! {
+                    label(for = "round") : "Round:";
                     input(type = "text", name = "round", value? = ctx.field_value("round"));
-                } else {
-                    select(name = "round") {
-                        @for option in round_options {
-                            option(value = option, selected? = ctx.field_value("round") == Some(&option)) : option;
+                });
+            } else {
+                : form_field("phase_round", &mut errors, html! {
+                    label(for = "phase_round") : "Round:";
+                    select(name = "phase_round") {
+                        @for row in phase_round_options {
+                            @let option = format!("{} {}", row.phase, row.round);
+                            option(value = &option, selected? = ctx.field_value("phase_round") == Some(&option)) : option;
                         }
                     }
-                }
-            });
+                });
+            }
             : form_field("game_count", &mut errors, html! {
                 label(for = "game_count") : "Number of games in this match:";
                 input(type = "number", min = "1", max = "255", name = "game_count", value = ctx.field_value("game_count").map_or_else(|| event.default_game_count.to_string(), |game_count| game_count.to_owned()));
@@ -1448,6 +1432,8 @@ pub(crate) struct CreateRaceForm {
     phase: String,
     #[field(default = String::new())]
     round: String,
+    #[field(default = String::new())]
+    phase_round: String,
     game_count: i16,
 }
 
@@ -1484,119 +1470,42 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(create_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, form.context).await?)
         } else {
+            let (phase, round) = if value.phase_round.is_empty() {
+                (
+                    (!value.phase.is_empty()).then(|| value.phase.clone()),
+                    (!value.round.is_empty()).then(|| value.round.clone()),
+                )
+            } else {
+                sqlx::query!("SELECT phase, round FROM phase_round_options WHERE series = $1 AND event = $2", event.series as _, &event.event).fetch_all(&mut transaction).await?
+                    .into_iter()
+                    .find(|row| format!("{} {}", row.phase, row.round) == value.phase_round)
+                    .map(|row| (Some(row.phase), Some(row.round)))
+                    .unwrap_or_else(|| (None, Some(value.phase_round.clone())))
+            };
             let [team1, team2] = [team1, team2].map(|team| team.expect("validated"));
-            let (scheduling_thread, draft) = if_chain! {
-                if let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel);
-                if let Some(command_ids) = discord_ctx.read().await.data.read().await.get::<discord_bot::CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied());
-                then {
-                    let info_prefix = format!("{}{}{}",
-                        value.phase,
-                        if value.phase.is_empty() && value.round.is_empty() { "" } else { " " },
-                        value.round,
-                    );
-                    let title = format!("{}{} vs {}",
-                        if info_prefix.is_empty() { String::default() } else { format!("{info_prefix}: ") },
-                        team1.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                        team2.name(&mut transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    );
-                    let mut content = MessageBuilder::default();
-                    {
-                        content.mention_team(&mut transaction, Some(guild_id), &team1).await?;
-                        content.push(' ');
-                        content.mention_team(&mut transaction, Some(guild_id), &team2).await?;
-                        content.push(' ');
-                    }
-                    content.push("Welcome to your ");
-                    if !value.phase.is_empty() {
-                        content.push_safe(value.phase.clone());
-                        content.push(' ');
-                    }
-                    if !value.round.is_empty() {
-                        content.push_safe(value.round.clone());
-                        content.push(' ');
-                    }
-                    content.push("match. Use ");
-                    content.mention_command(command_ids.schedule, "schedule");
-                    content.push(" to schedule as a live race or ");
-                    content.mention_command(command_ids.schedule_async, "schedule-async");
-                    content.push(" to schedule as an async."); //TODO adjust message if asyncing is not allowed
-                    if value.game_count > 1 {
-                        content.push(" You can use the ");
-                        content.push_mono("game:");
-                        content.push(" parameter with these commands to schedule subsequent games ahead of time.");
-                    }
-                    let draft = match event.draft_kind() {
-                        Some(draft::Kind::MultiworldS3) => unimplemented!(), //TODO
-                        Some(draft::Kind::TournoiFrancoS3) => {
-                            let high_seed = *[&team1, &team2].choose(&mut thread_rng()).unwrap();
+            let draft = match event.draft_kind() {
+                Some(draft::Kind::MultiworldS3) => unimplemented!(), //TODO
+                Some(draft::Kind::TournoiFrancoS3) => {
+                    let high_seed = *[team1.id, team2.id].choose(&mut thread_rng()).unwrap();
+                    Some(Draft {
+                        went_first: None,
+                        skipped_bans: 0,
+                        settings: {
                             let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", team1.id as _, team2.id as _).fetch_all(&mut transaction).await?;
                             let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
                             let mq_ok = team_rows.iter().all(|row| row.mq_ok);
-                            if let (Some(first), Some(second)) = (command_ids.first, command_ids.second) {
-                                content.push_line("");
-                                content.mention_team(&mut transaction, Some(guild_id), high_seed).await?;
-                                content.push(": you have won the coin flip. Choose whether you want to go ");
-                                content.mention_command(first, "first");
-                                content.push(" or ");
-                                content.mention_command(second, "second");
-                                content.push(" in the settings draft.");
-                                if mq_ok { content.push(" Please include the number of MQ dungeons."); }
-                            }
-                            Some(Draft {
-                                high_seed: high_seed.id,
-                                went_first: None,
-                                skipped_bans: 0,
-                                settings: collect![as HashMap<_, _>:
-                                    Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
-                                    Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_ok { "ok" } else { "no" }),
-                                ],
-                            })
-                        }
-                        None => None,
-                    };
-                    let content = content.build(); //TODO remove code duplication with /assign
-                    (Some(if let Some(ChannelType::Forum) = scheduling_channel.to_channel(&*discord_ctx.read().await).await?.guild().map(|c| c.kind) {
-                        scheduling_channel.create_forum_post(&*discord_ctx.read().await, CreateForumPost::new(
-                            title,
-                            CreateMessage::new().content(content),
-                        ).auto_archive_duration(AutoArchiveDuration::OneWeek)).await?.id
-                    } else {
-                        // must post the thread as a reply to a message since there currently doesn't seem to be a way to create a standalone public thread in serenity
-                        //TODO add API to serenity to create a standalone public thread: POST /channels/{channel.id}/threads with type 11 (PUBLIC_THREAD)
-                        let msg = scheduling_channel.say(&*discord_ctx.read().await, &title).await?;
-                        let thread = scheduling_channel.create_public_thread(&*discord_ctx.read().await, msg, CreateThread::new(
-                            title,
-                        ).auto_archive_duration(AutoArchiveDuration::OneWeek)).await?;
-                        thread.say(&*discord_ctx.read().await, content).await?;
-                        thread.id
-                    }), draft)
-                } else {
-                    //TODO deduplicate draft code (move scheduling thread creation to separate function in discord_bot.rs?)
-                    (None, match event.draft_kind() {
-                        Some(draft::Kind::MultiworldS3) => unimplemented!(), //TODO
-                        Some(draft::Kind::TournoiFrancoS3) => {
-                            let high_seed = *[team1.id, team2.id].choose(&mut thread_rng()).unwrap();
-                            Some(Draft {
-                                went_first: None,
-                                skipped_bans: 0,
-                                settings: {
-                                    let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", team1.id as _, team2.id as _).fetch_all(&mut transaction).await?;
-                                    let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
-                                    let mq_ok = team_rows.iter().all(|row| row.mq_ok);
-                                    collect![as HashMap<_, _>:
-                                        Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
-                                        Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_ok { "ok" } else { "no" }),
-                                    ]
-                                },
-                                high_seed,
-                            })
-                        }
-                        None => None,
+                            collect![as HashMap<_, _>:
+                                Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
+                                Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_ok { "ok" } else { "no" }),
+                            ]
+                        },
+                        high_seed,
                     })
                 }
+                None => None,
             };
             for game in 1..=value.game_count {
-                Race {
+                let mut race = Race {
                     id: Id::new(&mut transaction, IdTable::Races).await?,
                     series: event.series,
                     event: event.event.to_string(),
@@ -1606,17 +1515,21 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                         Entrant::MidosHouseTeam(team1.clone()),
                         Entrant::MidosHouseTeam(team2.clone()),
                     ]),
-                    phase: (!value.phase.is_empty()).then(|| value.phase.clone()),
-                    round: (!value.round.is_empty()).then(|| value.round.clone()),
+                    phase: phase.clone(),
+                    round: round.clone(),
                     game: (value.game_count > 1).then_some(game),
+                    scheduling_thread: None,
                     schedule: RaceSchedule::Unscheduled,
                     draft: draft.clone(),
                     seed: None,
                     video_urls: HashMap::default(),
                     restreamers: HashMap::default(),
                     ignored: false,
-                    scheduling_thread,
-                }.save(&mut transaction).await?;
+                };
+                if game == 1 {
+                    discord_bot::create_scheduling_thread(&*discord_ctx.read().await, &mut transaction, &mut race, value.game_count).await?;
+                }
+                race.save(&mut transaction).await?;
             }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))

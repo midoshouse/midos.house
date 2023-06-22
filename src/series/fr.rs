@@ -17,7 +17,6 @@ use {
             Data,
             InfoError,
         },
-        favicon::ChestAppearances,
         lang::Language::French,
     },
 };
@@ -27,7 +26,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "3" => Some(html! {
             article {
                 p {
-                    : "Ceci est la 3e saison du tournoi francophone, organisée par willx49, kneiiss, rafa, ";
+                    : "Voici la 3e saison du tournoi francophone, organisée par willx49, kneiiss, rafa, ";
                     : French.join_html(data.organizers(transaction).await?);
                     : ". Rejoignez ";
                     a(href = "https://discord.gg/wyhPVmquZC") : "le serveur Discord";
@@ -92,7 +91,6 @@ pub(crate) fn display_draft_picks(picks: &draft::Picks) -> String {
     French.join_str(picks_display).unwrap_or_else(|| format!("base settings"))
 }
 
-#[allow(unused)] //TODO
 pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
     // selected settings
     let weirdegg = picks.get("weirdegg").map(|weirdegg| &**weirdegg).unwrap_or("skip");
@@ -128,7 +126,6 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
     // randomized settings
     let bridge_medallions = picks.get("bridge_medallions").map(|bridge_medallions| &**bridge_medallions).unwrap_or("6");
     let bridge_rewards = picks.get("bridge_rewards").map(|bridge_rewards| &**bridge_rewards).unwrap_or("9");
-    let empty_dungeons_count = picks.get("empty_dungeons_count").map(|empty_dungeons_count| &**empty_dungeons_count).unwrap_or("2");
     // convert to settings JSON
     let mut starting_items = vec![
         "farores_wind",
@@ -325,8 +322,4 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
             "Claim Check",
         ]),
     ]
-}
-
-pub(crate) fn chests(_: &draft::Picks) -> ChestAppearances {
-    ChestAppearances::random() //TODO
 }

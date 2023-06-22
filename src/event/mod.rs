@@ -14,7 +14,6 @@ use {
     },
     anyhow::anyhow,
     chrono::prelude::*,
-    collect_mac::collect,
     enum_iterator::{
         Sequence,
         all,
@@ -104,7 +103,10 @@ use {
             PageStyle,
             page,
         },
-        lang::Language::*,
+        lang::Language::{
+            self,
+            *,
+        },
         notification::SimpleNotificationKind,
         racetime_bot,
         seed,
@@ -352,6 +354,7 @@ pub(crate) struct Data<'a> {
     pub(crate) show_qualifier_times: bool,
     pub(crate) default_game_count: i16,
     pub(crate) min_schedule_notice: Duration,
+    pub(crate) language: Language,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -387,7 +390,8 @@ impl<'a> Data<'a> {
             enter_flow AS "enter_flow: Json<enter::Flow>",
             show_qualifier_times,
             default_game_count,
-            min_schedule_notice
+            min_schedule_notice,
+            language AS "language: Language"
         FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
                 display_name: row.display_name,
@@ -409,6 +413,7 @@ impl<'a> Data<'a> {
                 show_qualifier_times: row.show_qualifier_times,
                 default_game_count: row.default_game_count,
                 min_schedule_notice: decode_pginterval(row.min_schedule_notice)?,
+                language: row.language,
                 series, event,
             }))
             .transpose()
@@ -440,7 +445,7 @@ impl<'a> Data<'a> {
                 went_first: None,
                 skipped_bans: 0,
                 settings: HashMap::default(),
-            }.complete_randomly(draft::Kind::MultiworldS3).await.unwrap().0),
+            }.complete_randomly(draft::Kind::MultiworldS3).await.unwrap()),
             (Series::Multiworld, _) => unimplemented!(),
             (Series::NineDaysOfSaws, _) => ChestAppearances::VANILLA, // no CAMC in SAWS
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
@@ -457,15 +462,7 @@ impl<'a> Data<'a> {
             (Series::Rsl, _) => unimplemented!(),
             (Series::Standard, "6") => from_file!("../../assets/event/s/chests-6-6.9.10.json"),
             (Series::Standard, _) => unimplemented!(),
-            (Series::TournoiFrancophone, "3") => fr::chests(&Draft {
-                high_seed: Id(0), // Draft::complete_randomly doesn't check for active team
-                went_first: None,
-                skipped_bans: 0,
-                settings: collect![as HashMap<_, _>:
-                    Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if thread_rng().gen() { "ok" } else { "no" }),
-                    Cow::Borrowed("mq_ok") => Cow::Borrowed(if thread_rng().gen() { "ok" } else { "no" }),
-                ],
-            }.complete_randomly(draft::Kind::TournoiFrancoS3).await.unwrap().0),
+            (Series::TournoiFrancophone, "3") => from_file!("../../assets/event/fr/chests-3-7.1.83-r.1.json"),
             (Series::TournoiFrancophone, _) => unimplemented!(),
             (Series::TriforceBlitz, "2") => from_file!("../../assets/event/tfb/chests-2-7.1.3-blitz.42.json"),
             (Series::TriforceBlitz, _) => unimplemented!(),
@@ -820,6 +817,8 @@ pub(crate) enum Error {
     OrganizerUserData,
     #[error("missing user data for a restreamer")]
     RestreamerUserData,
+    #[error("attempted to create scheduling thread in Discord guild without command IDs")]
+    UnregisteredDiscordGuild,
 }
 
 impl<E: Into<Error>> From<E> for StatusOrError<Error> {

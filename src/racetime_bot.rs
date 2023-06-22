@@ -2051,7 +2051,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         went_first: None,
                                         skipped_bans: 0,
                                         settings: HashMap::default(),
-                                    }.complete_randomly(draft::Kind::MultiworldS3).await.to_racetime()?.0,
+                                    }.complete_randomly(draft::Kind::MultiworldS3).await.to_racetime()?,
                                     [ref arg] if arg == "draft" => {
                                         *state = RaceState::Draft {
                                             state: Draft {

@@ -11,6 +11,7 @@ use {
         prelude::*,
     },
     enum_iterator::all,
+    if_chain::if_chain,
     itertools::Itertools as _,
     lazy_regex::regex_captures,
     serenity::{
@@ -18,8 +19,11 @@ use {
             CreateButton,
             CreateCommand,
             CreateCommandOption,
+            CreateForumPost,
             CreateInteractionResponse,
             CreateInteractionResponseMessage,
+            CreateMessage,
+            CreateThread,
             EditRole,
             MessageBuilder,
         },
@@ -60,6 +64,7 @@ use {
             Series,
             TeamConfig,
         },
+        lang::Language::*,
         racetime_bot,
         team::Team,
         util::{
@@ -1679,4 +1684,152 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             shutdown.await;
             serenity_utils::shut_down(&*ctx_fut.read().await).await;
         })
+}
+
+pub(crate) async fn create_scheduling_thread(ctx: &Context, transaction: &mut Transaction<'_, Postgres>, race: &mut Race, game_count: i16) -> Result<(), event::Error> {
+    let event = race.event(&mut *transaction).await?;
+    let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) else { return Ok(()) };
+    let Some(command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied()) else { return Err(event::Error::UnregisteredDiscordGuild) };
+    let title = if_chain! {
+        if let French = event.language;
+        if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
+        if let Some(Some(info_prefix)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?;
+        then {
+            match race.entrants {
+                Entrants::Open | Entrants::Count { .. } => info_prefix,
+                Entrants::Named(ref entrants) => format!("{info_prefix} : {entrants}"),
+                Entrants::Two([ref team1, ref team2]) => format!(
+                    "{info_prefix} : {} vs {}",
+                    team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                ),
+                Entrants::Three([ref team1, ref team2, ref team3]) => format!(
+                    "{info_prefix} : {} vs {} vs {}",
+                    team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team3.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                ),
+            }
+        } else {
+            let info_prefix = format!("{}{}{}",
+                race.phase.as_deref().unwrap_or(""),
+                if race.phase.is_none() || race.round.is_none() { "" } else { " " },
+                race.round.as_deref().unwrap_or(""),
+            );
+            match race.entrants {
+                Entrants::Open | Entrants::Count { .. } => if info_prefix.is_empty() { format!("Untitled Race") } else { info_prefix },
+                Entrants::Named(ref entrants) => format!("{info_prefix}{}{entrants}", if info_prefix.is_empty() { "" } else { ": " }),
+                Entrants::Two([ref team1, ref team2]) => format!(
+                    "{info_prefix}{}{} vs {}",
+                    if info_prefix.is_empty() { "" } else { ": " },
+                    team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                ),
+                Entrants::Three([ref team1, ref team2, ref team3]) => format!(
+                    "{info_prefix}{}{} vs {} vs {}",
+                    if info_prefix.is_empty() { "" } else { ": " },
+                    team1.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team2.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team3.name(&mut *transaction).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                ),
+            }
+        }
+    };
+    let content = if_chain! {
+        if let French = event.language;
+        if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
+        if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?;
+        if game_count == 1;
+        if let None | Some(draft::Kind::TournoiFrancoS3) = event.draft_kind();
+        then {
+            let mut content = MessageBuilder::default();
+            for team in race.teams() {
+                content.mention_team(&mut *transaction, Some(guild_id), team).await?;
+                content.push(' ');
+            }
+            content.push("Bienvenue dans votre ");
+            content.push_safe(phase_round);
+            content.push(". Veuillez utiliser ");
+            content.mention_command(command_ids.schedule, "schedule");
+            content.push(" pour schedule votre race en live ou ");
+            content.mention_command(command_ids.schedule_async, "schedule-async");
+            content.push(" pour schedule votre async. Vous devez insérer un timestamp Discord que vous pouvez créer sur <https://hammertime.cyou/>"); //TODO adjust message if asyncing is not allowed
+            match event.draft_kind() {
+                Some(draft::Kind::MultiworldS3) => unreachable!(),
+                Some(draft::Kind::TournoiFrancoS3) => if let Some(ref draft) = race.draft {
+                    if let (Some(first), Some(second), Some(high_seed)) = (command_ids.first, command_ids.second, Team::from_id(&mut *transaction, draft.high_seed).await?) {
+                        content.push_line("");
+                        content.mention_team(&mut *transaction, Some(guild_id), &high_seed).await?;
+                        content.push(" : Vous avez été sélectionné pour décider qui commencera le draft en premier. Si vous voulez commencer, veuillez entrer ");
+                        content.mention_command(first, "first");
+                        content.push(". Autrement, entrez ");
+                        content.mention_command(second, "second");
+                        content.push(".");
+                        if draft.settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
+                            content.push(" Veuillez choisir combien de donjons Master Quest seront présents. Vous devez vous concerter pour choisir ce nombre.");
+                        }
+                    }
+                },
+                None => {}
+            }
+            content.build()
+        } else {
+            let mut content = MessageBuilder::default();
+            for team in race.teams() {
+                content.mention_team(&mut *transaction, Some(guild_id), team).await?;
+                content.push(' ');
+            }
+            content.push("Welcome to your ");
+            if let Some(ref phase) = race.phase {
+                content.push_safe(phase.clone());
+                content.push(' ');
+            }
+            if let Some(ref round) = race.round {
+                content.push_safe(round.clone());
+                content.push(' ');
+            }
+            content.push("match. Use ");
+            content.mention_command(command_ids.schedule, "schedule");
+            content.push(" to schedule as a live race or ");
+            content.mention_command(command_ids.schedule_async, "schedule-async");
+            content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate at <https://hammertime.cyou/>"); //TODO adjust message if asyncing is not allowed
+            if game_count > 1 {
+                content.push(". You can use the ");
+                content.push_mono("game:");
+                content.push(" parameter with these commands to schedule subsequent games ahead of time.");
+            }
+            match event.draft_kind() {
+                Some(draft::Kind::MultiworldS3) => unimplemented!(), //TODO
+                Some(draft::Kind::TournoiFrancoS3) => if let Some(ref draft) = race.draft {
+                    if let (Some(first), Some(second), Some(high_seed)) = (command_ids.first, command_ids.second, Team::from_id(&mut *transaction, draft.high_seed).await?) {
+                        content.push_line("");
+                        content.mention_team(&mut *transaction, Some(guild_id), &high_seed).await?;
+                        content.push(": you have won the coin flip. Choose whether you want to go ");
+                        content.mention_command(first, "first");
+                        content.push(" or ");
+                        content.mention_command(second, "second");
+                        content.push(" in the settings draft.");
+                        if draft.settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
+                            content.push(" Please include the number of MQ dungeons.");
+                        }
+                    }
+                },
+                None => {}
+            }
+            content.build()
+        }
+    };
+    race.scheduling_thread = Some(if let Some(ChannelType::Forum) = scheduling_channel.to_channel(ctx).await?.guild().map(|c| c.kind) {
+        scheduling_channel.create_forum_post(ctx, CreateForumPost::new(
+            title,
+            CreateMessage::new().content(content),
+        ).auto_archive_duration(AutoArchiveDuration::OneWeek)).await?.id
+    } else {
+        let thread = scheduling_channel.create_standalone_thread(ctx, CreateThread::new(
+            title,
+        ).kind(ChannelType::PublicThread).auto_archive_duration(AutoArchiveDuration::OneWeek)).await?;
+        thread.say(ctx, content).await?;
+        thread.id
+    });
+    Ok(())
 }

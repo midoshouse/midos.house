@@ -195,6 +195,7 @@ pub(crate) enum Action {
 pub(crate) struct Draft {
     pub(crate) high_seed: Id,
     pub(crate) went_first: Option<bool>,
+    #[serde(default)]
     pub(crate) skipped_bans: u8,
     #[serde(flatten)]
     pub(crate) settings: Picks,
@@ -949,7 +950,7 @@ impl Draft {
                                 })
                             }
                         } else {
-                            let exists = mw::S3_SETTINGS.into_iter().any(|mw::S3Setting { name, .. }| setting == name);
+                            let exists = fr::S3_SETTINGS.into_iter().any(|fr::S3Setting { name, .. }| setting == name);
                             Err(match msg_ctx {
                                 MessageContext::None => String::default(),
                                 MessageContext::Discord { command_ids, .. } => {
@@ -1079,7 +1080,7 @@ impl Draft {
         })
     }
 
-    pub(crate) async fn complete_randomly(mut self, kind: Kind) -> sqlx::Result<(Picks, serde_json::Map<String, Json>)> {
+    pub(crate) async fn complete_randomly(mut self, kind: Kind) -> sqlx::Result<Picks> {
         Ok(loop {
             let action = match self.next_step(kind, &mut MessageContext::None).await?.kind {
                 StepKind::GoFirst => Action::GoFirst(thread_rng().gen()),
@@ -1106,7 +1107,7 @@ impl Draft {
                     }
                 }
                 StepKind::BooleanChoice { .. } => Action::BooleanChoice(thread_rng().gen()),
-                StepKind::Done(resolved_settings) => break (self.settings, resolved_settings),
+                StepKind::Done(_) => break self.settings,
             };
             self.apply(kind, &mut MessageContext::None, action).await?.expect("random draft made illegal action");
         })

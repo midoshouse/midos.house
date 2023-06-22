@@ -18,12 +18,16 @@ use {
     self::Language::*,
 };
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Sequence, FromFormField)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Sequence, sqlx::Type, FromFormField)]
+#[sqlx(type_name = "language")]
 pub(crate) enum Language {
+    #[sqlx(rename = "en")]
     #[field(value = "en")]
     English,
+    #[sqlx(rename = "fr")]
     #[field(value = "fr")]
     French,
+    #[sqlx(rename = "pt")]
     #[field(value = "pt")]
     Portuguese,
 }
