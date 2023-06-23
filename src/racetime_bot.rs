@@ -144,7 +144,7 @@ use {
         },
         lang::Language::{
             self,
-            English,
+            *,
         },
         seed,
         series::*,
@@ -403,6 +403,13 @@ impl Goal {
             Self::Rsl => "Random settings league",
             Self::TournoiFrancoS3 => "Tournoi Francophone Saison 3",
             Self::TriforceBlitz => "Triforce Blitz",
+        }
+    }
+
+    fn language(&self) -> Language {
+        match self {
+            Self::TournoiFrancoS3 => French,
+            _ => English,
         }
     }
 
@@ -1443,13 +1450,19 @@ impl Handler {
                             ctx.send_message(&error_msg).await?;
                         }
                     },
-                    RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                    RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => match goal.language() {
+                        French => ctx.send_message(&format!("Désolé {reply_to}, mais il n'y a pas de draft, ou la phase de pick&ban est terminée.")).await?,
+                        _ => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                    },
                 }
             } else {
                 ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?;
             }
         } else {
-            ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
+            match goal.language() {
+                French => ctx.send_message(&format!("Désolé {reply_to}, mais la race a débuté.")).await?,
+                _ => ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?,
+            }
         }
         Ok(())
     }
@@ -1468,23 +1481,26 @@ impl Handler {
                 // don't want to give an unnecessarily exact estimate if the room was opened automatically 30 minutes ahead of start
                 let display_delay = if delay > Duration::from_secs(14 * 60) && delay < Duration::from_secs(16 * 60) { Duration::from_secs(15 * 60) } else { delay };
                 ctx.send_message(&format!("Your {description} will be posted in {}.", format_duration(display_delay, true))).await?;
-                let mut sleep = pin!(sleep_until(Instant::now() + delay).fuse());
+                let mut sleep = pin!(sleep_until(Instant::now() + delay));
                 loop {
                     select! {
                         () = &mut sleep => {
                             if let Some(update) = seed_state.take() {
                                 update.handle(&db_pool, &ctx, &state, id, article, &description).await?;
                             }
+                            while let Some(update) = updates.recv().await {
+                                update.handle(&db_pool, &ctx, &state, id, article, &description).await?;
+                            }
                         }
-                        Some(update) = updates.recv() => seed_state = Some(update),
+                        Some(update) = updates.recv() => seed_state = Some(update), //TODO if update is RollError::Retries, restart seed rolling?
                     }
                 }
             } else {
                 while let Some(update) = updates.recv().await {
                     update.handle(&db_pool, &ctx, &state, id, article, &description).await?;
                 }
-                return Ok::<_, Error>(())
             }
+            Ok::<_, Error>(())
         });
     }
 

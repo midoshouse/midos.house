@@ -844,8 +844,8 @@ impl Draft {
                         }),
                         StepKind::Done(_) => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Sorry, this settings draft is already completed."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
+                            MessageContext::Discord { .. } => format!("Désolé, ce draft est terminé."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, ce draft est terminé."),
                         }),
                     },
                     Action::Ban { .. } => unreachable!("normalized to Action::Pick above"),
@@ -993,8 +993,8 @@ impl Draft {
                         }),
                         StepKind::Done(_) => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Sorry, this settings draft is already completed."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
+                            MessageContext::Discord { .. } => format!("Désolé, ce draft est terminé."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, ce draft est terminé."),
                         }),
                     },
                     Action::Skip => match self.next_step(kind, &mut MessageContext::None).await?.kind {
@@ -1045,8 +1045,8 @@ impl Draft {
                         }),
                         StepKind::Done(_) => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Sorry, this settings draft is already completed."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
+                            MessageContext::Discord { .. } => format!("Désolé, ce draft est terminé."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, ce draft est terminé."),
                         }),
                     },
                     Action::BooleanChoice(value) => match self.next_step(kind, &mut MessageContext::None).await?.kind {
@@ -1065,8 +1065,8 @@ impl Draft {
                         }
                         StepKind::Done(_) => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Sorry, this settings draft is already completed."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
+                            MessageContext::Discord { .. } => format!("Désolé, ce draft est terminé."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, ce draft est terminé."),
                         }),
                         _ => Err(match msg_ctx {
                             MessageContext::None => String::default(),
