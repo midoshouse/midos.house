@@ -1214,7 +1214,7 @@ impl OotrApiClient {
         }
 
         let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
-        for _ in 0..3 {
+        for attempt in 0..3 {
             let next_seed = if is_mw {
                 let next_seed = lock!(self.next_mw_seed);
                 if let Some(duration) = next_seed.checked_duration_since(Instant::now()) {
@@ -1225,7 +1225,7 @@ impl OotrApiClient {
             } else {
                 None
             };
-            if !random_settings {
+            if attempt == 0 && !random_settings {
                 update_tx.send(SeedRollUpdate::Started).await?;
             }
             let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[
@@ -2372,7 +2372,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         }
                                     }
                                 };
-                                self.roll_seed(ctx, state, goal.rando_version(), mw::resolve_draft_settings(&settings), spoiler_log, "a", format!("seed with {}", mw::display_draft_picks(&settings)));
+                                self.roll_seed(ctx, state, goal.rando_version(), fr::resolve_draft_settings(&settings), spoiler_log, "a", format!("seed with {}", fr::display_draft_picks(&settings)));
                             }
                             Goal::TriforceBlitz => match args[..] {
                                 [] => self.roll_tfb_seed(ctx, state, spoiler_log, "a", format!("Triforce Blitz seed")).await,

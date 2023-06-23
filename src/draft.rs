@@ -367,7 +367,7 @@ impl Draft {
                             kind: StepKind::Done(fr::resolve_draft_settings(&self.settings)),
                             message: match msg_ctx {
                                 MessageContext::None => String::default(),
-                                MessageContext::Discord { .. } => format!("Settings draft completed. You will be playing with {}.", fr::display_draft_picks(&self.settings)),
+                                MessageContext::Discord { .. } => format!("Fin du draft ! Voici un récapitulatif : {}.", fr::display_draft_picks(&self.settings)),
                                 MessageContext::RaceTime { .. } => fr::display_draft_picks(&self.settings),
                             },
                         }),
@@ -383,15 +383,15 @@ impl Draft {
                                     let low_seed = low_seed.remove(0);
                                     MessageBuilder::default()
                                         .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                        .push(": should dungeon entrances be mixed with interiors and grottos? Use ")
+                                        .push(" : Est-ce que les donjons seront mixés avec les intérieurs et les grottos ? Répondez en utilisant ")
                                         .mention_command(command_ids.yes.unwrap(), "yes")
-                                        .push(" or ")
+                                        .push(" ou ")
                                         .mention_command(command_ids.no.unwrap(), "no")
                                         .push('.')
                                         .build()
                                 }
                                 MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => format!(
-                                    "{}, should dungeon entrances be mixed with interiors and grottos? Use !yes or !no",
+                                    "{}, est-ce que les donjons seront mixés avec les intérieurs et les grottos ? Répondez en utilisant !yes ou !no",
                                     team.choose(high_seed_name, low_seed_name),
                                 ),
                             },
@@ -437,7 +437,7 @@ impl Draft {
                                                 .build()
                                         }
                                         MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => format!(
-                                            "{}, Veuillez ban un setting en utilisant “!ban <setting>”.{}",
+                                            "{}, veuillez ban un setting en utilisant “!ban <setting>”.{}",
                                             team.choose(high_seed_name, low_seed_name),
                                             if prev_bans == 0 { " Use “!settings” for a list of available settings." } else { "" },
                                         ),
@@ -484,32 +484,32 @@ impl Draft {
                                             match n {
                                                 2 | 7 | 8 => MessageBuilder::default()
                                                     .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                    .push(": pick a setting using ")
+                                                    .push(" : Choisissez un setting en utilisant ")
                                                     .mention_command(command_ids.draft.unwrap(), "draft")
                                                     .push('.')
                                                     .build(),
                                                 3 | 5 => MessageBuilder::default()
                                                     .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                    .push(": pick a setting using ")
+                                                    .push(" : Choisissez un setting avec ")
                                                     .mention_command(command_ids.draft.unwrap(), "draft")
-                                                    .push(". You will have another pick after this.")
+                                                    .push(". Vous aurez un autre pick après celui-ci.")
                                                     .build(),
                                                 4 | 6 => MessageBuilder::default()
                                                     .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                    .push(": pick your second setting using ")
+                                                    .push(" : Choisissez votre second setting avec ")
                                                     .mention_command(command_ids.draft.unwrap(), "draft")
                                                     .push('.')
                                                     .build(),
                                                 9 => {
                                                     let mut builder = MessageBuilder::default();
                                                     builder.mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
-                                                    builder.push(": pick a setting using ");
+                                                    builder.push(" : Choisissez un setting avec ");
                                                     builder.mention_command(command_ids.draft.unwrap(), "draft");
                                                     builder.push('.');
                                                     if skippable {
-                                                        builder.push(". You can also use ");
+                                                        builder.push(". Vous pouvez également utiliser ");
                                                         builder.mention_command(command_ids.skip.unwrap(), "skip");
-                                                        builder.push(" if you want to leave the settings as they are.");
+                                                        builder.push(" si vous voulez laisser les settings comme ils sont.");
                                                     }
                                                     builder.build()
                                                 }
@@ -517,12 +517,12 @@ impl Draft {
                                             }
                                         }
                                         MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => match n {
-                                            2 => format!("{}, pick a setting using “!draft <setting> <value>”", team.choose(high_seed_name, low_seed_name)),
-                                            3 | 5 => format!("{}, pick two settings.", team.choose(high_seed_name, low_seed_name)),
-                                            4 | 6 => format!("And your second pick?"),
-                                            7 | 8 => format!("{}, pick a setting.", team.choose(high_seed_name, low_seed_name)),
-                                            9 if skippable => format!("{}, pick the final setting. You can also use “!skip” if you want to leave the settings as they are.", team.choose(high_seed_name, low_seed_name)),
-                                            9 => format!("{}, pick the final setting.", team.choose(high_seed_name, low_seed_name)),
+                                            2 => format!("{}, choisissez un setting avec “!draft <setting> <configuration>”. <configuration> signifie la valeur du setting. Par exemple pour tokensanity, la configuration peut être {{all, dungeon, overworld}}.", team.choose(high_seed_name, low_seed_name)),
+                                            3 | 5 => format!("{}, choisissez deux settings. Quel est votre premier ?", team.choose(high_seed_name, low_seed_name)),
+                                            4 | 6 => format!("Et votre second ?"),
+                                            7 | 8 => format!("{}, choisissez un setting.", team.choose(high_seed_name, low_seed_name)),
+                                            9 if skippable => format!("{}, choisissez le dernier setting. Vous pouvez également utiliser “!skip” si vous voulez laisser les settings comme ils sont.", team.choose(high_seed_name, low_seed_name)),
+                                            9 => format!("{}, choisissez votre dernier setting.", team.choose(high_seed_name, low_seed_name)),
                                             0..=1 | 10.. => unreachable!(),
                                         },
                                     },
@@ -867,7 +867,7 @@ impl Draft {
                                     MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
                                     MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
                                         .mention_team(transaction, Some(*guild_id), team).await?
-                                        .push(if team.name_is_plural() { " have locked in " } else { " has locked in " })
+                                        .push(" a bloqué ")
                                         .push(setting.default_display)
                                         .push('.')
                                         .build(),
