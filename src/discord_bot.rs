@@ -1834,7 +1834,7 @@ pub(crate) async fn create_scheduling_thread(ctx: &Context, transaction: &mut Tr
             CreateMessage::new().content(content),
         ).auto_archive_duration(AutoArchiveDuration::OneWeek)).await?.id
     } else {
-        let thread = scheduling_channel.create_standalone_thread(ctx, CreateThread::new(
+        let thread = scheduling_channel.create_thread(ctx, CreateThread::new(
             title,
         ).kind(ChannelType::PublicThread).auto_archive_duration(AutoArchiveDuration::OneWeek)).await?;
         thread.say(ctx, content).await?;

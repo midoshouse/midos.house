@@ -431,13 +431,13 @@ impl Draft {
                                             let low_seed = low_seed.remove(0);
                                             MessageBuilder::default()
                                                 .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                .push(": lock a setting to its default using ")
+                                                .push(" : Veuillez ban un setting en utilisant ")
                                                 .mention_command(command_ids.ban.unwrap(), "ban")
                                                 .push('.')
                                                 .build()
                                         }
                                         MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => format!(
-                                            "{}, lock a setting to its default using “!ban <setting>”.{}",
+                                            "{}, Veuillez ban un setting en utilisant “!ban <setting>”.{}",
                                             team.choose(high_seed_name, low_seed_name),
                                             if prev_bans == 0 { " Use “!settings” for a list of available settings." } else { "" },
                                         ),
@@ -820,10 +820,9 @@ impl Draft {
                                 MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
                                 MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
                                     .mention_team(transaction, Some(*guild_id), team).await?
-                                    .push(if team.name_is_plural() { " have" } else { " has" })
-                                    .push(" chosen to go ")
-                                    .push(if first { "first" } else { "second" })
-                                    .push(" in the settings draft.")
+                                    .push(" a choisi de partir ")
+                                    .push(if first { "premier" } else { "second" })
+                                    .push(" pour le draft.")
                                     .build(),
                             })
                         }

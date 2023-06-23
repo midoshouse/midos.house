@@ -20,6 +20,7 @@ use {
     },
     async_trait::async_trait,
     chrono::prelude::*,
+    collect_mac::collect,
     enum_iterator::{
         Sequence,
         all,
@@ -356,6 +357,7 @@ pub(crate) enum Goal {
     NineDaysOfSaws,
     PicRs2,
     Rsl,
+    TournoiFrancoS3,
     TriforceBlitz,
 }
 
@@ -375,6 +377,7 @@ impl Goal {
             Self::NineDaysOfSaws => series == Series::NineDaysOfSaws,
             Self::PicRs2 => series == Series::Pictionary && event == "rs2",
             Self::Rsl => series == Series::Rsl,
+            Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
             Self::TriforceBlitz => series == Series::TriforceBlitz,
         }
     }
@@ -386,6 +389,7 @@ impl Goal {
             Self::NineDaysOfSaws => true,
             Self::PicRs2 => true,
             Self::Rsl => false,
+            Self::TournoiFrancoS3 => true,
             Self::TriforceBlitz => false,
         }
     }
@@ -397,6 +401,7 @@ impl Goal {
             Self::NineDaysOfSaws => "9 Days of SAWS",
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
             Self::Rsl => "Random settings league",
+            Self::TournoiFrancoS3 => "Tournoi Francophone Saison 3",
             Self::TriforceBlitz => "Triforce Blitz",
         }
     }
@@ -404,6 +409,7 @@ impl Goal {
     fn draft_kind(&self) -> Option<draft::Kind> {
         match self {
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
+            Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
             Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::PicRs2 | Self::Rsl | Self::TriforceBlitz => None,
         }
     }
@@ -413,6 +419,7 @@ impl Goal {
             Self::MixedPoolsS2 => rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17),
             Self::MultiworldS3 => rando::Version::from_dev(6, 2, 205),
             Self::NineDaysOfSaws => rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2),
+            Self::TournoiFrancoS3 => rando::Version::from_branch(rando::Branch::DevR, 7, 1, 83, 1),
             Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
             Self::TriforceBlitz => panic!("seeds for this goal must be rolled manually on the Triforce Blitz website"),
         }
@@ -421,7 +428,7 @@ impl Goal {
     fn should_create_rooms(&self) -> bool {
         match self {
             Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::Rsl => false,
-            Self::MultiworldS3 | Self::PicRs2 | Self::TriforceBlitz => true,
+            Self::MultiworldS3 | Self::PicRs2 | Self::TournoiFrancoS3 | Self::TriforceBlitz => true,
         }
     }
 
@@ -461,6 +468,14 @@ impl Goal {
                     rsl::Preset::S6Test => "test settings for RSL season 6",
                 })).await?;
             },
+            Self::TournoiFrancoS3 => {
+                ctx.send_message("!seed base: The default settings.").await?;
+                ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
+                ctx.send_message("!seed draft: Pick the settings here in the chat. I don't enforce that the two teams have to be represented by different people.").await?;
+                ctx.send_message("!seed (<setting> <value>)... (e.g. !seed trials random bridge ad): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
+                ctx.send_message("Use “!seed random advanced” or “!seed draft advanced” to allow advanced settings.").await?;
+                ctx.send_message("Enable Master Quest using e.g. “!seed base 6mq” or “!seed draft advanced 12mq”").await?;
+            }
             Self::TriforceBlitz => {
                 ctx.send_message("!seed: official Triforce Blitz settings").await?;
                 ctx.send_message("!seed daily: Triforce Blitz Seed of the Day").await?;
@@ -1416,7 +1431,7 @@ impl Handler {
                 match *state {
                     RaceState::Init => match draft_kind {
                         draft::Kind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        draft::Kind::TournoiFrancoS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one. For more info about these options, use !presets")).await?, //TODO French translation
+                        draft::Kind::TournoiFrancoS3 => ctx.send_message(&format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
                     },
                     RaceState::Draft { state: ref mut draft, .. } => match draft.apply(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }, action).await.to_racetime()? {
                         Ok(_) => {
@@ -1713,6 +1728,10 @@ impl RaceHandler<GlobalState> for Handler {
                             ctx.send_message("Welcome to the OoTR Random Settings League! Create a seed with !seed <preset>").await?;
                             ctx.send_message("If no preset is selected, default RSL settings will be used. For a list of presets, use !presets").await?;
                         }
+                        Goal::TournoiFrancoS3 => {
+                            ctx.send_message("Welcome! This is a practice room for the tournoi francophone saison 3. Learn more about the tournament at https://midos.house/event/fr/3").await?;
+                            ctx.send_message("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials random bridge ad). For more info about these options, use !presets").await?;
+                        }
                         Goal::TriforceBlitz => {
                             ctx.send_message("Welcome to Triforce Blitz!").await?;
                             ctx.send_message("Create a seed with “!seed” or link the seed of the day with “!seed daily”").await?;
@@ -1786,14 +1805,13 @@ impl RaceHandler<GlobalState> for Handler {
             } else {
                 match *state {
                     RaceState::Init => match goal {
-                        Goal::MixedPoolsS2 => unreachable!("no official race rooms"),
-                        Goal::MultiworldS3 => unreachable!("should have draft state set"),
+                        Goal::MixedPoolsS2 | Goal::Rsl => unreachable!("no official race rooms"),
+                        Goal::MultiworldS3 | Goal::TournoiFrancoS3 => unreachable!("should have draft state set"),
                         Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
                         Goal::PicRs2 => this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
                             version: Some((Version::new(2, 3, 8), 10)),
                             preset: RslDevFenhlPreset::Pictionary,
                         }, 1, true, "a", format!("random settings Pictionary seed")),
-                        Goal::Rsl => unreachable!("no official race rooms"),
                         Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, false, "a", format!("Triforce Blitz seed")).await,
                     },
                     RaceState::Draft { .. } => {
@@ -1807,7 +1825,7 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(this)
     }
 
-    async fn command(&mut self, ctx: &RaceContext<GlobalState>, cmd_name: String, args: Vec<String>, _is_moderator: bool, is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
+    async fn command(&mut self, ctx: &RaceContext<GlobalState>, cmd_name: String, mut args: Vec<String>, _is_moderator: bool, is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
         let goal = self.goal(ctx).await;
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match &*cmd_name.to_ascii_lowercase() {
@@ -2270,6 +2288,92 @@ impl RaceHandler<GlobalState> for Handler {
                                 };
                                 self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, spoiler_log, article, description);
                             }
+                            Goal::TournoiFrancoS3 => {
+                                let mut mq_dungeons_count = None::<u8>;
+                                let mut hard_settings_ok = false;
+                                args.retain(|arg| if arg == "advanced" && !hard_settings_ok {
+                                    hard_settings_ok = true;
+                                    false
+                                } else if let (None, Some(mq)) = (mq_dungeons_count, regex_captures!("^([0-9]+)mq$"i, arg).and_then(|(_, mq)| mq.parse().ok())) {
+                                    mq_dungeons_count = Some(mq);
+                                    false
+                                } else {
+                                    true
+                                });
+                                let settings = match args[..] {
+                                    [] => {
+                                        ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
+                                        goal.send_presets(ctx).await?;
+                                        return Ok(())
+                                    }
+                                    [ref arg] if arg == "base" => HashMap::default(),
+                                    [ref arg] if arg == "random" => Draft {
+                                        high_seed: Id(0), // Draft::complete_randomly doesn't check for active team
+                                        went_first: None,
+                                        skipped_bans: 0,
+                                        settings: collect![as HashMap<_, _>:
+                                            Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
+                                            Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_dungeons_count.is_some() { "ok" } else { "no" }),
+                                            Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
+                                        ],
+                                    }.complete_randomly(draft::Kind::TournoiFrancoS3).await.to_racetime()?,
+                                    [ref arg] if arg == "draft" => {
+                                        *state = RaceState::Draft {
+                                            state: Draft {
+                                                high_seed: Id(0), // racetime.gg bot doesn't check for active team
+                                                went_first: None,
+                                                skipped_bans: 0,
+                                                settings: collect![as HashMap<_, _>:
+                                                    Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
+                                                    Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_dungeons_count.is_some() { "ok" } else { "no" }),
+                                                    Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
+                                                ],
+                                            },
+                                            spoiler_log,
+                                        };
+                                        drop(state);
+                                        self.advance_draft(ctx).await?;
+                                        return Ok(())
+                                    }
+                                    [ref arg] if fr::S3_SETTINGS.into_iter().any(|fr::S3Setting { name, .. }| name == arg) => {
+                                        drop(state);
+                                        self.send_settings(ctx, &format!("Sorry {reply_to}, you need to pair each setting with a value."), reply_to).await?;
+                                        return Ok(())
+                                    }
+                                    [_] => {
+                                        ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                        goal.send_presets(ctx).await?;
+                                        return Ok(())
+                                    }
+                                    ref args => {
+                                        let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
+                                        let mut settings = HashMap::default();
+                                        let mut tuples = args.into_iter().tuples();
+                                        for (setting, value) in &mut tuples {
+                                            if let Some(fr::S3Setting { default, other, .. }) = fr::S3_SETTINGS.into_iter().find(|fr::S3Setting { name, .. }| **name == setting) {
+                                                if value == default || other.iter().any(|(other, _, _)| value == **other) {
+                                                    settings.insert(Cow::Owned(setting), Cow::Owned(value));
+                                                } else {
+                                                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value for the {setting} setting. Use {}", iter::once(default).chain(other.iter().map(|&(other, _, _)| other)).join(" or "))).await?;
+                                                    return Ok(())
+                                                }
+                                            } else {
+                                                drop(state);
+                                                self.send_settings(ctx, &format!("Sorry {reply_to}, I don't recognize one of those settings. Use one of the following:"), reply_to).await?;
+                                                return Ok(())
+                                            }
+                                        }
+                                        if tuples.into_buffer().next().is_some() {
+                                            drop(state);
+                                            self.send_settings(ctx, &format!("Sorry {reply_to}, you need to pair each setting with a value."), reply_to).await?;
+                                            return Ok(())
+                                        } else {
+                                            settings
+                                        }
+                                    }
+                                };
+                                self.roll_seed(ctx, state, goal.rando_version(), mw::resolve_draft_settings(&settings), spoiler_log, "a", format!("seed with {}", mw::display_draft_picks(&settings)));
+                            }
                             Goal::TriforceBlitz => match args[..] {
                                 [] => self.roll_tfb_seed(ctx, state, spoiler_log, "a", format!("Triforce Blitz seed")).await,
                                 [ref arg] if arg == "daily" => {
@@ -2414,7 +2518,7 @@ impl RaceHandler<GlobalState> for Handler {
                             })
                         });
                     }
-                    Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::NineDaysOfSaws | Goal::Rsl => {}
+                    Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::NineDaysOfSaws | Goal::Rsl | Goal::TournoiFrancoS3 => {}
                 }
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx).await? {
