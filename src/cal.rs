@@ -865,6 +865,15 @@ impl Race {
         })
     }
 
+    pub(crate) async fn player_video_urls(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<(User, Url)>, Error> {
+        let rows = sqlx::query!(r#"SELECT player AS "player: Id", video FROM race_player_videos WHERE race = $1"#, self.id as _).fetch_all(&mut *transaction).await?;
+        let mut tuples = Vec::with_capacity(rows.len());
+        for row in rows {
+            tuples.push((User::from_id(&mut *transaction, row.player).await?.expect("foreign key constraint violated"), row.video.parse()?));
+        }
+        Ok(tuples)
+    }
+
     pub(crate) fn has_room_for(&self, team: &Team) -> bool {
         match &self.schedule {
             RaceSchedule::Unscheduled => false,

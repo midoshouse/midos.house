@@ -828,19 +828,19 @@ impl Draft {
                         }
                         StepKind::Ban { .. } | StepKind::Pick { .. } => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Sorry, first pick has already been chosen."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, first pick has already been chosen."),
+                            MessageContext::Discord { .. } => format!("Désolé, le premier pick a déjà été sélectionné."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, le premier pick a déjà été sélectionné."),
                         }),
                         StepKind::BooleanChoice { .. } => Err(match msg_ctx {
                             MessageContext::None => String::default(),
                             MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
-                                .push("Sorry, before the settings draft can continue, you first have to choose whether dungeons entrances should be mixed. Use ")
+                                .push("Désolé, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez ")
                                 .mention_command(command_ids.yes.unwrap(), "yes")
-                                .push(" or ")
+                                .push(" ou ")
                                 .mention_command(command_ids.no.unwrap(), "no")
                                 .push('.')
                                 .build(),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, before the settings draft can continue, you first have to choose whether dungeons entrances should be mixed. Use !yes or !no"),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez !yes ou !no"),
                         }),
                         StepKind::Done(_) => Err(match msg_ctx {
                             MessageContext::None => String::default(),
@@ -983,13 +983,13 @@ impl Draft {
                         StepKind::BooleanChoice { .. } => Err(match msg_ctx {
                             MessageContext::None => String::default(),
                             MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
-                                .push("Sorry, before the settings draft can continue, you first have to choose whether dungeons entrances should be mixed. Use ")
+                                .push("Désolé, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez ")
                                 .mention_command(command_ids.yes.unwrap(), "yes")
-                                .push(" or ")
+                                .push(" ou ")
                                 .mention_command(command_ids.no.unwrap(), "no")
                                 .push('.')
                                 .build(),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, before the settings draft can continue, you first have to choose whether dungeons entrances should be mixed. Use !yes or !no"),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez !yes ou !no"),
                         }),
                         StepKind::Done(_) => Err(match msg_ctx {
                             MessageContext::None => String::default(),
@@ -1035,13 +1035,13 @@ impl Draft {
                         StepKind::BooleanChoice { .. } => Err(match msg_ctx {
                             MessageContext::None => String::default(),
                             MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
-                                .push("Sorry, before the settings draft can continue, you first have to choose whether dungeons entrances should be mixed. Use ")
+                                .push("Désolé, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez ")
                                 .mention_command(command_ids.yes.unwrap(), "yes")
-                                .push(" or ")
+                                .push(" ou ")
                                 .mention_command(command_ids.no.unwrap(), "no")
                                 .push('.')
                                 .build(),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, before the settings draft can continue, you first have to choose whether dungeons entrances should be mixed. Use !yes or !no"),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez !yes ou !no"),
                         }),
                         StepKind::Done(_) => Err(match msg_ctx {
                             MessageContext::None => String::default(),
@@ -1070,8 +1070,8 @@ impl Draft {
                         }),
                         _ => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Sorry, the current step is not a yes/no question."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, the current step is not a yes/no question."),
+                            MessageContext::Discord { .. } => format!("Désolé, vous n'avez pas à répondre oui ou non."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, vous n'avez pas à répondre oui ou non."),
                         }),
                     },
                 }

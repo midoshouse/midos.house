@@ -1171,6 +1171,9 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
                                             a(class = "favicon", href = multistream_url.to_string()) : favicon(&multistream_url);
                                         }
                                     }
+                                    @for (_, video_url) in race.player_video_urls(&mut *transaction).await? {
+                                        a(class = "favicon", href = video_url.to_string()) : favicon(&video_url);
+                                    }
                                     @if let Some(startgg_url) = race.startgg_set_url()? {
                                         a(class = "favicon", href = startgg_url.to_string()) : favicon(&startgg_url);
                                     }

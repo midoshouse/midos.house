@@ -228,8 +228,8 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
 async fn check_draft_permissions<'a>(ctx: &'a Context, interaction: &impl GenericInteraction) -> Result<Option<(event::Data<'static>, Race, draft::Kind, draft::MessageContext<'a>)>, Box<dyn std::error::Error + Send + Sync>> {
     let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? else { return Ok(None) };
     let guild_id = interaction.guild_id().expect("Received interaction from outside of a guild");
+    let event = race.event(&mut transaction).await?;
     Ok(if let Some(team) = team {
-        let event = race.event(&mut transaction).await?;
         if let Some(draft_kind) = event.draft_kind() {
             if let Some(ref draft) = race.draft {
                 if draft.is_active_team(draft_kind, team.id).await? {
@@ -240,9 +240,14 @@ async fn check_draft_permissions<'a>(ctx: &'a Context, interaction: &impl Generi
                     };
                     Some((event, race, draft_kind, msg_ctx))
                 } else {
+                    let response_content = if let French = event.language {
+                        format!("Désolé, mais ce n'est pas votre tour.")
+                    } else {
+                        format!("Sorry, it's not {} turn in the settings draft.", if let TeamConfig::Solo = event.team_config() { "your" } else { "your team's" })
+                    };
                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                         .ephemeral(true)
-                        .content(format!("Sorry, it's not {} turn in the settings draft.", if let TeamConfig::Solo = event.team_config() { "your" } else { "your team's" }))
+                        .content(response_content)
                     )).await?;
                     transaction.rollback().await?;
                     None
@@ -264,9 +269,14 @@ async fn check_draft_permissions<'a>(ctx: &'a Context, interaction: &impl Generi
             None
         }
     } else {
+        let response_content = if let French = event.language {
+            "Désolé, seuls les participants de la race peuvent utiliser cette commande."
+        } else {
+            "Sorry, only participants in this race can use this command."
+        };
         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
             .ephemeral(true)
-            .content("Sorry, only participants in this race can use this command.")
+            .content(response_content)
         )).await?;
         transaction.rollback().await?;
         None
@@ -1054,7 +1064,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         } else {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
-                                                .content("Sorry, please specify the number of MQ dungeons.")
+                                                .content("Désolé, veuillez entrer le nombre de donjons MQ d'abord.")
                                             )).await?;
                                             transaction.rollback().await?;
                                             return Ok(())
@@ -1068,7 +1078,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             //TODO different error messages depending on which player(s) didn't opt into MQ
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
-                                                .content("Sorry, either you or your opponent didn't opt into MQ dungeons.")
+                                                .content("Désolé, mais l'un d'entre vous n'a pas choisi les donjons MQ.")
                                             )).await?;
                                             return Ok(())
                                         }
@@ -1401,7 +1411,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         } else {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
-                                                .content("Sorry, please specify the number of MQ dungeons.")
+                                                .content("Désolé, veuillez entrer le nombre de donjons MQ d'abord.")
                                             )).await?;
                                             transaction.rollback().await?;
                                             return Ok(())
@@ -1415,7 +1425,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             //TODO different error messages depending on which player(s) didn't opt into MQ
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
-                                                .content("Sorry, either you or your opponent didn't opt into MQ dungeons.")
+                                                .content("Désolé, mais l'un d'entre vous n'a pas choisi les donjons MQ.")
                                             )).await?;
                                             return Ok(())
                                         }
