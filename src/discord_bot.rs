@@ -71,7 +71,6 @@ use {
             Id,
             IdTable,
             MessageBuilderExt as _,
-            format_duration,
             sync::{
                 Mutex,
                 lock,
@@ -1199,9 +1198,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
                                                 .content(if event.min_schedule_notice <= UDuration::default() {
-                                                    format!("Sorry, that timestamp is in the past.")
+                                                    if let French = event.language {
+                                                        format!("Désolé mais cette date est dans le passé.")
+                                                    } else {
+                                                        format!("Sorry, that timestamp is in the past.")
+                                                    }
                                                 } else {
-                                                    format!("Sorry, races must be scheduled at least {} in advance.", format_duration(event.min_schedule_notice, true))
+                                                    if let French = event.language {
+                                                        format!("Désolé, les races doivent être planifiées au moins {} en avance.", French.format_duration(event.min_schedule_notice, true))
+                                                    } else {
+                                                        format!("Sorry, races must be scheduled at least {} in advance.", English.format_duration(event.min_schedule_notice, true))
+                                                    }
                                                 })
                                             )).await?;
                                             transaction.rollback().await?;
@@ -1271,10 +1278,18 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
-                                                .content(if event.min_schedule_notice == UDuration::default() {
-                                                    format!("Sorry, that timestamp is in the past.")
+                                                .content(if event.min_schedule_notice <= UDuration::default() {
+                                                    if let French = event.language {
+                                                        format!("Désolé mais cette date est dans le passé.")
+                                                    } else {
+                                                        format!("Sorry, that timestamp is in the past.")
+                                                    }
                                                 } else {
-                                                    format!("Sorry, races must be scheduled at least {} in advance.", format_duration(event.min_schedule_notice, true))
+                                                    if let French = event.language {
+                                                        format!("Désolé, les races doivent être planifiées au moins {} en avance.", French.format_duration(event.min_schedule_notice, true))
+                                                    } else {
+                                                        format!("Sorry, races must be scheduled at least {} in advance.", English.format_duration(event.min_schedule_notice, true))
+                                                    }
                                                 })
                                             )).await?;
                                             transaction.rollback().await?;

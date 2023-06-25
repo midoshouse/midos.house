@@ -126,7 +126,6 @@ use {
             favicon,
             form_field,
             format_datetime,
-            format_duration,
             full_form,
             parse_duration,
         },
@@ -963,7 +962,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, env: &State<Environment>, me: Op
                                         br;
                                         small {
                                             @if let Some(time) = members.iter().try_fold(Duration::default(), |acc, &(_, _, _, time, _)| Some(acc + time?)) {
-                                                : format_duration(time / u32::try_from(members.len()).expect("too many team members"), false);
+                                                : English.format_duration(time / u32::try_from(members.len()).expect("too many team members"), false);
                                             } else {
                                                 : "DNF";
                                             }
@@ -1005,7 +1004,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, env: &State<Environment>, me: Op
                                     @if show_qualifier_times && qualified {
                                         br;
                                         small {
-                                            @let time = if let Some(time) = qualifier_time { format_duration(*time, false) } else { format!("DNF") }; //TODO include number of pieces found in Triforce Blitz
+                                            @let time = if let Some(time) = qualifier_time { English.format_duration(*time, false) } else { format!("DNF") }; //TODO include number of pieces found in Triforce Blitz
                                             @if let Some(vod) = qualifier_vod {
                                                 @if let Some(Ok(vod_url)) = (!vod.contains(' ')).then(|| Url::parse(vod)) {
                                                     a(href = vod_url.to_string()) : time;
@@ -1928,7 +1927,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
                     message.mention_team(&mut transaction, Some(discord_guild), &team).await?;
                     if let Some(sum) = times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
                         message.push(" who finished with a time of ");
-                        message.push(format_duration(sum / u32::try_from(times.len()).expect("too many players in team"), true));
+                        message.push(English.format_duration(sum / u32::try_from(times.len()).expect("too many players in team"), true));
                         message.push_line('!');
                     } else {
                         message.push_line(" who did not finish.");
@@ -1943,7 +1942,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
                             }
                             message.push(": ");
                             if let Some(time) = *time {
-                                message.push(format_duration(time, false));
+                                message.push(English.format_duration(time, false));
                             } else {
                                 message.push("DNF");
                             }

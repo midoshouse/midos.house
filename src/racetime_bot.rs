@@ -154,7 +154,6 @@ use {
             DurationUnit,
             Id,
             MessageBuilderExt as _,
-            format_duration,
             io_error_from_reqwest,
             parse_duration,
             sync::{
@@ -981,7 +980,7 @@ impl SeedRollUpdate {
             Self::MovedForward(0) => ctx.send_message("The queue has moved and your seed is now at the front so it will be rolled next.").await?,
             Self::MovedForward(1) => ctx.send_message("The queue has moved and there is only 1 more seed in front of yours.").await?,
             Self::MovedForward(pos) => ctx.send_message(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
-            Self::WaitRateLimit(duration) => ctx.send_message(&format!("Your seed will be rolled in {}.", format_duration(duration, true))).await?,
+            Self::WaitRateLimit(duration) => ctx.send_message(&format!("Your seed will be rolled in {}.", English.format_duration(duration, true))).await?,
             Self::Started => ctx.send_message(&format!("Rolling {article} {description}…")).await?,
             Self::Done { mut seed, rsl_preset, send_spoiler_log } => {
                 if let seed::Files::MidosHouse { ref file_stem, ref mut locked_spoiler_log_path } = seed.files {
@@ -1063,7 +1062,7 @@ impl SeedRollUpdate {
                         if let Some(unlock_date) = date.succ_opt().and_then(|next| next.succ_opt()) {
                             let unlock_time = Utc.from_utc_datetime(&unlock_date.and_hms_opt(20, 0, 0).expect("failed to construct naive datetime at 20:00:00"));
                             let unlock_time = (unlock_time - Utc::now()).to_std().expect("unlock time for current daily seed in the past");
-                            ctx.send_message(&format!("The spoiler log will be available on the seed page {}.", format_duration(unlock_time, true))).await?;
+                            ctx.send_message(&format!("The spoiler log will be available on the seed page in {}.", English.format_duration(unlock_time, true))).await?;
                         } else {
                             unimplemented!("distant future Triforce Blitz SotD")
                         }
@@ -1308,7 +1307,7 @@ impl FromStr for Breaks {
 
 impl fmt::Display for Breaks {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} every {}", format_duration(self.duration, true), format_duration(self.interval, true))
+        write!(f, "{} every {}", English.format_duration(self.duration, true), English.format_duration(self.interval, true))
     }
 }
 
@@ -1480,7 +1479,7 @@ impl Handler {
             if let Some(delay) = official_start.and_then(|start| (start - chrono::Duration::minutes(15) - Utc::now()).to_std().ok()) {
                 // don't want to give an unnecessarily exact estimate if the room was opened automatically 30 minutes ahead of start
                 let display_delay = if delay > Duration::from_secs(14 * 60) && delay < Duration::from_secs(16 * 60) { Duration::from_secs(15 * 60) } else { delay };
-                ctx.send_message(&format!("Your {description} will be posted in {}.", format_duration(display_delay, true))).await?;
+                ctx.send_message(&format!("Your {description} will be posted in {}.", English.format_duration(display_delay, true))).await?;
                 let mut sleep = pin!(sleep_until(Instant::now() + delay));
                 loop {
                     select! {
@@ -2481,7 +2480,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     sleep(Duration::from_secs(5 * 60)),
                                 );
                                 if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
-                                let msg = format!("@entrants Break time! Please pause for {}.", format_duration(breaks.duration, true));
+                                let msg = format!("@entrants Break time! Please pause for {}.", English.format_duration(breaks.duration, true));
                                 let (_, ()) = tokio::join!(
                                     ctx.send_message(&msg),
                                     sleep(breaks.duration),
@@ -2578,7 +2577,7 @@ impl RaceHandler<GlobalState> for Handler {
                                             builder.mention_user(&entrant2);
                                             if let Some(finish_time) = winning_time {
                                                 builder.push(" tie their race with a time of ");
-                                                builder.push(format_duration(finish_time, true));
+                                                builder.push(English.format_duration(finish_time, true));
                                             } else {
                                                 builder.push(" both did not finish");
                                             }
@@ -2601,11 +2600,11 @@ impl RaceHandler<GlobalState> for Handler {
                                             results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg
                                                 .mention_user(&winner)
                                                 .push(" (")
-                                                .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(format_duration(time, false))))
+                                                .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
                                                 .push(") defeats ")
                                                 .mention_user(&loser)
                                                 .push(" (")
-                                                .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(format_duration(time, false))))
+                                                .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
                                                 .push(") <https://")
                                                 .push(ctx.global_state.host)
                                                 .push(&ctx.data().await.url)
@@ -2641,7 +2640,7 @@ impl RaceHandler<GlobalState> for Handler {
                                             builder.mention_team(&mut transaction, event.discord_guild, &team2).await.to_racetime()?;
                                             if let Some(finish_time) = winning_time {
                                                 builder.push(" tie their race with a time of ");
-                                                builder.push(format_duration(finish_time, true));
+                                                builder.push(English.format_duration(finish_time, true));
                                             } else {
                                                 builder.push(" both did not finish");
                                             }
@@ -2664,11 +2663,11 @@ impl RaceHandler<GlobalState> for Handler {
                                             results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg
                                                 .mention_team(&mut transaction, event.discord_guild, &winner).await.to_racetime()?
                                                 .push(" (")
-                                                .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(format_duration(time, false))))
+                                                .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
                                                 .push(if winner.name_is_plural() { ") defeat " } else { ") defeats " })
                                                 .mention_team(&mut transaction, event.discord_guild, &loser).await.to_racetime()?
                                                 .push(" (")
-                                                .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(format_duration(time, false))))
+                                                .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
                                                 .push(") <https://")
                                                 .push(ctx.global_state.host)
                                                 .push(&ctx.data().await.url)
@@ -2944,7 +2943,7 @@ async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRa
                 } else {
                     wait_time *= 2; // exponential backoff
                 }
-                eprintln!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", format_duration(wait_time, true));
+                eprintln!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
                 //TODO notify if wait_time >= Duration::from_secs(2)
                 sleep(wait_time).await;
                 last_crash = Instant::now();

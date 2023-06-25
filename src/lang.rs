@@ -4,6 +4,7 @@ use {
     std::{
         fmt,
         iter,
+        time::Duration,
     },
     enum_iterator::Sequence,
     itertools::Itertools as _,
@@ -38,6 +39,31 @@ impl Language {
             English => "en",
             French => "fr",
             Portuguese => "pt",
+        }
+    }
+
+    pub(crate) fn format_duration(&self, duration: Duration, running_text: bool) -> String {
+        let secs = duration.as_secs();
+        let hours = secs / 3600;
+        let mins = (secs % 3600) / 60;
+        let secs = secs % 60;
+        if running_text {
+            match self {
+                French => {
+                    let parts = (hours > 0).then(|| format!("{hours} heure{}", if hours == 1 { "" } else { "s" })).into_iter()
+                        .chain((mins > 0).then(|| format!("{mins} minute{}", if mins == 1 { "" } else { "s" })))
+                        .chain((secs > 0).then(|| format!("{secs} seconde{}", if secs == 1 { "" } else { "s" })));
+                    French.join_str(parts).unwrap_or_else(|| format!("0 secondes"))
+                }
+                _ => {
+                    let parts = (hours > 0).then(|| format!("{hours} hour{}", if hours == 1 { "" } else { "s" })).into_iter()
+                        .chain((mins > 0).then(|| format!("{mins} minute{}", if mins == 1 { "" } else { "s" })))
+                        .chain((secs > 0).then(|| format!("{secs} second{}", if secs == 1 { "" } else { "s" })));
+                    English.join_str(parts).unwrap_or_else(|| format!("0 seconds"))
+                }
+            }
+        } else {
+            format!("{hours}:{mins:02}:{secs:02}")
         }
     }
 
