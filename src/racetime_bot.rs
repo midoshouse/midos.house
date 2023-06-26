@@ -252,6 +252,21 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
     Err(ParseUserError::Format)
 }
 
+#[derive(Clone)]
+pub(crate) enum VersionedBranch {
+    Pinned(rando::Version),
+    Latest(rando::Branch),
+}
+
+impl VersionedBranch {
+    fn branch(&self) -> rando::Branch {
+        match self {
+            Self::Pinned(version) => version.branch(),
+            Self::Latest(branch) => *branch,
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) enum RslDevFenhlPreset {
     #[default]
@@ -420,14 +435,14 @@ impl Goal {
         }
     }
 
-    fn rando_version(&self) -> rando::Version {
+    fn rando_version(&self) -> VersionedBranch {
         match self {
-            Self::MixedPoolsS2 => rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17),
-            Self::MultiworldS3 => rando::Version::from_dev(6, 2, 205),
-            Self::NineDaysOfSaws => rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2),
-            Self::TournoiFrancoS3 => rando::Version::from_branch(rando::Branch::DevR, 7, 1, 83, 1),
+            Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
+            Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
+            Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
+            Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 83, 1)),
+            Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
             Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
-            Self::TriforceBlitz => panic!("seeds for this goal must be rolled manually on the Triforce Blitz website"),
         }
     }
 
@@ -483,7 +498,8 @@ impl Goal {
                 ctx.send_message("Enable Master Quest using e.g. “!seed base 6mq” or “!seed draft advanced 12mq”").await?;
             }
             Self::TriforceBlitz => {
-                ctx.send_message("!seed: official Triforce Blitz settings").await?;
+                ctx.send_message("!seed jr: Jabu's Revenge").await?;
+                ctx.send_message("!seed s2: Triforce Blitz season 2 settings").await?;
                 ctx.send_message("!seed daily: Triforce Blitz Seed of the Day").await?;
             }
         }
@@ -537,18 +553,18 @@ impl GlobalState {
         }
     }
 
-    pub(crate) fn roll_seed(self: Arc<Self>, version: rando::Version, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_seed(self: Arc<Self>, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
-            let can_roll_on_web = match self.ootr_api_client.can_roll_on_web(None, &version, world_count).await {
-                Ok(can_roll_on_web) => can_roll_on_web,
+            let web_version = match self.ootr_api_client.can_roll_on_web(None, &version, world_count).await {
+                Ok(web_version) => web_version,
                 Err(e) => {
                     update_tx.send(SeedRollUpdate::Error(e)).await?;
                     return Ok(())
                 }
             };
-            let mw_permit = if can_roll_on_web && world_count > 1 {
+            let mw_permit = if web_version.is_some() && world_count > 1 {
                 Some(match self.ootr_api_client.mw_seed_rollers.try_acquire() {
                     Ok(permit) => permit,
                     Err(TryAcquireError::Closed) => unreachable!(),
@@ -578,8 +594,8 @@ impl GlobalState {
             } else {
                 None
             };
-            if can_roll_on_web {
-                match self.ootr_api_client.roll_seed_web(update_tx.clone(), version, false, spoiler_log, settings).await {
+            if let Some(web_version) = web_version {
+                match self.ootr_api_client.roll_seed_web(update_tx.clone(), version.branch(), web_version, false, spoiler_log, settings).await {
                     Ok((id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
                             file_hash: Some(file_hash),
@@ -594,7 +610,7 @@ impl GlobalState {
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
                 drop(mw_permit);
-            } else {
+            } else if let VersionedBranch::Pinned(version) = version {
                 update_tx.send(SeedRollUpdate::Started).await?;
                 match roll_seed_locally(version, settings).await {
                     Ok((patch_filename, spoiler_log_path)) => update_tx.send(match spoiler_log_path.into_os_string().into_string() {
@@ -616,6 +632,8 @@ impl GlobalState {
                     }).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
+            } else {
+                update_tx.send(SeedRollUpdate::Error(RollError::LatestLocal)).await?; //TODO resolve latest version of this branch, roll locally
             }
             Ok::<_, mpsc::error::SendError<_>>(())
         });
@@ -641,13 +659,13 @@ impl GlobalState {
             let version = loop {
                 let line = lines.next_line().await.at(&local_version_path)?.ok_or(RollError::RslVersion)?;
                 if let Some((_, local_version)) = regex_captures!("^randomizer_version = '(.+)'$", &line) {
-                    break local_version.parse()?
+                    break local_version.parse::<rando::Version>()?
                 }
             };
-            let can_roll_on_web = self.ootr_api_client.can_roll_on_web(Some(&preset), &version, world_count).await?;
+            let web_version = self.ootr_api_client.can_roll_on_web(Some(&preset), &VersionedBranch::Pinned(version.clone()), world_count).await?;
             // run the RSL script
             let _ = update_tx.send(SeedRollUpdate::Started).await;
-            let outer_tries = if can_roll_on_web { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script
+            let outer_tries = if web_version.is_some() { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script
             for _ in 0..outer_tries {
                 let mut rsl_cmd = Command::new(PYTHON);
                 rsl_cmd.arg("RandomSettingsGenerator.py");
@@ -662,7 +680,7 @@ impl GlobalState {
                 if world_count > 1 {
                     rsl_cmd.arg(format!("--worldcount={world_count}"));
                 }
-                if can_roll_on_web {
+                if web_version.is_some() {
                     rsl_cmd.arg("--no_seed");
                 }
                 let output = rsl_cmd.current_dir(&rsl_script_path).output().await.at_command("RandomSettingsGenerator.py")?;
@@ -674,7 +692,7 @@ impl GlobalState {
                     }),
                     _ => return Err(RollError::Wheel(wheel::Error::CommandExit { name: Cow::Borrowed("RandomSettingsGenerator.py"), output })),
                 }
-                if can_roll_on_web {
+                if let Some(web_version) = web_version.clone() {
                     #[derive(Deserialize)]
                     struct Plando {
                         settings: serde_json::Map<String, Json>,
@@ -717,7 +735,7 @@ impl GlobalState {
                     } else {
                         None
                     };
-                    let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), version.clone(), true, spoiler_log, settings).await {
+                    let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), version.branch(), web_version, true, spoiler_log, settings).await {
                         Ok(data) => data,
                         Err(RollError::Retries { .. }) => continue,
                         Err(e) => return Err(e),
@@ -889,6 +907,8 @@ pub(crate) enum RollError {
     },
     #[error("there is nothing waiting for this seed anymore")]
     ChannelClosed,
+    #[error("attempted to roll with the latest version, but web claimed it was unsupported")]
+    LatestLocal,
     #[cfg(unix)]
     #[error("randomizer settings must be a JSON object")]
     NonObjectSettings,
@@ -1166,31 +1186,36 @@ impl OotrApiClient {
             .currently_active_version)
     }
 
-    async fn can_roll_on_web(&self, rsl_preset: Option<&VersionedRslPreset>, version: &rando::Version, world_count: u8) -> Result<bool, RollError> {
-        if world_count > 3 { return Ok(false) }
-        if rsl_preset.is_some() && version.branch().web_name_random_settings().is_none() { return Ok(false) }
+    async fn can_roll_on_web(&self, rsl_preset: Option<&VersionedRslPreset>, version: &VersionedBranch, world_count: u8) -> Result<Option<Version>, RollError> {
+        if world_count > 3 { return Ok(None) }
+        if rsl_preset.is_some() && version.branch().web_name_random_settings().is_none() { return Ok(None) }
         // check if randomizer version is available on web
-        if !KNOWN_GOOD_WEB_VERSIONS.contains(&version) {
-            if version.supplementary().is_some() && !matches!(rsl_preset, Some(VersionedRslPreset::Xopar { .. })) {
-                // The version API endpoint does not return the supplementary version number, so we can't be sure we have the right version unless it was manually checked and added to KNOWN_GOOD_WEB_VERSIONS.
-                // For the RSL script's main branch, we assume the supplementary version number is correct since we dynamically get the version from the RSL script.
-                // The dev-fenhl branch of the RSL script can point to versions not available on web, so we can't make this assumption there.
-                return Ok(false)
-            }
-            if let Ok(latest_web_version) = self.get_version(version.branch(), rsl_preset.is_some()).await {
-                if latest_web_version != *version.base() { // there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
-                    println!("web version mismatch on {} branch: we need {} but latest is {latest_web_version}", version.branch().web_name(rsl_preset.is_some()).expect("checked above"), version.base());
-                    return Ok(false)
+        match version {
+            VersionedBranch::Pinned(version) => {
+                if !KNOWN_GOOD_WEB_VERSIONS.contains(&version) {
+                    if version.supplementary().is_some() && !matches!(rsl_preset, Some(VersionedRslPreset::Xopar { .. })) {
+                        // The version API endpoint does not return the supplementary version number, so we can't be sure we have the right version unless it was manually checked and added to KNOWN_GOOD_WEB_VERSIONS.
+                        // For the RSL script's main branch, we assume the supplementary version number is correct since we dynamically get the version from the RSL script.
+                        // The dev-fenhl branch of the RSL script can point to versions not available on web, so we can't make this assumption there.
+                        return Ok(None)
+                    }
+                    if let Ok(latest_web_version) = self.get_version(version.branch(), rsl_preset.is_some()).await {
+                        if latest_web_version != *version.base() { // there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
+                            println!("web version mismatch on {} branch: we need {} but latest is {latest_web_version}", version.branch().web_name(rsl_preset.is_some()).expect("checked above"), version.base());
+                            return Ok(None)
+                        }
+                    } else {
+                        // the version API endpoint sometimes returns HTML instead of the expected JSON, fallback to generating locally when that happens
+                        return Ok(None)
+                    }
                 }
-            } else {
-                // the version API endpoint sometimes returns HTML instead of the expected JSON, fallback to generating locally when that happens
-                return Ok(false)
+                Ok(Some(version.base().clone()))
             }
+            VersionedBranch::Latest(branch) => Ok(self.get_version(*branch, rsl_preset.is_some()).await.ok()),
         }
-        Ok(true)
     }
 
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, version: rando::Version, random_settings: bool, spoiler_log: bool, settings: serde_json::Map<String, Json>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
+    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, branch: rando::Branch, version: Version, random_settings: bool, spoiler_log: bool, settings: serde_json::Map<String, Json>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
         #[serde_as]
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -1235,7 +1260,7 @@ impl OotrApiClient {
             }
             let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[
                 ("key", &*self.api_key),
-                ("version", &*format!("{}_{}", version.branch().web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?, version.base())),
+                ("version", &*format!("{}_{}", branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?, version)),
                 ("locked", if spoiler_log { "0" } else { "1" }),
             ]), Some(&settings)).await?
                 .detailed_error_for_status().await?
@@ -1502,7 +1527,7 @@ impl Handler {
         });
     }
 
-    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: rando::Version, settings: serde_json::Map<String, Json>, spoiler_log: bool, article: &'static str, description: String) {
+    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool, article: &'static str, description: String) {
         self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_seed(version, settings, spoiler_log), article, description);
     }
 
@@ -1748,7 +1773,7 @@ impl RaceHandler<GlobalState> for Handler {
                         }
                         Goal::TriforceBlitz => {
                             ctx.send_message("Welcome to Triforce Blitz!").await?;
-                            ctx.send_message("Create a seed with “!seed” or link the seed of the day with “!seed daily”").await?;
+                            ctx.send_message("You can roll a seed using “!seed jr” for Jabu's Revenge or “!seed s2” for S2 settings, or link the seed of the day with “!seed daily”").await?;
                         }
                     },
                     RaceState::Rolled(_) => ctx.send_message("@entrants I just restarted. You may have to reconfigure !breaks and !fpa. Sorry about that.").await?,
@@ -1826,7 +1851,7 @@ impl RaceHandler<GlobalState> for Handler {
                             version: Some((Version::new(2, 3, 8), 10)),
                             preset: RslDevFenhlPreset::Pictionary,
                         }, 1, true, "a", format!("random settings Pictionary seed")),
-                        Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, false, "a", format!("Triforce Blitz seed")).await,
+                        Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, false, "a", format!("Triforce Blitz S2 seed")).await,
                     },
                     RaceState::Draft { .. } => {
                         drop(state);
@@ -2389,7 +2414,11 @@ impl RaceHandler<GlobalState> for Handler {
                                 self.roll_seed(ctx, state, goal.rando_version(), fr::resolve_draft_settings(&settings), spoiler_log, "a", format!("seed with {}", fr::display_draft_picks(&settings)));
                             }
                             Goal::TriforceBlitz => match args[..] {
-                                [] => self.roll_tfb_seed(ctx, state, spoiler_log, "a", format!("Triforce Blitz seed")).await,
+                                [] => {
+                                    ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
+                                    goal.send_presets(ctx).await?;
+                                    return Ok(())
+                                }
                                 [ref arg] if arg == "daily" => {
                                     let (date, ordinal, file_hash) = {
                                         let response = ctx.global_state.http_client
@@ -2420,6 +2449,8 @@ impl RaceHandler<GlobalState> for Handler {
                                         files: seed::Files::TfbSotd { date, ordinal },
                                     }, "the", format!("Triforce Blitz seed of the day")).await;
                                 }
+                                [ref arg] if arg == "jr" => self.roll_seed(ctx, state, goal.rando_version(), tfb::jr_settings(), spoiler_log, "a", format!("Triforce Blitz: Jabu's Revenge seed")),
+                                [ref arg] if arg == "s2" => self.roll_tfb_seed(ctx, state, spoiler_log, "a", format!("Triforce Blitz S2 seed")).await,
                                 [..] => {
                                     ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
@@ -2900,21 +2931,32 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                     if !goal.should_create_rooms() { continue }
                     let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
                     if let Some(msg) = create_room(&mut transaction, &*global_state.discord_ctx.read().await, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.extra_room_tx, &global_state.http_client, &cal_event, &event).await? {
+                        let ctx = global_state.discord_ctx.read().await;
                         if cal_event.is_first_async_half() {
                             if let Some(channel) = event.discord_organizer_channel {
-                                channel.say(&*global_state.discord_ctx.read().await, msg).await.to_racetime()?;
+                                channel.say(&*ctx, &msg).await.to_racetime()?;
+                            } else {
+                                // DM Fenhl
+                                UserId::new(86841168427495424).create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, &msg).await.to_racetime()?;
                             }
-                            //TODO DM participants on Discord
-                        } else if let Some(channel) = event.discord_race_room_channel {
-                            channel.say(&*global_state.discord_ctx.read().await, msg).await.to_racetime()?;
-                        } else if let Some(thread) = cal_event.race.scheduling_thread {
-                            thread.say(&*global_state.discord_ctx.read().await, msg).await.to_racetime()?; //TODO different message? (e.g. “your race room is open”)
-                        } else if let Some(channel) = event.discord_organizer_channel {
-                            channel.say(&*global_state.discord_ctx.read().await, msg).await.to_racetime()?;
+                            for team in cal_event.active_teams() {
+                                for member in team.members(&mut transaction).await.to_racetime()? {
+                                    if let Some(discord) = member.discord {
+                                        discord.id.create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, &msg).await.to_racetime()?; //TODO different message? (e.g. “your race room is open”)
+                                    }
+                                }
+                            }
                         } else {
-                            // DM Fenhl
-                            let ctx = global_state.discord_ctx.read().await;
-                            UserId::new(86841168427495424).create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, msg).await.to_racetime()?;
+                            if let Some(channel) = event.discord_race_room_channel {
+                                channel.say(&*ctx, msg).await.to_racetime()?;
+                            } else if let Some(thread) = cal_event.race.scheduling_thread {
+                                thread.say(&*ctx, msg).await.to_racetime()?; //TODO different message? (e.g. “your race room is open”)
+                            } else if let Some(channel) = event.discord_organizer_channel {
+                                channel.say(&*ctx, msg).await.to_racetime()?;
+                            } else {
+                                // DM Fenhl
+                                UserId::new(86841168427495424).create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, msg).await.to_racetime()?;
+                            }
                         }
                     }
                 }

@@ -1287,14 +1287,22 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     } else {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
-                                            .content("Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one.")
+                                            .content(if let French = event.language {
+                                                "Désolé, cela n'est pas un timestamp au format de Discord. Vous pouvez utiliser <https://hammertime.cyou/> pour en générer un."
+                                            } else {
+                                                "Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one."
+                                            })
                                         )).await?;
                                         transaction.rollback().await?;
                                     }
                                 } else {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
-                                        .content("Sorry, only participants in this race and organizers can use this command.")
+                                        .content(if let French = event.language {
+                                            "Désolé, seuls les participants de cette race et les organisateurs peuvent utiliser cette commande."
+                                        } else {
+                                            "Sorry, only participants in this race and organizers can use this command."
+                                        })
                                     )).await?;
                                     transaction.rollback().await?;
                                 }
@@ -1422,14 +1430,22 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     } else {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
-                                            .content("Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one.")
+                                            .content(if let French = event.language {
+                                                "Désolé, cela n'est pas un timestamp au format de Discord. Vous pouvez utiliser <https://hammertime.cyou/> pour en générer un."
+                                            } else {
+                                                "Sorry, that doesn't look like a Discord timestamp. You can use <https://hammertime.cyou/> to generate one."
+                                            })
                                         )).await?;
                                         transaction.rollback().await?;
                                     }
                                 } else {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
-                                        .content("Sorry, only participants in this race and organizers can use this command.")
+                                        .content(if let French = event.language {
+                                            "Désolé, seuls les participants de cette race et les organisateurs peuvent utiliser cette commande."
+                                        } else {
+                                            "Sorry, only participants in this race and organizers can use this command."
+                                        })
                                     )).await?;
                                     transaction.rollback().await?;
                                 }
@@ -1440,12 +1456,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 _ => panic!("unexpected slash command option type"),
                             });
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
-                                let is_organizer = race.event(&mut transaction).await?.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
+                                let event = race.event(&mut transaction).await?;
+                                let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
                                 if team.is_some() || is_organizer {
                                     if !is_organizer && race.has_room_for(team.as_ref().expect("checked above")) {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
-                                            .content("Sorry, the room for this race is already open. Please contact a tournament organizer if necessary.")
+                                            .content(if let French = event.language {
+                                                "Désolé, cette room est déjà ouverte. Veuillez contacter un organisateur si nécessaire."
+                                            } else {
+                                                "Sorry, the room for this race is already open. Please contact a tournament organizer if necessary."
+                                            })
                                         )).await?;
                                         transaction.rollback().await?;
                                     } else {
@@ -1453,7 +1474,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             RaceSchedule::Unscheduled => {
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                     .ephemeral(true)
-                                                    .content("Sorry, this race already doesn't have a starting time.")
+                                                    .content(if let French = event.language {
+                                                        "Désolé, cette race n'a pas de date de début prévue."
+                                                    } else {
+                                                        "Sorry, this race already doesn't have a starting time."
+                                                    })
                                                 )).await?;
                                                 transaction.rollback().await?;
                                                 return Ok(())
@@ -1476,7 +1501,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 } else {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
-                                        .content("Sorry, only participants in this race and organizers can use this command.")
+                                        .content(if let French = event.language {
+                                            "Désolé, seuls les participants de cette race et les organisateurs peuvent utiliser cette commande."
+                                        } else {
+                                            "Sorry, only participants in this race and organizers can use this command."
+                                        })
                                     )).await?;
                                     transaction.rollback().await?;
                                 }
