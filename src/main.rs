@@ -16,7 +16,10 @@ use {
         postgres::PgConnectOptions,
     },
     tokio::sync::mpsc,
-    crate::config::Config,
+    crate::{
+        config::Config,
+        util::sync::RwLock,
+    },
 };
 #[cfg(unix)] use {
     async_proto::Protocol as _,
@@ -139,7 +142,8 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
         let db_pool = PgPool::connect_with(PgConnectOptions::default().username("mido").database(if env.is_dev() { "fados_house" } else { "midos_house" }).application_name("midos-house")).await?;
         let rocket = http::rocket(db_pool.clone(), discord_builder.ctx_fut.clone(), http_client.clone(), config.clone(), env, port.unwrap_or_else(|| if env.is_dev() { 24814 } else { 24812 })).await?;
         let new_room_lock = Arc::default();
-        let discord_builder = discord_bot::configure_builder(discord_builder, db_pool.clone(), http_client.clone(), config.clone(), env, Arc::clone(&new_room_lock), rocket.shutdown());
+        let extra_room_tx = Arc::new(RwLock::new(mpsc::channel(1).0));
+        let discord_builder = discord_bot::configure_builder(discord_builder, db_pool.clone(), http_client.clone(), config.clone(), env, Arc::clone(&new_room_lock), Arc::clone(&extra_room_tx), rocket.shutdown());
         let clean_shutdown = Arc::default();
         let racetime_config = if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone();
         let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
@@ -147,6 +151,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
         let global_state = Arc::new(racetime_bot::GlobalState::new(
             new_room_lock,
             racetime_config,
+            extra_room_tx,
             db_pool,
             http_client,
             config.ootr_api_key.clone(),

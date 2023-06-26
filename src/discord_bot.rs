@@ -41,6 +41,7 @@ use {
         Transaction,
         types::Json,
     },
+    tokio::sync::mpsc,
     crate::{
         Environment,
         cal::{
@@ -73,6 +74,7 @@ use {
             MessageBuilderExt as _,
             sync::{
                 Mutex,
+                RwLock,
                 lock,
             },
         },
@@ -110,6 +112,12 @@ enum NewRoomLock {}
 
 impl TypeMapKey for NewRoomLock {
     type Value = Arc<Mutex<()>>;
+}
+
+enum ExtraRoomTx {}
+
+impl TypeMapKey for ExtraRoomTx {
+    type Value = Arc<RwLock<mpsc::Sender<String>>>;
 }
 
 #[derive(Clone, Copy)]
@@ -379,7 +387,7 @@ fn parse_timestamp(timestamp: &str) -> Option<DateTime<Utc>> {
         .and_then(|timestamp| Utc.timestamp_opt(timestamp, 0).single())
 }
 
-pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_pool: PgPool, http_client: reqwest::Client, config: Config, env: Environment, new_room_lock: Arc<Mutex<()>>, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
+pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_pool: PgPool, http_client: reqwest::Client, config: Config, env: Environment, new_room_lock: Arc<Mutex<()>>, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
     discord_builder
         .error_notifier(ErrorNotifier::User(FENHL))
         .data::<DbPool>(db_pool)
@@ -389,8 +397,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             ..racetime::HostInfo::default()
         })
         .data::<ConfigRaceTime>(if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone())
-        .data::<NewRoomLock>(new_room_lock)
         .data::<StartggToken>(if env.is_dev() { config.startgg_dev } else { config.startgg_production })
+        .data::<NewRoomLock>(new_room_lock)
+        .data::<ExtraRoomTx>(extra_room_tx)
         .on_guild_create(false, |ctx, guild, _| Box::pin(async move {
             let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
             let guild_event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND (end_time IS NULL OR end_time > NOW())"#, i64::from(guild.id)).fetch_all(&mut transaction).await?;
@@ -1215,35 +1224,63 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         } else {
                                             sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, race.id as _).execute(&mut transaction).await?;
                                             if start - Utc::now() < Duration::minutes(30) {
-                                                let (http_client, new_room_lock, racetime_host, racetime_config) = {
+                                                let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
                                                     let data = ctx.data.read().await;
                                                     (
                                                         data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
                                                         data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
                                                         data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
                                                         data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
+                                                        data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
                                                     )
                                                 };
                                                 let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
                                                 let new_room_lock = lock!(new_room_lock);
-                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
+                                                if let Some(msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, &cal_event, &event).await? {
+                                                    if let Some(channel) = event.discord_race_room_channel {
+                                                        channel.say(ctx, &msg).await?;
+                                                    }
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)
                                                         .content(msg)
                                                     )).await?;
                                                 } else {
+                                                    let response_content = MessageBuilder::default()
+                                                        .push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") })
+                                                        .push(" is now scheduled for ")
+                                                        .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                        .push(". The race room will be opened momentarily.")
+                                                        .build();
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)
-                                                        .content(format!("{} is now scheduled for <t:{}:F>. The race room will be opened momentarily.", if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") }, start.timestamp()))
+                                                        .content(response_content)
                                                     )).await?;
                                                 }
                                                 transaction.commit().await?;
                                                 drop(new_room_lock);
                                             } else {
                                                 transaction.commit().await?;
+                                                let response_content = if_chain! {
+                                                    if let French = event.language;
+                                                    if race.game.is_none();
+                                                    then {
+                                                        MessageBuilder::default()
+                                                            .push("Votre race a été planifiée pour le ")
+                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                            .push('.')
+                                                            .build()
+                                                    } else {
+                                                        MessageBuilder::default()
+                                                            .push(if let Some(game) = race.game { format!("Game {game}") } else { format!("This race") })
+                                                            .push(" is now scheduled for ")
+                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                            .push('.')
+                                                            .build()
+                                                    }
+                                                };
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                     .ephemeral(false)
-                                                    .content(format!("{} is now scheduled for <t:{}:F>.", if let Some(game) = race.game { format!("Game {game}") } else { format!("This race") }, start.timestamp()))
+                                                    .content(response_content)
                                                 )).await?;
                                             }
                                         }
@@ -1314,36 +1351,71 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 _ => panic!("tried to schedule race with not two MH teams as async"),
                                             };
                                             if event.team_config().is_racetime_team_format() && start - Utc::now() < Duration::minutes(30) {
-                                                let (http_client, new_room_lock, racetime_host, racetime_config) = {
+                                                let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
                                                     let data = ctx.data.read().await;
                                                     (
                                                         data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
                                                         data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
                                                         data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
                                                         data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
+                                                        data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
                                                     )
                                                 };
                                                 let cal_event = cal::Event { race, kind };
                                                 let new_room_lock = lock!(new_room_lock);
-                                                if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &http_client, &cal_event, &event).await? {
+                                                if let Some(msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, &cal_event, &event).await? {
+                                                    if cal_event.is_first_async_half() {
+                                                        if let Some(channel) = event.discord_organizer_channel {
+                                                            channel.say(ctx, &msg).await?;
+                                                        }
+                                                    } else {
+                                                        if let Some(channel) = event.discord_race_room_channel {
+                                                            channel.say(ctx, &msg).await?;
+                                                        }
+                                                    }
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                        .ephemeral(false)
+                                                        .ephemeral(cal_event.is_first_async_half())
                                                         .content(msg)
                                                     )).await?;
-                                                    //TODO also post in race rooms channel, if any
                                                 } else {
+                                                    let response_content = MessageBuilder::default()
+                                                        .push("Your half of ")
+                                                        .push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") })
+                                                        .push(" is now scheduled for ")
+                                                        .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                        .push(". The race room will be opened momentarily.")
+                                                        .build();
                                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                         .ephemeral(false)
-                                                        .content(format!("{} is now scheduled for <t:{}:F>. The race room will be opened momentarily.", if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") }, start.timestamp()))
+                                                        .content(response_content)
                                                     )).await?;
                                                 }
                                                 transaction.commit().await?;
                                                 drop(new_room_lock);
                                             } else {
                                                 transaction.commit().await?;
+                                                let response_content = if_chain! {
+                                                    if let French = event.language;
+                                                    if race.game.is_none();
+                                                    then {
+                                                        MessageBuilder::default()
+                                                            .push("La partie de votre async a été planifiée pour le ")
+                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                            .push('.')
+                                                            .build()
+                                                    } else {
+                                                        MessageBuilder::default()
+                                                            .push("Your half of ")
+                                                            .push(if let Some(game) = race.game { format!("game {game}") } else { format!("this race") })
+                                                            .push(" is now scheduled for ")
+                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                            .push('.')
+                                                            .build()
+                                                    }
+                                                };
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                     .ephemeral(false)
-                                                    .content(format!("Your half of {} is now scheduled for <t:{}:F>.", if let Some(game) = race.game { format!("game {game}") } else { format!("this race") }, start.timestamp()))
+                                                    .content(response_content)
                                                 )).await?;
                                             }
                                         }

@@ -512,7 +512,7 @@ pub(crate) struct GlobalState {
     host_info: racetime::HostInfo,
     pub(crate) host: &'static str,
     racetime_config: ConfigRaceTime,
-    extra_room_tx: RwLock<mpsc::Sender<String>>,
+    extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>,
     db_pool: PgPool,
     http_client: reqwest::Client,
     startgg_token: String,
@@ -524,17 +524,16 @@ pub(crate) struct GlobalState {
 }
 
 impl GlobalState {
-    pub(crate) async fn new(new_room_lock: Arc<Mutex<()>>, racetime_config: ConfigRaceTime, db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>, seed_cache_tx: mpsc::Sender<()>) -> Self {
+    pub(crate) async fn new(new_room_lock: Arc<Mutex<()>>, racetime_config: ConfigRaceTime, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>, seed_cache_tx: mpsc::Sender<()>) -> Self {
         let _ = seed_cache_tx.send(()).await;
         Self {
             host_info: racetime::HostInfo {
                 hostname: Cow::Borrowed(host),
                 ..racetime::HostInfo::default()
             },
-            extra_room_tx: RwLock::new(mpsc::channel(1).0),
             ootr_api_client: OotrApiClient::new(http_client.clone(), ootr_api_key),
             cached_mixed_pools_seed: Mutex::default(),
-            new_room_lock, host, racetime_config, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown, seed_cache_tx,
+            new_room_lock, host, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown, seed_cache_tx,
         }
     }
 
@@ -2722,7 +2721,7 @@ impl RaceHandler<GlobalState> for Handler {
     }
 }
 
-pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, host_info: &racetime::HostInfo, client_id: &str, client_secret: &str, http_client: &reqwest::Client, cal_event: &cal::Event, event: &event::Data<'_>) -> Result<Option<(String, String)>, Error> {
+pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, host_info: &racetime::HostInfo, client_id: &str, client_secret: &str, extra_room_tx: &RwLock<mpsc::Sender<String>>, http_client: &reqwest::Client, cal_event: &cal::Event, event: &event::Data<'_>) -> Result<Option<String>, Error> {
     let Some(goal) = Goal::for_event(cal_event.race.series, &cal_event.race.event) else { return Ok(None) };
     match racetime::authorize_with_host(host_info, client_id, client_secret, http_client).await {
         Ok((access_token, _)) => {
@@ -2839,7 +2838,8 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             msg.push(" <");
             msg.push(room_url);
             msg.push('>');
-            Ok(Some((race_slug, msg.build())))
+            let _ = lock!(@read extra_room_tx).send(race_slug).await;
+            Ok(Some(msg.build()))
         }
         Err(Error::Reqwest(e)) if e.status().map_or(false, |status| status.is_server_error()) => {
             // racetime.gg's auth endpoint has been known to return server errors intermittently.
@@ -2899,8 +2899,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                     let Some(goal) = Goal::for_event(cal_event.race.series, &cal_event.race.event) else { continue };
                     if !goal.should_create_rooms() { continue }
                     let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
-                    if let Some((race_slug, msg)) = create_room(&mut transaction, &*global_state.discord_ctx.read().await, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.http_client, &cal_event, &event).await? {
-                        let _ = lock!(@read global_state.extra_room_tx).send(race_slug).await;
+                    if let Some(msg) = create_room(&mut transaction, &*global_state.discord_ctx.read().await, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.extra_room_tx, &global_state.http_client, &cal_event, &event).await? {
                         if cal_event.is_first_async_half() {
                             if let Some(channel) = event.discord_organizer_channel {
                                 channel.say(&*global_state.discord_ctx.read().await, msg).await.to_racetime()?;
