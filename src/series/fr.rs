@@ -80,12 +80,24 @@ pub(crate) const S3_SETTINGS: [S3Setting; 27] = [
 pub(crate) fn display_draft_picks(picks: &draft::Picks) -> String {
     let mut picks_display = Vec::default();
     if picks.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
-        picks_display.push(Cow::Owned(format!("{} donjons MQ", picks.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0").parse::<u8>().unwrap())));
+        let mq_dungeons_count = picks.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0");
+        picks_display.push(if mq_dungeons_count == "1" {
+            Cow::Borrowed("1 donjon MQ")
+        } else {
+            Cow::Owned(format!("{mq_dungeons_count} donjons MQ"))
+        });
     }
     picks_display.extend(S3_SETTINGS.into_iter()
         .filter_map(|S3Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|&(value, _, display)| match (name, value) {
             ("bridge", "meds") => Cow::Owned(format!("{} medallions bridge", picks.get("bridge_medallions").map(|bridge_medallions| &**bridge_medallions).unwrap_or("6"))),
             ("bridge", "dungeons") => Cow::Owned(format!("{} dungeons bridge", picks.get("bridge_rewards").map(|bridge_rewards| &**bridge_rewards).unwrap_or("9"))),
+            ("mixed-er", "on") => if picks.get("dungeon-er").map(|dungeon_er| &**dungeon_er).unwrap_or("off") == "off" {
+                Cow::Borrowed(display)
+            } else if picks.get("mixed-dungeons").map(|mixed_dungeons| &**mixed_dungeons).unwrap_or("separate") == "mixed" {
+                Cow::Borrowed("mixed ER (including dungeons)")
+            } else {
+                Cow::Borrowed("mixed ER (not including dungeons)")
+            },
             (_, _) => Cow::Borrowed(display),
         })));
     French.join_str(picks_display).unwrap_or_else(|| format!("settings de base"))

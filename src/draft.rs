@@ -409,7 +409,7 @@ impl Draft {
                                         let (is_hard, is_empty) = if hard_settings_ok {
                                             (other.iter().all(|&(_, hard, _)| hard), other.is_empty())
                                         } else {
-                                            (false, other.iter().any(|(_, hard, _)| !hard))
+                                            (false, other.iter().all(|&(_, hard, _)| hard))
                                         };
                                         (!is_empty).then(|| (is_hard, BanSetting { name, display, default, default_display, description }))
                                     })
@@ -554,7 +554,7 @@ impl Draft {
                                 }
                                 builder.build()
                             }
-                            MessageContext::RaceTime { high_seed_name, .. } => format!("{high_seed_name}, you have the higher seed. Choose whether you want to go !first or !second"),
+                            MessageContext::RaceTime { high_seed_name, .. } => format!("{high_seed_name}, vous avez été sélectionné pour décider qui commencera le draft en premier. Si vous voulez commencer, veuillez entrer “!first”. Autrement, entrez “!second”."),
                         },
                     }
                 }
@@ -821,12 +821,26 @@ impl Draft {
                             self.went_first = Some(first);
                             Ok(match msg_ctx {
                                 MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
-                                MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
-                                    .mention_team(transaction, Some(*guild_id), team).await?
-                                    .push(" a choisi de partir ")
-                                    .push(if first { "premier" } else { "second" })
-                                    .push(" pour le draft.")
-                                    .build(),
+                                MessageContext::Discord { transaction, guild_id, team, .. } => {
+                                    let mut content = MessageBuilder::default();
+                                    content.mention_team(transaction, Some(*guild_id), team).await?;
+                                    content.push(" a choisi de partir ");
+                                    content.push(if first { "premier" } else { "second" });
+                                    content.push(" pour le draft");
+                                    if self.settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
+                                        let mq_dungeons_count = self.settings.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0");
+                                        content.push(" et a choisi");
+                                        content.push(mq_dungeons_count);
+                                        content.push(" donjon");
+                                        if mq_dungeons_count != "1" {
+                                            content.push('s');
+                                        }
+                                        content.push(" MQ");
+                                    }
+                                    content
+                                        .push('.')
+                                        .build()
+                                }
                             })
                         }
                         StepKind::Ban { .. } | StepKind::Pick { .. } => Err(match msg_ctx {

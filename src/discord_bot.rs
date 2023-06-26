@@ -1146,7 +1146,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         }
                                     }
                                 }
-                                draft_action(ctx, interaction, draft::Action::GoFirst(true)).await?; //TODO adjust reply to include MQ count
+                                draft_action(ctx, interaction, draft::Action::GoFirst(true)).await?;
                             }
                         } else if Some(interaction.data.id) == command_ids.no {
                             draft_action(ctx, interaction, draft::Action::BooleanChoice(false)).await?;
@@ -1601,7 +1601,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         }
                                     }
                                 }
-                                draft_action(ctx, interaction, draft::Action::GoFirst(false)).await?; //TODO adjust reply to include MQ count
+                                draft_action(ctx, interaction, draft::Action::GoFirst(false)).await?;
                             }
                         } else if Some(interaction.data.id) == command_ids.skip {
                             draft_action(ctx, interaction, draft::Action::Skip).await?;
