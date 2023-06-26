@@ -291,7 +291,7 @@ async fn check_draft_permissions<'a>(ctx: &'a Context, interaction: &impl Generi
 }
 
 async fn send_draft_settings_page(ctx: &Context, interaction: &impl GenericInteraction, action: &str, page: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let Some((_, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
+    let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
     match race.draft.as_ref().unwrap().next_step(draft_kind, &mut msg_ctx).await?.kind {
         draft::StepKind::GoFirst | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) => match race.draft.as_mut().unwrap().apply(draft_kind, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
             Ok(_) => unreachable!(),
@@ -305,9 +305,22 @@ async fn send_draft_settings_page(ctx: &Context, interaction: &impl GenericInter
             }
         },
         draft::StepKind::Ban { available_settings, .. } => {
+            let response_content = if_chain! {
+                if let French = event.language;
+                if let Some(action) = match action {
+                    "ban" => Some("ban"),
+                    "draft" => Some("pick"),
+                    _ => None,
+                };
+                then {
+                    format!("Sélectionnez le setting à {action} :")
+                } else {
+                    format!("Select the setting to {action}:")
+                }
+            };
             let mut response_msg = CreateInteractionResponseMessage::new()
                 .ephemeral(true)
-                .content("Select the setting to {action}:");
+                .content(response_content);
             if available_settings.num_settings() <= BUTTONS_PER_PAGE {
                 for draft::BanSetting { name, display, .. } in available_settings.all() {
                     response_msg = response_msg.button(CreateButton::new(format!("{action}_setting_{name}")).label(display));
@@ -326,9 +339,22 @@ async fn send_draft_settings_page(ctx: &Context, interaction: &impl GenericInter
             interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
         }
         draft::StepKind::Pick { available_choices, .. } => {
+            let response_content = if_chain! {
+                if let French = event.language;
+                if let Some(action) = match action {
+                    "ban" => Some("ban"),
+                    "draft" => Some("pick"),
+                    _ => None,
+                };
+                then {
+                    format!("Sélectionnez le setting à {action} :")
+                } else {
+                    format!("Select the setting to {action}:")
+                }
+            };
             let mut response_msg = CreateInteractionResponseMessage::new()
                 .ephemeral(true)
-                .content("Select the setting to {action}:");
+                .content(response_content);
             if available_choices.num_settings() <= BUTTONS_PER_PAGE {
                 for draft::DraftSetting { name, display, .. } in available_choices.all() {
                     response_msg = response_msg.button(CreateButton::new(format!("{action}_setting_{name}")).label(display));
@@ -483,7 +509,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft::Kind::TournoiFrancoS3 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
-                        .description("Locks a setting for this race to its default value."),
+                        .description("Verrouille un setting à sa valeur par défaut.")
+                        .description_localized("en-GB", "Locks a setting for this race to its default value.")
+                        .description_localized("en-US", "Locks a setting for this race to its default value."),
                 });
                 idx
             });
@@ -641,7 +669,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft::Kind::TournoiFrancoS3 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
-                        .description("Chooses a setting for this race."),
+                        .description("Choisit un setting pour la race.")
+                        .description_localized("en-GB", "Chooses a setting for this race.")
+                        .description_localized("en-US", "Chooses a setting for this race."),
                 });
                 idx
             });
@@ -655,12 +685,16 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft::Kind::TournoiFrancoS3 => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
-                        .description("Go first in the settings draft.")
+                        .description("Partir premier dans la phase de pick&ban.")
+                        .description_localized("en-GB", "Go first in the settings draft.")
+                        .description_localized("en-US", "Go first in the settings draft.")
                         .add_option(CreateCommandOption::new(
                             CommandOptionType::Integer,
                             "mq",
-                            "Number of MQ dungeons",
+                            "Nombre de donjons MQ",
                         )
+                            .description_localized("en-GB", "Number of MQ dungeons")
+                            .description_localized("en-US", "Number of MQ dungeons")
                             .min_int_value(0)
                             .max_int_value(12)
                             .required(false)
@@ -675,7 +709,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft::Kind::TournoiFrancoS3 => CreateCommand::new("no")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
-                        .description("Answers no to a yes/no question in the settings draft."),
+                        .description("Répond à la négative dans une question fermée.")
+                        .description_localized("en-GB", "Answers no to a yes/no question in the settings draft.")
+                        .description_localized("en-US", "Answers no to a yes/no question in the settings draft."),
                 });
                 Some(idx)
             });
@@ -723,11 +759,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
                     .description("Submits a starting time for this race.")
+                    .description_localized("fr", "Planifie une date/heure pour une race.")
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::String,
                         "start",
                         "The starting time as a Discord timestamp",
-                    ).required(true))
+                    )
+                        .description_localized("fr", "La date de début comme timestamp de Discord")
+                        .required(true)
+                    )
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Integer,
                         "game",
@@ -746,11 +786,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
                     .description("Submits a starting time for your half of this race.")
+                    .description_localized("fr", "Planifie votre partie de l'async.")
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::String,
                         "start",
                         "The starting time as a Discord timestamp",
-                    ).required(true))
+                    )
+                        .description_localized("fr", "La date de début comme timestamp de Discord.")
+                        .required(true)
+                    )
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Integer,
                         "game",
@@ -769,6 +813,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
                     .description("Removes the starting time(s) for this race from the schedule.")
+                    .description_localized("fr", "Supprime le(s) date(s) de début sur le document des races planifiées.")
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Integer,
                         "game",
@@ -791,12 +836,16 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft::Kind::TournoiFrancoS3 => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
-                        .description("Go second in the settings draft.")
+                        .description("Partir second dans la phase de pick&ban.")
+                        .description_localized("en-GB", "Go first in the settings draft.")
+                        .description_localized("en-US", "Go first in the settings draft.")
                         .add_option(CreateCommandOption::new(
                             CommandOptionType::Integer,
                             "mq",
-                            "Number of MQ dungeons",
+                            "Nombre de donjons MQ",
                         )
+                            .description_localized("en-GB", "Number of MQ dungeons")
+                            .description_localized("en-US", "Number of MQ dungeons")
                             .min_int_value(0)
                             .max_int_value(12)
                             .required(false)
@@ -814,7 +863,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft::Kind::TournoiFrancoS3 => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
-                        .description("Skips the final pick of the settings draft."),
+                        .description("Skip le dernier pick du draft.")
+                        .description_localized("en-GB", "Skips the final pick of the settings draft.")
+                        .description_localized("en-US", "Skips the final pick of the settings draft."),
                 });
                 idx
             });
@@ -824,6 +875,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
                     .description("Shows you this race's current scheduling and settings draft status.")
+                    .description_localized("fr", "Montre l'avancement de la planification de votre race, avec les détails.")
                 );
                 idx
             };
@@ -860,7 +912,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft::Kind::TournoiFrancoS3 => CreateCommand::new("yes")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
-                        .description("Answers yes to a yes/no question in the settings draft."),
+                        .description("Répond à l'affirmative dans une question fermée.")
+                        .description_localized("en-GB", "Answers yes to a yes/no question in the settings draft.")
+                        .description_localized("en-US", "Answers yes to a yes/no question in the settings draft."),
                 });
                 Some(idx)
             });
@@ -1761,28 +1815,38 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     } else if let Some(page) = custom_id.strip_prefix("draft_page_") {
                         send_draft_settings_page(ctx, interaction, "draft", page.parse().unwrap()).await?;
                     } else if let Some(setting) = custom_id.strip_prefix("draft_setting_") {
-                        let Some((_, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
+                        let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
                         match race.draft.as_ref().unwrap().next_step(draft_kind, &mut msg_ctx).await?.kind {
                             draft::StepKind::Ban { available_settings, .. } if available_settings.get(setting).is_some() => {
                                 let setting = available_settings.get(setting).unwrap(); // `if let` guards are experimental
                                 msg_ctx.into_transaction().commit().await?;
+                                let response_content = if let French = event.language {
+                                    format!("Sélectionnez la configuration du setting {} :", setting.display)
+                                } else {
+                                    format!("Select the value for the {} setting:", setting.display)
+                                };
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                     .ephemeral(true)
-                                    .content(format!("Select the value for the {} setting:", setting.display))
+                                    .content(response_content)
                                     .button(CreateButton::new(format!("draft_option_{}_{}", setting.name, setting.default)).label(setting.default_display))
-                                    .button(CreateButton::new("draft_page_0").label("Back").style(ButtonStyle::Secondary)) //TODO remember page?
+                                    .button(CreateButton::new("draft_page_0").label(if let French = event.language { "Retour" } else { "Back" }).style(ButtonStyle::Secondary)) //TODO remember page?
                                 )).await?;
                             }
                             draft::StepKind::Pick { available_choices, .. } if available_choices.get(setting).is_some() => {
                                 let setting = available_choices.get(setting).unwrap(); // `if let` guards are experimental
                                 msg_ctx.into_transaction().commit().await?;
+                                let response_content = if let French = event.language {
+                                    format!("Sélectionnez la configuration du setting {} :", setting.display)
+                                } else {
+                                    format!("Select the value for the {} setting:", setting.display)
+                                };
                                 let mut response_msg = CreateInteractionResponseMessage::new()
                                     .ephemeral(true)
-                                    .content(format!("Select the value for the {} setting:", setting.display));
+                                    .content(response_content);
                                 for option in setting.options {
                                     response_msg = response_msg.button(CreateButton::new(format!("draft_option_{}_{}", setting.name, option.name)).label(option.display));
                                 }
-                                response_msg = response_msg.button(CreateButton::new("draft_page_0").label("Back").style(ButtonStyle::Secondary)); //TODO remember page?
+                                response_msg = response_msg.button(CreateButton::new("draft_page_0").label(if let French = event.language { "Retour" } else { "Back" }).style(ButtonStyle::Secondary)); //TODO remember page?
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
                             }
                             draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) => match race.draft.as_mut().unwrap().apply(draft_kind, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {

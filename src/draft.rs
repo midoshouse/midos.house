@@ -541,13 +541,13 @@ impl Draft {
                                 let high_seed = high_seed.remove(0);
                                 let mut builder = MessageBuilder::default();
                                 builder.mention_team(transaction, Some(*guild_id), high_seed).await?;
-                                builder.push(": you have the higher seed. Choose whether you want to go ");
+                                builder.push(" : Vous avez été sélectionné pour décider qui commencera le draft en premier. Si vous voulez commencer, veuillez entrer ");
                                 builder.mention_command(command_ids.first.unwrap(), "first");
-                                builder.push(" or ");
+                                builder.push(". Autrement, entrez ");
                                 builder.mention_command(command_ids.second.unwrap(), "second");
-                                builder.push(" in the settings draft.");
+                                builder.push(".");
                                 if self.settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
-                                    builder.push(" Please include the number of MQ dungeons.");
+                                    builder.push(" Veuillez choisir combien de donjons Master Quest seront présents. Vous devez vous concerter pour choisir ce nombre.");
                                 }
                                 builder.build()
                             }

@@ -459,7 +459,7 @@ impl Goal {
             Self::MultiworldS3 => {
                 ctx.send_message("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
                 ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
-                ctx.send_message("!seed draft: Pick the settings here in the chat. I don't enforce that the two teams have to be represented by different people.").await?;
+                ctx.send_message("!seed draft: Pick the settings here in the chat.").await?;
                 ctx.send_message("!seed (<setting> <value>)... (e.g. !seed trials 2 wincon scrubs): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
             }
             Self::NineDaysOfSaws => {
@@ -492,7 +492,7 @@ impl Goal {
             Self::TournoiFrancoS3 => {
                 ctx.send_message("!seed base: The default settings.").await?;
                 ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
-                ctx.send_message("!seed draft: Pick the settings here in the chat. I don't enforce that the two teams have to be represented by different people.").await?;
+                ctx.send_message("!seed draft: Pick the settings here in the chat.").await?;
                 ctx.send_message("!seed (<setting> <value>)... (e.g. !seed trials random bridge ad): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
                 ctx.send_message("Use “!seed random advanced” or “!seed draft advanced” to allow advanced settings.").await?;
                 ctx.send_message("Enable Master Quest using e.g. “!seed base 6mq” or “!seed draft advanced 12mq”").await?;

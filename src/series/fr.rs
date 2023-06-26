@@ -80,7 +80,7 @@ pub(crate) const S3_SETTINGS: [S3Setting; 27] = [
 pub(crate) fn display_draft_picks(picks: &draft::Picks) -> String {
     let mut picks_display = Vec::default();
     if picks.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
-        picks_display.push(Cow::Owned(format!("{} MQ dungeons", picks.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0").parse::<u8>().unwrap())));
+        picks_display.push(Cow::Owned(format!("{} donjons MQ", picks.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0").parse::<u8>().unwrap())));
     }
     picks_display.extend(S3_SETTINGS.into_iter()
         .filter_map(|S3Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|&(value, _, display)| match (name, value) {
@@ -88,7 +88,7 @@ pub(crate) fn display_draft_picks(picks: &draft::Picks) -> String {
             ("bridge", "dungeons") => Cow::Owned(format!("{} dungeons bridge", picks.get("bridge_rewards").map(|bridge_rewards| &**bridge_rewards).unwrap_or("9"))),
             (_, _) => Cow::Borrowed(display),
         })));
-    French.join_str(picks_display).unwrap_or_else(|| format!("base settings"))
+    French.join_str(picks_display).unwrap_or_else(|| format!("settings de base"))
 }
 
 pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
