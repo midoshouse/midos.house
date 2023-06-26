@@ -202,15 +202,18 @@ pub(crate) struct Draft {
 }
 
 impl Draft {
-    fn pick_count(&self) -> u8 {
-        self.skipped_bans + u8::try_from(self.settings.len()).unwrap()
+    fn pick_count(&self, kind: Kind) -> u8 {
+        match kind {
+            Kind::MultiworldS3 => self.skipped_bans + u8::try_from(self.settings.len()).unwrap(),
+            Kind::TournoiFrancoS3 => self.skipped_bans + u8::try_from(fr::S3_SETTINGS.into_iter().filter(|&fr::S3Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
+        }
     }
 
     pub(crate) async fn next_step(&self, kind: Kind, msg_ctx: &mut MessageContext<'_>) -> sqlx::Result<Step> {
         Ok(match kind {
             Kind::MultiworldS3 => {
                 if let Some(went_first) = self.went_first {
-                    match self.pick_count() {
+                    match self.pick_count(kind) {
                         prev_bans @ 0..=1 => {
                             let team = match (prev_bans, went_first) {
                                 (0, true) | (1, false) => Team::HighSeed,
@@ -354,7 +357,7 @@ impl Draft {
             }
             Kind::TournoiFrancoS3 => {
                 if let Some(went_first) = self.went_first {
-                    let mut pick_count = self.pick_count();
+                    let mut pick_count = self.pick_count(kind);
                     let select_mixed_dungeons = !self.settings.contains_key("mixed-dungeons") && self.settings.get("dungeon-er").map(|dungeon_er| &**dungeon_er).unwrap_or("off") == "on" && self.settings.get("mixed-er").map(|mixed_er| &**mixed_er).unwrap_or("off") == "on";
                     if select_mixed_dungeons {
                         // chosen by the same team that chose the previous setting
@@ -397,7 +400,7 @@ impl Draft {
                             },
                         }
                     } else {
-                        match self.pick_count() {
+                        match self.pick_count(kind) {
                             prev_bans @ 0..=1 => {
                                 let hard_settings_ok = self.settings.get("hard_settings_ok").map(|hard_settings_ok| &**hard_settings_ok).unwrap_or("no") == "ok";
                                 let (hard_settings, classic_settings) = fr::S3_SETTINGS.into_iter()
@@ -760,7 +763,7 @@ impl Draft {
                             MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")
                         }),
                         StepKind::Ban { skippable: true, .. } | StepKind::Pick { skippable: true, .. } => {
-                            let skip_kind = match self.pick_count() {
+                            let skip_kind = match self.pick_count(kind) {
                                 0 | 1 => "ban",
                                 5 => "final pick",
                                 _ => unreachable!(),
@@ -918,6 +921,9 @@ impl Draft {
                         },
                         StepKind::Pick { available_choices, skippable, .. } => if let Some(setting) = available_choices.get(&setting) {
                             if let Some(option) = setting.options.into_iter().find(|option| option.name == value) {
+                                if value != fr::S3_SETTINGS.into_iter().find(|&fr::S3Setting { name, .. }| setting.name == name).unwrap().default {
+                                    self.settings.insert(Cow::Borrowed(self.active_team(kind).await?.unwrap().choose("high_seed_has_picked", "low_seed_has_picked")), Cow::Borrowed("yes"));
+                                }
                                 self.settings.insert(Cow::Borrowed(setting.name), Cow::Borrowed(option.name));
                                 Ok(match msg_ctx {
                                     MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
@@ -1009,7 +1015,7 @@ impl Draft {
                             MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")
                         }),
                         StepKind::Ban { skippable: true, .. } | StepKind::Pick { skippable: true, .. } => {
-                            let skip_kind = match self.pick_count() {
+                            let skip_kind = match self.pick_count(kind) {
                                 0 | 1 => "ban",
                                 5 => "final pick",
                                 _ => unreachable!(),
