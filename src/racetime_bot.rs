@@ -460,7 +460,7 @@ impl Goal {
                 ctx.send_message("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
                 ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
                 ctx.send_message("!seed draft: Pick the settings here in the chat.").await?;
-                ctx.send_message("!seed (<setting> <value>)... (e.g. !seed trials 2 wincon scrubs): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
+                ctx.send_message("!seed <setting> <value> <setting> <value>... (e.g. !seed trials 2 wincon scrubs): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
             }
             Self::NineDaysOfSaws => {
                 ctx.send_message("!seed day1: S6").await?;
@@ -490,12 +490,12 @@ impl Goal {
                 })).await?;
             },
             Self::TournoiFrancoS3 => {
-                ctx.send_message("!seed base: The default settings.").await?;
-                ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
-                ctx.send_message("!seed draft: Pick the settings here in the chat.").await?;
-                ctx.send_message("!seed (<setting> <value>)... (e.g. !seed trials random bridge ad): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
-                ctx.send_message("Use “!seed random advanced” or “!seed draft advanced” to allow advanced settings.").await?;
-                ctx.send_message("Enable Master Quest using e.g. “!seed base 6mq” or “!seed draft advanced 12mq”").await?;
+                ctx.send_message("!seed base : Settings de base.").await?;
+                ctx.send_message("!seed random : Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.").await?;
+                ctx.send_message("!seed draft : Vous fait effectuer un draft dans le chat.").await?;
+                ctx.send_message("!seed <setting> <configuration> <setting> <configuration>... ex : !seed trials random bridge ad : Créé une seed avec les settings que vous définissez. Tapez “!settings” pour obtenir la liste des settings.").await?;
+                ctx.send_message("Utilisez “!seed random advanced” ou “!seed draft advanced” pour autoriser les settings difficiles.").await?;
+                ctx.send_message("Activez les donjons Master Quest en utilisant par exemple : “!seed base 6mq” ou “!seed draft advanced 12mq”").await?;
             }
             Self::TriforceBlitz => {
                 ctx.send_message("!seed jr: Jabu's Revenge").await?;
@@ -1768,8 +1768,8 @@ impl RaceHandler<GlobalState> for Handler {
                             ctx.send_message("If no preset is selected, default RSL settings will be used. For a list of presets, use !presets").await?;
                         }
                         Goal::TournoiFrancoS3 => {
-                            ctx.send_message("Welcome! This is a practice room for the tournoi francophone saison 3. Learn more about the tournament at https://midos.house/event/fr/3").await?;
-                            ctx.send_message("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials random bridge ad). For more info about these options, use !presets").await?;
+                            ctx.send_message("Bienvenue ! Ceci est une practice room pour le tournoi francophone saison 3. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/fr/3").await?;
+                            ctx.send_message("Vous pouvez roll une seed en utilisant “!seed base”, “!seed random” ou “!seed draft”. Vous pouvez également définir directement les settings (ex : !seed trials random bridge ad). Pour plus d'informations, tapez !presets").await?;
                         }
                         Goal::TriforceBlitz => {
                             ctx.send_message("Welcome to Triforce Blitz!").await?;
@@ -2341,7 +2341,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 });
                                 let settings = match args[..] {
                                     [] => {
-                                        ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
+                                        ctx.send_message(&format!("Désolé {reply_to}, un preset doit être défini. Veuillez utiliser un des suivants :")).await?;
                                         goal.send_presets(ctx).await?;
                                         return Ok(())
                                     }
@@ -2380,7 +2380,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         return Ok(())
                                     }
                                     [_] => {
-                                        ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                        ctx.send_message(&format!("Désolé {reply_to}, je ne reconnais pas ce preset. Veuillez utiliser un des suivants :")).await?;
                                         goal.send_presets(ctx).await?;
                                         return Ok(())
                                     }

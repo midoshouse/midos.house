@@ -681,7 +681,7 @@ impl Draft {
                             })
                         },
                         StepKind::Pick { available_choices, skippable, .. } => if let Some(setting) = available_choices.get(&setting) {
-                            if let Some(option) = setting.options.into_iter().find(|option| option.name == value) {
+                            if let Some(option) = setting.options.iter().find(|option| option.name == value) {
                                 self.settings.insert(Cow::Borrowed(setting.name), Cow::Borrowed(option.name));
                                 Ok(match msg_ctx {
                                     MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
@@ -698,17 +698,17 @@ impl Draft {
                                     MessageContext::Discord { .. } => {
                                         let mut content = MessageBuilder::default();
                                         content.push("Sorry, that's not a possible value for this setting. Use one of the following: ");
-                                        for (i, setting) in available_choices.all().enumerate() {
+                                        for (i, value) in setting.options.into_iter().enumerate() {
                                             if i > 0 {
                                                 content.push(" or ");
                                             }
-                                            content.push_mono(setting.name);
+                                            content.push_mono(value.name);
                                         }
                                         content.build()
                                     }
                                     MessageContext::RaceTime { reply_to, .. } => format!(
                                         "Sorry {reply_to}, that's not a possible value for this setting. Use one of the following: {}",
-                                        available_choices.all().map(|setting| setting.name).format(" or "),
+                                        setting.options.into_iter().map(|value| value.name).format(" or "),
                                     ),
                                 })
                             }
@@ -934,7 +934,7 @@ impl Draft {
                             })
                         },
                         StepKind::Pick { available_choices, skippable, .. } => if let Some(setting) = available_choices.get(&setting) {
-                            if let Some(option) = setting.options.into_iter().find(|option| option.name == value) {
+                            if let Some(option) = setting.options.iter().find(|option| option.name == value) {
                                 if value != fr::S3_SETTINGS.into_iter().find(|&fr::S3Setting { name, .. }| setting.name == name).unwrap().default {
                                     self.settings.insert(Cow::Borrowed(self.active_team(kind).await?.unwrap().choose("high_seed_has_picked", "low_seed_has_picked")), Cow::Borrowed("yes"));
                                 }
@@ -954,17 +954,17 @@ impl Draft {
                                     MessageContext::Discord { .. } => {
                                         let mut content = MessageBuilder::default();
                                         content.push("Sorry, that's not a possible value for this setting. Use one of the following: ");
-                                        for (i, setting) in available_choices.all().enumerate() {
+                                        for (i, value) in setting.options.into_iter().enumerate() {
                                             if i > 0 {
                                                 content.push(" or ");
                                             }
-                                            content.push_mono(setting.name);
+                                            content.push_mono(value.name);
                                         }
                                         content.build()
                                     }
                                     MessageContext::RaceTime { reply_to, .. } => format!(
                                         "Sorry {reply_to}, that's not a possible value for this setting. Use one of the following: {}",
-                                        available_choices.all().map(|setting| setting.name).format(" or "),
+                                        setting.options.into_iter().map(|value| value.name).format(" or "),
                                     ),
                                 })
                             }
