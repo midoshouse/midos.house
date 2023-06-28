@@ -229,7 +229,7 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
         format!("shuffle_interior_entrances") => if mixed_er == "on" {
             json!("all")
         } else {
-            json!("simple")
+            json!("off")
         },
         format!("shuffle_grotto_entrances") => json!(mixed_er == "on"),
         format!("shuffle_dungeon_entrances") => if dungeon_er == "on" {
