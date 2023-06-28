@@ -1657,8 +1657,8 @@ impl RaceHandler<GlobalState> for Handler {
                             team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
                         ]
                     },
-                    Entrants::Two([_, _]) => unimplemented!("MW S3 draft style with non-MH teams"), //TODO
-                    Entrants::Three([_, _, _]) => unimplemented!("MW S3 draft style with 3 teams"),
+                    Entrants::Two([_, _]) => unimplemented!("draft with non-MH teams"),
+                    Entrants::Three([_, _, _]) => unimplemented!("draft with 3 teams"),
                 };
                 (RaceState::Draft {
                     spoiler_log: false,
@@ -1719,7 +1719,7 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             }
             if let RaceStatusValue::Pending | RaceStatusValue::InProgress = data.status.value { //TODO also check this in official races
-                //TODO get chatlog, only send if !breaks was actually used
+                //TODO get chatlog and recover breaks config instead of sending this
                 ctx.send_message("@entrants I just restarted and it looks like the race is already in progress. If the !breaks command was used, break notifications may be broken now. Sorry about that.").await?;
             } else {
                 match race_state {
@@ -1860,7 +1860,11 @@ impl RaceHandler<GlobalState> for Handler {
                     self.breaks = None;
                     ctx.send_message("Breaks are now disabled.").await?;
                 } else {
-                    ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
+                    ctx.send_message(&if let French = goal.language() {
+                        format!("Désolé {reply_to}, mais la race a débuté.")
+                    } else {
+                        format!("Sorry {reply_to}, but the race has already started.")
+                    }).await?;
                 },
                 _ => if let Ok(breaks) = args.join(" ").parse::<Breaks>() {
                     if breaks.duration < Duration::from_secs(60) {
@@ -1868,7 +1872,7 @@ impl RaceHandler<GlobalState> for Handler {
                     } else if breaks.interval < breaks.duration + Duration::from_secs(5 * 60) {
                         ctx.send_message(&format!("Sorry {reply_to}, there must be a minimum of 5 minutes between breaks since I notify runners 5 minutes in advance.")).await?;
                     } else if breaks.duration + breaks.interval >= Duration::from_secs(24 * 60 * 60) {
-                        ctx.send_message(&format!("Sorry {reply_to}, race rooms are automatically closed after 24 hours so these breaks wouldn\'t work.")).await?;
+                        ctx.send_message(&format!("Sorry {reply_to}, race rooms are automatically closed after 24 hours so these breaks wouldn't work.")).await?;
                     } else {
                         self.breaks = Some(breaks);
                         ctx.send_message(&format!("Breaks set to {breaks}.")).await?;
@@ -2353,7 +2357,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     }
                                     [ref arg] if fr::S3_SETTINGS.into_iter().any(|fr::S3Setting { name, .. }| name == arg) => {
                                         drop(state);
-                                        self.send_settings(ctx, &format!("Sorry {reply_to}, you need to pair each setting with a value."), reply_to).await?;
+                                        self.send_settings(ctx, &format!("Désolé {reply_to}, vous devez associer un setting avec une configuration."), reply_to).await?;
                                         return Ok(())
                                     }
                                     [_] => {
@@ -2370,18 +2374,18 @@ impl RaceHandler<GlobalState> for Handler {
                                                 if value == default || other.iter().any(|(other, _, _)| value == **other) {
                                                     settings.insert(Cow::Owned(setting), Cow::Owned(value));
                                                 } else {
-                                                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value for the {setting} setting. Use {}", iter::once(default).chain(other.iter().map(|&(other, _, _)| other)).join(" or "))).await?;
+                                                    ctx.send_message(&format!("Désolé {reply_to}, je ne reconnais pas cette configuration pour {setting}. Utilisez {}", iter::once(default).chain(other.iter().map(|&(other, _, _)| other)).join(" or "))).await?;
                                                     return Ok(())
                                                 }
                                             } else {
                                                 drop(state);
-                                                self.send_settings(ctx, &format!("Sorry {reply_to}, I don't recognize one of those settings. Use one of the following:"), reply_to).await?;
+                                                self.send_settings(ctx, &format!("Désolé {reply_to}, je ne reconnais pas un des settings. Utilisez cette liste :"), reply_to).await?;
                                                 return Ok(())
                                             }
                                         }
                                         if tuples.into_buffer().next().is_some() {
                                             drop(state);
-                                            self.send_settings(ctx, &format!("Sorry {reply_to}, you need to pair each setting with a value."), reply_to).await?;
+                                            self.send_settings(ctx, &format!("Désolé {reply_to}, vous devez associer un setting avec une configuration."), reply_to).await?;
                                             return Ok(())
                                         } else {
                                             settings
@@ -2574,11 +2578,16 @@ impl RaceHandler<GlobalState> for Handler {
                                 TeamConfig::Solo => {
                                     let mut times = data.entrants.iter().map(|entrant| (entrant.user.id.clone(), entrant.finish_time.map(|time| time.to_std().expect("negative finish time")))).collect_vec();
                                     times.sort_by_key(|(_, time)| (time.is_none(), *time)); // sort DNF last
+                                    let mut builder = MessageBuilder::default();
+                                    if let Some(game) = cal_event.race.game {
+                                        builder.push("game ");
+                                        builder.push(game.to_string());
+                                        builder.push(": ");
+                                    }
                                     if let [(ref winner, winning_time), (ref loser, losing_time)] = *times {
                                         if winning_time == losing_time {
                                             let entrant1 = User::from_racetime(&mut transaction, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                             let entrant2 = User::from_racetime(&mut transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                            let mut builder = MessageBuilder::default();
                                             builder.mention_user(&entrant1);
                                             builder.push(" and ");
                                             builder.mention_user(&entrant2);
@@ -2598,13 +2607,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         } else {
                                             let winner = User::from_racetime(&mut transaction, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                             let loser = User::from_racetime(&mut transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                            let mut msg = MessageBuilder::default();
-                                            if let Some(game) = cal_event.race.game {
-                                                msg.push("game ");
-                                                msg.push(game.to_string());
-                                                msg.push(": ");
-                                            }
-                                            results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg
+                                            results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder
                                                 .mention_user(&winner)
                                                 .push(" (")
                                                 .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
@@ -2638,10 +2641,15 @@ impl RaceHandler<GlobalState> for Handler {
                                         .collect_vec();
                                     team_averages.sort_by_key(|(_, average)| (average.is_none(), *average)); // sort DNF last
                                     if let [(winner, winning_time), (loser, losing_time)] = *team_averages {
+                                        let mut builder = MessageBuilder::default();
+                                        if let Some(game) = cal_event.race.game {
+                                            builder.push("game ");
+                                            builder.push(game.to_string());
+                                            builder.push(": ");
+                                        }
                                         if winning_time == losing_time {
                                             let team1 = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                             let team2 = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                            let mut builder = MessageBuilder::default();
                                             builder.mention_team(&mut transaction, event.discord_guild, &team1).await.to_racetime()?;
                                             builder.push(" and ");
                                             builder.mention_team(&mut transaction, event.discord_guild, &team2).await.to_racetime()?;
@@ -2661,13 +2669,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         } else {
                                             let winner = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                             let loser = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                            let mut msg = MessageBuilder::default();
-                                            if let Some(game) = cal_event.race.game {
-                                                msg.push("game ");
-                                                msg.push(game.to_string());
-                                                msg.push(": ");
-                                            }
-                                            results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg
+                                            results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder
                                                 .mention_team(&mut transaction, event.discord_guild, &winner).await.to_racetime()?
                                                 .push(" (")
                                                 .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
