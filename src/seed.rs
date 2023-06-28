@@ -45,6 +45,7 @@ use {
     serde::Deserialize,
     sqlx::PgPool,
     tokio::{
+        io,
         pin,
         process::Command,
     },
@@ -348,12 +349,20 @@ pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>,
         Some(suffix @ ("zpf" | "zpfz")) => {
             let path = Path::new(DIR).join(format!("{file_stem}.{suffix}"));
             GetResponse::Patch {
-                inner: NamedFile::open(&path).await.at(path)?,
+                inner: match NamedFile::open(&path).await {
+                    Ok(file) => file,
+                    Err(e) if e.kind() == io::ErrorKind::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
+                    Err(e) => return Err(e).at(path).map_err(|e| StatusOrError::Err(GetError::Wheel(e))),
+                },
                 content_disposition: Header::new(CONTENT_DISPOSITION.as_str(), "attachment"),
             }
         }
         Some("json") => {
-            let spoiler = fs::read(Path::new(DIR).join(format!("{file_stem}.json"))).await?;
+            let spoiler = match fs::read(Path::new(DIR).join(format!("{file_stem}.json"))).await {
+                Ok(spoiler) => spoiler,
+                Err(wheel::Error::Io { inner, .. }) if inner.kind() == io::ErrorKind::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
+                Err(e) => return Err(e.into()),
+            };
             let chests = match serde_json::from_slice::<SpoilerLog>(&spoiler) {
                 Ok(spoiler) => ChestAppearances::from(spoiler),
                 Err(e) => {
