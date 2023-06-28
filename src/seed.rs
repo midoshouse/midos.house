@@ -13,20 +13,61 @@ use {
         StreamExt as _,
     },
     if_chain::if_chain,
+    lazy_regex::regex_is_match,
     ootr_utils::spoiler::{
         HashIcon,
         SpoilerLog,
     },
     rocket::{
-        http::uri::Origin,
-        response::content::RawHtml,
+        Responder,
+        State,
+        fs::NamedFile,
+        http::{
+            Header,
+            Status,
+            hyper::header::{
+                CONTENT_DISPOSITION,
+                LINK,
+            },
+        },
+        response::content::{
+            RawHtml,
+            RawJson,
+        },
+        uri,
     },
-    rocket_util::html,
+    rocket_util::{
+        OptSuffix,
+        Origin,
+        Suffix,
+        html,
+    },
     serde::Deserialize,
-    tokio::pin,
+    sqlx::PgPool,
+    tokio::{
+        pin,
+        process::Command,
+    },
     uuid::Uuid,
-    wheel::fs,
-    crate::http::static_url,
+    wheel::{
+        fs,
+        traits::IoResultExt as _,
+    },
+    crate::{
+        favicon::{
+            self,
+            ChestAppearances,
+            ChestTextures,
+        },
+        http::{
+            PageKind,
+            PageStyle,
+            page,
+            static_url,
+        },
+        user::User,
+        util::StatusOrError,
+    },
 };
 #[cfg(unix)] use async_proto::Protocol;
 
@@ -144,6 +185,7 @@ impl Data {
                 } else {
                     (self.file_hash, None)
                 };
+                //TODO if file_hash.is_none() and a patch file is available, read the file hash from the patched rom?
                 return Ok(ExtraData {
                     spoiler_status: if spoiler_path_exists {
                         if let Some(spoiler_file_name) = spoiler_file_name {
@@ -158,6 +200,7 @@ impl Data {
                 })
             }
         }
+        //TODO if file_hash.is_none() and a patch file is available, read the file hash from the patched rom?
         Ok(ExtraData {
             spoiler_status: SpoilerStatus::NotFound,
             file_hash: self.file_hash,
@@ -204,7 +247,7 @@ pub(crate) fn table_empty_cells(spoiler_logs: bool) -> RawHtml<String> {
     }
 }
 
-pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, add_hash_url: Option<Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
+pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, add_hash_url: Option<rocket::http::uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
     let extra = seed.extra(now).await?;
     Ok(html! {
         td {
@@ -266,6 +309,114 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -
                     tr : table_cells(now, &seed, spoiler_logs, None).await?;
                 }
             }
+        }
+    })
+}
+
+#[derive(Responder)]
+pub(crate) enum GetResponse {
+    Page(RawHtml<String>),
+    Patch {
+        inner: NamedFile,
+        content_disposition: Header<'static>,
+    },
+    Spoiler {
+        inner: RawJson<Vec<u8>>,
+        content_disposition: Header<'static>,
+        link: Header<'static>,
+    },
+}
+
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+pub(crate) enum GetError {
+    #[error(transparent)] Page(#[from] crate::http::PageError),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
+}
+
+impl<E: Into<GetError>> From<E> for StatusOrError<GetError> {
+    fn from(e: E) -> Self {
+        Self::Err(e.into())
+    }
+}
+
+#[rocket::get("/seed/<filename>")]
+pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, filename: OptSuffix<'_, &str>) -> Result<GetResponse, StatusOrError<GetError>> {
+    let OptSuffix(file_stem, suffix) = filename;
+    if !regex_is_match!("^[0-9A-Za-z_-]+$", file_stem) { return Err(StatusOrError::Status(Status::NotFound)) }
+    Ok(match suffix {
+        Some(suffix @ ("zpf" | "zpfz")) => {
+            let path = Path::new(DIR).join(format!("{file_stem}.{suffix}"));
+            GetResponse::Patch {
+                inner: NamedFile::open(&path).await.at(path)?,
+                content_disposition: Header::new(CONTENT_DISPOSITION.as_str(), "attachment"),
+            }
+        }
+        Some("json") => {
+            let spoiler = fs::read(Path::new(DIR).join(format!("{file_stem}.json"))).await?;
+            let chests = match serde_json::from_slice::<SpoilerLog>(&spoiler) {
+                Ok(spoiler) => ChestAppearances::from(spoiler),
+                Err(e) => {
+                    eprintln!("failed to add favicon to {file_stem}.json: {e} ({e:?})");
+                    let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
+                    ChestAppearances::random()
+                }
+            };
+            GetResponse::Spoiler {
+                inner: RawJson(spoiler),
+                content_disposition: Header::new(CONTENT_DISPOSITION.as_str(), "inline"),
+                // may not work in all browsers, see https://bugzilla.mozilla.org/show_bug.cgi?id=1185705
+                link: Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(chests.textures(), Suffix(1024, "png"))))),
+            }
+        }
+        Some(_) => return Err(StatusOrError::Status(Status::NotFound)),
+        None => {
+            let mut transaction = pool.begin().await?;
+            let patch_suffix = if fs::exists(Path::new(DIR).join(format!("{file_stem}.zpf"))).await? {
+                "zpf"
+            } else if fs::exists(Path::new(DIR).join(format!("{file_stem}.zpfz"))).await? {
+                "zpfz"
+            } else {
+                return Err(StatusOrError::Status(Status::NotFound))
+            };
+            let spoiler_filename = format!("{file_stem}_Spoiler.json");
+            let (spoiler_status, hash, chests) = if let Ok(spoiler) = fs::read_json::<SpoilerLog>(Path::new(DIR).join(&spoiler_filename)).await {
+                (SpoilerStatus::Unlocked(spoiler_filename), Some(spoiler.file_hash), ChestAppearances::from(spoiler))
+            } else if let Some(Some(locked_spoiler_log_path)) = sqlx::query_scalar!("SELECT locked_spoiler_log_path FROM races WHERE file_stem = $1", file_stem).fetch_optional(&mut transaction).await? {
+                let spoiler = fs::read_json::<SpoilerLog>(locked_spoiler_log_path).await?;
+                (SpoilerStatus::Locked, Some(spoiler.file_hash), ChestAppearances::random()) // keeping chests random for locked spoilers to avoid leaking seed info
+            } else {
+                (SpoilerStatus::NotFound, None, ChestAppearances::random())
+            };
+            GetResponse::Page(page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, chests, ..PageStyle::default() }, "Seed — Mido's House", html! {
+                @if let Some(hash) = hash {
+                    h1(class = "hash") {
+                        @for hash_icon in hash {
+                            : hash_icon.to_html();
+                        }
+                    }
+                } else {
+                    h1 : "Seed";
+                }
+                @match spoiler_status {
+                    SpoilerStatus::Unlocked(spoiler_filename) => div(class = "button-row") {
+                        a(class = "button", href = format!("/seed/{file_stem}.{patch_suffix}")) : "Patch File";
+                        a(class = "button", href = format!("/seed/{spoiler_filename}")) : "Spoiler Log";
+                    }
+                    SpoilerStatus::Locked => {
+                        div(class = "button-row") {
+                            a(class = "button", href = format!("/seed/{file_stem}.{patch_suffix}")) : "Patch File";
+                        }
+                        p : "Spoiler log locked (race is still in progress)";
+                    }
+                    SpoilerStatus::NotFound => {
+                        div(class = "button-row") {
+                            a(class = "button", href = format!("/seed/{file_stem}.{patch_suffix}")) : "Patch File";
+                        }
+                        p : "Spoiler log not found";
+                    }
+                }
+            }).await?)
         }
     })
 }

@@ -1,37 +1,20 @@
 use {
-    std::io,
     base64::engine::{
         Engine as _,
         general_purpose::STANDARD as BASE64,
     },
     itertools::Itertools as _,
-    ootr_utils::{
-        camc::ChestTexture,
-        spoiler::SpoilerLog,
-    },
+    ootr_utils::camc::ChestTexture,
     rand::prelude::*,
     rocket::{
         Request,
         Rocket,
         State,
         config::SecretKey,
-        fairing::Fairing,
         fs::FileServer,
-        http::{
-            Header,
-            Status,
-            StatusClass,
-            hyper::header::{
-                CONTENT_DISPOSITION,
-                LINK,
-            },
-        },
-        response::{
-            Response,
-            content::{
-                RawHtml,
-                RawText,
-            },
+        response::content::{
+            RawHtml,
+            RawText,
         },
         uri,
     },
@@ -505,43 +488,6 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
     }).await
 }
 
-struct SeedDownloadFairing;
-
-#[rocket::async_trait]
-impl Fairing for SeedDownloadFairing {
-    fn info(&self) -> rocket::fairing::Info {
-        rocket::fairing::Info {
-            name: "SeedDownloadFairing",
-            kind: rocket::fairing::Kind::Singleton | rocket::fairing::Kind::Response,
-        }
-    }
-
-    async fn on_response<'r>(&self, req: &'r Request<'_>, res: &mut Response<'r>) {
-        if res.status().class() == StatusClass::Success {
-            let path = req.uri().path();
-            if path.ends_with(".zpf") || path.ends_with(".zpfz") {
-                res.set_header(Header::new(CONTENT_DISPOSITION.as_str(), "attachment"));
-            } else if path.ends_with(".json") {
-                res.set_header(Header::new(CONTENT_DISPOSITION.as_str(), "inline"));
-                if let Ok(body) = res.body_mut().to_string().await {
-                    match serde_json::from_str::<SpoilerLog>(&body) {
-                        Ok(log) => {
-                            let textures = ChestAppearances::from(log).textures();
-                            res.adjoin_header(Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(textures, Suffix(1024, "png"))))));
-                        }
-                        Err(e) => {
-                            eprintln!("failed to add favicon to {path}: {e} ({e:?})");
-                        }
-                    }
-                    res.set_sized_body(body.len(), io::Cursor::new(body))
-                } else {
-                    res.set_status(Status::InternalServerError);
-                }
-            }
-        }
-    }
-}
-
 pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: Config, env: Environment, port: u16) -> Result<Rocket<rocket::Ignite>, crate::Error> {
     let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
     let racetime_config = if env.is_dev() { &config.racetime_oauth_dev } else { &config.racetime_oauth_production };
@@ -599,9 +545,9 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         favicon::favicon_png,
         notification::notifications,
         notification::dismiss,
+        seed::get,
         user::profile,
     ])
-    .mount("/seed", FileServer::new(seed::DIR, rocket::fs::Options::None))
     .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))
     .register("/", rocket::catchers![
         bad_request,
@@ -636,7 +582,6 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
             Environment::Production => uri!("https://midos.house", auth::discord_callback),
         }.to_string()),
     )))
-    .attach(SeedDownloadFairing)
     .manage(config)
     .manage(env)
     .manage(pool.clone())

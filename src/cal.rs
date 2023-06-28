@@ -1963,7 +1963,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                     Ok(response) => match response.detailed_error_for_status().await {
                         Ok(response) => match response.json_with_text_in_error::<RaceData>().await {
                             Ok(race_data) => if let Some(info_bot) = race_data.info_bot {
-                                if let Some((_, hash1, hash2, hash3, hash4, hash5, info_file_stem)) = regex_captures!("^([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)\nhttps://midos\\.house/seed/([0-9A-Za-z_-]+)\\.zpfz?$", &info_bot) {
+                                if let Some((_, hash1, hash2, hash3, hash4, hash5, info_file_stem)) = regex_captures!("^([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+) ([^ ]+)\nhttps://midos\\.house/seed/([0-9A-Za-z_-]+)(?:\\.zpfz?)?$", &info_bot) {
                                     let Some(hash1) = HashIcon::from_racetime_emoji(hash1) else { continue };
                                     let Some(hash2) = HashIcon::from_racetime_emoji(hash2) else { continue };
                                     let Some(hash3) = HashIcon::from_racetime_emoji(hash3) else { continue };

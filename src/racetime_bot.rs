@@ -1056,52 +1056,29 @@ impl SeedRollUpdate {
                     }
                 }
                 let seed_url = match seed.files {
-                    seed::Files::MidosHouse { ref file_stem, .. } => format!("https://midos.house/seed/{file_stem}.{}", if let Some(world_count) = extra.world_count {
-                        if world_count.get() > 1 { "zpfz" } else { "zpf" }
-                    } else if Path::new(seed::DIR).join(format!("{file_stem}.zpfz")).exists() {
-                        "zpfz"
-                    } else {
-                        "zpf"
-                    }),
+                    seed::Files::MidosHouse { ref file_stem, .. } => format!("https://midos.house/seed/{file_stem}"),
                     seed::Files::OotrWeb { id, .. } => format!("https://ootrandomizer.com/seed/get?id={id}"),
                     seed::Files::TriforceBlitz { uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
                     seed::Files::TfbSotd { ordinal, .. } => format!("https://www.triforceblitz.com/seed/daily/{ordinal}"),
                 };
                 ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
-                if let seed::Files::MidosHouse { ref file_stem, .. } = seed.files {
-                    if send_spoiler_log {
-                        ctx.send_message(&format!("And here is the spoiler log: https://midos.house/seed/{file_stem}_Spoiler.json")).await?;
+                if send_spoiler_log {
+                    ctx.send_message("The spoiler log is also available on the seed page.").await?;
+                } else if let seed::Files::TfbSotd { date, .. } = seed.files {
+                    if let Some(unlock_date) = date.succ_opt().and_then(|next| next.succ_opt()) {
+                        let unlock_time = Utc.from_utc_datetime(&unlock_date.and_hms_opt(20, 0, 0).expect("failed to construct naive datetime at 20:00:00"));
+                        let unlock_time = (unlock_time - Utc::now()).to_std().expect("unlock time for current daily seed in the past");
+                        ctx.send_message(&format!("The spoiler log will be available on the seed page in {}.", English.format_duration(unlock_time, true))).await?;
                     } else {
-                        ctx.send_message(&format!("After the race, you can view the spoiler log at https://midos.house/seed/{file_stem}_Spoiler.json")).await?;
+                        unimplemented!("distant future Triforce Blitz SotD")
                     }
                 } else {
-                    if send_spoiler_log {
-                        ctx.send_message("The spoiler log is also available on the seed page.").await?;
-                    } else if let seed::Files::TfbSotd { date, .. } = seed.files {
-                        if let Some(unlock_date) = date.succ_opt().and_then(|next| next.succ_opt()) {
-                            let unlock_time = Utc.from_utc_datetime(&unlock_date.and_hms_opt(20, 0, 0).expect("failed to construct naive datetime at 20:00:00"));
-                            let unlock_time = (unlock_time - Utc::now()).to_std().expect("unlock time for current daily seed in the past");
-                            ctx.send_message(&format!("The spoiler log will be available on the seed page in {}.", English.format_duration(unlock_time, true))).await?;
-                        } else {
-                            unimplemented!("distant future Triforce Blitz SotD")
-                        }
-                    } else {
-                        ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
-                    }
+                    ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
                 }
                 ctx.set_bot_raceinfo(&format!(
-                    "{}{}{seed_url}{}",
+                    "{}{}{seed_url}",
                     if let Some(preset) = rsl_preset { format!("{}\n", preset.race_info()) } else { String::default() },
                     extra.file_hash.map(|file_hash| format!("{}\n", format_hash(file_hash))).unwrap_or_default(),
-                    if_chain! {
-                        if let seed::Files::MidosHouse { ref file_stem, .. } = seed.files;
-                        if send_spoiler_log;
-                        then {
-                            format!("\nhttps://midos.house/seed/{file_stem}_Spoiler.json")
-                        } else {
-                            String::default()
-                        }
-                    },
                 )).await?;
                 *lock!(@write state) = RaceState::Rolled(seed);
             }
@@ -1716,7 +1693,7 @@ impl RaceHandler<GlobalState> for Handler {
             let mut race_state = RaceState::Init;
             if let Some(ref info_bot) = data.info_bot {
                 for section in info_bot.split(" | ") {
-                    if let Some((_, file_stem)) = regex_captures!(r"^Seed: https://midos\.house/seed/(.+)\.zpfz?$", section) {
+                    if let Some((_, file_stem)) = regex_captures!(r"^Seed: https://midos\.house/seed/(.+)(?:\.zpfz?)?$", section) {
                         race_state = RaceState::Rolled(seed::Data {
                             file_hash: None,
                             files: seed::Files::MidosHouse {
