@@ -26,7 +26,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "3" => Some(html! {
             article {
                 p {
-                    : "Voici la 3e saison du tournoi francophone, organisée par willx49, kneiiss, rafa, ";
+                    : "Voici la 3e saison du tournoi francophone, organisée par willx49, ";
                     : French.join_html(data.organizers(transaction).await?);
                     : ". Rejoignez ";
                     a(href = "https://discord.gg/wyhPVmquZC") : "le serveur Discord";

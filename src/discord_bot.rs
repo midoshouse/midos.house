@@ -1685,6 +1685,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             )).await?;
                         } else if Some(interaction.data.id) == command_ids.yes {
                             draft_action(ctx, interaction, draft::Action::BooleanChoice(true)).await?;
+                        } else {
+                            panic!("unexpected slash command")
                         }
                     }
                 }
