@@ -510,7 +510,7 @@ impl Draft {
                                                     builder.mention_command(command_ids.draft.unwrap(), "draft");
                                                     builder.push('.');
                                                     if skippable {
-                                                        builder.push(". Vous pouvez également utiliser ");
+                                                        builder.push(" Vous pouvez également utiliser ");
                                                         builder.mention_command(command_ids.skip.unwrap(), "skip");
                                                         builder.push(" si vous voulez laisser les settings comme ils sont.");
                                                     }
@@ -812,7 +812,6 @@ impl Draft {
             Kind::TournoiFrancoS3 => {
                 let resolved_action = match action {
                     Action::Ban { setting } => Action::Pick { value: fr::S3_SETTINGS.into_iter().find(|&fr::S3Setting { name, .. }| *name == setting).unwrap().default.to_owned(), setting },
-                    Action::BooleanChoice(value) if matches!(self.next_step(kind, &mut MessageContext::None).await?.kind, StepKind::GoFirst) => Action::GoFirst(value),
                     _ => action,
                 };
                 match resolved_action {
@@ -829,7 +828,7 @@ impl Draft {
                                     content.push(" pour le draft");
                                     if self.settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
                                         let mq_dungeons_count = self.settings.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0");
-                                        content.push(" et a choisi");
+                                        content.push(" et a choisi ");
                                         content.push(mq_dungeons_count);
                                         content.push(" donjon");
                                         if mq_dungeons_count != "1" {
@@ -1070,7 +1069,6 @@ impl Draft {
                         }),
                     },
                     Action::BooleanChoice(value) => match self.next_step(kind, &mut MessageContext::None).await?.kind {
-                        StepKind::GoFirst => unreachable!("normalized to Action::GoFirst above"),
                         StepKind::BooleanChoice { .. } => {
                             self.settings.insert(Cow::Borrowed("mixed-dungeons"), Cow::Borrowed(if value { "mixed" } else { "separate" }));
                             Ok(match msg_ctx {
