@@ -191,6 +191,7 @@ impl Role {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Sequence)]
 pub(crate) enum Series {
+    CopaDoBrasil,
     League,
     MixedPools,
     Multiworld,
@@ -205,6 +206,7 @@ pub(crate) enum Series {
 impl Series {
     pub(crate) fn to_str(&self) -> &'static str {
         match self {
+            Self::CopaDoBrasil => "br",
             Self::League => "league",
             Self::MixedPools => "mp",
             Self::Multiworld => "mw",
@@ -433,6 +435,8 @@ impl<'a> Data<'a> {
         //TODO parse weights at compile time
 
         match (self.series, &*self.event) {
+            (Series::CopaDoBrasil, "1") => ChestAppearances::random(), //TODO
+            (Series::CopaDoBrasil, _) => unimplemented!(),
             (Series::League, "4") => from_file!("../../assets/event/league/chests-4-7.1.94.json"),
             (Series::League, _) => unimplemented!(),
             (Series::MixedPools, "1") => from_file!("../../assets/event/mp/chests-1-6.2.100-fenhl.4.json"),
@@ -470,6 +474,7 @@ impl<'a> Data<'a> {
 
     pub(crate) fn is_single_race(&self) -> bool {
         match self.series {
+            Series::CopaDoBrasil => false,
             Series::League => false,
             Series::MixedPools => false,
             Series::Multiworld => false,
@@ -484,6 +489,7 @@ impl<'a> Data<'a> {
 
     pub(crate) fn team_config(&self) -> TeamConfig {
         match self.series {
+            Series::CopaDoBrasil => TeamConfig::Solo,
             Series::League => TeamConfig::Solo,
             Series::MixedPools => TeamConfig::Solo,
             Series::Multiworld => TeamConfig::Multiworld,
@@ -846,6 +852,7 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Info, false).await?;
     let content = match data.series {
+        Series::CopaDoBrasil => None,
         Series::League => league::info(&mut transaction, &data).await?,
         Series::MixedPools => mp::info(&mut transaction, &data).await?,
         Series::Multiworld => mw::info(&mut transaction, &data).await?,
@@ -1325,6 +1332,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                     p : "You have resigned from this event.";
                 } else {
                     @match data.series {
+                        Series::CopaDoBrasil => p : "Please schedule your races using the Discord threads."; //TODO tiebreaker async support?
                         Series::League => @unimplemented // no signups on Mido's House
                         Series::MixedPools => @unimplemented // no signups on Mido's House
                         Series::Multiworld => : mw::status(&mut transaction, discord_ctx, csrf, &data, row.id, &mut ctx).await?;

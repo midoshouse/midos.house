@@ -607,6 +607,10 @@ impl Race {
             races.push(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?);
         }
         match event.series {
+            Series::CopaDoBrasil => match &*event.event {
+                "1" => {} //TODO automate Challonge match source for top 8
+                _ => unimplemented!(),
+            },
             Series::League => match &*event.event {
                 "4" => {
                     let schedule = http_client.get("https://league.ootrandomizer.com/scheduleJson")
@@ -737,7 +741,10 @@ impl Race {
                 "3" => {} // added to database
                 _ => unimplemented!(),
             },
-            Series::TriforceBlitz => {} // manually added by organizers pending reply from Challonge support
+            Series::TriforceBlitz => match &*event.event {
+                "2" => {} // added to database
+                _ => unimplemented!(),
+            },
         }
         races.retain(|race| !race.ignored);
         races.sort_unstable();
@@ -1346,7 +1353,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                 cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + match event.series {
                     Series::TriforceBlitz => Duration::hours(2),
                     Series::MixedPools => Duration::hours(3),
-                    Series::League | Series::NineDaysOfSaws | Series::Standard | Series::TournoiFrancophone => Duration::hours(3) + Duration::minutes(30),
+                    Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::Standard | Series::TournoiFrancophone => Duration::hours(3) + Duration::minutes(30),
                     Series::Multiworld | Series::Pictionary => Duration::hours(4),
                     Series::Rsl => Duration::hours(4) + Duration::minutes(30),
                 })))); //TODO better fallback duration estimates depending on participants
