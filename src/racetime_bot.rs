@@ -991,7 +991,7 @@ pub(crate) enum SeedRollUpdate {
 }
 
 impl SeedRollUpdate {
-    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &ArcRwLock<RaceState>, race_id: Option<Id>, article: &'static str, description: &str) -> Result<(), Error> {
+    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &ArcRwLock<RaceState>, race_id: Option<Id>, language: Language, article: &'static str, description: &str) -> Result<(), Error> {
         match self {
             Self::Queued(0) => ctx.send_message("I'm already rolling other multiworld seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
             Self::Queued(1) => ctx.send_message("I'm already rolling other multiworld seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
@@ -1000,7 +1000,11 @@ impl SeedRollUpdate {
             Self::MovedForward(1) => ctx.send_message("The queue has moved and there is only 1 more seed in front of yours.").await?,
             Self::MovedForward(pos) => ctx.send_message(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
             Self::WaitRateLimit(duration) => ctx.send_message(&format!("Your seed will be rolled in {}.", English.format_duration(duration, true))).await?,
-            Self::Started => ctx.send_message(&format!("Rolling {article} {description}…")).await?,
+            Self::Started => ctx.send_message(&if let French = language {
+                format!("Génération d'{article} {description}…")
+            } else {
+                format!("Rolling {article} {description}…")
+            }).await?,
             Self::Done { mut seed, rsl_preset, send_spoiler_log } => {
                 if let seed::Files::MidosHouse { ref file_stem, ref mut locked_spoiler_log_path } = seed.files {
                     if send_spoiler_log && locked_spoiler_log_path.is_some() {
@@ -1423,7 +1427,12 @@ impl Handler {
         let RaceState::Draft { state: ref draft, spoiler_log } = *state else { unreachable!() };
         let step = draft.next_step(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to: "friend" }).await.to_racetime()?;
         if let draft::StepKind::Done(settings) = step.kind {
-            self.roll_seed(ctx, state, goal.rando_version(), settings, spoiler_log, "a", format!("seed with {}", step.message));
+            let (article, description) = if let French = goal.language() {
+                ("une", format!("seed avec {}", step.message))
+            } else {
+                ("a", format!("seed with {}", step.message))
+            };
+            self.roll_seed(ctx, state, goal.rando_version(), settings, spoiler_log, goal.language(), article, description);
         } else {
             ctx.send_message(&step.message).await?;
         }
@@ -1467,7 +1476,7 @@ impl Handler {
         Ok(())
     }
 
-    fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, mut state: OwnedRwLockWriteGuard<RaceState>, mut updates: mpsc::Receiver<SeedRollUpdate>, article: &'static str, description: String) {
+    fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, mut state: OwnedRwLockWriteGuard<RaceState>, mut updates: mpsc::Receiver<SeedRollUpdate>, language: Language, article: &'static str, description: String) {
         *state = RaceState::Rolling;
         drop(state);
         let db_pool = ctx.global_state.db_pool.clone();
@@ -1480,16 +1489,20 @@ impl Handler {
             if let Some(delay) = official_start.and_then(|start| (start - chrono::Duration::minutes(15) - Utc::now()).to_std().ok()) {
                 // don't want to give an unnecessarily exact estimate if the room was opened automatically 30 minutes ahead of start
                 let display_delay = if delay > Duration::from_secs(14 * 60) && delay < Duration::from_secs(16 * 60) { Duration::from_secs(15 * 60) } else { delay };
-                ctx.send_message(&format!("Your {description} will be posted in {}.", English.format_duration(display_delay, true))).await?;
+                ctx.send_message(&if let French = language {
+                    format!("Votre {description} sera postée dans {}.", French.format_duration(display_delay, true))
+                } else {
+                    format!("Your {description} will be posted in {}.", English.format_duration(display_delay, true))
+                }).await?;
                 let mut sleep = pin!(sleep_until(Instant::now() + delay));
                 loop {
                     select! {
                         () = &mut sleep => {
                             if let Some(update) = seed_state.take() {
-                                update.handle(&db_pool, &ctx, &state, id, article, &description).await?;
+                                update.handle(&db_pool, &ctx, &state, id, language, article, &description).await?;
                             }
                             while let Some(update) = updates.recv().await {
-                                update.handle(&db_pool, &ctx, &state, id, article, &description).await?;
+                                update.handle(&db_pool, &ctx, &state, id, language, article, &description).await?;
                             }
                         }
                         Some(update) = updates.recv() => seed_state = Some(update), //TODO if update is RollError::Retries, restart seed rolling?
@@ -1497,29 +1510,29 @@ impl Handler {
                 }
             } else {
                 while let Some(update) = updates.recv().await {
-                    update.handle(&db_pool, &ctx, &state, id, article, &description).await?;
+                    update.handle(&db_pool, &ctx, &state, id, language, article, &description).await?;
                 }
             }
             Ok::<_, Error>(())
         });
     }
 
-    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool, article: &'static str, description: String) {
-        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_seed(version, settings, spoiler_log), article, description);
+    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool, language: Language, article: &'static str, description: String) {
+        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_seed(version, settings, spoiler_log), language, article, description);
     }
 
-    fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool, article: &'static str, description: String) {
-        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count, spoiler_log), article, description);
+    fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool, language: Language, article: &'static str, description: String) {
+        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count, spoiler_log), language, article, description);
     }
 
-    async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, spoiler_log: bool, article: &'static str, description: String) {
-        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_tfb_seed(format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), spoiler_log), article, description);
+    async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, spoiler_log: bool, language: Language, article: &'static str, description: String) {
+        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_tfb_seed(format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), spoiler_log), language, article, description);
     }
 
-    async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, seed: seed::Data, article: &'static str, description: String) {
+    async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
         let (tx, rx) = mpsc::channel(1);
         tx.send(SeedRollUpdate::Done { rsl_preset: None, send_spoiler_log: false, seed }).await.unwrap();
-        self.roll_seed_inner(ctx, state, rx, article, description);
+        self.roll_seed_inner(ctx, state, rx, language, article, description);
     }
 
     /// Returns `false` if this race was already finished/cancelled.
@@ -1588,7 +1601,7 @@ impl RaceHandler<GlobalState> for Handler {
 
     async fn new(ctx: &RaceContext<GlobalState>) -> Result<Self, Error> {
         let data = ctx.data().await;
-        let goal = data.goal.name.parse().to_racetime()?;
+        let goal = data.goal.name.parse::<Goal>().to_racetime()?;
         let new_room_lock = lock!(ctx.global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
         let (existing_seed, official_data, race_state, high_seed_name, low_seed_name, fpa_enabled) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
@@ -1627,21 +1640,39 @@ impl RaceHandler<GlobalState> for Handler {
                     }
                 }
             }
-            ctx.send_message(&format!(
-                "Welcome to {}! Learn more about the event at https://midos.house/event/{}/{}",
-                if event.is_single_race() {
-                    format!("the {}", event.display_name) //TODO remove “the” depending on event name
+            ctx.send_message(&if_chain! {
+                if let French = goal.language();
+                if !event.is_single_race();
+                then {
+                    format!(
+                        "Bienvenue pour cette race de {} ! Pour plus d'informations : https://midos.house/event/{}/{}",
+                        format!("this {} race", match (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref()) {
+                            (Some(phase), Some(round)) => format!("{phase} {round}"),
+                            (Some(phase), None) => phase.clone(),
+                            (None, Some(round)) => round.clone(),
+                            (None, None) => event.display_name.clone(),
+                        }),
+                        event.series,
+                        event.event,
+                    )
                 } else {
-                    format!("this {} race", match (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref()) {
-                        (Some(phase), Some(round)) => format!("{phase} {round}"),
-                        (Some(phase), None) => phase.clone(),
-                        (None, Some(round)) => round.clone(),
-                        (None, None) => event.display_name.clone(),
-                    })
-                },
-                event.series,
-                event.event,
-            )).await?;
+                    format!(
+                        "Welcome to {}! Learn more about the event at https://midos.house/event/{}/{}",
+                        if event.is_single_race() {
+                            format!("the {}", event.display_name) //TODO remove “the” depending on event name
+                        } else {
+                            format!("this {} race", match (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref()) {
+                                (Some(phase), Some(round)) => format!("{phase} {round}"),
+                                (Some(phase), None) => phase.clone(),
+                                (None, Some(round)) => round.clone(),
+                                (None, None) => event.display_name.clone(),
+                            })
+                        },
+                        event.series,
+                        event.event,
+                    )
+                }
+            }).await?;
             let (race_state, high_seed_name, low_seed_name) = if event.draft_kind().is_some() {
                 let state = cal_event.race.draft.clone().expect("missing draft state");
                 let [high_seed_name, low_seed_name] = match cal_event.race.entrants {
@@ -1683,7 +1714,11 @@ impl RaceHandler<GlobalState> for Handler {
                 high_seed_name,
                 low_seed_name,
                 if let RaceStatusValue::Invitational = data.status.value {
-                    ctx.send_message("Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat.").await?; //TODO different message for monitorless FPA?
+                    ctx.send_message(if let French = goal.language() {
+                        "Le FPA est activé pour cette race. Les joueurs pourront utiliser !fpa pendant la race pour signaler d'un problème technique de leur côté. Les race monitors doivent activer les notifications en cliquant sur l'icône de cloche 🔔 sous le chat."
+                    } else {
+                        "Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat."
+                    }).await?; //TODO different message for monitorless FPA?
                     true
                 } else {
                     false
@@ -1807,9 +1842,26 @@ impl RaceHandler<GlobalState> for Handler {
                     }
                 }
                 let text = if restreams.values().any(|state| state.restreamer_racetime_id.is_none()) {
-                    format!("This race is being restreamed {restreams_text} — auto-start is disabled. Tournament organizers can use “!monitor” to become race monitors, then invite the restreamer{0} as race monitor{0} to allow them to force-start.", if restreams.len() == 1 { "" } else { "s" })
-                } else if restreams.len() == 1 {
-                    format!("This race is being restreamed {restreams_text} — auto-start is disabled. The restreamer can use “!ready” to unlock auto-start.")
+                    if_chain! {
+                        if let French = goal.language();
+                        if let Ok((video_url, state)) = restreams.iter().exactly_one();
+                        if let Some(French) = state.language;
+                        then {
+                            format!("Cette race est restreamée en français chez {video_url} — l'auto-start est désactivé. Les organisateurs du tournoi peuvent utiliser “!monitor” pour devenir race monitor, puis pour inviter les restreamers en tant que race monitor et leur autoriser le force start.")
+                        } else {
+                            format!("This race is being restreamed {restreams_text} — auto-start is disabled. Tournament organizers can use “!monitor” to become race monitors, then invite the restreamer{0} as race monitor{0} to allow them to force-start.", if restreams.len() == 1 { "" } else { "s" })
+                        }
+                    }
+                } else if let Ok((video_url, state)) = restreams.iter().exactly_one() {
+                    if_chain! {
+                        if let French = goal.language();
+                        if let Some(French) = state.language;
+                        then {
+                            format!("Cette race est restreamée en français chez {video_url} — l'auto start est désactivé. Le restreamer peut utiliser “!ready” pour débloquer l'auto-start.")
+                        } else {
+                            format!("This race is being restreamed {restreams_text} — auto-start is disabled. The restreamer can use “!ready” to unlock auto-start.")
+                        }
+                    }
                 } else {
                     format!("This race is being restreamed {restreams_text} — auto-start is disabled. Restreamers can use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.")
                 };
@@ -1817,7 +1869,7 @@ impl RaceHandler<GlobalState> for Handler {
             }
             let state = lock!(@write_owned this.race_state.clone());
             if let Some(seed) = existing_seed {
-                this.queue_existing_seed(ctx, state, seed, "a", format!("seed")).await;
+                this.queue_existing_seed(ctx, state, seed, English, "a", format!("seed")).await;
             } else {
                 match *state {
                     RaceState::Init => match goal {
@@ -1827,8 +1879,8 @@ impl RaceHandler<GlobalState> for Handler {
                         Goal::PicRs2 => this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
                             version: Some((Version::new(2, 3, 8), 10)),
                             preset: RslDevFenhlPreset::Pictionary,
-                        }, 1, true, "a", format!("random settings Pictionary seed")),
-                        Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, false, "a", format!("Triforce Blitz S2 seed")).await,
+                        }, 1, true, English, "a", format!("random settings Pictionary seed")),
+                        Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, false, English, "a", format!("Triforce Blitz S2 seed")).await,
                     },
                     RaceState::Draft { .. } => {
                         drop(state);
@@ -2072,9 +2124,9 @@ impl RaceHandler<GlobalState> for Handler {
                         match goal {
                             Goal::MixedPoolsS2 => if let Some(seed) = lock!(ctx.global_state.cached_mixed_pools_seed).take() {
                                 let _ = ctx.global_state.seed_cache_tx.send(()).await;
-                                self.queue_existing_seed(ctx, state, seed, "a", format!("mixed pools seed")).await;
+                                self.queue_existing_seed(ctx, state, seed, English, "a", format!("mixed pools seed")).await;
                             } else {
-                                self.roll_seed(ctx, state, goal.rando_version(), mp::s2_settings(), spoiler_log, "a", format!("mixed pools seed"));
+                                self.roll_seed(ctx, state, goal.rando_version(), mp::s2_settings(), spoiler_log, English, "a", format!("mixed pools seed"));
                             },
                             Goal::MultiworldS3 => {
                                 let settings = match args[..] {
@@ -2141,7 +2193,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         }
                                     }
                                 };
-                                self.roll_seed(ctx, state, goal.rando_version(), mw::resolve_draft_settings(&settings), spoiler_log, "a", format!("seed with {}", mw::display_draft_picks(&settings)));
+                                self.roll_seed(ctx, state, goal.rando_version(), mw::resolve_draft_settings(&settings), spoiler_log, English, "a", format!("seed with {}", mw::display_draft_picks(&settings)));
                             }
                             Goal::NineDaysOfSaws => match args[..] {
                                 [] => {
@@ -2236,7 +2288,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     _ => None,
                                 } {
                                     settings.insert(format!("user_message"), json!(format!("9 Days of SAWS: day {}", &arg[3..])));
-                                    self.roll_seed(ctx, state, goal.rando_version(), settings, spoiler_log, "a", format!("{description} seed"));
+                                    self.roll_seed(ctx, state, goal.rando_version(), settings, spoiler_log, goal.language(), "a", format!("{description} seed"));
                                 } else {
                                     ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
@@ -2249,7 +2301,7 @@ impl RaceHandler<GlobalState> for Handler {
                             Goal::PicRs2 => self.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
                                 version: Some((Version::new(2, 3, 8), 10)),
                                 preset: RslDevFenhlPreset::Pictionary,
-                            }, 1, true, "a", format!("random settings Pictionary seed")),
+                            }, 1, true, English, "a", format!("random settings Pictionary seed")),
                             Goal::Rsl => {
                                 let (preset, world_count) = match args[..] {
                                     [] => (rsl::Preset::League, 1),
@@ -2306,7 +2358,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     rsl::Preset::Multiworld => ("a", format!("random settings multiworld seed for {world_count} players")),
                                     rsl::Preset::S6Test => ("an", format!("RSL season 6 test seed")),
                                 };
-                                self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, spoiler_log, article, description);
+                                self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, spoiler_log, English, article, description);
                             }
                             Goal::TournoiFrancoS3 => {
                                 let mut mq_dungeons_count = None::<u8>;
@@ -2392,7 +2444,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         }
                                     }
                                 };
-                                self.roll_seed(ctx, state, goal.rando_version(), fr::resolve_draft_settings(&settings), spoiler_log, "a", format!("seed with {}", fr::display_draft_picks(&settings)));
+                                self.roll_seed(ctx, state, goal.rando_version(), fr::resolve_draft_settings(&settings), spoiler_log, French, "une", format!("seed avec {}", fr::display_draft_picks(&settings)));
                             }
                             Goal::TriforceBlitz => match args[..] {
                                 [] => {
@@ -2428,10 +2480,10 @@ impl RaceHandler<GlobalState> for Handler {
                                     self.queue_existing_seed(ctx, state, seed::Data {
                                         file_hash: Some(file_hash),
                                         files: seed::Files::TfbSotd { date, ordinal },
-                                    }, "the", format!("Triforce Blitz seed of the day")).await;
+                                    }, English, "the", format!("Triforce Blitz seed of the day")).await;
                                 }
-                                [ref arg] if arg == "jr" => self.roll_seed(ctx, state, goal.rando_version(), tfb::jr_settings(), spoiler_log, "a", format!("Triforce Blitz: Jabu's Revenge seed")),
-                                [ref arg] if arg == "s2" => self.roll_tfb_seed(ctx, state, spoiler_log, "a", format!("Triforce Blitz S2 seed")).await,
+                                [ref arg] if arg == "jr" => self.roll_seed(ctx, state, goal.rando_version(), tfb::jr_settings(), spoiler_log, English, "a", format!("Triforce Blitz: Jabu's Revenge seed")),
+                                [ref arg] if arg == "s2" => self.roll_tfb_seed(ctx, state, spoiler_log, English, "a", format!("Triforce Blitz S2 seed")).await,
                                 [..] => {
                                     ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;

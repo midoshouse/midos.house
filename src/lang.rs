@@ -69,7 +69,7 @@ impl Language {
 
     pub(crate) fn join_html<T: ToHtml>(&self, elts: impl IntoIterator<Item = T>) -> Option<RawHtml<String>> {
         match self {
-            French => {
+            French | Portuguese => {
                 let mut elts = elts.into_iter().fuse();
                 match (elts.next(), elts.next()) {
                     (None, _) => None,
@@ -85,7 +85,11 @@ impl Language {
                                 : ", ";
                                 : elt;
                             }
-                            : " et ";
+                            @match self {
+                                French => : " et ";
+                                Portuguese => : " e ";
+                                _ => @unreachable
+                            }
                             : last;
                         })
                     }

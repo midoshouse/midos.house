@@ -1,3 +1,4 @@
+pub(crate) mod br;
 pub(crate) mod fr;
 pub(crate) mod league;
 pub(crate) mod mp;

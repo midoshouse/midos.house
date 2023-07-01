@@ -852,7 +852,7 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Info, false).await?;
     let content = match data.series {
-        Series::CopaDoBrasil => None,
+        Series::CopaDoBrasil => br::info(&mut transaction, &data).await?,
         Series::League => league::info(&mut transaction, &data).await?,
         Series::MixedPools => mp::info(&mut transaction, &data).await?,
         Series::Multiworld => mw::info(&mut transaction, &data).await?,
