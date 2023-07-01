@@ -792,7 +792,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         "start",
                         "The starting time as a Discord timestamp",
                     )
-                        .description_localized("fr", "La date de début comme timestamp de Discord.")
+                        .description_localized("fr", "La date de début comme timestamp de Discord")
                         .required(true)
                     )
                     .add_option(CreateCommandOption::new(
@@ -837,8 +837,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Partir second dans la phase de pick&ban.")
-                        .description_localized("en-GB", "Go first in the settings draft.")
-                        .description_localized("en-US", "Go first in the settings draft.")
+                        .description_localized("en-GB", "Go second in the settings draft.")
+                        .description_localized("en-US", "Go second in the settings draft.")
                         .add_option(CreateCommandOption::new(
                             CommandOptionType::Integer,
                             "mq",
@@ -1251,13 +1251,24 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             });
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
-                                if team.is_some() || event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
+                                let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
+                                if team.is_some() || is_organizer {
                                     let start = match interaction.data.options[0].value {
                                         CommandDataOptionValue::String(ref start) => start,
                                         _ => panic!("unexpected slash command option type"),
                                     };
                                     if let Some(start) = parse_timestamp(start) {
-                                        if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
+                                        if !is_organizer && race.has_room_for(team.as_ref().expect("checked above")) {
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(true)
+                                                .content(if let French = event.language {
+                                                    "Désolé, cette room est déjà ouverte. Veuillez contacter un organisateur si nécessaire."
+                                                } else {
+                                                    "Sorry, the room for this race is already open. Please contact a tournament organizer if necessary."
+                                                })
+                                            )).await?;
+                                            transaction.rollback().await?;
+                                        } else if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
                                                 .content(if event.min_schedule_notice <= UDuration::default() {
@@ -1368,13 +1379,24 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             });
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
-                                if team.is_some() || event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
+                                let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
+                                if team.is_some() || is_organizer {
                                     let start = match interaction.data.options[0].value {
                                         CommandDataOptionValue::String(ref start) => start,
                                         _ => panic!("unexpected slash command option type"),
                                     };
                                     if let Some(start) = parse_timestamp(start) {
-                                        if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
+                                        if !is_organizer && race.has_room_for(team.as_ref().expect("checked above")) {
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(true)
+                                                .content(if let French = event.language {
+                                                    "Désolé, cette room est déjà ouverte. Veuillez contacter un organisateur si nécessaire."
+                                                } else {
+                                                    "Sorry, the room for this race is already open. Please contact a tournament organizer if necessary."
+                                                })
+                                            )).await?;
+                                            transaction.rollback().await?;
+                                        } else if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
                                                 .content(if event.min_schedule_notice <= UDuration::default() {

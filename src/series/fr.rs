@@ -48,33 +48,33 @@ pub(crate) struct S3Setting {
 }
 
 pub(crate) const S3_SETTINGS: [S3Setting; 27] = [
-    S3Setting { name: "weirdegg", display: "weird egg", default: "skip", default_display: "Skip Child Zelda", other: &[("shuffle", false, "shuffled weird egg")], description: "weirdegg: skip (default: Skip Child Zelda) or shuffle" },
-    S3Setting { name: "start", display: "start", default: "random", default_display: "random start", other: &[("vanilla", false, "vanilla start")], description: "start: random (default: random spawns, start with Deku shield and consumables) or vanilla" },
-    S3Setting { name: "smallkeys", display: "small keys", default: "dungeon", default_display: "own dungeon small keys", other: &[("keysy", false, "small keysy"), ("anywhere", true, "small keys anywhere"), ("keyrings", true, "keyrings")], description: "smallkeys: dungeon (default), keysy, anywhere (advanced), or keyrings (advanced; anywhere)" },
-    S3Setting { name: "camc", display: "CAMC", default: "both", default_display: "CSMC", other: &[("off", false, "no CAMC")], description: "camc: both (default: chest size and texture matches content) or off" },
-    S3Setting { name: "deku", display: "open Deku", default: "closed", default_display: "closed Deku", other: &[("open", false, "open Deku")], description: "deku: closed (default) or open" },
-    S3Setting { name: "card", display: "Gerudo card", default: "vanilla", default_display: "vanilla Gerudo card", other: &[("shuffle", false, "shuffled Gerudo card")], description: "card: vanilla (default) or shuffle" },
-    S3Setting { name: "merchants", display: "merchants", default: "off", default_display: "no merchants", other: &[("shuffle", false, "shuffled merchants")], description: "merchants: off (default) or shuffle" },
-    S3Setting { name: "ocarina", display: "ocarina", default: "startwith", default_display: "start with ocarina", other: &[("shuffle", false, "shuffled ocarinas")], description: "ocarina: startwith (default) or shuffle" },
-    S3Setting { name: "chubags", display: "bombchu drops", default: "off", default_display: "no bombchu drops", other: &[("on", false, "bombchu drops")], description: "chubags: off (default) or on" },
-    S3Setting { name: "dungeon-er", display: "dungeon ER", default: "off", default_display: "no dungeon ER", other: &[("on", false, "dungeon ER")], description: "dungeon-er: off (default) or on" },
-    S3Setting { name: "songs", display: "songs", default: "songs", default_display: "songs on songs", other: &[("anywhere", false, "songs anywhere"), ("dungeon", true, "songs on dungeons")], description: "songs: songs (default), anywhere, or dungeon (advanced)" },
-    S3Setting { name: "cows", display: "cows", default: "off", default_display: "no cows", other: &[("on", false, "cows")], description: "cows: off (default) or on" },
-    S3Setting { name: "shops", display: "shops", default: "off", default_display: "no shops", other: &[("random", false, "random shops")], description: "shops: off (default) or random" },
-    S3Setting { name: "scrubs", display: "scrubs", default: "off", default_display: "no scrubs", other: &[("affordable", false, "affordable scrubs")], description: "scrubs: off (default) or affordable" },
-    S3Setting { name: "skulls", display: "tokens", default: "off", default_display: "no tokens", other: &[("dungeons", false, "dungeon tokens"), ("overworld", true, "overworld tokens"), ("all", true, "all tokens")], description: "skulls: off (default), dungeons, overworld (advanced), or all (advanced)" },
-    S3Setting { name: "bosskeys", display: "boss keys", default: "dungeon", default_display: "own dungeon boss keys", other: &[("anywhere", false, "boss keys anywhere")], description: "bosskeys: dungeon (default) or anywhere" },
-    S3Setting { name: "warps", display: "warps", default: "off", default_display: "vanilla warps", other: &[("on", false, "shuffled warps")], description: "warps: off (default) or on" },
-    S3Setting { name: "dot", display: "Door of Time", default: "open", default_display: "open Door of Time", other: &[("closed", false, "closed Door of Time")], description: "dot: open (default) or closed" },
-    S3Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", false, "open fountain")], description: "fountain: closed (default) or open" },
-    S3Setting { name: "boss-er", display: "boss ER", default: "off", default_display: "no boss ER", other: &[("on", false, "boss ER")], description: "boss-er: off (default) or on" },
-    S3Setting { name: "1major", display: "1 major item per dungeon", default: "off", default_display: "no major items per dungeon restriction", other: &[("on", false, "1 major item per dungeon")], description: "1major: off (default) or on" },
-    S3Setting { name: "bridge", display: "rainbow bridge", default: "default", default_display: "6 medallions bridge", other: &[("meds", false, "random medallions bridge"), ("stones", false, "3 stones bridge"), ("ad", false, "AD bridge"), ("vanilla", false, "vanilla bridge"), ("dungeons", false, "random dungeons bridge"), ("precompleted", false, "2 pre-completed dungeons")], description: "bridge: default (6 meds), meds (4–6 meds, Gbk 6 meds), stones (3 stones, Gbk 6 rewards), ad (9 rewards), vanilla (Gbk 6 meds), dungeons (5–9 rewards), precompleted (9 rewards, 2 pre-completed dungeons, map/compass info)" },
-    S3Setting { name: "shortcuts", display: "shortcuts", default: "off", default_display: "no shortcuts", other: &[("random", true, "random shortcuts")], description: "shortcuts: off (default) or on (advanced)" },
-    S3Setting { name: "mixed-er", display: "mixed ER", default: "off", default_display: "no mixed ER", other: &[("on", true, "mixed ER")], description: "mixed-er: off (default) or on (advanced: interiors & grottos mixed)" },
-    S3Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("random", true, "random trials")], description: "trials: 0 (default) or random (advanced)" },
-    S3Setting { name: "itempool", display: "item pool", default: "balanced", default_display: "balanced item pool", other: &[("minimal", true, "minimal item pool"), ("scarce", true, "scarce item pool")], description: "itempool: balanced (default), minimal (advanced), or scarce (advanced)" },
-    S3Setting { name: "reachable", display: "reachable locations", default: "all", default_display: "all locations reachable", other: &[("required", true, "required only")], description: "reachable: all (default) or required (advanced)" },
+    S3Setting { name: "weirdegg", display: "weird egg", default: "skip", default_display: "Skip Child Zelda", other: &[("shuffle", false, "shuffled weird egg")], description: "weirdegg: skip (défaut: Skip Child Zelda) ou shuffle" },
+    S3Setting { name: "start", display: "start", default: "random", default_display: "random start", other: &[("vanilla", false, "vanilla start")], description: "start: random (défaut) ou vanilla (vanilla spawns, pas de consommables, pas de Deku Shield)" },
+    S3Setting { name: "smallkeys", display: "small keys", default: "dungeon", default_display: "own dungeon small keys", other: &[("keysy", false, "small keysy"), ("anywhere", true, "small keys anywhere"), ("keyrings", true, "keyrings")], description: "smallkeys: dungeon (défaut), keysy, anywhere (difficile) ou keyrings (difficile; anywhere)" },
+    S3Setting { name: "camc", display: "CAMC", default: "on", default_display: "CSMC", other: &[("off", false, "no CAMC")], description: "camc: on (défaut) ou off" },
+    S3Setting { name: "deku", display: "open Deku", default: "closed", default_display: "closed Deku", other: &[("open", false, "open Deku")], description: "deku: closed (défaut) ou open" },
+    S3Setting { name: "card", display: "Gerudo card", default: "vanilla", default_display: "vanilla Gerudo card", other: &[("shuffle", false, "shuffled Gerudo card")], description: "card: vanilla (défaut) ou shuffle" },
+    S3Setting { name: "merchants", display: "merchants", default: "off", default_display: "no merchants", other: &[("shuffle", false, "shuffled merchants")], description: "merchants: off (défaut) ou shuffle" },
+    S3Setting { name: "ocarina", display: "ocarina", default: "startwith", default_display: "start with ocarina", other: &[("shuffle", false, "shuffled ocarinas")], description: "ocarina: startwith (défaut) ou shuffle" },
+    S3Setting { name: "chubags", display: "bombchu drops", default: "off", default_display: "no bombchu drops", other: &[("on", false, "bombchu drops")], description: "chubags: off (défaut) ou on" },
+    S3Setting { name: "dungeon-er", display: "dungeon ER", default: "off", default_display: "no dungeon ER", other: &[("on", false, "dungeon ER")], description: "dungeon-er: off (défaut) ou on" },
+    S3Setting { name: "songs", display: "songs", default: "songs", default_display: "songs on songs", other: &[("anywhere", false, "songs anywhere"), ("dungeon", true, "songs on dungeons")], description: "songs: songs (défaut), anywhere ou dungeon (difficile)" },
+    S3Setting { name: "cows", display: "cows", default: "off", default_display: "no cows", other: &[("on", false, "cows")], description: "cows: off (défaut) ou on" },
+    S3Setting { name: "shops", display: "shops", default: "off", default_display: "no shops", other: &[("random", false, "random shops")], description: "shops: off (défaut) ou random" },
+    S3Setting { name: "scrubs", display: "scrubs", default: "off", default_display: "no scrubs", other: &[("affordable", false, "affordable scrubs")], description: "scrubs: off (défaut) ou affordable" },
+    S3Setting { name: "skulls", display: "tokens", default: "off", default_display: "no tokens", other: &[("dungeons", false, "dungeon tokens"), ("overworld", true, "overworld tokens"), ("all", true, "all tokens")], description: "skulls: off (défaut), dungeons, overworld (difficile) ou all (difficile)" },
+    S3Setting { name: "bosskeys", display: "boss keys", default: "dungeon", default_display: "own dungeon boss keys", other: &[("anywhere", false, "boss keys anywhere")], description: "bosskeys: dungeon (défaut) ou anywhere" },
+    S3Setting { name: "warps", display: "warps", default: "off", default_display: "vanilla warps", other: &[("on", false, "shuffled warps")], description: "warps: off (défaut) ou on" },
+    S3Setting { name: "dot", display: "Door of Time", default: "open", default_display: "open Door of Time", other: &[("closed", false, "closed Door of Time")], description: "dot: open (défaut) ou closed" },
+    S3Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", false, "open fountain")], description: "fountain: closed (défaut) ou open" },
+    S3Setting { name: "boss-er", display: "boss ER", default: "off", default_display: "no boss ER", other: &[("on", false, "boss ER")], description: "boss-er: off (défaut) ou on" },
+    S3Setting { name: "1major", display: "1 major item per dungeon", default: "off", default_display: "no major items per dungeon restriction", other: &[("on", false, "1 major item per dungeon")], description: "1major: off (défaut) ou on" },
+    S3Setting { name: "bridge", display: "rainbow bridge", default: "default", default_display: "6 medallions bridge", other: &[("meds", false, "random medallions bridge"), ("stones", false, "3 stones bridge"), ("ad", false, "AD bridge"), ("vanilla", false, "vanilla bridge"), ("dungeons", false, "random dungeons bridge"), ("precompleted", false, "2 pre-completed dungeons")], description: "bridge: default (6 meds), meds (4–6 meds, GBK 6 meds), stones (3 stones, GBK 6 rewards), ad (9 rewards), vanilla (GBK 6 meds), dungeons (5–9 rewards), precompleted (9 rewards, 2 pre-completed dungeons, map/compass gives info)" },
+    S3Setting { name: "shortcuts", display: "shortcuts", default: "off", default_display: "no shortcuts", other: &[("random", true, "random shortcuts")], description: "shortcuts: off (défaut) ou on (difficile)" },
+    S3Setting { name: "mixed-er", display: "mixed ER", default: "off", default_display: "no mixed ER", other: &[("on", true, "mixed ER")], description: "mixed-er: off (défaut) ou on (difficile: intérieurs et grottos mixés)" },
+    S3Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("random", true, "random trials")], description: "trials: 0 (défaut) ou random (difficile)" },
+    S3Setting { name: "itempool", display: "item pool", default: "balanced", default_display: "balanced item pool", other: &[("minimal", true, "minimal item pool"), ("scarce", true, "scarce item pool")], description: "itempool: balanced (défaut), minimal (difficile) ou scarce (difficile)" },
+    S3Setting { name: "reachable", display: "reachable locations", default: "all", default_display: "all locations reachable", other: &[("required", true, "required only")], description: "reachable: all (défaut) ou required (difficile)" },
 ];
 
 pub(crate) fn display_draft_picks(picks: &draft::Picks) -> String {
@@ -94,9 +94,9 @@ pub(crate) fn display_draft_picks(picks: &draft::Picks) -> String {
             ("mixed-er", "on") => if picks.get("dungeon-er").map(|dungeon_er| &**dungeon_er).unwrap_or("off") == "off" {
                 Cow::Borrowed(display)
             } else if picks.get("mixed-dungeons").map(|mixed_dungeons| &**mixed_dungeons).unwrap_or("separate") == "mixed" {
-                Cow::Borrowed("mixed ER (including dungeons)")
+                Cow::Borrowed("mixed ER (donjons inclus)")
             } else {
-                Cow::Borrowed("mixed ER (not including dungeons)")
+                Cow::Borrowed("mixed ER (donjons non inclus)")
             },
             (_, _) => Cow::Borrowed(display),
         })));
@@ -108,7 +108,7 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
     let weirdegg = picks.get("weirdegg").map(|weirdegg| &**weirdegg).unwrap_or("skip");
     let start = picks.get("start").map(|start| &**start).unwrap_or("random");
     let smallkeys = picks.get("smallkeys").map(|smallkeys| &**smallkeys).unwrap_or("dungeon");
-    let camc = picks.get("camc").map(|camc| &**camc).unwrap_or("both");
+    let camc = picks.get("camc").map(|camc| &**camc).unwrap_or("on");
     let deku = picks.get("deku").map(|deku| &**deku).unwrap_or("closed");
     let card = picks.get("card").map(|card| &**card).unwrap_or("vanilla");
     let merchants = picks.get("merchants").map(|merchants| &**merchants).unwrap_or("off");
@@ -313,7 +313,11 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
         format!("fast_bunny_hood") => json!(true),
         format!("chicken_count_random") => json!(true),
         format!("big_poe_count") => json!(1),
-        format!("correct_chest_appearances") => json!(camc),
+        format!("correct_chest_appearances") => if camc == "on" {
+            json!("both")
+        } else {
+            json!("off")
+        },
         format!("hint_dist") => json!("weekly"),
         format!("misc_hints") => json!([
             "altar",

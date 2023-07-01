@@ -364,7 +364,7 @@ impl VersionedRslPreset {
     }
 }
 
-#[derive(Sequence)]
+#[derive(Clone, Copy, Sequence)]
 pub(crate) enum Goal {
     MixedPoolsS2,
     MultiworldS3,
@@ -1065,7 +1065,11 @@ impl SeedRollUpdate {
                     seed::Files::TriforceBlitz { uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
                     seed::Files::TfbSotd { ordinal, .. } => format!("https://www.triforceblitz.com/seed/daily/{ordinal}"),
                 };
-                ctx.send_message(&format!("@entrants Here is your seed: {seed_url}")).await?;
+                ctx.send_message(&if let French = language {
+                    format!("@entrants Voici votre seed : {seed_url}")
+                } else {
+                    format!("@entrants Here is your seed: {seed_url}")
+                }).await?;
                 if send_spoiler_log {
                     ctx.send_message("The spoiler log is also available on the seed page.").await?;
                 } else if let seed::Files::TfbSotd { date, .. } = seed.files {
@@ -1077,7 +1081,11 @@ impl SeedRollUpdate {
                         unimplemented!("distant future Triforce Blitz SotD")
                     }
                 } else {
-                    ctx.send_message("The spoiler log will be available on the seed page after the race.").await?;
+                    ctx.send_message(if let French = language {
+                        "Le spoiler log sera disponible sur le lien de la seed après la seed."
+                    } else {
+                        "The spoiler log will be available on the seed page after the race."
+                    }).await?;
                 }
                 ctx.set_bot_raceinfo(&format!(
                     "{}{}{seed_url}",
@@ -1092,7 +1100,11 @@ impl SeedRollUpdate {
                 } else {
                     eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
                 }
-                ctx.send_message(&format!("Sorry @entrants, the randomizer reported an error {num_retries} times, so I'm giving up on rolling the seed. Please try again. If this error persists, please report it to Fenhl.")).await?;
+                ctx.send_message(&if let French = language {
+                    format!("Désolé @entrants, le randomizer a rapporté une erreur {num_retries} fois de suite donc je vais laisser tomber. Veuillez réessayer et, si l'erreur persiste, essayer de roll une seed de votre côté et contacter Fenhl.")
+                } else {
+                    format!("Sorry @entrants, the randomizer reported an error {num_retries} times, so I'm giving up on rolling the seed. Please try again. If this error persists, please report it to Fenhl.")
+                }).await?; //TODO for official races, explain that retrying is done using !seed
                 *lock!(@write state) = RaceState::Init;
             }
             Self::Error(msg) => {
@@ -1298,6 +1310,16 @@ struct Breaks {
     interval: Duration,
 }
 
+impl Breaks {
+    fn format(&self, language: Language) -> String {
+        if let French = language {
+            format!("{} toutes les {}", French.format_duration(self.duration, true), French.format_duration(self.interval, true))
+        } else {
+            format!("{} every {}", English.format_duration(self.duration, true), English.format_duration(self.interval, true))
+        }
+    }
+}
+
 impl FromStr for Breaks {
     type Err = ();
 
@@ -1307,12 +1329,6 @@ impl FromStr for Breaks {
             duration: parse_duration(duration, DurationUnit::Minutes).ok_or(())?,
             interval: parse_duration(interval, DurationUnit::Hours).ok_or(())?,
         })
-    }
-}
-
-impl fmt::Display for Breaks {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} every {}", English.format_duration(self.duration, true), English.format_duration(self.interval, true))
     }
 }
 
@@ -1407,7 +1423,11 @@ impl Handler {
                 draft::Kind::TournoiFrancoS3 => fr::S3_SETTINGS.into_iter().map(|fr::S3Setting { description, .. }| description).collect(),
             });
             if available_settings.is_empty() {
-                ctx.send_message(&format!("Sorry {reply_to}, no settings are currently available.")).await?;
+                ctx.send_message(&if let French = goal.language() {
+                    format!("Désolé {reply_to}, aucun setting n'est demandé pour le moment.")
+                } else {
+                    format!("Sorry {reply_to}, no settings are currently available.")
+                }).await?;
             } else {
                 ctx.send_message(preface).await?;
                 for setting in available_settings {
@@ -1898,19 +1918,39 @@ impl RaceHandler<GlobalState> for Handler {
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match &*cmd_name.to_ascii_lowercase() {
             "ban" => match args[..] {
-                [] => self.send_settings(ctx, &format!("Sorry {reply_to}, the setting is required. Use one of the following:"), reply_to).await?,
+                [] => self.send_settings(ctx, &if let French = goal.language() {
+                    format!("Désolé {reply_to}, un setting doit être choisi. Utilisez un des suivants :")
+                } else {
+                    format!("Sorry {reply_to}, the setting is required. Use one of the following:")
+                }, reply_to).await?,
                 [ref setting] => self.draft_action(ctx, reply_to, draft::Action::Ban { setting: setting.clone() }).await?,
-                [..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!ban <setting>”")).await?,
+                [..] => ctx.send_message(&if let French = goal.language() {
+                    format!("Désolé {reply_to}, seul un setting peut être ban à la fois. Veuillez seulement utiliser “!ban <setting>”")
+                } else {
+                    format!("Sorry {reply_to}, only one setting can be banned at a time. Use “!ban <setting>”")
+                }).await?,
             },
             "breaks" => match args[..] {
                 [] => if let Some(breaks) = self.breaks {
-                    ctx.send_message(&format!("Breaks are currently set to {breaks}. Disable with !breaks off")).await?;
+                    ctx.send_message(&if let French = goal.language() {
+                        format!("Vous aurez une pause de {}. Vous pouvez les désactiver avec !breaks off.", breaks.format(French))
+                    } else {
+                        format!("Breaks are currently set to {}. Disable with !breaks off", breaks.format(English))
+                    }).await?;
                 } else {
-                    ctx.send_message("Breaks are currently disabled. Example command to enable: !breaks 5m every 2h30").await?;
+                    ctx.send_message(if let French = goal.language() {
+                        "Les pauses sont actuellement désactivées. Exemple pour les activer : !breaks 5m every 2h30."
+                    } else {
+                        "Breaks are currently disabled. Example command to enable: !breaks 5m every 2h30"
+                    }).await?;
                 },
                 [ref arg] if arg == "off" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                     self.breaks = None;
-                    ctx.send_message("Breaks are now disabled.").await?;
+                    ctx.send_message(if let French = goal.language() {
+                        "Les pauses sont désormais désactivées."
+                    } else {
+                        "Breaks are now disabled."
+                    }).await?;
                 } else {
                     ctx.send_message(&if let French = goal.language() {
                         format!("Désolé {reply_to}, mais la race a débuté.")
@@ -1920,76 +1960,184 @@ impl RaceHandler<GlobalState> for Handler {
                 },
                 _ => if let Ok(breaks) = args.join(" ").parse::<Breaks>() {
                     if breaks.duration < Duration::from_secs(60) {
-                        ctx.send_message(&format!("Sorry {reply_to}, minimum break time (if enabled at all) is 1 minute. You can disable breaks entirely with !breaks off")).await?;
+                        ctx.send_message(&if let French = goal.language() {
+                            format!("Désolé {reply_to}, le temps minimum pour une pause (si active) est de 1 minute. Vous pouvez désactiver les pauses avec !breaks off")
+                        } else {
+                            format!("Sorry {reply_to}, minimum break time (if enabled at all) is 1 minute. You can disable breaks entirely with !breaks off")
+                        }).await?;
                     } else if breaks.interval < breaks.duration + Duration::from_secs(5 * 60) {
-                        ctx.send_message(&format!("Sorry {reply_to}, there must be a minimum of 5 minutes between breaks since I notify runners 5 minutes in advance.")).await?;
+                        ctx.send_message(&if let French = goal.language() {
+                            format!("Désolé {reply_to}, il doit y avoir un minimum de 5 minutes entre les pauses.")
+                        } else {
+                            format!("Sorry {reply_to}, there must be a minimum of 5 minutes between breaks since I notify runners 5 minutes in advance.")
+                        }).await?;
                     } else if breaks.duration + breaks.interval >= Duration::from_secs(24 * 60 * 60) {
-                        ctx.send_message(&format!("Sorry {reply_to}, race rooms are automatically closed after 24 hours so these breaks wouldn't work.")).await?;
+                        ctx.send_message(&if let French = goal.language() {
+                            format!("Désolé {reply_to}, vous ne pouvez pas faire de pauses si tard dans la race, vu que les race rooms se ferment au bout de 24 heures.")
+                        } else {
+                            format!("Sorry {reply_to}, race rooms are automatically closed after 24 hours so these breaks wouldn't work.")
+                        }).await?;
                     } else {
                         self.breaks = Some(breaks);
-                        ctx.send_message(&format!("Breaks set to {breaks}.")).await?;
+                        ctx.send_message(&if let French = goal.language() {
+                            format!("Vous aurez une pause de {}.", breaks.format(French))
+                        } else {
+                            format!("Breaks set to {}.", breaks.format(English))
+                        }).await?;
                     }
                 } else {
-                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognise that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off")).await?;
+                    ctx.send_message(&if let French = goal.language() {
+                        format!("Désolé {reply_to}, je ne reconnais pas ce format pour les pauses. Exemple pour les activer : !breaks 5m every 2h30.")
+                    } else {
+                        format!("Sorry {reply_to}, I don't recognise that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off")
+                    }).await?;
                 },
             },
             "draft" => match args[..] {
-                [] => self.send_settings(ctx, &format!("Sorry {reply_to}, the setting is required. Use one of the following:"), reply_to).await?,
-                [_] => ctx.send_message(&format!("Sorry {reply_to}, the value is required.")).await?, //TODO list available values
+                [] => self.send_settings(ctx, &if let French = goal.language() {
+                    format!("Désolé {reply_to}, un setting doit être choisi. Utilisez un des suivants :")
+                } else {
+                    format!("Sorry {reply_to}, the setting is required. Use one of the following:")
+                }, reply_to).await?,
+                [_] => ctx.send_message(&if let French = goal.language() {
+                    format!("Désolé {reply_to}, une configuration est requise.")
+                } else {
+                    format!("Sorry {reply_to}, the value is required.")
+                }).await?, //TODO list available values
                 [ref setting, ref value] => self.draft_action(ctx, reply_to, draft::Action::Pick { setting: setting.clone(), value: value.clone() }).await?,
-                [..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!draft <setting> <value>”")).await?,
+                [..] => ctx.send_message(&if let French = goal.language() {
+                    format!("Désolé {reply_to}, vous ne pouvez pick qu'un setting à la fois. Veuillez seulement utiliser “!draft <setting> <configuration>”")
+                } else {
+                    format!("Sorry {reply_to}, only one setting can be drafted at a time. Use “!draft <setting> <value>”")
+                }).await?,
             },
             "first" => self.draft_action(ctx, reply_to, draft::Action::GoFirst(true)).await?,
             "fpa" => match args[..] {
                 [] => if self.fpa_enabled {
                     if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                        ctx.send_message("FPA cannot be invoked before the race starts.").await?;
+                        ctx.send_message(if let French = goal.language() {
+                            "Le FPA ne peut pas être appelé avant que la race ne commence."
+                        } else {
+                            "FPA cannot be invoked before the race starts."
+                        }).await?;
                     } else {
                         if let Some(OfficialRaceData { ref restreams, ref mut fpa_invoked, ref event, .. }) = self.official_data {
                             *fpa_invoked = true;
                             if restreams.is_empty() {
-                                let player_team = if let TeamConfig::Solo = event.team_config() { "player" } else { "team" };
-                                ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. The {player_team} that did not call FPA can continue playing; the race will be retimed once completed.")).await?;
+                                ctx.send_message(&if_chain! {
+                                    if let French = goal.language();
+                                    if let TeamConfig::Solo = event.team_config();
+                                    then {
+                                        format!("@everyone Le FPA a été appelé par {reply_to}. Le joueur qui ne l'a pas demandé peut continuer à jouer. La race sera re-timée après le fin de celle-ci.")
+                                    } else {
+                                        let player_team = if let TeamConfig::Solo = event.team_config() { "player" } else { "team" };
+                                        format!("@everyone FPA has been invoked by {reply_to}. The {player_team} that did not call FPA can continue playing; the race will be retimed once completed.")
+                                    }
+                                }).await?;
                             } else {
-                                ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}. Please pause since this race is being restreamed.")).await?;
+                                ctx.send_message(&if let French = goal.language() {
+                                    format!("@everyone Le FPA a été appelé par {reply_to}. Merci d'arrêter de jouer, la race étant restreamée.")
+                                } else {
+                                    format!("@everyone FPA has been invoked by {reply_to}. Please pause since this race is being restreamed.")
+                                }).await?;
                             }
                         } else {
-                            ctx.send_message(&format!("@everyone FPA has been invoked by {reply_to}.")).await?;
+                            ctx.send_message(&if let French = goal.language() {
+                                format!("@everyone Le FPA a été appelé par {reply_to}.")
+                            } else {
+                                format!("@everyone FPA has been invoked by {reply_to}.")
+                            }).await?;
                         }
                     }
                 } else {
-                    ctx.send_message("Fair play agreement is not active. Race monitors may enable FPA for this race with !fpa on").await?;
+                    ctx.send_message(if let French = goal.language() {
+                        "Le FPA n'est pas activé. Les Race Monitors peuvent l'activer avec !fpa on."
+                    } else {
+                        "Fair play agreement is not active. Race monitors may enable FPA for this race with !fpa on"
+                    }).await?;
                 },
                 [ref arg] => match &*arg.to_ascii_lowercase() {
                     "on" => if self.is_official() {
-                        ctx.send_message("Fair play agreement is always active in official races.").await?;
+                        ctx.send_message(if let French = goal.language() {
+                            "Le FPA est toujours activé dans les races officielles."
+                        } else {
+                            "Fair play agreement is always active in official races."
+                        }).await?;
                     } else if !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
-                        ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
+                        ctx.send_message(&if let French = goal.language() {
+                            format!("Désolé {reply_to}, seuls {} peuvent faire cela.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
+                        } else {
+                            format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
+                        }).await?;
                     } else if self.fpa_enabled {
-                        ctx.send_message("Fair play agreement is already activated.").await?;
+                        ctx.send_message(if let French = goal.language() {
+                            "Le FPA est déjà activé."
+                        } else {
+                            "Fair play agreement is already activated."
+                        }).await?;
                     } else {
                         self.fpa_enabled = true;
-                        ctx.send_message("Fair play agreement is now active. @entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat.").await?;
+                        ctx.send_message(if let French = goal.language() {
+                            "Le FPA est désormais activé. Les joueurs pourront utiliser !fpa pendant la race pour signaler d'un problème technique de leur côté. Les race monitors doivent activer les notifications en cliquant sur l'icône de cloche 🔔 sous le chat."
+                        } else {
+                            "Fair play agreement is now active. @entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat."
+                        }).await?;
                     },
                     "off" => if self.is_official() {
-                        ctx.send_message(&format!("Sorry {reply_to}, but FPA can't be deactivated for official races.")).await?;
+                        ctx.send_message(&if let French = goal.language() {
+                            format!("Désolé {reply_to}, mais le FPA ne peut pas être désactivé pour les races officielles.")
+                        } else {
+                            format!("Sorry {reply_to}, but FPA can't be deactivated for official races.")
+                        }).await?;
                     } else if !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
-                        ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
+                        ctx.send_message(&if let French = goal.language() {
+                            format!("Désolé {reply_to}, seuls {} peuvent faire cela.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
+                        } else {
+                            format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
+                        }).await?;
                     } else if self.fpa_enabled {
                         self.fpa_enabled = false;
-                        ctx.send_message("Fair play agreement is now deactivated.").await?;
+                        ctx.send_message(if let French = goal.language() {
+                            "Le FPA est désormais désactivé."
+                        } else {
+                            "Fair play agreement is now deactivated."
+                        }).await?;
                     } else {
-                        ctx.send_message("Fair play agreement is not active.").await?;
+                        ctx.send_message(if let French = goal.language() {
+                            "Le FPA est déjà désactivé."
+                        } else {
+                            "Fair play agreement is not active."
+                        }).await?;
                     },
-                    _ => ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that subcommand. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
+                    _ => ctx.send_message(&if let French = goal.language() {
+                        format!("Désolé {reply_to}, les seules commandes sont “!fpa on”, “!fpa off” ou “!fpa”.")
+                    } else {
+                        format!("Sorry {reply_to}, I don't recognize that subcommand. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")
+                    }).await?,
                 },
-                [..] => ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")).await?,
+                [..] => ctx.send_message(&if let French = goal.language() {
+                    format!("Désolé {reply_to}, les seules commandes sont “!fpa on”, “!fpa off” ou “!fpa”.")
+                } else {
+                    format!("Sorry {reply_to}, I didn't quite understand that. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")
+                }).await?,
             },
             "lock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 self.locked = true;
-                ctx.send_message(&format!("Lock initiated. I will now only roll seeds for {}.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })).await?;
+                ctx.send_message(&if_chain! {
+                    if let French = goal.language();
+                    if !self.is_official();
+                    then {
+                        format!("Race verrouillée. Je ne génèrerai une seed que pour les race monitors.")
+                    } else {
+                        format!("Lock initiated. I will now only roll seeds for {}.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })
+                    }
+                }).await?;
             } else {
-                ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
+                ctx.send_message(&if let French = goal.language() {
+                    format!("Désolé {reply_to}, seuls {} peuvent faire cela.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
+                } else {
+                    format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
+                }).await?;
             },
             "monitor" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 let monitor = &msg.user.as_ref().expect("received !monitor command from bot").id;
@@ -2017,20 +2165,41 @@ impl RaceHandler<GlobalState> for Handler {
                     ctx.remove_entrant(monitor).await?;
                 }
             } else if self.is_official() {
-                ctx.send_message(&format!("Sorry {reply_to}, only tournament organizers can do that.")).await?;
+                ctx.send_message(&if let French = goal.language() {
+                    format!("Désolé {reply_to}, seuls les organisateurs du tournoi peuvent faire cela.")
+                } else {
+                    format!("Sorry {reply_to}, only tournament organizers can do that.")
+                }).await?;
             } else {
-                ctx.send_message(&format!("Sorry {reply_to}, this command is only available for official races.")).await?;
+                ctx.send_message(&if let French = goal.language() {
+                    format!("Désolé {reply_to}, cette commande n'est disponible que pour les races officielles.")
+                } else {
+                    format!("Sorry {reply_to}, this command is only available for official races.")
+                }).await?;
             },
             "presets" => goal.send_presets(ctx).await?,
             "ready" => if let Some(OfficialRaceData { ref mut restreams, ref cal_event, ref event, .. }) = self.official_data {
                 if let Some(state) = restreams.values_mut().find(|state| state.restreamer_racetime_id.as_ref() == Some(&msg.user.as_ref().expect("received !ready command from bot").id)) {
                     state.ready = true;
                 } else {
-                    ctx.send_message(&format!("Sorry {reply_to}, only restreamers can do that.")).await?;
+                    ctx.send_message(&if let French = goal.language() {
+                        format!("Désolé {reply_to}, seuls les restreamers peuvent faire cela.")
+                    } else {
+                        format!("Sorry {reply_to}, only restreamers can do that.")
+                    }).await?;
                     return Ok(())
                 }
                 if restreams.values().all(|state| state.ready) {
-                    ctx.send_message(&format!("All restreams ready, unlocking auto-start…")).await?;
+                    ctx.send_message(if_chain! {
+                        if let French = goal.language();
+                        if let Ok((_, state)) = restreams.iter().exactly_one();
+                        if let Some(French) = state.language;
+                        then {
+                            "Restream prêt. Déverrouillage de l'auto-start."
+                        } else {
+                            "All restreams ready, unlocking auto-start…"
+                        }
+                    }).await?;
                     let (access_token, _) = racetime::authorize_with_host(&ctx.global_state.host_info, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
                     racetime::StartRace {
                         goal: goal.as_str().to_owned(),
@@ -2057,7 +2226,11 @@ impl RaceHandler<GlobalState> for Handler {
                     ctx.send_message(&format!("Restream ready, still waiting for other restreams.")).await?;
                 }
             } else {
-                ctx.send_message(&format!("Sorry {reply_to}, this command is only available for official races.")).await?;
+                ctx.send_message(&if let French = goal.language() {
+                    format!("Désolé {reply_to}, cette commande n'est disponible que pour les races officielles.")
+                } else {
+                    format!("Sorry {reply_to}, this command is only available for official races.")
+                }).await?;
             },
             "restreamer" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 if let Some(OfficialRaceData { ref mut restreams, ref cal_event, ref event, .. }) = self.official_data {
@@ -2108,10 +2281,18 @@ impl RaceHandler<GlobalState> for Handler {
                         ctx.send_message(&format!("Sorry {reply_to}, I don't recognise that format for adding a restreamer.")).await?; //TODO better help message
                     }
                 } else {
-                    ctx.send_message(&format!("Sorry {reply_to}, this command is only available for official races.")).await?;
+                    ctx.send_message(&if let French = goal.language() {
+                        format!("Désolé {reply_to}, cette commande n'est disponible que pour les races officielles.")
+                    } else {
+                        format!("Sorry {reply_to}, this command is only available for official races.")
+                    }).await?;
                 }
             } else {
-                ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
+                ctx.send_message(&if let French = goal.language() {
+                    format!("Désolé {reply_to}, seuls {} peuvent faire cela.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
+                } else {
+                    format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
+                }).await?;
             },
             "second" => self.draft_action(ctx, reply_to, draft::Action::GoFirst(false)).await?,
             "seed" | "spoilerseed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
@@ -2119,7 +2300,11 @@ impl RaceHandler<GlobalState> for Handler {
                 let mut state = lock!(@write_owned self.race_state.clone());
                 match *state {
                     RaceState::Init => if self.locked && !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
-                        ctx.send_message(&format!("Sorry {reply_to}, seed rolling is locked. Only {} may roll a seed for this race.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })).await?;
+                        ctx.send_message(&if let French = goal.language() {
+                            format!("Désolé {reply_to}, la race est verrouillée. Seuls {} peuvent générer une seed pour cette race.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
+                        } else {
+                            format!("Sorry {reply_to}, seed rolling is locked. Only {} may roll a seed for this race.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })
+                        }).await?;
                     } else {
                         match goal {
                             Goal::MixedPoolsS2 => if let Some(seed) = lock!(ctx.global_state.cached_mixed_pools_seed).take() {
@@ -2496,27 +2681,52 @@ impl RaceHandler<GlobalState> for Handler {
                     RaceState::Rolled(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, but I already rolled a seed. Check the race info!")).await?,
                 }
             } else {
-                ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?;
+                ctx.send_message(&if let French = goal.language() {
+                    format!("Désolé {reply_to}, mais la race a débuté.")
+                } else {
+                    format!("Sorry {reply_to}, but the race has already started.")
+                }).await?;
             },
             "settings" => self.send_settings(ctx, if let RaceState::Draft { .. } = *lock!(@read self.race_state) {
-                "Currently draftable settings:"
+                if let French = goal.language() {
+                    "Settings pouvant être actuellement choisis :"
+                } else {
+                    "Currently draftable settings:"
+                }
             } else {
-                "Draftable settings:"
+                if let French = goal.language() {
+                    "Settings pouvant être choisis :"
+                } else {
+                    "Draftable settings:"
+                }
             }, reply_to).await?,
             "skip" => self.draft_action(ctx, reply_to, draft::Action::Skip).await?,
             "unlock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 self.locked = false;
-                ctx.send_message("Lock released. Anyone may now roll a seed.").await?;
+                ctx.send_message(if let French = goal.language() {
+                    "Race déverrouillée. N'importe qui peut désormais générer une seed."
+                } else {
+                    "Lock released. Anyone may now roll a seed."
+                }).await?;
             } else {
-                ctx.send_message(&format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })).await?;
+                ctx.send_message(&if let French = goal.language() {
+                    format!("Désolé {reply_to}, seuls {} peuvent faire cela.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
+                } else {
+                    format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
+                }).await?;
             },
-            _ => ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that command.")).await?, //TODO “did you mean”? list of available commands with !help?
+            _ => ctx.send_message(&if let French = goal.language() {
+                format!("Désolé {reply_to}, je ne reconnais pas cette commande.")
+            } else {
+                format!("Sorry {reply_to}, I don't recognize that command.")
+            }).await?, //TODO “did you mean”? list of available commands with !help?
         }
         Ok(())
     }
 
     async fn race_data(&mut self, ctx: &RaceContext<GlobalState>, _old_race_data: RaceData) -> Result<(), Error> {
         let data = ctx.data().await;
+        let goal = self.goal(ctx).await;
         if let Some(OfficialRaceData { ref entrants, .. }) = self.official_data {
             for entrant in &data.entrants {
                 if entrant.status.value == EntrantStatusValue::Requested && entrants.contains(&entrant.user.id) {
@@ -2525,7 +2735,7 @@ impl RaceHandler<GlobalState> for Handler {
             }
         }
         if !self.start_saved {
-            if let (Goal::Rsl, Some(start)) = (self.goal(ctx).await, data.started_at) {
+            if let (Goal::Rsl, Some(start)) = (goal, data.started_at) {
                 sqlx::query!("UPDATE rsl_seeds SET start = $1 WHERE room = $2", start, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
                 self.start_saved = true;
             }
@@ -2539,25 +2749,37 @@ impl RaceHandler<GlobalState> for Handler {
                             sleep(breaks.interval - Duration::from_secs(5 * 60)).await;
                             while Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await {
                                 let (_, ()) = tokio::join!(
-                                    ctx.send_message("@entrants Reminder: Next break in 5 minutes."),
+                                    ctx.send_message(if let French = goal.language() {
+                                        "@entrants Rappel : pause dans 5 minutes."
+                                    } else {
+                                        "@entrants Reminder: Next break in 5 minutes."
+                                    }),
                                     sleep(Duration::from_secs(5 * 60)),
                                 );
                                 if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
-                                let msg = format!("@entrants Break time! Please pause for {}.", English.format_duration(breaks.duration, true));
+                                let msg = if let French = goal.language() {
+                                    format!("@entrants C'est l'heure de la pause ! Elle durera {}.", French.format_duration(breaks.duration, true))
+                                } else {
+                                    format!("@entrants Break time! Please pause for {}.", English.format_duration(breaks.duration, true))
+                                };
                                 let (_, ()) = tokio::join!(
                                     ctx.send_message(&msg),
                                     sleep(breaks.duration),
                                 );
                                 if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
                                 let (_, ()) = tokio::join!(
-                                    ctx.send_message("@entrants Break ended. You may resume playing."),
+                                    ctx.send_message(if let French = goal.language() {
+                                        "@entrants Fin de la pause. Vous pouvez recommencer à jouer."
+                                    } else {
+                                        "@entrants Break ended. You may resume playing."
+                                    }),
                                     sleep(breaks.interval - breaks.duration - Duration::from_secs(5 * 60)),
                                 );
                             }
                         })
                     });
                 }
-                match self.goal(&ctx).await {
+                match goal {
                     Goal::PicRs2 => {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
@@ -2630,49 +2852,102 @@ impl RaceHandler<GlobalState> for Handler {
                                 TeamConfig::Solo => {
                                     let mut times = data.entrants.iter().map(|entrant| (entrant.user.id.clone(), entrant.finish_time.map(|time| time.to_std().expect("negative finish time")))).collect_vec();
                                     times.sort_by_key(|(_, time)| (time.is_none(), *time)); // sort DNF last
-                                    let mut builder = MessageBuilder::default();
-                                    if let Some(game) = cal_event.race.game {
-                                        builder.push("game ");
-                                        builder.push(game.to_string());
-                                        builder.push(": ");
-                                    }
                                     if let [(ref winner, winning_time), (ref loser, losing_time)] = *times {
                                         if winning_time == losing_time {
                                             let entrant1 = User::from_racetime(&mut transaction, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                             let entrant2 = User::from_racetime(&mut transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                            builder.mention_user(&entrant1);
-                                            builder.push(" and ");
-                                            builder.mention_user(&entrant2);
-                                            if let Some(finish_time) = winning_time {
-                                                builder.push(" tie their race with a time of ");
-                                                builder.push(English.format_duration(finish_time, true));
-                                            } else {
-                                                builder.push(" both did not finish");
-                                            }
-                                            results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder
-                                                .push(" <https://")
-                                                .push(ctx.global_state.host)
-                                                .push(&ctx.data().await.url)
-                                                .push('>')
-                                                .build()
-                                            ).await.to_racetime()?;
+                                            let msg = if_chain! {
+                                                if let French = event.language;
+                                                if cal_event.race.game.is_none();
+                                                then {
+                                                    let mut builder = MessageBuilder::default();
+                                                    if let Some(finish_time) = winning_time {
+                                                        builder.mention_user(&entrant1);
+                                                        builder.push(" et ");
+                                                        builder.mention_user(&entrant2);
+                                                        builder.push(" ont fait égalité avec un temps de ");
+                                                        builder.push(French.format_duration(finish_time, true));
+                                                    } else {
+                                                        builder.push("Ni ");
+                                                        builder.mention_user(&entrant1);
+                                                        builder.push(" ni ");
+                                                        builder.mention_user(&entrant2);
+                                                        builder.push(" n'ont fini");
+                                                    }
+                                                    builder
+                                                        .push(" <https://")
+                                                        .push(ctx.global_state.host)
+                                                        .push(&ctx.data().await.url)
+                                                        .push('>')
+                                                        .build()
+                                                } else {
+                                                    let mut builder = MessageBuilder::default();
+                                                    if let Some(game) = cal_event.race.game {
+                                                        builder.push("game ");
+                                                        builder.push(game.to_string());
+                                                        builder.push(": ");
+                                                    }
+                                                    builder.mention_user(&entrant1);
+                                                    builder.push(" and ");
+                                                    builder.mention_user(&entrant2);
+                                                    if let Some(finish_time) = winning_time {
+                                                        builder.push(" tie their race with a time of ");
+                                                        builder.push(English.format_duration(finish_time, true));
+                                                    } else {
+                                                        builder.push(" both did not finish");
+                                                    }
+                                                    builder
+                                                        .push(" <https://")
+                                                        .push(ctx.global_state.host)
+                                                        .push(&ctx.data().await.url)
+                                                        .push('>')
+                                                        .build()
+                                                }
+                                            };
+                                            results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
                                         } else {
                                             let winner = User::from_racetime(&mut transaction, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                             let loser = User::from_racetime(&mut transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                            results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder
-                                                .mention_user(&winner)
-                                                .push(" (")
-                                                .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
-                                                .push(") defeats ")
-                                                .mention_user(&loser)
-                                                .push(" (")
-                                                .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
-                                                .push(") <https://")
-                                                .push(ctx.global_state.host)
-                                                .push(&ctx.data().await.url)
-                                                .push('>')
-                                                .build()
-                                            ).await.to_racetime()?;
+                                            let msg = if_chain! {
+                                                if let French = event.language;
+                                                if cal_event.race.game.is_none();
+                                                then {
+                                                    MessageBuilder::default()
+                                                        .mention_user(&winner)
+                                                        .push(" (")
+                                                        .push(winning_time.map_or(Cow::Borrowed("forfait"), |time| Cow::Owned(French.format_duration(time, false))))
+                                                        .push(") a battu ")
+                                                        .mention_user(&loser)
+                                                        .push(" (")
+                                                        .push(losing_time.map_or(Cow::Borrowed("forfait"), |time| Cow::Owned(French.format_duration(time, false))))
+                                                        .push(") <https://")
+                                                        .push(ctx.global_state.host)
+                                                        .push(&ctx.data().await.url)
+                                                        .push('>')
+                                                        .build()
+                                                } else {
+                                                    let mut builder = MessageBuilder::default();
+                                                    if let Some(game) = cal_event.race.game {
+                                                        builder.push("game ");
+                                                        builder.push(game.to_string());
+                                                        builder.push(": ");
+                                                    }
+                                                    builder
+                                                        .mention_user(&winner)
+                                                        .push(" (")
+                                                        .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
+                                                        .push(") defeats ")
+                                                        .mention_user(&loser)
+                                                        .push(" (")
+                                                        .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
+                                                        .push(") <https://")
+                                                        .push(ctx.global_state.host)
+                                                        .push(&ctx.data().await.url)
+                                                        .push('>')
+                                                        .build()
+                                                }
+                                            };
+                                            results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
                                         }
                                     } else {
                                         unimplemented!() //TODO handle races with more than 2 entrants
@@ -2760,7 +3035,7 @@ impl RaceHandler<GlobalState> for Handler {
                     }
                 }
                 self.unlock_spoiler_log(ctx).await?;
-                if let Goal::Rsl = self.goal(ctx).await {
+                if let Goal::Rsl = goal {
                     sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", ctx.global_state.host, ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
                 }
             }
@@ -2787,47 +3062,79 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
     let Some(goal) = Goal::for_event(cal_event.race.series, &cal_event.race.event) else { return Ok(None) };
     match racetime::authorize_with_host(host_info, client_id, client_secret, http_client).await {
         Ok((access_token, _)) => {
-            let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
-                (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
-                (Some(phase), None) => Some(phase.to_owned()),
-                (None, Some(round)) => Some(round.to_owned()),
-                (None, None) => None,
+            let info_user = if_chain! {
+                if let French = event.language;
+                if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
+                if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()?;
+                if cal_event.race.game.is_none();
+                if let Some(entrants) = match cal_event.race.entrants {
+                    Entrants::Open | Entrants::Count { .. } => Some(None), // no text
+                    Entrants::Named(ref entrants) => Some(Some(entrants.clone())),
+                    Entrants::Two([ref team1, ref team2]) => match cal_event.kind {
+                        cal::EventKind::Normal => if let (Some(team1), Some(team2)) = (team1.name(&mut *transaction, discord_ctx).await.to_racetime()?, team2.name(&mut *transaction, discord_ctx).await.to_racetime()?) {
+                            Some(Some(format!("{team1} vs {team2}")))
+                        } else {
+                            None // no French translation available
+                        },
+                        cal::EventKind::Async1 | cal::EventKind::Async2 => None,
+                    },
+                    Entrants::Three([ref team1, ref team2, ref team3]) => if let (Some(team1), Some(team2), Some(team3)) = (team1.name(&mut *transaction, discord_ctx).await.to_racetime()?, team2.name(&mut *transaction, discord_ctx).await.to_racetime()?, team3.name(&mut *transaction, discord_ctx).await.to_racetime()?) {
+                        Some(Some(format!("{team1} vs {team2} vs {team3}"))) //TODO adjust for asyncs
+                    } else {
+                        None // no French translation available
+                    },
+                };
+                then {
+                    if let Some(entrants) = entrants {
+                        format!("{phase_round} : {entrants}")
+                    } else {
+                        phase_round
+                    }
+                } else {
+                    let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
+                        (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                        (Some(phase), None) => Some(phase.to_owned()),
+                        (None, Some(round)) => Some(round.to_owned()),
+                        (None, None) => None,
+                    };
+                    let mut info_user = match cal_event.race.entrants {
+                        Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
+                        Entrants::Named(ref entrants) => format!("{}{entrants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
+                        Entrants::Two([ref team1, ref team2]) => match cal_event.kind {
+                            cal::EventKind::Normal => format!(
+                                "{}{} vs {}",
+                                info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                            cal::EventKind::Async1 => format!(
+                                "{} (async): {} vs {}",
+                                info_prefix.clone().unwrap_or_default(),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                            cal::EventKind::Async2 => format!(
+                                "{} (async): {} vs {}",
+                                info_prefix.clone().unwrap_or_default(),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                        },
+                        Entrants::Three([ref team1, ref team2, ref team3]) => format!(
+                            "{}{} vs {} vs {}",
+                            info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                            team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                        ), //TODO adjust for asyncs
+                    };
+                    if let Some(game) = cal_event.race.game {
+                        info_user.push_str(", game ");
+                        info_user.push_str(&game.to_string());
+                    }
+                    info_user
+                }
             };
-            let mut info_user = match cal_event.race.entrants {
-                Entrants::Open | Entrants::Count { .. } => info_prefix.clone().unwrap_or_default(),
-                Entrants::Named(ref entrants) => format!("{}{entrants}", info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default()),
-                Entrants::Two([ref team1, ref team2]) => match cal_event.kind {
-                    cal::EventKind::Normal => format!(
-                        "{}{} vs {}",
-                        info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                        team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                        team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    ),
-                    cal::EventKind::Async1 => format!(
-                        "{} (async): {} vs {}",
-                        info_prefix.clone().unwrap_or_default(),
-                        team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                        team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    ),
-                    cal::EventKind::Async2 => format!(
-                        "{} (async): {} vs {}",
-                        info_prefix.clone().unwrap_or_default(),
-                        team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                        team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    ),
-                },
-                Entrants::Three([ref team1, ref team2, ref team3]) => format!(
-                    "{}{} vs {} vs {}",
-                    info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                    team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                ), //TODO adjust for asyncs
-            };
-            if let Some(game) = cal_event.race.game {
-                info_user.push_str(", game ");
-                info_user.push_str(&game.to_string());
-            }
             let race_slug = racetime::StartRace {
                 goal: goal.as_str().to_owned(),
                 goal_is_custom: goal.is_custom(),
@@ -2855,53 +3162,105 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                 cal::EventKind::Async1 => { sqlx::query!("UPDATE races SET async_room1 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?; }
                 cal::EventKind::Async2 => { sqlx::query!("UPDATE races SET async_room2 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?; }
             }
-            let mut msg = MessageBuilder::default();
-            msg.push("race starting ");
-            msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
-            msg.push(": ");
-            match cal_event.race.entrants {
-                Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {
-                    msg.push_safe(prefix);
-                },
-                Entrants::Named(ref entrants) => {
-                    if let Some(prefix) = info_prefix {
-                        msg.push_safe(prefix);
-                        msg.push(": ");
+            let msg = if_chain! {
+                if let French = event.language;
+                if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
+                if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()?;
+                if cal_event.race.game.is_none();
+                then {
+                    let mut msg = MessageBuilder::default();
+                    msg.push("La race commence ");
+                    msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
+                    msg.push(" : ");
+                    match cal_event.race.entrants {
+                        Entrants::Open | Entrants::Count { .. } => {
+                            msg.push_safe(phase_round);
+                        },
+                        Entrants::Named(ref entrants) => {
+                            msg.push_safe(phase_round);
+                            msg.push(" : ");
+                            msg.push_safe(entrants);
+                        }
+                        Entrants::Two([ref team1, ref team2]) => {
+                            msg.push_safe(phase_round);
+                            //TODO adjust for asyncs
+                            msg.push(" : ");
+                            msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                            msg.push(" vs ");
+                            msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
+                        }
+                        Entrants::Three([ref team1, ref team2, ref team3]) => {
+                            msg.push_safe(phase_round);
+                            //TODO adjust for asyncs
+                            msg.push(" : ");
+                            msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                            msg.push(" vs ");
+                            msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
+                            msg.push(" vs ");
+                            msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
+                        }
                     }
-                    msg.push_safe(entrants);
-                }
-                Entrants::Two([ref team1, ref team2]) => {
-                    if let Some(prefix) = info_prefix {
-                        msg.push_safe(prefix);
-                        //TODO adjust for asyncs
-                        msg.push(": ");
+                    msg.push(" <");
+                    msg.push(room_url);
+                    msg.push('>');
+                    msg.build()
+                } else {
+                    let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
+                        (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                        (Some(phase), None) => Some(phase.to_owned()),
+                        (None, Some(round)) => Some(round.to_owned()),
+                        (None, None) => None,
+                    };
+                    let mut msg = MessageBuilder::default();
+                    msg.push("race starting ");
+                    msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
+                    msg.push(": ");
+                    match cal_event.race.entrants {
+                        Entrants::Open | Entrants::Count { .. } => if let Some(prefix) = info_prefix {
+                            msg.push_safe(prefix);
+                        },
+                        Entrants::Named(ref entrants) => {
+                            if let Some(prefix) = info_prefix {
+                                msg.push_safe(prefix);
+                                msg.push(": ");
+                            }
+                            msg.push_safe(entrants);
+                        }
+                        Entrants::Two([ref team1, ref team2]) => {
+                            if let Some(prefix) = info_prefix {
+                                msg.push_safe(prefix);
+                                //TODO adjust for asyncs
+                                msg.push(": ");
+                            }
+                            msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                            msg.push(" vs ");
+                            msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
+                        }
+                        Entrants::Three([ref team1, ref team2, ref team3]) => {
+                            if let Some(prefix) = info_prefix {
+                                msg.push_safe(prefix);
+                                //TODO adjust for asyncs
+                                msg.push(": ");
+                            }
+                            msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                            msg.push(" vs ");
+                            msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
+                            msg.push(" vs ");
+                            msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
+                        }
                     }
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                    msg.push(" vs ");
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                }
-                Entrants::Three([ref team1, ref team2, ref team3]) => {
-                    if let Some(prefix) = info_prefix {
-                        msg.push_safe(prefix);
-                        //TODO adjust for asyncs
-                        msg.push(": ");
+                    if let Some(game) = cal_event.race.game {
+                        msg.push(", game ");
+                        msg.push(game.to_string());
                     }
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                    msg.push(" vs ");
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                    msg.push(" vs ");
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
+                    msg.push(" <");
+                    msg.push(room_url);
+                    msg.push('>');
+                    msg.build()
                 }
-            }
-            if let Some(game) = cal_event.race.game {
-                msg.push(", game ");
-                msg.push(game.to_string());
-            }
-            msg.push(" <");
-            msg.push(room_url);
-            msg.push('>');
+            };
             let _ = lock!(@read extra_room_tx).send(race_slug).await;
-            Ok(Some(msg.build()))
+            Ok(Some(msg))
         }
         Err(Error::Reqwest(e)) if e.status().map_or(false, |status| status.is_server_error()) => {
             // racetime.gg's auth endpoint has been known to return server errors intermittently.

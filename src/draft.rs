@@ -442,7 +442,7 @@ impl Draft {
                                         MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => format!(
                                             "{}, veuillez ban un setting en utilisant “!ban <setting>”.{}",
                                             team.choose(high_seed_name, low_seed_name),
-                                            if prev_bans == 0 { " Use “!settings” for a list of available settings." } else { "" },
+                                            if prev_bans == 0 { " Utilisez “!settings” pour la liste des settings." } else { "" },
                                         ),
                                     },
                                 }
@@ -883,7 +883,7 @@ impl Draft {
                                     MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
                                     MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
                                         .mention_team(transaction, Some(*guild_id), team).await?
-                                        .push(" a bloqué ")
+                                        .push(" a verrouillé ")
                                         .push(setting.default_display)
                                         .push('.')
                                         .build(),
