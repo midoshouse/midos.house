@@ -91,6 +91,8 @@ enum Requirement {
     DiscordGuild {
         name: String,
     },
+    /// Must agree to be restreamed
+    RestreamConsent,
     /// Must either request and submit the qualifier seed as an async, or participate in the live qualifier
     #[serde(rename_all = "camelCase")]
     Qualifier {
@@ -115,6 +117,7 @@ impl Requirement {
             Self::RaceTime => true,
             Self::Discord => true,
             Self::DiscordGuild { .. } => true,
+            Self::RestreamConsent => true,
             Self::Qualifier { .. } => true,
             Self::External { .. } => false,
         }
@@ -132,6 +135,7 @@ impl Requirement {
                     false
                 }
             }),
+            Self::RestreamConsent => Some(false),
             Self::Qualifier { .. } => Some(false),
             Self::External { .. } => None,
         })
@@ -183,12 +187,30 @@ impl Requirement {
                     }),
                 }
             }
+            Self::RestreamConsent => {
+                let team_config = data.team_config();
+                RequirementStatus {
+                    blocks_submit: false,
+                    html_content: Box::new(move |errors| html! {
+                        : form_field("restream_consent", errors, html! {
+                            input(type = "checkbox", id = "restream_consent", name = "restream_consent"); //TODO remember checked state
+                            label(for = "restream_consent") {
+                                @if let TeamConfig::Solo = team_config {
+                                    : "I am okay with being restreamed.";
+                                } else {
+                                    : "We are okay with being restreamed.";
+                                }
+                            }
+                        });
+                    }),
+                }
+            }
             &Self::Qualifier { async_start, async_end, live_start } => {
                 let now = Utc::now();
                 let async_available = now >= async_start && now < async_end;
                 let series = data.series;
                 RequirementStatus {
-                    blocks_submit: !async_available || self.is_checked(discord_ctx, me, data).await?.unwrap(),
+                    blocks_submit: !async_available,
                     html_content: Box::new(move |errors| html! {
                         @if async_available {
                             : "Play the qualifier seed, either live on ";
@@ -232,6 +254,9 @@ impl Requirement {
 
     async fn check_form(&self, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
         match self {
+            Self::RestreamConsent => if !value.restream_consent {
+                form_ctx.push_error(form::Error::validation("Restream consent is required to enter this event.").with_name("restream_consent"));
+            },
             Self::Qualifier { async_start, async_end, .. } => {
                 let now = Utc::now();
                 if now >= *async_start && now < *async_end {
@@ -248,7 +273,7 @@ impl Requirement {
                     Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.", //TODO direct link?
                     Self::Discord => "A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.", //TODO direct link?
                     Self::DiscordGuild { .. } => "You must join the event's Discord server to enter.", //TODO invite link?
-                    Self::Qualifier { .. } | Self::External { .. } => unreachable!(),
+                    Self::RestreamConsent | Self::Qualifier { .. } | Self::External { .. } => unreachable!(),
                 }));
             }
         }
