@@ -366,6 +366,7 @@ impl VersionedRslPreset {
 
 #[derive(Clone, Copy, Sequence)]
 pub(crate) enum Goal {
+    CopaDoBrasil,
     MixedPoolsS2,
     MultiworldS3,
     NineDaysOfSaws,
@@ -386,6 +387,7 @@ impl Goal {
 
     fn matches_event(&self, series: Series, event: &str) -> bool {
         match self {
+            Self::CopaDoBrasil => series == Series::CopaDoBrasil && event == "1",
             Self::MixedPoolsS2 => series == Series::MixedPools && event == "2",
             Self::MultiworldS3 => series == Series::Multiworld && event == "3",
             Self::NineDaysOfSaws => series == Series::NineDaysOfSaws,
@@ -398,6 +400,7 @@ impl Goal {
 
     pub(crate) fn is_custom(&self) -> bool {
         match self {
+            Self::CopaDoBrasil => true,
             Self::MixedPoolsS2 => true,
             Self::MultiworldS3 => true,
             Self::NineDaysOfSaws => true,
@@ -410,6 +413,7 @@ impl Goal {
 
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
+            Self::CopaDoBrasil => "Copa do Brasil",
             Self::MixedPoolsS2 => "2nd Mixed Pools Tournament",
             Self::MultiworldS3 => "3rd Multiworld Tournament",
             Self::NineDaysOfSaws => "9 Days of SAWS",
@@ -422,6 +426,7 @@ impl Goal {
 
     fn language(&self) -> Language {
         match self {
+            Self::CopaDoBrasil => Portuguese,
             Self::TournoiFrancoS3 => French,
             _ => English,
         }
@@ -431,12 +436,13 @@ impl Goal {
         match self {
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
-            Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::PicRs2 | Self::Rsl | Self::TriforceBlitz => None,
+            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::PicRs2 | Self::Rsl | Self::TriforceBlitz => None,
         }
     }
 
     fn rando_version(&self) -> VersionedBranch {
         match self {
+            Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
@@ -449,12 +455,13 @@ impl Goal {
     fn should_create_rooms(&self) -> bool {
         match self {
             Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::Rsl => false,
-            Self::MultiworldS3 | Self::PicRs2 | Self::TournoiFrancoS3 | Self::TriforceBlitz => true,
+            Self::CopaDoBrasil | Self::MultiworldS3 | Self::PicRs2 | Self::TournoiFrancoS3 | Self::TriforceBlitz => true,
         }
     }
 
     async fn send_presets(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         match self {
+            Self::CopaDoBrasil => ctx.send_message("!seed: The settings used for the tournament").await?,
             Self::MixedPoolsS2 => ctx.send_message("!seed: The settings used for the tournament").await?,
             Self::MultiworldS3 => {
                 ctx.send_message("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
@@ -1779,6 +1786,10 @@ impl RaceHandler<GlobalState> for Handler {
             } else {
                 match race_state {
                     RaceState::Init => match goal {
+                        Goal::CopaDoBrasil => {
+                            ctx.send_message("Welcome! This is a practice room for the Copa do Brasil. Learn more about the tournament at https://midos.house/event/br/1").await?;
+                            ctx.send_message("Create a seed with !seed").await?;
+                        }
                         Goal::MixedPoolsS2 => {
                             ctx.send_message("Welcome! This is a practice room for the 2nd Mixed Pools Tournament. Learn more about the tournament at https://midos.house/event/mp/2").await?;
                             ctx.send_message("Create a seed with !seed").await?;
@@ -1896,6 +1907,7 @@ impl RaceHandler<GlobalState> for Handler {
                         Goal::MixedPoolsS2 | Goal::Rsl => unreachable!("no official race rooms"),
                         Goal::MultiworldS3 | Goal::TournoiFrancoS3 => unreachable!("should have draft state set"),
                         Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
+                        Goal::CopaDoBrasil => this.roll_seed(ctx, state, goal.rando_version(), br::s1_settings(), true, English, "a", format!("seed")),
                         Goal::PicRs2 => this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
                             version: Some((Version::new(2, 3, 8), 10)),
                             preset: RslDevFenhlPreset::Pictionary,
@@ -2307,6 +2319,7 @@ impl RaceHandler<GlobalState> for Handler {
                         }).await?;
                     } else {
                         match goal {
+                            Goal::CopaDoBrasil => self.roll_seed(ctx, state, goal.rando_version(), br::s1_settings(), true, English, "a", format!("seed")),
                             Goal::MixedPoolsS2 => if let Some(seed) = lock!(ctx.global_state.cached_mixed_pools_seed).take() {
                                 let _ = ctx.global_state.seed_cache_tx.send(()).await;
                                 self.queue_existing_seed(ctx, state, seed, English, "a", format!("mixed pools seed")).await;
@@ -2426,12 +2439,12 @@ impl RaceHandler<GlobalState> for Handler {
                                                 "entrance":        {"order": 6, "weight": 0.0, "fixed":   4, "copies": 2},
                                                 "sometimes":       {"order": 7, "weight": 0.0, "fixed": 100, "copies": 2},
                                                 "random":          {"order": 8, "weight": 9.0, "fixed":   0, "copies": 2},
+                                                "named-item":      {"order": 9, "weight": 0.0, "fixed":   0, "copies": 2},
                                                 "item":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
                                                 "song":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
                                                 "overworld":       {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
                                                 "dungeon":         {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
                                                 "junk":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                                "named-item":      {"order": 9, "weight": 0.0, "fixed":   0, "copies": 2},
                                                 "woth":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
                                                 "dual_always":     {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
                                                 "dual":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
@@ -2818,7 +2831,7 @@ impl RaceHandler<GlobalState> for Handler {
                             })
                         });
                     }
-                    Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::NineDaysOfSaws | Goal::Rsl | Goal::TournoiFrancoS3 => {}
+                    Goal::CopaDoBrasil | Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::NineDaysOfSaws | Goal::Rsl | Goal::TournoiFrancoS3 => {}
                 }
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx).await? {
