@@ -338,6 +338,7 @@ pub(crate) struct Race {
     pub(crate) video_urls: HashMap<Language, Url>,
     pub(crate) restreamers: HashMap<Language, String>,
     pub(crate) ignored: bool,
+    pub(crate) schedule_locked: bool,
 }
 
 impl Race {
@@ -388,7 +389,8 @@ impl Race {
             restreamer_fr,
             video_url_pt,
             restreamer_pt,
-            ignored
+            ignored,
+            schedule_locked
         FROM races WHERE id = $1"#, id as _).fetch_one(&mut *transaction).await?;
         let (startgg_event, startgg_set, phase, round, slots) = if let Some(startgg_set) = row.startgg_set {
             if row.startgg_event.is_some() && row.phase.is_some() && row.round.is_some() && row.team1.is_some() && row.team2.is_some() {
@@ -552,6 +554,7 @@ impl Race {
                 restreamers
             },
             ignored: row.ignored,
+            schedule_locked: row.schedule_locked,
             id, startgg_event, startgg_set, entrants, phase, round,
         })
     }
@@ -565,6 +568,7 @@ impl Race {
                 && iter_race.round == race.round
                 && iter_race.game == race.game
                 && iter_race.entrants == race.entrants
+                && !iter_race.schedule_locked
             ) {
                 if !found_race.schedule.start_matches(&race.schedule) {
                     match race.schedule {
@@ -650,6 +654,7 @@ impl Race {
                                 league::MatchStatus::Canceled => true,
                                 league::MatchStatus::Confirmed => false,
                             },
+                            schedule_locked: false,
                             id,
                         }).await?;
                     }
@@ -684,6 +689,7 @@ impl Race {
                             video_urls: HashMap::default(),
                             restreamers: HashMap::default(),
                             ignored: false,
+                            schedule_locked: false,
                             id,
                         }).await?;
                     }
@@ -725,6 +731,7 @@ impl Race {
                     video_urls: event.video_url.iter().map(|video_url| (English, video_url.clone())).collect(), //TODO sync between event and race? Video URL fields for other languages on event::Data?
                     restreamers: HashMap::default(),
                     ignored: false,
+                    schedule_locked: false,
                     id, schedule,
                 }).await?;
             }
@@ -1618,6 +1625,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                     video_urls: HashMap::default(),
                     restreamers: HashMap::default(),
                     ignored: false,
+                    schedule_locked: false,
                 };
                 if game == 1 {
                     discord_bot::create_scheduling_thread(&*discord_ctx.read().await, &mut transaction, &mut race, value.game_count).await?;
