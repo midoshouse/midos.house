@@ -37,6 +37,7 @@ use {
         Postgres,
         Transaction,
     },
+    url::Url,
     wheel::traits::ReqwestResponseExt as _,
     crate::{
         Environment,
@@ -91,6 +92,10 @@ enum Requirement {
     DiscordGuild {
         name: String,
     },
+    /// Must agree to the event rules
+    Rules {
+        document: Option<Url>,
+    },
     /// Must agree to be restreamed
     RestreamConsent,
     /// Must either request and submit the qualifier seed as an async, or participate in the live qualifier
@@ -117,6 +122,7 @@ impl Requirement {
             Self::RaceTime => true,
             Self::Discord => true,
             Self::DiscordGuild { .. } => true,
+            Self::Rules { .. } => true,
             Self::RestreamConsent => true,
             Self::Qualifier { .. } => true,
             Self::External { .. } => false,
@@ -135,6 +141,7 @@ impl Requirement {
                     false
                 }
             }),
+            Self::Rules { .. } => Some(false),
             Self::RestreamConsent => Some(false),
             Self::Qualifier { .. } => Some(false),
             Self::External { .. } => None,
@@ -187,6 +194,31 @@ impl Requirement {
                     }),
                 }
             }
+            Self::Rules { document } => {
+                let team_config = data.team_config();
+                let rules_url = if let Some(document) = document {
+                    document.to_string()
+                } else {
+                    uri!(crate::event::info(data.series, &*data.event)).to_string()
+                };
+                RequirementStatus {
+                    blocks_submit: false,
+                    html_content: Box::new(move |errors| html! {
+                        : form_field("confirm", errors, html! {
+                            input(type = "checkbox", id = "confirm", name = "confirm"); //TODO remember checked state
+                            label(for = "confirm") {
+                                @if let TeamConfig::Solo = team_config {
+                                    : "I have read and agree to ";
+                                } else {
+                                    : "We have read and agree to ";
+                                }
+                                a(href = rules_url) : "the event rules";
+                                : ".";
+                            }
+                        });
+                    }),
+                }
+            }
             Self::RestreamConsent => {
                 let team_config = data.team_config();
                 RequirementStatus {
@@ -223,7 +255,7 @@ impl Requirement {
                                 _ => @unimplemented
                             }
                             : form_field("confirm", errors, html! {
-                                input(type = "checkbox", id = "confirm", name = "confirm");
+                                input(type = "checkbox", id = "confirm", name = "confirm"); //TODO remember checked state
                                 label(for = "confirm") : "I have read the above and am ready to play the seed";
                             });
                         } else {
@@ -254,6 +286,9 @@ impl Requirement {
 
     async fn check_form(&self, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
         match self {
+            Self::Rules { .. } => if !value.confirm {
+                form_ctx.push_error(form::Error::validation("This field is required.").with_name("confirm"));
+            },
             Self::RestreamConsent => if !value.restream_consent {
                 form_ctx.push_error(form::Error::validation("Restream consent is required to enter this event.").with_name("restream_consent"));
             },
@@ -273,7 +308,7 @@ impl Requirement {
                     Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.", //TODO direct link?
                     Self::Discord => "A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.", //TODO direct link?
                     Self::DiscordGuild { .. } => "You must join the event's Discord server to enter.", //TODO invite link?
-                    Self::RestreamConsent | Self::Qualifier { .. } | Self::External { .. } => unreachable!(),
+                    Self::Rules { .. } | Self::RestreamConsent | Self::Qualifier { .. } | Self::External { .. } => unreachable!(),
                 }));
             }
         }
