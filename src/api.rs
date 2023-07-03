@@ -410,7 +410,7 @@ pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<re
     let show_qualifier_times = event.show_qualifier_times && event.is_started(&mut transaction).await?;
     let signups = event.signups_sorted(&mut transaction, None, show_qualifier_times).await?;
     let mut csv = csv::Writer::from_writer(Vec::default());
-    for (i, (team, _, _, _)) in signups.into_iter().enumerate() {
+    for (i, (team, _, _, _, _, _)) in signups.into_iter().enumerate() {
         for member in team.members(&mut transaction).await? {
             #[derive(Serialize)]
             struct Row<'a> {

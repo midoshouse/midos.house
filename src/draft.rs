@@ -583,7 +583,28 @@ impl Draft {
         Ok(match kind {
             Kind::MultiworldS3 => {
                 let resolved_action = match action {
-                    Action::Ban { setting } => Action::Pick { value: mw::S3_SETTINGS.into_iter().find(|&mw::S3Setting { name, .. }| *name == setting).unwrap().default.to_owned(), setting },
+                    Action::Ban { setting } => if let Some(setting) = mw::S3_SETTINGS.into_iter().find(|&mw::S3Setting { name, .. }| *name == setting) {
+                        Action::Pick { setting: setting.name.to_owned(), value: setting.default.to_owned() }
+                    } else {
+                        return Ok(Err(match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { .. } => {
+                                let mut content = MessageBuilder::default();
+                                content.push("Sorry, I don't recognize that setting. Use one of the following: ");
+                                for (i, setting) in mw::S3_SETTINGS.into_iter().enumerate() {
+                                    if i > 0 {
+                                        content.push(" or ");
+                                    }
+                                    content.push_mono(setting.name);
+                                }
+                                content.build()
+                            }
+                            MessageContext::RaceTime { reply_to, .. } => format!(
+                                "Sorry {reply_to}, I don't recognize that setting. Use one of the following: {}",
+                                mw::S3_SETTINGS.into_iter().map(|setting| setting.name).format(" or "),
+                            ),
+                        }))
+                    },
                     Action::BooleanChoice(value) if matches!(self.next_step(kind, &mut MessageContext::None).await?.kind, StepKind::GoFirst) => Action::GoFirst(value),
                     _ => action,
                 };
@@ -811,7 +832,28 @@ impl Draft {
             }
             Kind::TournoiFrancoS3 => {
                 let resolved_action = match action {
-                    Action::Ban { setting } => Action::Pick { value: fr::S3_SETTINGS.into_iter().find(|&fr::S3Setting { name, .. }| *name == setting).unwrap().default.to_owned(), setting },
+                    Action::Ban { setting } => if let Some(setting) = fr::S3_SETTINGS.into_iter().find(|&fr::S3Setting { name, .. }| *name == setting) {
+                        Action::Pick { setting: setting.name.to_owned(), value: setting.default.to_owned() }
+                    } else {
+                        return Ok(Err(match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { .. } => {
+                                let mut content = MessageBuilder::default();
+                                content.push("Sorry, I don't recognize that setting. Use one of the following: ");
+                                for (i, setting) in fr::S3_SETTINGS.into_iter().enumerate() {
+                                    if i > 0 {
+                                        content.push(" or ");
+                                    }
+                                    content.push_mono(setting.name);
+                                }
+                                content.build()
+                            }
+                            MessageContext::RaceTime { reply_to, .. } => format!(
+                                "Sorry {reply_to}, I don't recognize that setting. Use one of the following: {}",
+                                fr::S3_SETTINGS.into_iter().map(|setting| setting.name).format(" or "),
+                            ),
+                        }))
+                    },
                     _ => action,
                 };
                 match resolved_action {
@@ -938,14 +980,41 @@ impl Draft {
                                     self.settings.insert(Cow::Borrowed(self.active_team(kind).await?.unwrap().choose("high_seed_has_picked", "low_seed_has_picked")), Cow::Borrowed("yes"));
                                 }
                                 self.settings.insert(Cow::Borrowed(setting.name), Cow::Borrowed(option.name));
-                                Ok(match msg_ctx {
-                                    MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
-                                    MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
-                                        .mention_team(transaction, Some(*guild_id), team).await?
-                                        .push(if team.name_is_plural() { " have picked " } else { " has picked " })
-                                        .push(option.display)
-                                        .push('.')
-                                        .build(),
+                                let mut msg = match msg_ctx {
+                                    MessageContext::None | MessageContext::RaceTime { .. } => None,
+                                    MessageContext::Discord { transaction, guild_id, team, .. } => {
+                                        let mut msg = MessageBuilder::default();
+                                        msg.mention_team(transaction, Some(*guild_id), team).await?;
+                                        msg.push(if team.name_is_plural() { " have picked " } else { " has picked " });
+                                        msg.push(option.display);
+                                        Some(msg)
+                                    }
+                                };
+                                match (setting.name, option.name) {
+                                    ("bridge", "meds") => {
+                                        let bridge_medallions = thread_rng().gen_range(4..=6);
+                                        self.settings.insert(Cow::Borrowed("bridge_medallions"), Cow::Owned(bridge_medallions.to_string()));
+                                        if let Some(ref mut msg) = msg {
+                                            msg.push(" (randomized to ");
+                                            msg.push(bridge_medallions.to_string());
+                                            msg.push(" medallions)");
+                                        }
+                                    }
+                                    ("bridge", "dungeons") => {
+                                        let bridge_rewards = thread_rng().gen_range(5..=9);
+                                        self.settings.insert(Cow::Borrowed("bridge_rewards"), Cow::Owned(bridge_rewards.to_string()));
+                                        if let Some(ref mut msg) = msg {
+                                            msg.push(" (randomized to ");
+                                            msg.push(bridge_rewards.to_string());
+                                            msg.push(" dungeons)");
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                                Ok(if let Some(mut msg) = msg {
+                                    msg.push('.').build()
+                                } else {
+                                    String::default()
                                 })
                             } else {
                                 Err(match msg_ctx {

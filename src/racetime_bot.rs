@@ -1673,12 +1673,12 @@ impl RaceHandler<GlobalState> for Handler {
                 then {
                     format!(
                         "Bienvenue pour cette race de {} ! Pour plus d'informations : https://midos.house/event/{}/{}",
-                        format!("this {} race", match (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref()) {
+                        match (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref()) {
                             (Some(phase), Some(round)) => format!("{phase} {round}"),
                             (Some(phase), None) => phase.clone(),
                             (None, Some(round)) => round.clone(),
                             (None, None) => event.display_name.clone(),
-                        }),
+                        },
                         event.series,
                         event.event,
                     )

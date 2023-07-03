@@ -610,8 +610,8 @@ impl<'a> Data<'a> {
         Ok(None)
     }
 
-    pub(crate) async fn signups_sorted(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>, show_qualifier_times: bool) -> Result<Vec<(Team, Vec<(Role, User, bool, Option<Duration>, Option<String>)>, bool, Option<i16>)>, DataError> {
-        let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!", pieces, restream_consent FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+    pub(crate) async fn signups_sorted(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>, show_qualifier_times: bool) -> Result<Vec<(Team, Vec<(Role, User, bool, Option<Duration>, Option<String>)>, bool, Option<i16>, bool, bool)>, DataError> {
+        let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, restream_consent FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
             series = $1
             AND event = $2
             AND NOT resigned
@@ -635,10 +635,17 @@ impl<'a> Data<'a> {
                 let user = User::from_id(&mut *transaction, row.id).await?.ok_or(DataError::NonexistentUser)?;
                 members.push((role, user, is_confirmed, row.time.map(decode_pginterval).transpose()?, row.vod));
             }
-            signups.push((Team { id: team.id, name: team.name, racetime_slug: team.racetime_slug, plural_name: team.plural_name, restream_consent: team.restream_consent }, members, team.qualified, team.pieces));
+            signups.push((
+                Team { id: team.id, name: team.name, racetime_slug: team.racetime_slug, plural_name: team.plural_name, restream_consent: team.restream_consent },
+                members,
+                team.qualified,
+                team.pieces,
+                team.hard_settings_ok,
+                team.mq_ok,
+            ));
         }
         if show_qualifier_times {
-            signups.sort_unstable_by(|(team1, members1, qualified1, pieces1), (team2, members2, qualified2, pieces2)| {
+            signups.sort_unstable_by(|(team1, members1, qualified1, pieces1, _, _), (team2, members2, qualified2, pieces2, _, _)| {
                 #[derive(PartialEq, Eq, PartialOrd, Ord)]
                 enum Qualification {
                     Finished(Option<i16>, Duration),
@@ -667,7 +674,7 @@ impl<'a> Data<'a> {
                 .then_with(|| team1.cmp(team2))
             });
         } else {
-            signups.sort_unstable_by(|(team1, _, qualified1, _), (team2, _, qualified2, _)|
+            signups.sort_unstable_by(|(team1, _, qualified1, _, _, _), (team2, _, qualified2, _, _, _)|
                 qualified2.cmp(qualified1) // reversed to list qualified teams first
                 .then_with(|| team1.cmp(team2))
             );
@@ -944,6 +951,10 @@ pub(crate) async fn teams(pool: &State<PgPool>, env: &State<Environment>, me: Op
                             th : "Qualified";
                         }
                     }
+                    @if let Some(draft::Kind::TournoiFrancoS3) = data.draft_kind() {
+                        th : "Advanced Settings OK";
+                        th : "MQ OK";
+                    }
                     @if show_restream_consent {
                         th : "Restream Consent";
                     }
@@ -960,7 +971,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, env: &State<Environment>, me: Op
                         }
                     }
                 } else {
-                    @for (team, members, qualified, pieces) in signups {
+                    @for (team, members, qualified, pieces, hard_settings_ok, mq_ok) in signups {
                         tr {
                             @if !matches!(data.team_config(), TeamConfig::Solo) {
                                 td {
@@ -1043,6 +1054,18 @@ pub(crate) async fn teams(pool: &State<PgPool>, env: &State<Environment>, me: Op
                                         @if qualified {
                                             : "✓";
                                         }
+                                    }
+                                }
+                            }
+                            @if let Some(draft::Kind::TournoiFrancoS3) = data.draft_kind() {
+                                td {
+                                    @if hard_settings_ok {
+                                        : "✓";
+                                    }
+                                }
+                                td {
+                                    @if mq_ok {
+                                        : "✓";
                                     }
                                 }
                             }
