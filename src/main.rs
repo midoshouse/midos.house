@@ -15,7 +15,10 @@ use {
         PgPool,
         postgres::PgConnectOptions,
     },
-    tokio::sync::mpsc,
+    tokio::{
+        process::Command,
+        sync::mpsc,
+    },
     crate::{
         config::Config,
         util::sync::RwLock,
@@ -129,6 +132,11 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
             },
         }
     } else {
+        let default_panic_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
+            default_panic_hook(info)
+        }));
         let config = Config::load().await?;
         let http_client = reqwest::Client::builder()
             .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION")))
