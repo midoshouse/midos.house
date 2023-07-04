@@ -434,17 +434,15 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                     p {
                         : "You are also signed in via Discord as ";
                         a(href = format!("https://discord.com/users/{}", discord_user.id)) {
-                            @if let Some(global_name) = discord_user.global_name {
-                                : global_name;
-                                : " (@";
-                                : discord_user.username;
-                                : ")";
-                            } else if let Some(discriminator) = discord_user.discriminator {
+                            @if let Some(discriminator) = discord_user.discriminator {
                                 : discord_user.username;
                                 : "#";
                                 : discriminator;
                             } else {
+                                : discord_user.global_name.unwrap_or_else(|| discord_user.username.clone());
+                                : " (@";
                                 : discord_user.username;
+                                : ")";
                             }
                         }
                         : " which does not belong to a Mido's House account. ";

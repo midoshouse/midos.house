@@ -322,10 +322,10 @@ impl<'r> FromRequest<'r> for User {
                 }
                 match req.guard::<DiscordUser>().await {
                     Outcome::Success(discord_user) => if let Some(user) = guard_try!(User::from_discord(&**pool, discord_user.id).await) {
-                        let (display_name, username) = if let Some(global_name) = discord_user.global_name {
-                            (global_name, Some(discord_user.username))
-                        } else {
+                        let (display_name, username) = if discord_user.discriminator.is_some() {
                             (discord_user.username, None)
+                        } else {
+                            (discord_user.global_name.unwrap_or_else(|| discord_user.username.clone()), Some(discord_user.username))
                         };
                         guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1, discord_discriminator = $2, discord_username = $3 WHERE id = $4", display_name, discord_user.discriminator as _, username, user.id as _).execute(&**pool).await);
                         found_user = found_user.or(Ok(user));
@@ -518,10 +518,10 @@ async fn register_discord_inner(pool: &State<PgPool>, me: Option<User>, discord_
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE discord_id = $1) AS "exists!""#, i64::from(discord_user.id)).fetch_one(&mut transaction).await? {
             return Err(RegisterError::ExistsDiscord) //TODO user-facing error message
         } else {
-            let (display_name, username) = if let Some(global_name) = discord_user.global_name {
-                (global_name, Some(discord_user.username))
-            } else {
+            let (display_name, username) = if discord_user.discriminator.is_some() {
                 (discord_user.username, None)
+            } else {
+                (discord_user.global_name.unwrap_or_else(|| discord_user.username.clone()), Some(discord_user.username))
             };
             if let Some(me) = me {
                 sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3, discord_username = $4 WHERE id = $5", i64::from(discord_user.id), display_name, discord_user.discriminator as _, username, me.id as _).execute(&mut transaction).await?;
