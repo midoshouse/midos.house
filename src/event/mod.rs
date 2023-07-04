@@ -872,7 +872,7 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
         Series::NineDaysOfSaws => Some(ndos::info(&mut transaction, &data).await?),
         Series::Pictionary => pic::info(&mut transaction, &data).await?,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
-        Series::SpeedGaming => None, //TODO
+        Series::SpeedGaming => sgl::info(&mut transaction, &data).await?,
         Series::Standard => s::info(event),
         Series::TournoiFrancophone => fr::info(&mut transaction, &data).await?,
         Series::TriforceBlitz => tfb::info(&mut transaction, &data).await?,
