@@ -437,7 +437,7 @@ impl<'a> Data<'a> {
         //TODO parse weights at compile time
 
         match (self.series, &*self.event) {
-            (Series::CopaDoBrasil, "1") => ChestAppearances::random(), //TODO
+            (Series::CopaDoBrasil, "1") => from_file!("../../assets/event/br/chests-1-7.1.143.json"),
             (Series::CopaDoBrasil, _) => unimplemented!(),
             (Series::League, "4") => from_file!("../../assets/event/league/chests-4-7.1.94.json"),
             (Series::League, _) => unimplemented!(),
