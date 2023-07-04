@@ -465,7 +465,7 @@ impl<'a> Data<'a> {
                 from_file!("../../assets/event/rsl/chests-5-05bfcd2.json")
             }
             (Series::Rsl, _) => unimplemented!(),
-            (Series::SpeedGaming, "2023online" | "2023live") => ChestAppearances::random(), //TODO
+            (Series::SpeedGaming, "2023onl" | "2023live") => ChestAppearances::random(), //TODO
             (Series::SpeedGaming, _) => unimplemented!(),
             (Series::Standard, "6") => from_file!("../../assets/event/s/chests-6-6.9.10.json"),
             (Series::Standard, _) => unimplemented!(),

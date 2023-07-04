@@ -741,7 +741,7 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::SpeedGaming => match &*event.event {
-                "2023online" | "2023live" => {} //TODO sync with SGL restream schedule website, automate Challonge match source
+                "2023onl" | "2023live" => {} //TODO sync with SGL restream schedule website, automate Challonge match source
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {
