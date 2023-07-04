@@ -30,14 +30,14 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             Some(html! {
                 article {
                     p(lang = "pt") {
-                        : "Bem-vindo à primeira temporada da Copa do Brasil de Ocarina of Time Randomizer, idealizado por Iceninetm e ";
+                        : "Bem-vindo à primeira temporada da Copa do Brasil de Ocarina of Time Randomizer, idealizado por ";
                         : Portuguese.join_html(&organizers);
                         : ". Verifique o documento de regras para mais detalhes e ";
                         a(href = "https://discord.gg/hJcttRqFGA") : "entre em nosso Discord";
                         : " para ser atualizado acerca do andamento do torneio!";
                     }
                     p(lang = "en") {
-                        : "Welcome to the first season of Copa do Brasil, created by Iceninetm and ";
+                        : "Welcome to the first season of Copa do Brasil, created by ";
                         : English.join_html(organizers);
                         : ". See the rules document for details and ";
                         a(href = "https://discord.gg/hJcttRqFGA") : "join our Discord";

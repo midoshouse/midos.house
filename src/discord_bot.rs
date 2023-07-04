@@ -1567,8 +1567,16 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(false)
                                             .content(match (race.game, had_multiple_times) {
-                                                (None, false) => format!("This race's starting time has been removed from the schedule."),
-                                                (None, true) => format!("This race's starting times have been removed from the schedule."),
+                                                (None, false) => if let French = event.language {
+                                                    format!("L'horaire pour cette race ou cette async a été correctement retirée.")
+                                                } else {
+                                                    format!("This race's starting time has been removed from the schedule.")
+                                                },
+                                                (None, true) => if let French = event.language {
+                                                    format!("Les deux horaires pour les async ont été correctement retirées.")
+                                                } else {
+                                                    format!("This race's starting times have been removed from the schedule.")
+                                                },
                                                 (Some(game), false) => format!("Game {game}'s starting time has been removed from the schedule."),
                                                 (Some(game), true) => format!("Game {game}'s starting times have been removed from the schedule."),
                                             })

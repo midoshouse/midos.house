@@ -985,7 +985,7 @@ impl Draft {
                                     MessageContext::Discord { transaction, guild_id, team, .. } => {
                                         let mut msg = MessageBuilder::default();
                                         msg.mention_team(transaction, Some(*guild_id), team).await?;
-                                        msg.push(if team.name_is_plural() { " have picked " } else { " has picked " });
+                                        msg.push(" a choisi ");
                                         msg.push(option.display);
                                         Some(msg)
                                     }
