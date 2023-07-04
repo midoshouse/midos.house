@@ -740,6 +740,10 @@ impl Race {
                 "2" | "3" | "4" | "5" => {} // added to database
                 _ => unimplemented!(),
             },
+            Series::SpeedGaming => match &*event.event {
+                "2023online" | "2023live" => {} //TODO sync with SGL restream schedule website, automate Challonge match source
+                _ => unimplemented!(),
+            },
             Series::Standard => match &*event.event {
                 "6" => {} // added to database
                 _ => unimplemented!(),
@@ -1360,7 +1364,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                 cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + match event.series {
                     Series::TriforceBlitz => Duration::hours(2),
                     Series::MixedPools => Duration::hours(3),
-                    Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::Standard | Series::TournoiFrancophone => Duration::hours(3) + Duration::minutes(30),
+                    Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::SpeedGaming | Series::Standard | Series::TournoiFrancophone => Duration::hours(3) + Duration::minutes(30),
                     Series::Multiworld | Series::Pictionary => Duration::hours(4),
                     Series::Rsl => Duration::hours(4) + Duration::minutes(30),
                 })))); //TODO better fallback duration estimates depending on participants
