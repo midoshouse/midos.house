@@ -27,8 +27,14 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         ul {
                             li {
                                 a(href = "https://docs.google.com/document/d/1EACqBl8ZOreD6xT5jQ2HrdLOnpBpKyjS3FUYK8XFeqg/edit") : "Rules document";
+                            }
+                            li {
                                 a(href = "https://sglive.speedgaming.org/") : "Main SGL event page";
+                            }
+                            li {
                                 a(href = "https://discord.gg/YGzQsUp") : "Main SGL Discord";
+                            }
+                            li {
                                 a(href = "https://discord.gg/UjPaKk5b2w") : "OoTR SGL Discord";
                             }
                         }
@@ -47,9 +53,17 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         ul {
                             li {
                                 a(href = "https://docs.google.com/document/d/1EACqBl8ZOreD6xT5jQ2HrdLOnpBpKyjS3FUYK8XFeqg/edit") : "Rules document";
+                            }
+                            li {
                                 a(href = "https://sglive.speedgaming.org/") : "Main SGL event page";
+                            }
+                            li {
                                 a(href = "https://matcherino.com/t/sglive23") : "Matcherino";
+                            }
+                            li {
                                 a(href = "https://discord.gg/YGzQsUp") : "Main SGL Discord";
+                            }
+                            li {
                                 a(href = "https://discord.gg/UjPaKk5b2w") : "OoTR SGL Discord";
                             }
                         }
