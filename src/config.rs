@@ -16,6 +16,7 @@ use {
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Config {
+    pub(crate) challonge: ConfigChallonge,
     pub(crate) discord_production: ConfigDiscord,
     pub(crate) discord_dev: ConfigDiscord,
     pub(crate) ootr_api_key: String,
@@ -65,4 +66,12 @@ pub(crate) struct ConfigDiscord {
     pub(crate) client_id: ApplicationId,
     pub(crate) client_secret: String,
     pub(crate) bot_token: String,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ConfigChallonge {
+    #[serde(rename = "clientID")]
+    pub(crate) client_id: String,
+    pub(crate) client_secret: String,
 }

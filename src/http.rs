@@ -510,10 +510,12 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         api::entrants_csv,
         auth::racetime_callback,
         auth::discord_callback,
+        auth::challonge_callback,
         auth::login,
         auth::logout,
         auth::racetime_login,
         auth::discord_login,
+        auth::challonge_login,
         auth::register_racetime,
         auth::register_discord,
         auth::merge_accounts,
@@ -570,16 +572,26 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         }.to_string()),
     )))
     .attach(OAuth2::<auth::Discord>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
-        rocket_oauth2::StaticProvider { //TODO use built-in constant once https://github.com/jebrosen/rocket_oauth2/pull/42 is merged and released
-            auth_uri: "https://discord.com/api/oauth2/authorize".into(),
-            token_uri: "https://discord.com/api/oauth2/token".into(),
-        },
+        rocket_oauth2::StaticProvider::Discord,
         discord_config.client_id.to_string(),
         discord_config.client_secret.to_string(),
         Some(match env {
             Environment::Local => uri!("http://localhost:24814", auth::discord_callback),
             Environment::Dev => uri!("https://dev.midos.house", auth::discord_callback),
             Environment::Production => uri!("https://midos.house", auth::discord_callback),
+        }.to_string()),
+    )))
+    .attach(OAuth2::<auth::Challonge>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
+        rocket_oauth2::StaticProvider {
+            auth_uri: "https://api.challonge.com/oauth/authorize".into(),
+            token_uri: "https://api.challonge.com/oauth/token".into(),
+        },
+        config.challonge.client_id.to_string(),
+        config.challonge.client_secret.to_string(),
+        Some(match env {
+            Environment::Local => uri!("http://localhost:24814", auth::challonge_callback),
+            Environment::Dev => uri!("https://dev.midos.house", auth::challonge_callback),
+            Environment::Production => uri!("https://midos.house", auth::challonge_callback),
         }.to_string()),
     )))
     .manage(config)

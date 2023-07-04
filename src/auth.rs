@@ -76,8 +76,9 @@ macro_rules! guard_try {
 
 pub(crate) enum RaceTime {}
 pub(crate) enum Discord {}
+pub(crate) enum Challonge {}
 
-#[derive(Debug, thiserror::Error, rocket_util::Error)]
+#[derive(Debug, thiserror::Error, Error)]
 pub(crate) enum UserFromRequestError {
     #[error(transparent)] OAuth(#[from] rocket_oauth2::Error),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -131,6 +132,14 @@ async fn handle_discord_token_response(client: &reqwest::Client, cookies: &Cooki
             .finish());
     }
     Ok(client.get("https://discord.com/api/v10/users/@me")
+        .bearer_auth(token.access_token())
+        .send().await?
+        .detailed_error_for_status().await?
+        .json_with_text_in_error().await?)
+}
+
+async fn handle_challonge_token_response(client: &reqwest::Client, token: &TokenResponse<Challonge>) -> Result<ChallongeUser, UserFromRequestError> {
+    Ok(client.get("https://api.challonge.com/v2/m3.json")
         .bearer_auth(token.access_token())
         .send().await?
         .detailed_error_for_status().await?
@@ -212,6 +221,11 @@ pub(crate) struct DiscordUser {
     pub(crate) global_name: Option<String>,
     #[serde(deserialize_with = "discord_opt_discriminator")]
     pub(crate) discriminator: Option<Discriminator>,
+}
+
+#[derive(Deserialize)]
+struct ChallongeUser {
+    id: String,
 }
 
 #[rocket::async_trait]
@@ -398,6 +412,17 @@ pub(crate) fn discord_login(oauth: OAuth2<Discord>, cookies: &CookieJar<'_>, red
     oauth.get_redirect(cookies, &["identify"]).map_err(Error)
 }
 
+#[rocket::get("/login/challonge?<redirect_to>")]
+pub(crate) fn challonge_login(me: User, oauth: OAuth2<Challonge>, cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Result<Redirect, Error<rocket_oauth2::Error>> {
+    let _ = me; // we require already being signed into Mido's House to use Challonge OAuth, since it is so heavily rate limited
+    if let Some(redirect_to) = redirect_to {
+        if redirect_to.0.path() != uri!(racetime_callback).path() && redirect_to.0.path() != uri!(discord_callback).path() { // prevent showing login error page on login success
+            cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
+        }
+    }
+    oauth.get_redirect(cookies, &["identify"]).map_err(Error)
+}
+
 #[derive(Debug, thiserror::Error, Error)]
 pub(crate) enum RaceTimeCallbackError {
     #[error(transparent)] Page(#[from] PageError),
@@ -441,7 +466,23 @@ pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, cli
     })
 }
 
-#[derive(Debug, thiserror::Error, rocket_util::Error)]
+#[derive(Debug, thiserror::Error, Error)]
+pub(crate) enum ChallongeCallbackError {
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] UserFromRequest(#[from] UserFromRequestError),
+}
+
+#[rocket::get("/auth/challonge")]
+pub(crate) async fn challonge_callback(pool: &State<PgPool>, me: User, client: &State<reqwest::Client>, token: TokenResponse<Challonge>, cookies: &CookieJar<'_>) -> Result<Redirect, ChallongeCallbackError> {
+    let mut transaction = pool.begin().await?;
+    let challonge_user = handle_challonge_token_response(client, &token).await?;
+    sqlx::query!("UPDATE users SET challonge_id = $1 WHERE id = $2", challonge_user.id, me.id as _).execute(&mut transaction).await?;
+    transaction.commit().await?;
+    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
+    Ok(Redirect::to(redirect_uri))
+}
+
+#[derive(Debug, thiserror::Error, Error)]
 pub(crate) enum RegisterError {
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
@@ -508,7 +549,7 @@ pub(crate) async fn register_discord(pool: &State<PgPool>, me: Option<User>, dis
     register_discord_inner(pool, me, discord_user, None).await
 }
 
-#[derive(Debug, thiserror::Error, rocket_util::Error)]
+#[derive(Debug, thiserror::Error, Error)]
 pub(crate) enum MergeAccountsError {
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("accounts already merged")]

@@ -1670,15 +1670,11 @@ impl RaceHandler<GlobalState> for Handler {
             ctx.send_message(&if_chain! {
                 if let French = goal.language();
                 if !event.is_single_race();
+                if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
+                if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut transaction).await.to_racetime()?;
                 then {
                     format!(
-                        "Bienvenue pour cette race de {} ! Pour plus d'informations : https://midos.house/event/{}/{}",
-                        match (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref()) {
-                            (Some(phase), Some(round)) => format!("{phase} {round}"),
-                            (Some(phase), None) => phase.clone(),
-                            (None, Some(round)) => round.clone(),
-                            (None, None) => event.display_name.clone(),
-                        },
+                        "Bienvenue pour cette race de {phase_round} ! Pour plus d'informations : https://midos.house/event/{}/{}",
                         event.series,
                         event.event,
                     )
