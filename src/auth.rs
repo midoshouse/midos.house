@@ -139,7 +139,7 @@ async fn handle_discord_token_response(client: &reqwest::Client, cookies: &Cooki
 }
 
 async fn handle_challonge_token_response(client: &reqwest::Client, token: &TokenResponse<Challonge>) -> Result<ChallongeUser, UserFromRequestError> {
-    Ok(client.get("https://api.challonge.com/v2/m3.json")
+    Ok(client.get("https://api.challonge.com/v2/me.json")
         .bearer_auth(token.access_token())
         .send().await?
         .detailed_error_for_status().await?
