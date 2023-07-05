@@ -1144,9 +1144,11 @@ impl Draft {
                                 MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
                                 MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
                                     .mention_team(&mut *transaction, Some(*guild_id), team).await?
-                                    .push(if team.name_is_plural() { " have selected " } else { " has selected " })
-                                    .push(if value { "mixed" } else { "separate" })
-                                    .push(" dungeon entrances.")
+                                    .push(if value {
+                                        " a choisi les trois ER mixés."
+                                    } else {
+                                        " a choisi de n'avoir que grottos et interior mixés."
+                                    })
                                     .build(),
                             })
                         }
