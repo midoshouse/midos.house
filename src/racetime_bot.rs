@@ -1514,8 +1514,14 @@ impl Handler {
         tokio::spawn(async move {
             let mut seed_state = None::<SeedRollUpdate>;
             if let Some(delay) = official_start.and_then(|start| (start - chrono::Duration::minutes(15) - Utc::now()).to_std().ok()) {
-                // don't want to give an unnecessarily exact estimate if the room was opened automatically 30 minutes ahead of start
-                let display_delay = if delay > Duration::from_secs(14 * 60) && delay < Duration::from_secs(16 * 60) { Duration::from_secs(15 * 60) } else { delay };
+                // don't want to give an unnecessarily exact estimate if the room was opened automatically 30 or 60 minutes ahead of start
+                let display_delay = if delay > Duration::from_secs(14 * 60) && delay < Duration::from_secs(16 * 60) {
+                    Duration::from_secs(15 * 60)
+                } else if delay > Duration::from_secs(44 * 60) && delay < Duration::from_secs(46 * 60) {
+                    Duration::from_secs(45 * 60)
+                } else {
+                    delay
+                };
                 ctx.send_message(&if let French = language {
                     format!("Votre {description} sera postée dans {}.", French.format_duration(display_delay, true))
                 } else {
