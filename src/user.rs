@@ -86,6 +86,7 @@ pub(crate) struct User {
     display_source: DisplaySource, //TODO allow users with both accounts connected to set this in their preferences
     pub(crate) racetime: Option<UserRaceTime>,
     pub(crate) discord: Option<UserDiscord>,
+    pub(crate) challonge_id: Option<String>,
     pub(crate) is_archivist: bool,
 }
 
@@ -101,6 +102,7 @@ impl User {
         discord_display_name: Option<String>,
         discord_discriminator: Option<Discriminator>,
         discord_username: Option<String>,
+        challonge_id: Option<String>,
         is_archivist: bool,
     ) -> Self {
         Self {
@@ -126,7 +128,7 @@ impl User {
                 (None, None) => None,
                 (_, _) => unreachable!("database constraint"),
             },
-            id, display_source, is_archivist,
+            id, display_source, challonge_id, is_archivist,
         }
     }
 
@@ -142,6 +144,7 @@ impl User {
                 discord_display_name,
                 discord_discriminator AS "discord_discriminator: Discriminator",
                 discord_username,
+                challonge_id,
                 is_archivist
             FROM users WHERE id = $1"#, id as _).fetch_optional(pool).await?
             .map(|row| Self::from_row(
@@ -155,6 +158,7 @@ impl User {
                 row.discord_display_name,
                 row.discord_discriminator,
                 row.discord_username,
+                row.challonge_id,
                 row.is_archivist,
             ))
         )
@@ -172,6 +176,7 @@ impl User {
                 discord_display_name,
                 discord_discriminator AS "discord_discriminator: Discriminator",
                 discord_username,
+                challonge_id,
                 is_archivist
             FROM users WHERE racetime_id = $1"#, racetime_id).fetch_optional(pool).await?
             .map(|row| Self::from_row(
@@ -185,6 +190,7 @@ impl User {
                 row.discord_display_name,
                 row.discord_discriminator,
                 row.discord_username,
+                row.challonge_id,
                 row.is_archivist,
             ))
         )
@@ -202,6 +208,7 @@ impl User {
                 discord_display_name,
                 discord_discriminator AS "discord_discriminator: Discriminator",
                 discord_username,
+                challonge_id,
                 is_archivist
             FROM users WHERE discord_id = $1"#, i64::from(discord_id)).fetch_optional(pool).await?
             .map(|row| Self::from_row(
@@ -215,6 +222,7 @@ impl User {
                 row.discord_display_name,
                 row.discord_discriminator,
                 row.discord_username,
+                row.challonge_id,
                 row.is_archivist,
             ))
         )

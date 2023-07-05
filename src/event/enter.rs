@@ -92,6 +92,8 @@ enum Requirement {
     DiscordGuild {
         name: String,
     },
+    /// Must have a Challonge account connected to their Mido's House account
+    Challonge,
     /// Must agree to the event rules
     Rules {
         document: Option<Url>,
@@ -122,6 +124,7 @@ impl Requirement {
             Self::RaceTime => true,
             Self::Discord => true,
             Self::DiscordGuild { .. } => true,
+            Self::Challonge => true,
             Self::Rules { .. } => true,
             Self::RestreamConsent => true,
             Self::Qualifier { .. } => true,
@@ -141,6 +144,7 @@ impl Requirement {
                     false
                 }
             }),
+            Self::Challonge => Some(me.map_or(false, |me| me.challonge_id.is_some())),
             Self::Rules { .. } => Some(false),
             Self::RestreamConsent => Some(false),
             Self::Qualifier { .. } => Some(false),
@@ -192,6 +196,21 @@ impl Requirement {
                         : name; //TODO invite link if not joined
                         : " Discord server";
                     }),
+                }
+            }
+            Self::Challonge => {
+                let is_checked = self.is_checked(discord_ctx, me, data).await?.unwrap();
+                let mut html_content = html! {
+                    : "Connect a Challonge account to your Mido's House account";
+                };
+                if !is_checked {
+                    html_content = html! {
+                        a(href = uri!(crate::auth::challonge_login(Some(redirect_uri))).to_string()) : html_content;
+                    };
+                }
+                RequirementStatus {
+                    blocks_submit: !is_checked,
+                    html_content: Box::new(move |_| html_content),
                 }
             }
             Self::Rules { document } => {
@@ -308,6 +327,7 @@ impl Requirement {
                     Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.", //TODO direct link?
                     Self::Discord => "A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.", //TODO direct link?
                     Self::DiscordGuild { .. } => "You must join the event's Discord server to enter.", //TODO invite link?
+                    Self::Challonge => "A Challonge account is required to enter this event.", //TODO link to /login/challonge
                     Self::Rules { .. } | Self::RestreamConsent | Self::Qualifier { .. } | Self::External { .. } => unreachable!(),
                 }));
             }
