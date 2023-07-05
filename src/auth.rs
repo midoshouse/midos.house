@@ -146,7 +146,7 @@ async fn handle_challonge_token_response(client: &reqwest::Client, token: &Token
         .bearer_auth(token.access_token())
         .send().await?
         .detailed_error_for_status().await?
-        .json_with_text_in_error().await?)
+        .json_with_text_in_error::<ChallongeResponse<_>>().await?.data)
 }
 
 #[derive(Deserialize)]
@@ -224,6 +224,11 @@ pub(crate) struct DiscordUser {
     pub(crate) global_name: Option<String>,
     #[serde(deserialize_with = "discord_opt_discriminator")]
     pub(crate) discriminator: Option<Discriminator>,
+}
+
+#[derive(Deserialize)]
+struct ChallongeResponse<T> {
+    data: T,
 }
 
 #[derive(Deserialize)]
