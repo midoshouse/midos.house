@@ -1683,6 +1683,8 @@ impl RaceHandler<GlobalState> for Handler {
                         "Welcome to {}! Learn more about the event at https://midos.house/event/{}/{}",
                         if event.is_single_race() {
                             format!("the {}", event.display_name) //TODO remove “the” depending on event name
+                        } else if let (Some("Qualifier"), Some(round)) = (cal_event.race.phase.as_deref(), cal_event.race.round.as_ref()) {
+                            format!("qualifier {round}")
                         } else {
                             format!("this {} race", match (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref()) {
                                 (Some(phase), Some(round)) => format!("{phase} {round}"),

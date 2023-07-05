@@ -420,7 +420,7 @@ pub(crate) fn challonge_login(me: User, oauth: OAuth2<Challonge>, cookies: &Cook
             cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
         }
     }
-    oauth.get_redirect(cookies, &["identify"]).map_err(Error)
+    oauth.get_redirect(cookies, &["me"]).map_err(Error)
 }
 
 #[derive(Debug, thiserror::Error, Error)]
