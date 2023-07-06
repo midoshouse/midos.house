@@ -107,6 +107,11 @@ enum Requirement {
         async_end: DateTime<Utc>,
         live_start: DateTime<Utc>,
     },
+    /// Must place within the top n players after all races in the `Qualifier` phase
+    #[serde(rename_all = "camelCase")]
+    QualifierPlacement {
+        num_players: usize,
+    },
     /// A signup requirement that cannot be checked automatically
     External {
         text: String,
@@ -128,6 +133,7 @@ impl Requirement {
             Self::Rules { .. } => true,
             Self::RestreamConsent => true,
             Self::Qualifier { .. } => true,
+            Self::QualifierPlacement { .. } => false,
             Self::External { .. } => false,
         }
     }
@@ -148,6 +154,7 @@ impl Requirement {
             Self::Rules { .. } => Some(false),
             Self::RestreamConsent => Some(false),
             Self::Qualifier { .. } => Some(false),
+            Self::QualifierPlacement { .. } => Some(false), //TODO
             Self::External { .. } => None,
         })
     }
@@ -291,6 +298,18 @@ impl Requirement {
                     }),
                 }
             }
+            &Self::QualifierPlacement { num_players } => RequirementStatus {
+                blocks_submit: true, //TODO
+                html_content: Box::new(move |_| html! {
+                    : "Place in the top ";
+                    : num_players.to_string();
+                    : " of qualifier scores.";
+                    br;
+                    : "Note: You may be eligible to enter even if you don't initially place in the top ";
+                    : num_players.to_string();
+                    : " due to other players opting out. You will be notified by an organizer if this is the case.";
+                }),
+            },
             Self::External { text } => {
                 let text = text.clone();
                 RequirementStatus {
@@ -328,6 +347,7 @@ impl Requirement {
                     Self::Discord => "A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.", //TODO direct link?
                     Self::DiscordGuild { .. } => "You must join the event's Discord server to enter.", //TODO invite link?
                     Self::Challonge => "A Challonge account is required to enter this event.", //TODO link to /login/challonge
+                    Self::QualifierPlacement { .. } => "You have not secured a qualifying placement.",
                     Self::Rules { .. } | Self::RestreamConsent | Self::Qualifier { .. } | Self::External { .. } => unreachable!(),
                 }));
             }
