@@ -786,8 +786,7 @@ impl Draft {
                         StepKind::Ban { skippable: true, .. } | StepKind::Pick { skippable: true, .. } => {
                             let skip_kind = match self.pick_count(kind) {
                                 0 | 1 => "ban",
-                                5 => "final pick",
-                                _ => unreachable!(),
+                                _ => "final pick",
                             };
                             self.skipped_bans += 1;
                             Ok(match msg_ctx {
@@ -1099,8 +1098,7 @@ impl Draft {
                         StepKind::Ban { skippable: true, .. } | StepKind::Pick { skippable: true, .. } => {
                             let skip_kind = match self.pick_count(kind) {
                                 0 | 1 => "ban",
-                                5 => "final pick",
-                                _ => unreachable!(),
+                                _ => "final pick",
                             };
                             self.skipped_bans += 1;
                             Ok(match msg_ctx {
