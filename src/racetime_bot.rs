@@ -177,11 +177,12 @@ use {
 pub(crate) const CATEGORY: &str = "ootr";
 
 /// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
-const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 5] = [
+const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 6] = [
     rando::Version::from_dev(6, 2, 181),
     rando::Version::from_dev(6, 2, 205),
     rando::Version::from_branch(rando::Branch::DevR, 6, 2, 238, 1),
     rando::Version::from_branch(rando::Branch::DevR, 7, 1, 83, 1), // commit 578a64f4c78a831cde4215e0ac31565d3bf9bc46
+    rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1), // commit 06390ece7e38fce1dd02ca60a28a7b1ff9fceb10
     rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2),
 ];
 
@@ -446,7 +447,7 @@ impl Goal {
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
-            Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 83, 1)),
+            Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
             Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
         }
