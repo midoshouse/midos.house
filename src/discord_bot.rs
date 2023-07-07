@@ -490,22 +490,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft::Kind::MultiworldS3 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
-                        .description("Locks a setting for this race to its default value.")
-                        .add_option(CreateCommandOption::new( //TODO migrate to button flow
-                            CommandOptionType::String,
-                            "setting",
-                            "The setting to lock in",
-                        )
-                            .required(true)
-                            .add_string_choice("win conditions", "wincon")
-                            .add_string_choice("dungeons", "dungeons")
-                            .add_string_choice("entrance rando", "er")
-                            .add_string_choice("trials", "trials")
-                            .add_string_choice("shops", "shops")
-                            .add_string_choice("scrubs", "scrubs")
-                            .add_string_choice("fountain", "fountain")
-                            .add_string_choice("spawns", "spawn")
-                        ),
+                        .description("Locks a setting for this race to its default value."),
                     draft::Kind::TournoiFrancoS3 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
@@ -543,129 +528,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft::Kind::MultiworldS3 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
-                        .description("Chooses a setting for this race.")
-                        .add_option(CreateCommandOption::new( //TODO migrate to button flow
-                            CommandOptionType::SubCommand,
-                            "wincon",
-                            "win conditions",
-                        )
-                            .add_sub_option(CreateCommandOption::new(
-                                CommandOptionType::String,
-                                "value",
-                                "Your choice for the win condition settings",
-                            )
-                                .required(true)
-                                .add_string_choice("default wincons", "meds")
-                                .add_string_choice("Scrubs wincons", "scrubs")
-                                .add_string_choice("Triforce Hunt", "th")
-                            )
-                        )
-                        .add_option(CreateCommandOption::new(
-                            CommandOptionType::SubCommand,
-                            "dungeons",
-                            "dungeons",
-                        )
-                            .add_sub_option(CreateCommandOption::new(
-                                CommandOptionType::String,
-                                "value",
-                                "Your choice for the dungeon item settings",
-                            )
-                                .required(true)
-                                .add_string_choice("tournament dungeons", "tournament")
-                                .add_string_choice("dungeon tokens", "skulls")
-                                .add_string_choice("keyrings", "keyrings")
-                            )
-                        )
-                        .add_option(CreateCommandOption::new(
-                            CommandOptionType::SubCommand,
-                            "er",
-                            "entrance rando",
-                        )
-                            .add_sub_option(CreateCommandOption::new(
-                                CommandOptionType::String,
-                                "value",
-                                "Your choice for entrance randomizer",
-                            )
-                                .required(true)
-                                .add_string_choice("no ER", "off")
-                                .add_string_choice("dungeon ER", "dungeon")
-                            )
-                        )
-                        .add_option(CreateCommandOption::new(
-                            CommandOptionType::SubCommand,
-                            "trials",
-                            "trials",
-                        )
-                            .add_sub_option(CreateCommandOption::new(
-                                CommandOptionType::String,
-                                "value",
-                                "Your choice for the Ganon's Trials setting",
-                            )
-                                .required(true)
-                                .add_string_choice("0 trials", "0")
-                                .add_string_choice("2 trials", "2")
-                            )
-                        )
-                        .add_option(CreateCommandOption::new(
-                            CommandOptionType::SubCommand,
-                            "shops",
-                            "shops",
-                        )
-                            .add_sub_option(CreateCommandOption::new(
-                                CommandOptionType::String,
-                                "value",
-                                "Your choice for the Shop Shuffle setting",
-                            )
-                                .required(true)
-                                .add_string_choice("shops 4", "4")
-                                .add_string_choice("no shops", "off")
-                            )
-                        )
-                        .add_option(CreateCommandOption::new(
-                            CommandOptionType::SubCommand,
-                            "scrubs",
-                            "scrubs",
-                        )
-                            .add_sub_option(CreateCommandOption::new(
-                                CommandOptionType::String,
-                                "value",
-                                "Your choice for the Scrub Shuffle setting",
-                            )
-                                .required(true)
-                                .add_string_choice("affordable scrubs", "affordable")
-                                .add_string_choice("no scrubs", "off")
-                            )
-                        )
-                        .add_option(CreateCommandOption::new(
-                            CommandOptionType::SubCommand,
-                            "fountain",
-                            "fountain",
-                        )
-                            .add_sub_option(CreateCommandOption::new(
-                                CommandOptionType::String,
-                                "value",
-                                "Your choice for the Zora's Fountain setting",
-                            )
-                                .required(true)
-                                .add_string_choice("closed fountain", "closed")
-                                .add_string_choice("open fountain", "open")
-                            )
-                        )
-                        .add_option(CreateCommandOption::new(
-                            CommandOptionType::SubCommand,
-                            "spawn",
-                            "spawns",
-                        )
-                            .add_sub_option(CreateCommandOption::new(
-                                CommandOptionType::String,
-                                "value",
-                                "Your choice for the spawn settings",
-                            )
-                                .required(true)
-                                .add_string_choice("ToT spawns", "tot")
-                                .add_string_choice("random spawns & starting age", "random")
-                            )
-                        ),
+                        .description("Chooses a setting for this race."),
                     draft::Kind::TournoiFrancoS3 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
@@ -1044,17 +907,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 )).await?;
                             }
                         } else if Some(interaction.data.id) == command_ids.ban {
-                            if interaction.data.options.is_empty() {
-                                // new draft command system with buttons
-                                send_draft_settings_page(ctx, interaction, "ban", 0).await?;
-                            } else {
-                                // old draft command system with parameters
-                                let setting = match interaction.data.options[0].value {
-                                    CommandDataOptionValue::String(ref setting) => setting.parse().expect("unknown setting in /ban"),
-                                    _ => panic!("unexpected slash command option type"),
-                                };
-                                draft_action(ctx, interaction, draft::Action::Ban { setting }).await?;
-                            }
+                            send_draft_settings_page(ctx, interaction, "ban", 0).await?;
                         } else if Some(interaction.data.id) == command_ids.delete_after {
                             let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
                             if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut *transaction).await? {
@@ -1094,21 +947,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 )).await?;
                             }
                         } else if Some(interaction.data.id) == command_ids.draft {
-                            if interaction.data.options.is_empty() {
-                                // new draft command system with buttons
-                                send_draft_settings_page(ctx, interaction, "draft", 0).await?;
-                            } else {
-                                // old draft command system with parameters
-                                let setting = interaction.data.options[0].name.parse().expect("unknown setting in /draft");
-                                let value = match interaction.data.options[0].value {
-                                    CommandDataOptionValue::SubCommand(ref value) => match value[0].value {
-                                        CommandDataOptionValue::String(ref value) => value.clone(),
-                                        _ => panic!("unexpected slash command option type"),
-                                    },
-                                    _ => panic!("unexpected slash command option type"),
-                                };
-                                draft_action(ctx, interaction, draft::Action::Pick { setting, value }).await?;
-                            }
+                            send_draft_settings_page(ctx, interaction, "draft", 0).await?;
                         } else if Some(interaction.data.id) == command_ids.first {
                             if let Some((_, mut race, draft_kind, msg_ctx)) = check_draft_permissions(ctx, interaction).await? {
                                 if let draft::Kind::TournoiFrancoS3 = draft_kind {
