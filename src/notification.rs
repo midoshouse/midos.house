@@ -80,11 +80,11 @@ pub(crate) enum Notification {
 impl Notification {
     pub(crate) async fn get(transaction: &mut Transaction<'_, Postgres>, me: &User) -> Result<Vec<Self>, event::DataError> {
         let mut notifications = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM notifications WHERE rcpt = $1"#, me.id as _)
-            .fetch(&mut *transaction)
+            .fetch(&mut **transaction)
             .map_ok(Self::Simple)
             .try_collect::<Vec<_>>().await?;
-        for team_id in sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM team_members WHERE member = $1 AND status = 'unconfirmed'"#, me.id as _).fetch_all(&mut *transaction).await? {
-            let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, team_id as _).fetch_one(&mut *transaction).await?;
+        for team_id in sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM team_members WHERE member = $1 AND status = 'unconfirmed'"#, me.id as _).fetch_all(&mut **transaction).await? {
+            let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, team_id as _).fetch_one(&mut **transaction).await?;
             let event = event::Data::new(&mut *transaction, team_row.series, team_row.event).await?.expect("enforced by database constraint");
             if !event.is_started(&mut *transaction).await? {
                 notifications.push(Self::TeamInvite(team_id));
@@ -96,10 +96,10 @@ impl Notification {
     async fn into_html(self, transaction: &mut Transaction<'_, Postgres>, env: Environment, me: &User, csrf: &Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
         Ok(match self {
             Self::Simple(id) => {
-                let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut *transaction).await? {
+                let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await? {
                     SimpleNotificationKind::Accept => {
-                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut *transaction).await?;
-                        let sender = User::from_id(&mut *transaction, row.sender).await?.ok_or(Error::UnknownUser)?;
+                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
+                        let sender = User::from_id(&mut **transaction, row.sender).await?.ok_or(Error::UnknownUser)?;
                         let event = event::Data::new(&mut *transaction, row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
                             : sender;
@@ -109,8 +109,8 @@ impl Notification {
                         }
                     }
                     SimpleNotificationKind::Decline => {
-                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut *transaction).await?;
-                        let sender = User::from_id(&mut *transaction, row.sender).await?.ok_or(Error::UnknownUser)?;
+                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
+                        let sender = User::from_id(&mut **transaction, row.sender).await?.ok_or(Error::UnknownUser)?;
                         let event = event::Data::new(&mut *transaction, row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
                             : sender;
@@ -120,8 +120,8 @@ impl Notification {
                         }
                     }
                     SimpleNotificationKind::Resign => {
-                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut *transaction).await?;
-                        let sender = User::from_id(&mut *transaction, row.sender).await?.ok_or(Error::UnknownUser)?;
+                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
+                        let sender = User::from_id(&mut **transaction, row.sender).await?.ok_or(Error::UnknownUser)?;
                         let event = event::Data::new(&mut *transaction, row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
                             : sender;
@@ -142,24 +142,24 @@ impl Notification {
                 }
             }
             Self::TeamInvite(team_id) => {
-                let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, team_id as _).fetch_one(&mut *transaction).await?;
+                let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, team_id as _).fetch_one(&mut **transaction).await?;
                 let event = event::Data::new(&mut *transaction, team_row.series, team_row.event).await?.ok_or(Error::UnknownEvent)?;
                 let mut creator = None;
                 let mut my_role = None;
                 let mut teammates = Vec::default();
-                for member in sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus", role AS "role: Role" FROM team_members WHERE team = $1"#, team_id as _).fetch_all(&mut *transaction).await? {
+                for member in sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus", role AS "role: Role" FROM team_members WHERE team = $1"#, team_id as _).fetch_all(&mut **transaction).await? {
                     if member.id == me.id {
                         my_role = Some(member.role);
                     } else {
                         let is_confirmed = match member.status {
                             SignupStatus::Created => {
-                                creator = Some((User::from_id(&mut *transaction, member.id).await?.ok_or(Error::UnknownUser)?, member.role));
+                                creator = Some((User::from_id(&mut **transaction, member.id).await?.ok_or(Error::UnknownUser)?, member.role));
                                 continue
                             }
                             SignupStatus::Confirmed => true,
                             SignupStatus::Unconfirmed => false,
                         };
-                        let user = User::from_id(&mut *transaction, member.id).await?.ok_or(Error::UnknownUser)?;
+                        let user = User::from_id(&mut **transaction, member.id).await?.ok_or(Error::UnknownUser)?;
                         teammates.push(html! {
                             : user;
                             : " (";

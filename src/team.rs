@@ -33,23 +33,23 @@ pub(crate) struct Team {
 
 impl Team {
     pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, id: Id) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE id = $1"#, id as _).fetch_optional(transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE id = $1"#, id as _).fetch_optional(&mut **transaction).await
     }
 
     pub(crate) async fn from_discord(transaction: &mut Transaction<'_, Postgres>, discord_role: RoleId) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT teams.id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams, discord_roles WHERE discord_roles.id = $1 AND racetime_slug = racetime_team"#, i64::from(discord_role)).fetch_optional(transaction).await
+        sqlx::query_as!(Self, r#"SELECT teams.id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams, discord_roles WHERE discord_roles.id = $1 AND racetime_slug = racetime_team"#, i64::from(discord_role)).fetch_optional(&mut **transaction).await
     }
 
     pub(crate) async fn from_racetime(transaction: &mut Transaction<'_, Postgres>, series: Series, event: &str, racetime_slug: &str) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE series = $1 AND event = $2 AND racetime_slug = $3"#, series as _, event, racetime_slug).fetch_optional(transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE series = $1 AND event = $2 AND racetime_slug = $3"#, series as _, event, racetime_slug).fetch_optional(&mut **transaction).await
     }
 
     pub(crate) async fn from_startgg(transaction: &mut Transaction<'_, Postgres>, startgg_id: &str) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE startgg_id = $1"#, startgg_id).fetch_optional(transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE startgg_id = $1"#, startgg_id).fetch_optional(&mut **transaction).await
     }
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, series: Series, event: &str) -> sqlx::Result<Vec<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE series = $1 AND event = $2 AND NOT resigned"#, series as _, event).fetch_all(transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent FROM teams WHERE series = $1 AND event = $2 AND NOT resigned"#, series as _, event).fetch_all(&mut **transaction).await
     }
 
     pub(crate) async fn name(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Option<Cow<'_, str>>> {
@@ -104,12 +104,12 @@ impl Team {
     }
 
     async fn member_ids(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<Id>> {
-        sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1"#, self.id as _).fetch_all(&mut *transaction).await
+        sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1"#, self.id as _).fetch_all(&mut **transaction).await
     }
 
     async fn member_ids_roles(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<(Id, Role)>> {
         Ok(
-            sqlx::query!(r#"SELECT member AS "member: Id", role AS "role: Role" FROM team_members WHERE team = $1"#, self.id as _).fetch_all(&mut *transaction).await?
+            sqlx::query!(r#"SELECT member AS "member: Id", role AS "role: Role" FROM team_members WHERE team = $1"#, self.id as _).fetch_all(&mut **transaction).await?
                 .into_iter()
                 .map(|row| (row.member, row.role))
                 .collect()
@@ -120,7 +120,7 @@ impl Team {
         let user_ids = self.member_ids(&mut *transaction).await?;
         let mut members = Vec::with_capacity(user_ids.len());
         for user_id in user_ids {
-            members.push(User::from_id(&mut *transaction, user_id).await?.expect("database constraint violated: nonexistent team member"));
+            members.push(User::from_id(&mut **transaction, user_id).await?.expect("database constraint violated: nonexistent team member"));
         }
         Ok(members)
     }
@@ -129,7 +129,7 @@ impl Team {
         let rows = self.member_ids_roles(&mut *transaction).await?;
         let mut members = Vec::with_capacity(rows.len());
         for (user_id, role) in rows {
-            members.push((User::from_id(&mut *transaction, user_id).await?.expect("database constraint violated: nonexistent team member"), role));
+            members.push((User::from_id(&mut **transaction, user_id).await?.expect("database constraint violated: nonexistent team member"), role));
         }
         Ok(members)
     }

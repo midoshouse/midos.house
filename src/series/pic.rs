@@ -558,7 +558,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, e
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
     for row in sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {
-        let user = User::from_id(&mut transaction, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
+        let user = User::from_id(&mut *transaction, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
         if me.as_ref().map_or(false, |me| user.id == me.id) { my_role = Some(row.role) }
         let can_invite = me.as_ref().map_or(true, |me| user.id != me.id) && true /*TODO not already in a team with that user */;
         looking_for_team.push((user, row.role, can_invite));

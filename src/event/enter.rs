@@ -601,15 +601,15 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                     AND event = $2
                     AND member = $3
                     AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                ) AS "exists!""#, series as _, event, me.id as _).fetch_one(&mut transaction).await? {
+                ) AS "exists!""#, series as _, event, me.id as _).fetch_one(&mut *transaction).await? {
                     form.context.push_error(form::Error::validation("You are already signed up for this event."));
                 }
                 if form.context.errors().next().is_none() {
                     let id = Id::new(&mut transaction, IdTable::Teams).await?;
-                    sqlx::query!("INSERT INTO teams (id, series, event, plural_name) VALUES ($1, $2, $3, FALSE)", id as _, series as _, event).execute(&mut transaction).await?;
-                    sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', 'none')", id as _, me.id as _).execute(&mut transaction).await?;
+                    sqlx::query!("INSERT INTO teams (id, series, event, plural_name) VALUES ($1, $2, $3, FALSE)", id as _, series as _, event).execute(&mut *transaction).await?;
+                    sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', 'none')", id as _, me.id as _).execute(&mut *transaction).await?;
                     if request_qualifier {
-                        sqlx::query!("INSERT INTO async_teams (team, kind, requested) VALUES ($1, 'qualifier', NOW())", id as _).execute(&mut transaction).await?;
+                        sqlx::query!("INSERT INTO async_teams (team, kind, requested) VALUES ($1, 'qualifier', NOW())", id as _).execute(&mut *transaction).await?;
                     }
                     transaction.commit().await?;
                     return Ok(RedirectOrContent::Redirect(Redirect::to(uri!(super::status(series, event)))))
@@ -624,7 +624,7 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                             AND event = $2
                             AND member = $3
                             AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)
-                        ) AS "exists!""#, series as _, event, me.id as _, teammate as _).fetch_one(&mut transaction).await? {
+                        ) AS "exists!""#, series as _, event, me.id as _, teammate as _).fetch_one(&mut *transaction).await? {
                             form.context.push_error(form::Error::validation("A team with these members is already proposed for this race. Check your notifications to accept the invite, or ask your teammate to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
                         }
                         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
@@ -633,7 +633,7 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                             AND event = $2
                             AND member = $3
                             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                        ) AS "exists!""#, series as _, event, me.id as _).fetch_one(&mut transaction).await? {
+                        ) AS "exists!""#, series as _, event, me.id as _).fetch_one(&mut *transaction).await? {
                             form.context.push_error(form::Error::validation("You are already signed up for this race."));
                         }
                         if !value.team_name.is_empty() && sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
@@ -641,7 +641,7 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                             AND event = $2
                             AND name = $3
                             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                        ) AS "exists!""#, series as _, event, value.team_name).fetch_one(&mut transaction).await? {
+                        ) AS "exists!""#, series as _, event, value.team_name).fetch_one(&mut *transaction).await? {
                             form.context.push_error(form::Error::validation("A team with this name is already signed up for this race.").with_name("team_name"));
                         }
                         if my_role == pic::Role::Sheikah && me.racetime.is_none() {
@@ -650,7 +650,7 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                         if teammate == me.id {
                             form.context.push_error(form::Error::validation("You cannot be your own teammate.").with_name("teammate"));
                         }
-                        if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, teammate as _).fetch_one(&mut transaction).await? {
+                        if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE id = $1) AS "exists!""#, teammate as _).fetch_one(&mut *transaction).await? {
                             form.context.push_error(form::Error::validation("There is no user with this ID.").with_name("teammate"));
                         }
                         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
@@ -659,7 +659,7 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                             AND event = $2
                             AND member = $3
                             AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                        ) AS "exists!""#, series as _, event, teammate as _).fetch_one(&mut transaction).await? {
+                        ) AS "exists!""#, series as _, event, teammate as _).fetch_one(&mut *transaction).await? {
                             form.context.push_error(form::Error::validation("This user is already signed up for this race.").with_name("teammate"));
                         }
                         //TODO check to make sure the teammate hasn't blocked the user submitting the form (or vice versa) or the event
@@ -681,9 +681,9 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                 };
                 if form.context.errors().next().is_none() {
                     let id = Id::new(&mut transaction, IdTable::Teams).await?;
-                    sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, $2, $3, $4)", id as _, series as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut transaction).await?;
-                    sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, Role::from(my_role.expect("validated")) as _).execute(&mut transaction).await?;
-                    sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", id as _, teammate.expect("validated") as _, match my_role.expect("validated") { pic::Role::Sheikah => Role::Gerudo, pic::Role::Gerudo => Role::Sheikah } as _).execute(&mut transaction).await?;
+                    sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, $2, $3, $4)", id as _, series as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut *transaction).await?;
+                    sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, Role::from(my_role.expect("validated")) as _).execute(&mut *transaction).await?;
+                    sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", id as _, teammate.expect("validated") as _, match my_role.expect("validated") { pic::Role::Sheikah => Role::Gerudo, pic::Role::Gerudo => Role::Sheikah } as _).execute(&mut *transaction).await?;
                     transaction.commit().await?;
                     return Ok(RedirectOrContent::Redirect(Redirect::to(uri!(super::status(series, event)))))
                 }
@@ -725,7 +725,7 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                         let mut roles = Vec::default();
                         let mut startgg_ids = Vec::default();
                         for member in &racetime_team.members {
-                            if let Some(user) = User::from_racetime(&mut transaction, &member.id).await? {
+                            if let Some(user) = User::from_racetime(&mut *transaction, &member.id).await? {
                                 if let Some(ref discord) = user.discord {
                                     if let Some(discord_guild) = data.discord_guild {
                                         if discord_guild.member(&*discord_ctx.read().await, discord.id).await.is_err() {
@@ -743,7 +743,7 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                                     AND event = $2
                                     AND member = $3
                                     AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                                ) AS "exists!""#, series as _, event, user.id as _).fetch_one(&mut transaction).await? {
+                                ) AS "exists!""#, series as _, event, user.id as _).fetch_one(&mut *transaction).await? {
                                     form.context.push_error(form::Error::validation("This user is already signed up for this tournament."));
                                 }
                                 users.push(user);
@@ -775,7 +775,7 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                                     AND event = $2
                                     AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
                                     AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)
-                                ) AS "exists!""#, series as _, event, u1.id as _, u2.id as _).fetch_one(&mut transaction).await? {
+                                ) AS "exists!""#, series as _, event, u1.id as _, u2.id as _).fetch_one(&mut *transaction).await? {
                                     form.context.push_error(form::Error::validation("A team with these members is already proposed for this tournament. Check your notifications to accept the invite, or ask your teammate to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
                                 },
                                 [u1, u2, u3] => if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE
@@ -784,7 +784,7 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                                     AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
                                     AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)
                                     AND EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $5)
-                                ) AS "exists!""#, series as _, event, u1.id as _, u2.id as _, u3.id as _).fetch_one(&mut transaction).await? {
+                                ) AS "exists!""#, series as _, event, u1.id as _, u2.id as _, u3.id as _).fetch_one(&mut *transaction).await? {
                                     form.context.push_error(form::Error::validation("A team with these members is already proposed for this tournament. Check your notifications to accept the invite, and/or ask your teammates to do so.")); //TODO linkify notifications? More specific message based on whether viewer has confirmed?
                                 },
                                 _ => unimplemented!("exact proposed team check for {} members", users.len()),
@@ -815,12 +815,12 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                 if form.context.errors().next().is_none() {
                     return Ok(if value.step2 {
                         let id = Id::new(&mut transaction, IdTable::Teams).await?;
-                        sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent) VALUES ($1, $2, $3, $4, $5, $6)", id as _, series as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent).execute(&mut transaction).await?;
+                        sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent) VALUES ($1, $2, $3, $4, $5, $6)", id as _, series as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent).execute(&mut *transaction).await?;
                         for ((user, role), startgg_id) in users.into_iter().zip_eq(roles).zip_eq(startgg_ids) {
                             sqlx::query!(
                                 "INSERT INTO team_members (team, member, status, role, startgg_id) VALUES ($1, $2, $3, $4, $5)",
                                 id as _, user.id as _, if user == me { SignupStatus::Created } else { SignupStatus::Unconfirmed } as _, role as _, startgg_id,
-                            ).execute(&mut transaction).await?;
+                            ).execute(&mut *transaction).await?;
                         }
                         transaction.commit().await?;
                         RedirectOrContent::Redirect(Redirect::to(uri!(super::status(series, event))))

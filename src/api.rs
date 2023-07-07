@@ -81,9 +81,9 @@ struct Scopes {
 
 impl Scopes {
     async fn validate(&self, transaction: &mut Transaction<'_, Postgres>, api_key: &str) -> sqlx::Result<Option<user::User>> {
-        let Some(row) = sqlx::query!(r#"SELECT user_id AS "user_id: Id", entrants_read FROM api_keys WHERE key = $1"#, api_key).fetch_optional(&mut *transaction).await? else { return Ok(None) };
+        let Some(row) = sqlx::query!(r#"SELECT user_id AS "user_id: Id", entrants_read FROM api_keys WHERE key = $1"#, api_key).fetch_optional(&mut **transaction).await? else { return Ok(None) };
         if (Self { entrants_read: row.entrants_read }) >= *self {
-            user::User::from_id(transaction, row.user_id).await
+            user::User::from_id(&mut **transaction, row.user_id).await
         } else {
             Ok(None)
         }

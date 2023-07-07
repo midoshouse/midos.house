@@ -29,7 +29,7 @@ git2 = "0.17"
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
 if_chain = "1"
 ics = "0.5"
-itertools = "0.10"
+itertools = "0.11"
 kuchiki = "0.8"
 lazy-regex = "2"
 once_cell = "1"
@@ -99,22 +99,19 @@ version = "3"
 features = ["json"]
 
 [dependencies.serenity]
-#version = "0.11.5" # waiting for https://github.com/serenity-rs/serenity/pull/2357 and https://github.com/serenity-rs/serenity/pull/2400 to be published
-#git = "https://github.com/serenity-rs/serenity"
-#branch = "next" # waiting for https://github.com/serenity-rs/serenity/pull/2470 to be merged
-git = "https://github.com/fenhl/serenity"
-branch = "standalone-public-thread"
+#version = "0.11.5" # waiting for https://github.com/serenity-rs/serenity/pull/2470 to be published
+git = "https://github.com/serenity-rs/serenity"
+branch = "next"
 default-features = false
 features = ["client", "gateway", "model", "rustls_backend", "temp_cache"]
 
 [dependencies.serenity-utils]
 git = "https://github.com/fenhl/serenity-utils"
-#branch = "main" # waiting for https://github.com/serenity-rs/serenity/pull/2357 and https://github.com/serenity-rs/serenity/pull/2400 to be published
-#branch = "next" # waiting for https://github.com/serenity-rs/serenity/pull/2470 to be merged
-branch = "standalone-public-thread"
+#branch = "main" # waiting for https://github.com/serenity-rs/serenity/pull/2470 to be published
+branch = "next"
 
 [dependencies.sqlx]
-version = "0.6"
+version = "0.7"
 default-features = false
 features = ["chrono", "json", "macros", "postgres", "runtime-tokio-rustls", "uuid"]
 

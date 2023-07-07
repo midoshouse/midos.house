@@ -208,7 +208,7 @@ pub(crate) enum ParseUserError {
 
 pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, host: &str, id_or_url: &str) -> Result<String, ParseUserError> {
     if let Ok(id) = id_or_url.parse() {
-        return if let Some(user) = User::from_id(transaction, id).await? {
+        return if let Some(user) = User::from_id(&mut **transaction, id).await? {
             if let Some(racetime) = user.racetime {
                 Ok(racetime.id)
             } else {
@@ -1677,7 +1677,7 @@ impl RaceHandler<GlobalState> for Handler {
                 if let French = goal.language();
                 if !event.is_single_race();
                 if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
-                if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut transaction).await.to_racetime()?;
+                if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()?;
                 then {
                     format!(
                         "Bienvenue pour cette race de {phase_round} ! Pour plus d'informations : https://midos.house/event/{}/{}",
@@ -2871,8 +2871,8 @@ impl RaceHandler<GlobalState> for Handler {
                                     times.sort_by_key(|(_, time)| (time.is_none(), *time)); // sort DNF last
                                     if let [(ref winner, winning_time), (ref loser, losing_time)] = *times {
                                         if winning_time == losing_time {
-                                            let entrant1 = User::from_racetime(&mut transaction, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                            let entrant2 = User::from_racetime(&mut transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                            let entrant1 = User::from_racetime(&mut *transaction, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                            let entrant2 = User::from_racetime(&mut *transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                             let msg = if_chain! {
                                                 if let French = event.language;
                                                 if cal_event.race.game.is_none();
@@ -2923,8 +2923,8 @@ impl RaceHandler<GlobalState> for Handler {
                                             };
                                             results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
                                         } else {
-                                            let winner = User::from_racetime(&mut transaction, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                            let loser = User::from_racetime(&mut transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                            let winner = User::from_racetime(&mut *transaction, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                            let loser = User::from_racetime(&mut *transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                             let msg = if_chain! {
                                                 if let French = event.language;
                                                 if cal_event.race.game.is_none();
@@ -3082,7 +3082,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             let info_user = if_chain! {
                 if let French = event.language;
                 if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
-                if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()?;
+                if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await.to_racetime()?;
                 if cal_event.race.game.is_none();
                 if let Some(entrants) = match cal_event.race.entrants {
                     Entrants::Open | Entrants::Count { .. } => Some(None), // no text
@@ -3175,14 +3175,14 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             }.start_with_host(host_info, &access_token, &http_client, CATEGORY).await?;
             let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", host_info.hostname))?;
             match cal_event.kind {
-                cal::EventKind::Normal => { sqlx::query!("UPDATE races SET room = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?; }
-                cal::EventKind::Async1 => { sqlx::query!("UPDATE races SET async_room1 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?; }
-                cal::EventKind::Async2 => { sqlx::query!("UPDATE races SET async_room2 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?; }
+                cal::EventKind::Normal => { sqlx::query!("UPDATE races SET room = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?; }
+                cal::EventKind::Async1 => { sqlx::query!("UPDATE races SET async_room1 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?; }
+                cal::EventKind::Async2 => { sqlx::query!("UPDATE races SET async_room2 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?; }
             }
             let msg = if_chain! {
                 if let French = event.language;
                 if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
-                if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()?;
+                if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await.to_racetime()?;
                 if cal_event.race.game.is_none();
                 then {
                     let mut msg = MessageBuilder::default();

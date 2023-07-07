@@ -91,7 +91,7 @@ impl MessageBuilderExt for MessageBuilder {
             self.mention_user(&member);
         } else {
             let team_role = if let (Some(guild), Some(racetime_slug)) = (guild, &team.racetime_slug) {
-                sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(guild), racetime_slug).fetch_optional(&mut *transaction).await?
+                sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(guild), racetime_slug).fetch_optional(&mut **transaction).await?
             } else {
                 None
             };

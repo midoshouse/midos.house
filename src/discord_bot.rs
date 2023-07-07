@@ -389,7 +389,7 @@ async fn draft_action(ctx: &Context, interaction: &impl GenericInteraction, acti
             }
             let response_content = response_content.build();
             let mut transaction = msg_ctx.into_transaction();
-            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut transaction).await?;
+            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
             transaction.commit().await?;
             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                 .ephemeral(false)
@@ -428,7 +428,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
         .data::<ExtraRoomTx>(extra_room_tx)
         .on_guild_create(false, |ctx, guild, _| Box::pin(async move {
             let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
-            let guild_event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND (end_time IS NULL OR end_time > NOW())"#, i64::from(guild.id)).fetch_all(&mut transaction).await?;
+            let guild_event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND (end_time IS NULL OR end_time > NOW())"#, i64::from(guild.id)).fetch_all(&mut *transaction).await?;
             let mut guild_events = Vec::with_capacity(guild_event_rows.len());
             for row in guild_event_rows {
                 guild_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("just received from database"));
@@ -948,7 +948,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     if let Some(&command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)) {
                         if Some(interaction.data.id) == command_ids.assign {
                             let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
-                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut transaction).await? {
+                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut *transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
                                 if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -999,12 +999,12 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 went_first: None,
                                                 skipped_bans: 0,
                                                 settings: HashMap::default(),
-                                            }) as _).execute(&mut transaction).await?,
+                                            }) as _).execute(&mut *transaction).await?,
                                             Some(draft::Kind::TournoiFrancoS3) => unreachable!(), // this event does not use start.gg
                                             None => sqlx::query!("INSERT INTO races
                                                 (id, startgg_set, game, series, event, scheduling_thread) VALUES ($1, $2, $3, $4, $5, $6)
                                                 ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread
-                                            ", id as _, &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id)).execute(&mut transaction).await?,
+                                            ", id as _, &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id)).execute(&mut *transaction).await?,
                                         };
                                         let mut response_content = MessageBuilder::default();
                                         response_content.push("This thread is now assigned to ");
@@ -1057,7 +1057,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             }
                         } else if Some(interaction.data.id) == command_ids.delete_after {
                             let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
-                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut transaction).await? {
+                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut *transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
                                 if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1072,7 +1072,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
                                             _ => panic!("unexpected slash command option type"),
                                         };
-                                        let races_deleted = sqlx::query_scalar!(r#"DELETE FROM races WHERE scheduling_thread = $1 AND NOT ignored AND GAME > $2"#, i64::from(interaction.channel_id), after_game).execute(&mut transaction).await?
+                                        let races_deleted = sqlx::query_scalar!(r#"DELETE FROM races WHERE scheduling_thread = $1 AND NOT ignored AND GAME > $2"#, i64::from(interaction.channel_id), after_game).execute(&mut *transaction).await?
                                             .rows_affected();
                                         transaction.commit().await?;
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1121,7 +1121,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         });
                                         if let Some(mq) = mq {
                                             settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq.to_string()));
-                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut transaction).await?;
+                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
                                             transaction.commit().await?;
                                         } else {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1287,7 +1287,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             )).await?;
                                             transaction.rollback().await?;
                                         } else {
-                                            sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, race.id as _).execute(&mut transaction).await?;
+                                            sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
                                             if start - Utc::now() < Duration::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
                                                     let data = ctx.data.read().await;
@@ -1418,10 +1418,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             let kind = match race.entrants {
                                                 Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
                                                     if team.as_ref().map_or(false, |team| team1 == team) {
-                                                        sqlx::query!("UPDATE races SET async_start1 = $1, start = NULL WHERE id = $2", start, race.id as _).execute(&mut transaction).await?;
+                                                        sqlx::query!("UPDATE races SET async_start1 = $1, start = NULL WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
                                                         cal::EventKind::Async1
                                                     } else if team.as_ref().map_or(false, |team| team2 == team) {
-                                                        sqlx::query!("UPDATE races SET async_start2 = $1, start = NULL WHERE id = $2", start, race.id as _).execute(&mut transaction).await?;
+                                                        sqlx::query!("UPDATE races SET async_start2 = $1, start = NULL WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
                                                         cal::EventKind::Async2
                                                     } else {
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1562,7 +1562,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             RaceSchedule::Live { .. } => false,
                                             RaceSchedule::Async { start1, start2, .. } => start1.is_some() && start2.is_some(),
                                         };
-                                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL WHERE id = $1", race.id as _).execute(&mut transaction).await?;
+                                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
                                         transaction.commit().await?;
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(false)
@@ -1606,7 +1606,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         });
                                         if let Some(mq) = mq {
                                             settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq.to_string()));
-                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut transaction).await?;
+                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
                                             transaction.commit().await?;
                                         } else {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1924,7 +1924,7 @@ pub(crate) async fn create_scheduling_thread(ctx: &Context, transaction: &mut Tr
     let title = if_chain! {
         if let French = event.language;
         if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
-        if let Some(Some(info_prefix)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?;
+        if let Some(Some(info_prefix)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await?;
         then {
             match race.entrants {
                 Entrants::Open | Entrants::Count { .. } => info_prefix,
@@ -1969,7 +1969,7 @@ pub(crate) async fn create_scheduling_thread(ctx: &Context, transaction: &mut Tr
     let content = if_chain! {
         if let French = event.language;
         if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
-        if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?;
+        if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await?;
         if game_count == 1;
         if let None | Some(draft::Kind::TournoiFrancoS3) = event.draft_kind();
         then {
