@@ -558,7 +558,7 @@ impl GlobalState {
         }
     }
 
-    pub(crate) fn roll_seed(self: Arc<Self>, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_seed(self: Arc<Self>, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
@@ -600,7 +600,7 @@ impl GlobalState {
                 None
             };
             if let Some(web_version) = web_version {
-                match self.ootr_api_client.roll_seed_web(update_tx.clone(), version.branch(), web_version, false, spoiler_log, settings).await {
+                match self.ootr_api_client.roll_seed_web(update_tx.clone(), delay_until, version.branch(), web_version, false, spoiler_log, settings).await {
                     Ok((id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
                             file_hash: Some(file_hash),
@@ -617,7 +617,7 @@ impl GlobalState {
                 drop(mw_permit);
             } else if let VersionedBranch::Pinned(version) = version {
                 update_tx.send(SeedRollUpdate::Started).await?;
-                match roll_seed_locally(version, settings).await {
+                match roll_seed_locally(delay_until, version, settings).await {
                     Ok((patch_filename, spoiler_log_path)) => update_tx.send(match spoiler_log_path.into_os_string().into_string() {
                         Ok(spoiler_log_path) => match regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) {
                             Some((_, file_stem)) => SeedRollUpdate::Done {
@@ -645,7 +645,7 @@ impl GlobalState {
         update_rx
     }
 
-    pub(crate) fn roll_rsl_seed(self: Arc<Self>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_rsl_seed(self: Arc<Self>, delay_until: Option<DateTime<Utc>>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
@@ -671,7 +671,14 @@ impl GlobalState {
             // run the RSL script
             let _ = update_tx.send(SeedRollUpdate::Started).await;
             let outer_tries = if web_version.is_some() { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script
-            for _ in 0..outer_tries {
+            let mut last_error = None;
+            for attempt in 0.. {
+                if attempt >= outer_tries && delay_until.map_or(true, |delay_until| Utc::now() >= delay_until) {
+                    return Err(RollError::Retries {
+                        num_retries: 3 * attempt,
+                        last_error,
+                    })
+                }
                 let mut rsl_cmd = Command::new(PYTHON);
                 rsl_cmd.arg("RandomSettingsGenerator.py");
                 rsl_cmd.arg("--no_log_errors");
@@ -691,10 +698,10 @@ impl GlobalState {
                 let output = rsl_cmd.current_dir(&rsl_script_path).output().await.at_command("RandomSettingsGenerator.py")?;
                 match output.status.code() {
                     Some(0) => {}
-                    Some(2) => return Err(RollError::Retries {
-                        num_retries: 15,
-                        last_error: Some(String::from_utf8_lossy(&output.stderr).into_owned()),
-                    }),
+                    Some(2) => {
+                        last_error = Some(String::from_utf8_lossy(&output.stderr).into_owned());
+                        continue
+                    }
                     _ => return Err(RollError::Wheel(wheel::Error::CommandExit { name: Cow::Borrowed("RandomSettingsGenerator.py"), output })),
                 }
                 if let Some(web_version) = web_version.clone() {
@@ -740,7 +747,7 @@ impl GlobalState {
                     } else {
                         None
                     };
-                    let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), version.branch(), web_version, true, spoiler_log, settings).await {
+                    let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), None /* always limit to 3 tries per settings */, version.branch(), web_version, true, spoiler_log, settings).await {
                         Ok(data) => data,
                         Err(RollError::Retries { .. }) => continue,
                         Err(e) => return Err(e),
@@ -790,10 +797,6 @@ impl GlobalState {
                     return Ok(())
                 }
             }
-            let _ = update_tx.send(SeedRollUpdate::Error(RollError::Retries {
-                num_retries: 15,
-                last_error: None,
-            })).await;
             Ok(())
         }.then(|res| async move {
             match res {
@@ -855,7 +858,7 @@ impl GlobalState {
     }
 }
 
-async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
+async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: rando::Version, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
     version.clone_repo().await?;
     #[cfg(unix)] {
         settings.insert(format!("rom"), json!(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join("oot-ntscu-1.0.z64")).ok_or(RollError::RomPath)?));
@@ -866,7 +869,13 @@ async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Ma
     settings.insert(format!("create_patch_file"), json!(true));
     settings.insert(format!("create_compressed_rom"), json!(false));
     let mut last_error = None;
-    for _ in 0..3 {
+    for attempt in 0.. {
+        if attempt >= 3 && delay_until.map_or(true, |delay_until| Utc::now() >= delay_until) {
+            return Err(RollError::Retries {
+                num_retries: attempt,
+                last_error,
+            })
+        }
         let rando_path = version.dir()?;
         let mut rando_process = Command::new(PYTHON).arg("OoTRandomizer.py").arg("--no_log").arg("--settings=-").current_dir(&rando_path).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().at_command(PYTHON)?;
         rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await.at_command(PYTHON)?;
@@ -886,10 +895,7 @@ async fn roll_seed_locally(version: rando::Version, mut settings: serde_json::Ma
             spoiler_log_path.to_owned(),
         ))
     }
-    Err(RollError::Retries {
-        num_retries: 3,
-        last_error,
-    })
+    unreachable!()
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -1213,7 +1219,7 @@ impl OotrApiClient {
         }
     }
 
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, branch: rando::Branch, version: Version, random_settings: bool, spoiler_log: bool, settings: serde_json::Map<String, Json>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
+    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, branch: rando::Branch, version: Version, random_settings: bool, spoiler_log: bool, settings: serde_json::Map<String, Json>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
         #[serde_as]
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -1242,7 +1248,14 @@ impl OotrApiClient {
         }
 
         let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
-        for attempt in 0..3 {
+        let mut last_id = None;
+        for attempt in 0.. {
+            if attempt >= 3 && delay_until.map_or(true, |delay_until| Utc::now() >= delay_until) {
+                return Err(RollError::Retries {
+                    num_retries: attempt,
+                    last_error: last_id.map(|id| format!("https://ootrandomizer.com/seed/get?id={id}")),
+                })
+            }
             let next_seed = if is_mw {
                 let next_seed = lock!(self.next_mw_seed);
                 if let Some(duration) = next_seed.checked_duration_since(Instant::now()) {
@@ -1263,6 +1276,7 @@ impl OotrApiClient {
             ]), Some(&settings)).await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error().await?;
+            last_id = Some(id);
             if let Some(mut next_seed) = next_seed {
                 *next_seed = Instant::now() + MULTIWORLD_RATE_LIMIT;
             }
@@ -1298,10 +1312,7 @@ impl OotrApiClient {
                 }
             }
         }
-        Err(RollError::Retries {
-            num_retries: 3,
-            last_error: None,
-        })
+        unreachable!()
     }
 }
 
@@ -1501,17 +1512,16 @@ impl Handler {
         Ok(())
     }
 
-    fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, mut state: OwnedRwLockWriteGuard<RaceState>, mut updates: mpsc::Receiver<SeedRollUpdate>, language: Language, article: &'static str, description: String) {
+    fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, mut state: OwnedRwLockWriteGuard<RaceState>, delay_until: Option<DateTime<Utc>>, mut updates: mpsc::Receiver<SeedRollUpdate>, language: Language, article: &'static str, description: String) {
         *state = RaceState::Rolling;
         drop(state);
         let db_pool = ctx.global_state.db_pool.clone();
         let ctx = ctx.clone();
         let state = self.race_state.clone();
         let id = self.official_data.as_ref().map(|official_data| official_data.cal_event.race.id);
-        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         tokio::spawn(async move {
             let mut seed_state = None::<SeedRollUpdate>;
-            if let Some(delay) = official_start.and_then(|start| (start - chrono::Duration::minutes(15) - Utc::now()).to_std().ok()) {
+            if let Some(delay) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
                 // don't want to give an unnecessarily exact estimate if the room was opened automatically 30 or 60 minutes ahead of start
                 let display_delay = if delay > Duration::from_secs(14 * 60) && delay < Duration::from_secs(16 * 60) {
                     Duration::from_secs(15 * 60)
@@ -1536,7 +1546,7 @@ impl Handler {
                                 update.handle(&db_pool, &ctx, &state, id, language, article, &description).await?;
                             }
                         }
-                        Some(update) = updates.recv() => seed_state = Some(update), //TODO if update is RollError::Retries, restart seed rolling?
+                        Some(update) = updates.recv() => seed_state = Some(update),
                     }
                 }
             } else {
@@ -1549,21 +1559,29 @@ impl Handler {
     }
 
     fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool, language: Language, article: &'static str, description: String) {
-        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_seed(version, settings, spoiler_log), language, article, description);
+        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
+        let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
+        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_seed(delay_until, version, settings, spoiler_log), language, article, description);
     }
 
     fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool, language: Language, article: &'static str, description: String) {
-        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_rsl_seed(preset, world_count, spoiler_log), language, article, description);
+        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
+        let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
+        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_rsl_seed(delay_until, preset, world_count, spoiler_log), language, article, description);
     }
 
     async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, spoiler_log: bool, language: Language, article: &'static str, description: String) {
-        self.roll_seed_inner(ctx, state, Arc::clone(&ctx.global_state).roll_tfb_seed(format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), spoiler_log), language, article, description);
+        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
+        let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
+        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), spoiler_log), language, article, description);
     }
 
     async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
+        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
+        let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
         let (tx, rx) = mpsc::channel(1);
         tx.send(SeedRollUpdate::Done { rsl_preset: None, send_spoiler_log: false, seed }).await.unwrap();
-        self.roll_seed_inner(ctx, state, rx, language, article, description);
+        self.roll_seed_inner(ctx, state, delay_until, rx, language, article, description);
     }
 
     /// Returns `false` if this race was already finished/cancelled.
@@ -3298,7 +3316,12 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: mpsc::
         select! {
             () = &mut shutdown => break,
             Some(()) = seed_cache_rx.recv() => 'seed: loop {
-                let mut seed_rx = global_state.clone().roll_seed(Goal::MixedPoolsS2.rando_version(), mp::s2_settings(), false);
+                let mut seed_rx = global_state.clone().roll_seed(
+                    Some(Utc::now() + chrono::Duration::days(1)), // only report errors once per day to reduce noise in the log while the cause of the low success rate is still being investigated
+                    Goal::MixedPoolsS2.rando_version(),
+                    mp::s2_settings(),
+                    false,
+                );
                 loop {
                     select! {
                         () = &mut shutdown => break 'outer,
