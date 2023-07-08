@@ -807,7 +807,7 @@ impl GlobalState {
         update_rx
     }
 
-    pub(crate) fn roll_tfb_seed(self: Arc<Self>, room: String, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_tfb_seed(self: Arc<Self>, version: &'static str, room: String, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
@@ -815,13 +815,13 @@ impl GlobalState {
             let form_data = if spoiler_log {
                 vec![
                     ("unlockSetting", "ALWAYS"),
-                    ("version", "LATEST"),
+                    ("version", version),
                 ]
             } else {
                 vec![
                     ("unlockSetting", "RACETIME"),
                     ("racetimeRoom", &room),
-                    ("version", "LATEST"),
+                    ("version", version),
                 ]
             };
             let response = self.http_client
@@ -1570,10 +1570,10 @@ impl Handler {
         self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_rsl_seed(delay_until, preset, world_count, spoiler_log), language, article, description);
     }
 
-    async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, spoiler_log: bool, language: Language, article: &'static str, description: String) {
+    async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: &'static str, spoiler_log: bool, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
-        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), spoiler_log), language, article, description);
+        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(version, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), spoiler_log), language, article, description);
     }
 
     async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
@@ -1937,7 +1937,7 @@ impl RaceHandler<GlobalState> for Handler {
                             preset: RslDevFenhlPreset::Pictionary,
                         }, 1, true, English, "a", format!("random settings Pictionary seed")),
                         Goal::Sgl2023 => this.roll_seed(ctx, state, goal.rando_version(), sgl::settings_2023(), false, English, "a", format!("seed")),
-                        Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, false, English, "a", format!("Triforce Blitz S2 seed")).await,
+                        Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, "LATEST", false, English, "a", format!("Triforce Blitz S2 seed")).await,
                     },
                     RaceState::Draft { .. } => {
                         drop(state);
@@ -2706,8 +2706,8 @@ impl RaceHandler<GlobalState> for Handler {
                                         files: seed::Files::TfbSotd { date, ordinal },
                                     }, English, "the", format!("Triforce Blitz seed of the day")).await;
                                 }
-                                [ref arg] if arg == "jr" => self.roll_seed(ctx, state, goal.rando_version(), tfb::jr_settings(), spoiler_log, English, "a", format!("Triforce Blitz: Jabu's Revenge seed")),
-                                [ref arg] if arg == "s2" => self.roll_tfb_seed(ctx, state, spoiler_log, English, "a", format!("Triforce Blitz S2 seed")).await,
+                                [ref arg] if arg == "jr" => self.roll_tfb_seed(ctx, state, "LATEST", spoiler_log, English, "a", format!("Triforce Blitz: Jabu's Revenge seed")).await,
+                                [ref arg] if arg == "s2" => self.roll_tfb_seed(ctx, state, "v7.1.3-blitz-0.42", spoiler_log, English, "a", format!("Triforce Blitz S2 seed")).await,
                                 [..] => {
                                     ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
