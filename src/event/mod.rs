@@ -1760,9 +1760,6 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFutu
                 sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", notification_id as _, member_id as _, notification_kind as _, series as _, event, me.id as _).execute(&mut *transaction).await?;
             }
         }
-        if !keep_record {
-            sqlx::query!("DELETE FROM teams WHERE id = $1", team.id as _).execute(&mut *transaction).await?;
-        }
         if let Some(organizer_channel) = data.discord_organizer_channel {
             organizer_channel.say(&*discord_ctx.read().await, MessageBuilder::default()
                 .mention_team(&mut transaction, data.discord_guild, &team).await?
@@ -1771,6 +1768,9 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFutu
                 .push(".")
                 .build(),
             ).await?;
+        }
+        if !keep_record {
+            sqlx::query!("DELETE FROM teams WHERE id = $1", team.id as _).execute(&mut *transaction).await?;
         }
         transaction.commit().await?;
         Ok(Redirect::to(uri!(teams(series, event))))
