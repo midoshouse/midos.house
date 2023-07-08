@@ -139,15 +139,15 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
     let bridge_medallions = picks.get("bridge_medallions").map(|bridge_medallions| &**bridge_medallions).unwrap_or("6");
     let bridge_rewards = picks.get("bridge_rewards").map(|bridge_rewards| &**bridge_rewards).unwrap_or("9");
     // convert to settings JSON
-    let mut starting_items = vec![
+    let mut starting_inventory = vec![
         "farores_wind",
         "lens",
     ];
     if weirdegg != "shuffle" {
-        starting_items.push("zeldas_letter");
+        starting_inventory.push("zeldas_letter");
     }
     if ocarina != "shuffle" {
-        starting_items.push("ocarina");
+        starting_inventory.push("ocarina");
     }
     let mut mix_entrance_pools = vec![
         "Interior",
@@ -303,7 +303,7 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
         } else {
             json!(["deku_shield"])
         },
-        format!("starting_items") => json!(starting_items),
+        format!("starting_inventory") => json!(starting_inventory),
         format!("start_with_consumables") => json!(start != "vanilla"),
         format!("no_escape_sequence") => json!(true),
         format!("no_guard_stealth") => json!(true),
