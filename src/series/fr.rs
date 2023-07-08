@@ -367,7 +367,7 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
         format!("misc_hints") => json!([
             "altar",
             "ganondorf",
-            "warp_songs",
+            "warp_songs_and_owls",
             "30_skulltulas",
             "40_skulltulas",
             "50_skulltulas",
