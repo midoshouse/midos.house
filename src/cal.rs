@@ -89,6 +89,7 @@ use {
         },
         traits::{
             IoResultExt as _,
+            IsNetworkError,
             ReqwestResponseExt as _,
         },
     },
@@ -1221,36 +1222,65 @@ pub(crate) enum SheetsError {
     TokenExpired,
 }
 
+impl IsNetworkError for SheetsError {
+    fn is_network_error(&self) -> bool {
+        match self {
+            Self::OAuth(_) => false,
+            Self::Reqwest(e) => e.is_network_error(),
+            Self::Wheel(e) => e.is_network_error(),
+            Self::EmptyToken => false,
+            Self::TokenExpired => false,
+        }
+    }
+}
+
 async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str) -> Result<Vec<Vec<String>>, SheetsError> {
     #[derive(Deserialize)]
     struct ValueRange {
         values: Vec<Vec<String>>,
     }
 
+    async fn sheet_values_uncached(http_client: &reqwest::Client, sheet_id: &str, range: &str) -> Result<Vec<Vec<String>>, SheetsError> {
+        let gsuite_secret = read_service_account_key("assets/google-client-secret.json").await.at("assets/google-client-secret.json")?;
+        let auth = ServiceAccountAuthenticator::builder(gsuite_secret)
+            .build().await.at_unknown()?;
+        let token = auth.token(&["https://www.googleapis.com/auth/spreadsheets"]).await?;
+        if token.is_expired() { return Err(SheetsError::TokenExpired) }
+        let Some(token) = token.token() else { return Err(SheetsError::EmptyToken) };
+        if token.is_empty() { return Err(SheetsError::EmptyToken) }
+        let ValueRange { values } = http_client.get(&format!("https://sheets.googleapis.com/v4/spreadsheets/{sheet_id}/values/{range}"))
+            .bearer_auth(token)
+            .query(&[
+                ("valueRenderOption", "FORMATTED_VALUE"),
+                ("dateTimeRenderOption", "FORMATTED_STRING"),
+                ("majorDimension", "ROWS"),
+            ])
+            .send().await?
+            .detailed_error_for_status().await?
+            .json_with_text_in_error::<ValueRange>().await?;
+        Ok(values)
+    }
+
     let key = (sheet_id.to_owned(), range.to_owned());
     let mut cache = lock!(SHEETS_CACHE);
-    cache.retain(|_, (retrieved, _)| retrieved.elapsed() < UDuration::from_secs(5 * 60));
     Ok(match cache.entry(key) {
-        hash_map::Entry::Occupied(entry) => entry.get().1.clone(),
+        hash_map::Entry::Occupied(mut entry) => {
+            let (retrieved, values) = entry.get();
+            if retrieved.elapsed() < UDuration::from_secs(5 * 60) {
+                values.clone()
+            } else {
+                match sheet_values_uncached(&http_client, sheet_id, range).await {
+                    Ok(values) => {
+                        entry.insert((Instant::now(), values.clone()));
+                        values
+                    }
+                    Err(e) if e.is_network_error() && retrieved.elapsed() < UDuration::from_secs(60 * 60) => values.clone(),
+                    Err(e) => return Err(e),
+                }
+            }
+        }
         hash_map::Entry::Vacant(entry) => {
-            let gsuite_secret = read_service_account_key("assets/google-client-secret.json").await.at("assets/google-client-secret.json")?;
-            let auth = ServiceAccountAuthenticator::builder(gsuite_secret)
-                .build().await.at_unknown()?;
-            let token = auth.token(&["https://www.googleapis.com/auth/spreadsheets"]).await?;
-            if token.is_expired() { return Err(SheetsError::TokenExpired) }
-            let Some(token) = token.token() else { return Err(SheetsError::EmptyToken) };
-            if token.is_empty() { return Err(SheetsError::EmptyToken) }
-            let values = http_client.get(&format!("https://sheets.googleapis.com/v4/spreadsheets/{sheet_id}/values/{range}"))
-                .bearer_auth(token)
-                .query(&[
-                    ("valueRenderOption", "FORMATTED_VALUE"),
-                    ("dateTimeRenderOption", "FORMATTED_STRING"),
-                    ("majorDimension", "ROWS"),
-                ])
-                .send().await?
-                .detailed_error_for_status().await?
-                .json_with_text_in_error::<ValueRange>().await?
-                .values;
+            let values = sheet_values_uncached(&http_client, sheet_id, range).await?;
             entry.insert((Instant::now(), values.clone()));
             values
         }
