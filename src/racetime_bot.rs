@@ -1406,7 +1406,11 @@ impl Handler {
     fn is_official(&self) -> bool { self.official_data.is_some() }
 
     async fn goal(&self, ctx: &RaceContext<GlobalState>) -> Goal {
-        ctx.data().await.goal.name.parse::<Goal>().expect("running race handler for unknown goal")
+        let goal_name = &ctx.data().await.goal.name;
+        match goal_name.parse::<Goal>() {
+            Ok(goal) => goal,
+            Err(GoalFromStrError) => panic!("running race handler for unknown goal {goal_name} (https://{}{}", ctx.global_state.host, ctx.data().await.url),
+        }
     }
 
     async fn can_monitor(&self, ctx: &RaceContext<GlobalState>, is_monitor: bool, msg: &ChatMessage) -> sqlx::Result<bool> {
@@ -2214,6 +2218,7 @@ impl RaceHandler<GlobalState> for Handler {
                     format!("Sorry {reply_to}, this command is only available for official races.")
                 }).await?;
             },
+            "no" => self.draft_action(ctx, reply_to, draft::Action::BooleanChoice(false)).await?,
             "presets" => goal.send_presets(ctx).await?,
             "ready" => if let Some(OfficialRaceData { ref mut restreams, ref cal_event, ref event, .. }) = self.official_data {
                 if let Some(state) = restreams.values_mut().find(|state| state.restreamer_racetime_id.as_ref() == Some(&msg.user.as_ref().expect("received !ready command from bot").id)) {
@@ -2754,6 +2759,7 @@ impl RaceHandler<GlobalState> for Handler {
                     format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
                 }).await?;
             },
+            "yes" => self.draft_action(ctx, reply_to, draft::Action::BooleanChoice(true)).await?,
             _ => ctx.send_message(&if let French = goal.language() {
                 format!("Désolé {reply_to}, je ne reconnais pas cette commande.")
             } else {
