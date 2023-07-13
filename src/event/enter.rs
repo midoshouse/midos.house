@@ -108,12 +108,13 @@ enum Requirement {
     /// Must have a Challonge account connected to their Mido's House account
     Challonge,
     /// Must fill a custom text field
+    #[serde(rename_all = "camelCase")]
     TextField {
         #[serde(deserialize_with = "deserialize_raw_html")]
         label: RawHtml<String>,
         #[serde(deserialize_with = "deserialize_regex")]
         regex: Regex,
-        regex_error_msg: String,
+        regex_error_msg: String, //TODO different error messages based on other regexes?
     },
     /// Must agree to the event rules
     Rules {
