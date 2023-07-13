@@ -876,7 +876,7 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                 if form.context.errors().next().is_none() {
                     return Ok(if value.step2 {
                         let id = Id::new(&mut transaction, IdTable::Teams).await?;
-                        sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent) VALUES ($1, $2, $3, $4, $5, $6)", id as _, series as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent).execute(&mut *transaction).await?;
+                        sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent, text_field) VALUES ($1, $2, $3, $4, $5, $6, $7)", id as _, series as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent, value.text_field).execute(&mut *transaction).await?;
                         for ((user, role), startgg_id) in users.into_iter().zip_eq(roles).zip_eq(startgg_ids) {
                             sqlx::query!(
                                 "INSERT INTO team_members (team, member, status, role, startgg_id) VALUES ($1, $2, $3, $4, $5)",
