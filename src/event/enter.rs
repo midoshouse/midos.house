@@ -35,6 +35,10 @@ use {
         Deserializer,
         de::Error as _,
     },
+    serde_with::{
+        DeserializeAs,
+        serde_as,
+    },
     serenity::all::Context as DiscordCtx,
     serenity_utils::RwFuture,
     sqlx::{
@@ -85,15 +89,24 @@ pub(super) struct Flow {
     requirements: Vec<Requirement>,
 }
 
-fn deserialize_raw_html<'de, D: Deserializer<'de>>(deserializer: D) -> Result<RawHtml<String>, D::Error> {
-    String::deserialize(deserializer).map(RawHtml)
+enum DeserializeRawHtml {}
+
+impl<'de> DeserializeAs<'de, RawHtml<String>> for DeserializeRawHtml {
+    fn deserialize_as<D: Deserializer<'de>>(deserializer: D) -> Result<RawHtml<String>, D::Error> {
+        String::deserialize(deserializer).map(RawHtml)
+    }
 }
 
-fn deserialize_regex<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Regex, D::Error> {
-    Regex::new(<&str>::deserialize(deserializer)?).map_err(|e| D::Error::custom(e.to_string()))
+enum DeserializeRegex {}
+
+impl<'de> DeserializeAs<'de, Regex> for DeserializeRegex {
+    fn deserialize_as<D: Deserializer<'de>>(deserializer: D) -> Result<Regex, D::Error> {
+        Regex::new(<&str>::deserialize(deserializer)?).map_err(|e| D::Error::custom(e.to_string()))
+    }
 }
 
 /// Requirements to enter an event
+#[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 enum Requirement {
@@ -110,11 +123,13 @@ enum Requirement {
     /// Must fill a custom text field
     #[serde(rename_all = "camelCase")]
     TextField {
-        #[serde(deserialize_with = "deserialize_raw_html")]
+        #[serde_as(as = "DeserializeRawHtml")]
         label: RawHtml<String>,
-        #[serde(deserialize_with = "deserialize_regex")]
+        #[serde_as(as = "DeserializeRegex")]
         regex: Regex,
-        regex_error_msg: String, //TODO different error messages based on other regexes?
+        #[serde_as(as = "serde_with::Map<DeserializeRegex, _>")]
+        regex_error_messages: Vec<(Regex, String)>,
+        fallback_error_message: String,
     },
     /// Must agree to the event rules
     Rules {
@@ -249,8 +264,8 @@ impl Requirement {
                 RequirementStatus {
                     blocks_submit: false,
                     html_content: Box::new(move |errors| html! {
+                        : label;
                         : form_field("text_field", errors, html! {
-                            label(for = "text_field") : label;
                             input(type = "text", name = "text_field"); //TODO remember entered value
                         });
                     }),
@@ -360,8 +375,13 @@ impl Requirement {
 
     async fn check_form(&self, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
         match self {
-            Self::TextField { regex, regex_error_msg, .. } => if !regex.is_match(&value.text_field) {
-                form_ctx.push_error(form::Error::validation(regex_error_msg.clone()).with_name("text_field"));
+            Self::TextField { regex, regex_error_messages, fallback_error_message, .. } => if !regex.is_match(&value.text_field) {
+                let error_message = if let Some((_, error_message)) = regex_error_messages.iter().find(|(regex, _)| regex.is_match(&value.text_field)) {
+                    error_message.clone()
+                } else {
+                    fallback_error_message.clone()
+                };
+                form_ctx.push_error(form::Error::validation(error_message).with_name("text_field"));
             },
             Self::Rules { .. } => if !value.confirm {
                 form_ctx.push_error(form::Error::validation("This field is required.").with_name("confirm"));
