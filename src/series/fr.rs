@@ -279,6 +279,7 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
             "Deku Theater Mask of Truth",
         ]),
         format!("allowed_tricks") => json!([
+            "logic_visible_collisions",
             "logic_grottos_without_agony",
             "logic_fewer_tunic_requirements",
             "logic_rusted_switches",
