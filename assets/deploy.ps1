@@ -29,33 +29,7 @@ if (-not $?)
     throw 'Native Failure'
 }
 
-ssh midos.house 'if systemctl is-active midos-house; then sudo -u mido bin/midos-house prepare-stop; fi'
-
-ssh midos.house sudo systemctl stop midos-house
-if (-not $?)
-{
-    throw 'Native Failure'
-}
-
-ssh midos.house env -C /opt/git/github.com/midoshouse/midos.house/master git pull
-if (-not $?)
-{
-    throw 'Native Failure'
-}
-
-ssh midos.house mv bin/midos-house-next bin/midos-house
-if (-not $?)
-{
-    throw 'Native Failure'
-}
-
-ssh midos.house chmod +x bin/midos-house
-if (-not $?)
-{
-    throw 'Native Failure'
-}
-
-ssh midos.house sudo systemctl start midos-house
+ssh midos.house /opt/git/github.com/midoshouse/midos.house/master/assets/deploy-local.sh
 if (-not $?)
 {
     throw 'Native Failure'
