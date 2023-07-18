@@ -1463,7 +1463,7 @@ impl Handler {
 
     async fn advance_draft(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         let goal = self.goal(ctx).await;
-        let state = lock!(@write_owned self.race_state.clone());
+        let state = lock!(@write @owned self.race_state.clone());
         let Some(draft_kind) = goal.draft_kind() else { unreachable!() };
         let RaceState::Draft { state: ref draft, spoiler_log } = *state else { unreachable!() };
         let step = draft.next_step(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to: "friend" }).await.to_racetime()?;
@@ -1927,7 +1927,7 @@ impl RaceHandler<GlobalState> for Handler {
                 };
                 ctx.send_message(&text).await?;
             }
-            let state = lock!(@write_owned this.race_state.clone());
+            let state = lock!(@write @owned this.race_state.clone());
             if let Some(seed) = existing_seed {
                 this.queue_existing_seed(ctx, state, seed, English, "a", format!("seed")).await;
             } else {
@@ -2340,7 +2340,7 @@ impl RaceHandler<GlobalState> for Handler {
             "second" => self.draft_action(ctx, reply_to, draft::Action::GoFirst(false)).await?,
             "seed" | "spoilerseed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 let spoiler_log = cmd_name.to_ascii_lowercase() == "spoilerseed";
-                let mut state = lock!(@write_owned self.race_state.clone());
+                let mut state = lock!(@write @owned self.race_state.clone());
                 match *state {
                     RaceState::Init => if self.locked && !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                         ctx.send_message(&if let French = goal.language() {

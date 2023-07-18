@@ -2082,7 +2082,7 @@ checksum = "b06a4cde4c0f271a446782e3eff8de789548ce57dbc8eca9292c27f4a42004b4"
 [[package]]
 name = "log-lock"
 version = "0.1.0"
-source = "git+https://github.com/fenhl/log-lock?branch=main#8a5a42eb55af39028beef3d99bec35263954ac25"
+source = "git+https://github.com/fenhl/log-lock?branch=main#b191c333a1c9e92c241e4f8e216634ef73ab432d"
 dependencies = [
  "derivative",
  "tokio",
