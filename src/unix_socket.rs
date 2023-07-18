@@ -4,6 +4,10 @@ use {
         Protocol,
         ReadError,
     },
+    log_lock::{
+        Mutex,
+        lock,
+    },
     serde_json::Value as Json,
     tokio::{
         io,
@@ -14,18 +18,12 @@ use {
         fs,
         traits::IoResultExt as _,
     },
-    crate::{
-        racetime_bot::{
-            self,
-            RollError,
-            SeedRollUpdate,
-            VersionedBranch,
-            VersionedRslPreset,
-        },
-        util::sync::{
-            Mutex,
-            lock,
-        },
+    crate::racetime_bot::{
+        self,
+        RollError,
+        SeedRollUpdate,
+        VersionedBranch,
+        VersionedRslPreset,
     },
 };
 

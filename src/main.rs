@@ -10,6 +10,7 @@ use {
         time::Duration,
     },
     futures::future::FutureExt as _,
+    log_lock::RwLock,
     rocket::Rocket,
     sqlx::{
         PgPool,
@@ -19,10 +20,7 @@ use {
         process::Command,
         sync::mpsc,
     },
-    crate::{
-        config::Config,
-        util::sync::RwLock,
-    },
+    crate::config::Config,
 };
 #[cfg(unix)] use {
     async_proto::Protocol as _,

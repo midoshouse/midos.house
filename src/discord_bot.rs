@@ -14,6 +14,11 @@ use {
     if_chain::if_chain,
     itertools::Itertools as _,
     lazy_regex::regex_captures,
+    log_lock::{
+        Mutex,
+        RwLock,
+        lock,
+    },
     serenity::{
         all::{
             CreateButton,
@@ -72,11 +77,6 @@ use {
             Id,
             IdTable,
             MessageBuilderExt as _,
-            sync::{
-                Mutex,
-                RwLock,
-                lock,
-            },
         },
     },
 };

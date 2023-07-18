@@ -50,7 +50,6 @@ pub(crate) use self::{
 
 mod form;
 mod id;
-pub(crate) mod sync;
 mod time;
 
 macro_rules! as_variant {

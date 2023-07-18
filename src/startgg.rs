@@ -9,6 +9,10 @@ use {
         time::Duration,
     },
     graphql_client::GraphQLQuery,
+    log_lock::{
+        Mutex,
+        lock,
+    },
     once_cell::sync::Lazy,
     serde::{
         Deserialize,
@@ -23,10 +27,6 @@ use {
         TypeMapKey,
     },
     wheel::traits::ReqwestResponseExt as _,
-    crate::util::sync::{
-        Mutex,
-        lock,
-    },
 };
 
 static CACHE: Lazy<Mutex<(Instant, TypeMap)>> = Lazy::new(|| Mutex::new((Instant::now(), TypeMap::default())));

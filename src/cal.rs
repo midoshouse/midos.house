@@ -34,6 +34,10 @@ use {
     },
     itertools::Itertools as _,
     lazy_regex::regex_captures,
+    log_lock::{
+        Mutex,
+        lock,
+    },
     once_cell::sync::Lazy,
     ootr_utils::spoiler::{
         HashIcon,
@@ -138,10 +142,6 @@ use {
             format_datetime,
             full_form,
             io_error_from_reqwest,
-            sync::{
-                Mutex,
-                lock,
-            },
         },
     },
 };

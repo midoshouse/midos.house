@@ -23,6 +23,10 @@ use {
     chrono::prelude::*,
     enum_iterator::all,
     itertools::Itertools as _,
+    log_lock::{
+        Mutex,
+        lock,
+    },
     rocket::{
         State,
         http::{
@@ -60,10 +64,6 @@ use {
         util::{
             Id,
             StatusOrError,
-            sync::{
-                Mutex,
-                lock,
-            },
         },
     },
 };

@@ -44,6 +44,13 @@ use {
         regex_captures,
         regex_is_match,
     },
+    log_lock::{
+        ArcRwLock,
+        Mutex,
+        OwnedRwLockWriteGuard,
+        RwLock,
+        lock,
+    },
     ootr_utils::{
         self as rando,
         spoiler::HashIcon,
@@ -156,13 +163,6 @@ use {
             MessageBuilderExt as _,
             io_error_from_reqwest,
             parse_duration,
-            sync::{
-                ArcRwLock,
-                Mutex,
-                OwnedRwLockWriteGuard,
-                RwLock,
-                lock,
-            },
         },
     },
 };
