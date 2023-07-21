@@ -48,6 +48,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 h2 : "See also";
                 ul {
                     li {
+                        a(href = "https://docs.google.com/document/d/1OBzytLL3YFNKpa2ly6U7UEh4irOmhnPHaGI8zGfSrsA/edit") : "Tournament format, rules, and settings";
+                    }
+                    li {
                         a(href = "https://docs.google.com/spreadsheets/d/1nz43jWsDrTgsnMzdLdXI13l9J6b8xHx9Ycpp8PAv9E8/edit?resourcekey#gid=148749353") : "Swiss pairings and results";
                     }
                 }
