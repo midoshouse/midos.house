@@ -334,7 +334,7 @@ pub(crate) struct Race {
     pub(crate) scheduling_thread: Option<ChannelId>,
     pub(crate) schedule: RaceSchedule,
     pub(crate) draft: Option<Draft>,
-    pub(crate) seed: Option<seed::Data>,
+    pub(crate) seed: seed::Data,
     pub(crate) video_urls: HashMap<Language, Url>,
     pub(crate) restreamers: HashMap<Language, String>,
     pub(crate) ignored: bool,
@@ -519,14 +519,14 @@ impl Race {
                 row.room.map(|room| room.parse()).transpose()?, row.async_room1.map(|room| room.parse()).transpose()?, row.async_room2.map(|room| room.parse()).transpose()?,
             ),
             draft: row.draft_state.map(|Json(draft)| draft),
-            seed: seed_files.map(|files| seed::Data {
+            seed: seed::Data {
                 file_hash: match (row.hash1, row.hash2, row.hash3, row.hash4, row.hash5) {
                     (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
                     (None, None, None, None, None) => None,
                     _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
                 },
-                files,
-            }),
+                files: seed_files,
+            },
             video_urls: {
                 let mut video_urls = HashMap::default();
                 if let Some(video_url_en) = row.video_url {
@@ -643,7 +643,7 @@ impl Race {
                                 room: None,
                             },
                             draft: None,
-                            seed: None,
+                            seed: seed::Data::default(),
                             video_urls: HashMap::default(),
                             restreamers: HashMap::default(),
                             ignored: false,
@@ -685,7 +685,7 @@ impl Race {
                     game: None,
                     scheduling_thread: None,
                     draft: None,
-                    seed: None, //TODO
+                    seed: seed::Data::default(), //TODO
                     video_urls: event.video_url.iter().map(|video_url| (English, video_url.clone())).collect(), //TODO sync between event and race? Video URL fields for other languages on event::Data?
                     restreamers: HashMap::default(),
                     ignored: false,
@@ -924,9 +924,9 @@ impl Race {
                 RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
                 RaceSchedule::Async { start1, start2, end1, end2, ref room1, ref room2 } => (None, start1, start2, None, end1, end2, None, room1.as_ref(), room2.as_ref()),
             };
-            let (web_id, web_gen_time, file_stem, locked_spoiler_log_path, tfb_uuid) = match self.seed.as_ref().map(|seed| &seed.files) {
-                Some(seed::Files::MidosHouse { file_stem, locked_spoiler_log_path }) => (None, None, Some(file_stem), locked_spoiler_log_path.as_ref(), None),
-                Some(seed::Files::OotrWeb { id, gen_time, file_stem }) => (Some(*id), Some(*gen_time), Some(file_stem), None, None),
+            let (web_id, web_gen_time, file_stem, locked_spoiler_log_path, tfb_uuid) = match self.seed.files {
+                Some(seed::Files::MidosHouse { ref file_stem, ref locked_spoiler_log_path }) => (None, None, Some(file_stem), locked_spoiler_log_path.as_ref(), None),
+                Some(seed::Files::OotrWeb { id, gen_time, ref file_stem }) => (Some(id), Some(gen_time), Some(file_stem), None, None),
                 Some(seed::Files::TriforceBlitz { uuid }) => (None, None, None, None, Some(uuid)),
                 Some(seed::Files::TfbSotd { .. }) => unimplemented!("Triforce Blitz seed of the day not supported for official races"),
                 None => (None, None, None, None, None),
@@ -998,11 +998,11 @@ impl Race {
                 web_id.map(|web_id| web_id as i64),
                 web_gen_time,
                 file_stem.map(|file_stem| &**file_stem),
-                self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[hash1, _, _, _, _]| hash1) as _,
-                self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, hash2, _, _, _]| hash2) as _,
-                self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, hash3, _, _]| hash3) as _,
-                self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, _, hash4, _]| hash4) as _,
-                self.seed.as_ref().and_then(|seed| seed.file_hash).map(|[_, _, _, _, hash5]| hash5) as _,
+                self.seed.file_hash.map(|[hash1, _, _, _, _]| hash1) as _,
+                self.seed.file_hash.map(|[_, hash2, _, _, _]| hash2) as _,
+                self.seed.file_hash.map(|[_, _, hash3, _, _]| hash3) as _,
+                self.seed.file_hash.map(|[_, _, _, hash4, _]| hash4) as _,
+                self.seed.file_hash.map(|[_, _, _, _, hash5]| hash5) as _,
                 self.game,
                 self.id as _,
                 p1,
@@ -1612,7 +1612,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                     scheduling_thread: None,
                     schedule: RaceSchedule::Unscheduled,
                     draft: draft.clone(),
-                    seed: None,
+                    seed: seed::Data::default(),
                     video_urls: HashMap::default(),
                     restreamers: HashMap::default(),
                     ignored: false,

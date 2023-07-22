@@ -1111,7 +1111,7 @@ pub(crate) async fn teams(pool: &State<PgPool>, env: &State<Environment>, me: Op
 pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     async fn race_table(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, env: Environment, http_client: &reqwest::Client, data: &Data<'_>, show_multistreams: bool, can_create: bool, can_edit: bool, show_restream_consent: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
         let has_games = races.iter().any(|race| race.game.is_some());
-        let has_seeds = races.iter().any(|race| race.seed.is_some());
+        let has_seeds = races.iter().any(|race| race.seed.file_hash.is_some() || race.seed.files.is_some());
         let has_buttons = can_create || can_edit;
         let now = Utc::now();
         Ok(html! {
@@ -1220,12 +1220,8 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
                                 }
                             }
                             @if has_seeds {
-                                @if let Some(ref seed) = race.seed {
-                                    //TODO hide seed if unfinished async
-                                    : seed::table_cells(now, seed, true, can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
-                                } else {
-                                    : seed::table_empty_cells(true);
-                                }
+                                //TODO hide seed if unfinished async
+                                : seed::table_cells(now, &race.seed, true, can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
                             }
                             @if show_restream_consent {
                                 td {

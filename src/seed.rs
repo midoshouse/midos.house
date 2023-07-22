@@ -120,11 +120,11 @@ impl HashIconExt for HashIcon {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) struct Data {
     pub(crate) file_hash: Option<[HashIcon; 5]>,
-    pub(crate) files: Files,
+    pub(crate) files: Option<Files>,
 }
 
 #[derive(Debug, Clone)]
@@ -158,14 +158,15 @@ impl Data {
 
         if_chain! {
             if self.file_hash.is_none() || match self.files {
-                Files::MidosHouse { .. } => true,
-                Files::OotrWeb { gen_time, .. } => gen_time <= now - chrono::Duration::days(90),
-                Files::TriforceBlitz { .. } => false,
-                Files::TfbSotd { .. } => false,
+                Some(Files::MidosHouse { .. }) => true,
+                Some(Files::OotrWeb { gen_time, .. }) => gen_time <= now - chrono::Duration::days(90),
+                Some(Files::TriforceBlitz { .. }) => false,
+                Some(Files::TfbSotd { .. }) => false,
+                None => false,
             };
             if let Some((spoiler_path, spoiler_file_name)) = match self.files {
-                Files::MidosHouse { locked_spoiler_log_path: Some(ref spoiler_path), .. } => Some((PathBuf::from(spoiler_path), None)),
-                Files::MidosHouse { locked_spoiler_log_path: None, ref file_stem } | Files::OotrWeb { ref file_stem, .. } => {
+                Some(Files::MidosHouse { locked_spoiler_log_path: Some(ref spoiler_path), .. }) => Some((PathBuf::from(spoiler_path), None)),
+                Some(Files::MidosHouse { locked_spoiler_log_path: None, ref file_stem } | Files::OotrWeb { ref file_stem, .. }) => {
                     let spoiler_file_name = format!("{file_stem}_Spoiler.json");
                     Some((Path::new(DIR).join(&spoiler_file_name).to_owned(), Some(spoiler_file_name)))
                 }
@@ -238,16 +239,6 @@ pub(crate) fn table_header_cells(spoiler_logs: bool) -> RawHtml<String> {
     }
 }
 
-pub(crate) fn table_empty_cells(spoiler_logs: bool) -> RawHtml<String> {
-    html! {
-        td;
-        td;
-        @if spoiler_logs {
-            td;
-        }
-    }
-}
-
 pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, add_hash_url: Option<rocket::http::uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
     let extra = seed.extra(now).await?;
     Ok(html! {
@@ -264,10 +255,10 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
         }
         // ootrandomizer.com seeds are deleted after 90 days
         @match seed.files {
-            Files::OotrWeb { id, gen_time, .. } if gen_time > now - chrono::Duration::days(90) => td(colspan? = spoiler_logs.then_some("2")) {
+            Some(Files::OotrWeb { id, gen_time, .. }) if gen_time > now - chrono::Duration::days(90) => td(colspan? = spoiler_logs.then_some("2")) {
                 a(href = format!("https://ootrandomizer.com/seed/get?id={id}")) : "View";
             }
-            Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem, .. } => {
+            Some(Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem, .. }) => {
                 td {
                     a(href = format!("/seed/{file_stem}.{}", if let Some(world_count) = extra.world_count {
                         if world_count.get() > 1 { "zpfz" } else { "zpf" }
@@ -287,11 +278,17 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
                     }
                 }
             }
-            Files::TriforceBlitz { uuid } => td(colspan? = spoiler_logs.then_some("2")) {
+            Some(Files::TriforceBlitz { uuid }) => td(colspan? = spoiler_logs.then_some("2")) {
                 a(href = format!("https://www.triforceblitz.com/seed/{uuid}")) : "View";
             }
-            Files::TfbSotd { ordinal, .. } => td(colspan? = spoiler_logs.then_some("2")) {
+            Some(Files::TfbSotd { ordinal, .. }) => td(colspan? = spoiler_logs.then_some("2")) {
                 a(href = format!("https://www.triforceblitz.com/seed/daily/{ordinal}")) : "View";
+            }
+            None => {
+                td;
+                @if spoiler_logs {
+                    td;
+                }
             }
         }
     })

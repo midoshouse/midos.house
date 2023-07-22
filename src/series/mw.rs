@@ -837,7 +837,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                         (None, None, None, None, None) => None,
                         _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
                     },
-                    files: match (async_row.tfb_uuid, async_row.web_id, async_row.web_gen_time, async_row.file_stem.as_ref()) {
+                    files: Some(match (async_row.tfb_uuid, async_row.web_id, async_row.web_gen_time, async_row.file_stem.as_ref()) {
                         (Some(uuid), _, _, _) => seed::Files::TriforceBlitz { uuid },
                         (None, Some(Id(id)), Some(gen_time), Some(file_stem)) => seed::Files::OotrWeb {
                             file_stem: Cow::Owned(file_stem.clone()),
@@ -845,7 +845,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                         },
                         (None, None, None, Some(file_stem)) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem.clone()), locked_spoiler_log_path: None },
                         _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
-                    },
+                    }),
                 };
                 let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
                 let ctx = ctx.take_submit_async();

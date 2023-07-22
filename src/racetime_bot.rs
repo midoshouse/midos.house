@@ -8,6 +8,7 @@ use {
         fmt,
         io::prelude::*,
         iter,
+        mem,
         path::{
             Path,
             PathBuf,
@@ -541,7 +542,7 @@ pub(crate) struct GlobalState {
     ootr_api_client: OotrApiClient,
     discord_ctx: RwFuture<DiscordCtx>,
     clean_shutdown: Arc<Mutex<CleanShutdown>>,
-    cached_mixed_pools_seed: Mutex<Option<seed::Data>>,
+    cached_mixed_pools_seed: Mutex<seed::Data>,
     seed_cache_tx: mpsc::Sender<()>,
 }
 
@@ -605,10 +606,10 @@ impl GlobalState {
                     Ok((id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
                             file_hash: Some(file_hash),
-                            files: seed::Files::OotrWeb {
+                            files: Some(seed::Files::OotrWeb {
                                 file_stem: Cow::Owned(file_stem),
                                 id, gen_time,
-                            },
+                            }),
                         },
                         rsl_preset: None,
                         send_spoiler_log: spoiler_log,
@@ -624,10 +625,10 @@ impl GlobalState {
                             Some((_, file_stem)) => SeedRollUpdate::Done {
                                 seed: seed::Data {
                                     file_hash: None,
-                                    files: seed::Files::MidosHouse {
+                                    files: Some(seed::Files::MidosHouse {
                                         file_stem: Cow::Owned(file_stem.to_owned()),
                                         locked_spoiler_log_path: Some(spoiler_log_path),
-                                    },
+                                    }),
                                 },
                                 rsl_preset: None,
                                 send_spoiler_log: spoiler_log,
@@ -757,11 +758,11 @@ impl GlobalState {
                     let _ = update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
                             file_hash: Some(file_hash),
-                            files: seed::Files::OotrWeb {
+                            files: Some(seed::Files::OotrWeb {
                                 id: seed_id,
                                 file_stem: Cow::Owned(file_stem),
                                 gen_time,
-                            },
+                            }),
                         },
                         rsl_preset: if let VersionedRslPreset::Xopar { preset, .. } = preset { Some(preset) } else { None },
                         send_spoiler_log: spoiler_log,
@@ -785,10 +786,10 @@ impl GlobalState {
                         Some((_, file_stem)) => SeedRollUpdate::Done {
                             seed: seed::Data {
                                 file_hash: None,
-                                files: seed::Files::MidosHouse {
+                                files: Some(seed::Files::MidosHouse {
                                     file_stem: Cow::Owned(file_stem.to_owned()),
                                     locked_spoiler_log_path: Some(spoiler_log_path.into_os_string().into_string()?),
-                                },
+                                }),
                             },
                             rsl_preset: if let VersionedRslPreset::Xopar { preset, .. } = preset { Some(preset) } else { None },
                             send_spoiler_log: spoiler_log,
@@ -843,7 +844,7 @@ impl GlobalState {
             let _ = update_tx.send(SeedRollUpdate::Done {
                 seed: seed::Data {
                     file_hash: Some(file_hash.try_into().map_err(|_| RollError::TfbHash)?),
-                    files: seed::Files::TriforceBlitz { uuid },
+                    files: Some(seed::Files::TriforceBlitz { uuid }),
                 },
                 rsl_preset: None,
                 send_spoiler_log: spoiler_log,
@@ -1018,7 +1019,7 @@ impl SeedRollUpdate {
                 format!("Rolling {article} {description}…")
             }).await?,
             Self::Done { mut seed, rsl_preset, send_spoiler_log } => {
-                if let seed::Files::MidosHouse { ref file_stem, ref mut locked_spoiler_log_path } = seed.files {
+                if let Some(seed::Files::MidosHouse { ref file_stem, ref mut locked_spoiler_log_path }) = seed.files {
                     if send_spoiler_log && locked_spoiler_log_path.is_some() {
                         fs::rename(locked_spoiler_log_path.as_ref().unwrap(), Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await.to_racetime()?;
                         *locked_spoiler_log_path = None;
@@ -1026,17 +1027,17 @@ impl SeedRollUpdate {
                 }
                 let extra = seed.extra(Utc::now()).await.to_racetime()?;
                 if let Some(race_id) = race_id {
-                    match seed.files {
-                        seed::Files::MidosHouse { ref file_stem, .. } => {
+                    match seed.files.as_ref().expect("received seed with no files") {
+                        seed::Files::MidosHouse { file_stem, .. } => {
                             sqlx::query!(
                                 "UPDATE races SET file_stem = $1 WHERE id = $2",
                                 file_stem, race_id as _,
                             ).execute(db_pool).await.to_racetime()?;
                         }
-                        seed::Files::OotrWeb { id, gen_time, ref file_stem } => {
+                        seed::Files::OotrWeb { id, gen_time, file_stem } => {
                             sqlx::query!(
                                 "UPDATE races SET web_id = $1, web_gen_time = $2, file_stem = $3 WHERE id = $4",
-                                id as i64, gen_time, file_stem, race_id as _,
+                                *id as i64, gen_time, file_stem, race_id as _,
                             ).execute(db_pool).await.to_racetime()?;
                         }
                         seed::Files::TriforceBlitz { uuid } => {
@@ -1053,17 +1054,17 @@ impl SeedRollUpdate {
                             hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, race_id as _,
                         ).execute(db_pool).await.to_racetime()?;
                         if let Some(preset) = rsl_preset {
-                            match seed.files {
-                                seed::Files::MidosHouse { ref file_stem, .. } => {
+                            match seed.files.as_ref().expect("received seed with no files") {
+                                seed::Files::MidosHouse { file_stem, .. } => {
                                     sqlx::query!(
                                         "INSERT INTO rsl_seeds (room, file_stem, preset, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                                         format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), &file_stem, preset as _, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
                                     ).execute(db_pool).await.to_racetime()?;
                                 }
-                                seed::Files::OotrWeb { id, gen_time, ref file_stem } => {
+                                seed::Files::OotrWeb { id, gen_time, file_stem } => {
                                     sqlx::query!(
                                         "INSERT INTO rsl_seeds (room, file_stem, preset, web_id, web_gen_time, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
-                                        format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), &file_stem, preset as _, id as i64, gen_time, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
+                                        format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), &file_stem, preset as _, *id as i64, gen_time, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
                                     ).execute(db_pool).await.to_racetime()?;
                                 }
                                 seed::Files::TriforceBlitz { .. } | seed::Files::TfbSotd { .. } => unreachable!(), // no such thing as random settings Triforce Blitz
@@ -1071,8 +1072,8 @@ impl SeedRollUpdate {
                         }
                     }
                 }
-                let seed_url = match seed.files {
-                    seed::Files::MidosHouse { ref file_stem, .. } => format!("https://midos.house/seed/{file_stem}"),
+                let seed_url = match seed.files.as_ref().expect("received seed with no files") {
+                    seed::Files::MidosHouse { file_stem, .. } => format!("https://midos.house/seed/{file_stem}"),
                     seed::Files::OotrWeb { id, .. } => format!("https://ootrandomizer.com/seed/get?id={id}"),
                     seed::Files::TriforceBlitz { uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
                     seed::Files::TfbSotd { ordinal, .. } => format!("https://www.triforceblitz.com/seed/daily/{ordinal}"),
@@ -1084,7 +1085,7 @@ impl SeedRollUpdate {
                 }).await?;
                 if send_spoiler_log {
                     ctx.send_message("The spoiler log is also available on the seed page.").await?;
-                } else if let seed::Files::TfbSotd { date, .. } = seed.files {
+                } else if let Some(seed::Files::TfbSotd { date, .. }) = seed.files {
                     if let Some(unlock_date) = date.succ_opt().and_then(|next| next.succ_opt()) {
                         let unlock_time = Utc.from_utc_datetime(&unlock_date.and_hms_opt(20, 0, 0).expect("failed to construct naive datetime at 20:00:00"));
                         let unlock_time = (unlock_time - Utc::now()).to_std().expect("unlock time for current daily seed in the past");
@@ -1599,7 +1600,7 @@ impl Handler {
 
         let mut state = lock!(@write self.race_state);
         match *state {
-            RaceState::Rolled(seed::Data { ref files, .. }) => if self.official_data.as_ref().map_or(true, |official_data| !official_data.cal_event.is_first_async_half()) {
+            RaceState::Rolled(seed::Data { files: Some(ref files), .. }) => if self.official_data.as_ref().map_or(true, |official_data| !official_data.cal_event.is_first_async_half()) {
                 match files {
                     seed::Files::MidosHouse { file_stem, locked_spoiler_log_path } => if let Some(locked_spoiler_log_path) = locked_spoiler_log_path {
                         fs::rename(locked_spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await.to_racetime()?;
@@ -1783,10 +1784,10 @@ impl RaceHandler<GlobalState> for Handler {
                     if let Some((_, file_stem)) = regex_captures!(r"^Seed: https://midos\.house/seed/(.+)(?:\.zpfz?)?$", section) {
                         race_state = RaceState::Rolled(seed::Data {
                             file_hash: None,
-                            files: seed::Files::MidosHouse {
+                            files: Some(seed::Files::MidosHouse {
                                 file_stem: Cow::Owned(file_stem.to_owned()),
                                 locked_spoiler_log_path: None,
-                            },
+                            }),
                         });
                         break
                     } else if let Some((_, seed_id)) = regex_captures!(r"^Seed: https://ootrandomizer\.com/seed/get?id=([0-9]+)$", section) {
@@ -1795,11 +1796,11 @@ impl RaceHandler<GlobalState> for Handler {
                         let (_, file_stem) = regex_captures!(r"^attachment; filename=(.+)\.zpfz?$", patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION).ok_or(RollError::PatchPath).to_racetime()?.to_str()?).ok_or(RollError::PatchPath).to_racetime()?;
                         race_state = RaceState::Rolled(seed::Data {
                             file_hash: None,
-                            files: seed::Files::OotrWeb {
+                            files: Some(seed::Files::OotrWeb {
                                 id: seed_id.parse().to_racetime()?,
                                 gen_time: Utc::now(),
                                 file_stem: Cow::Owned(file_stem.to_owned()),
-                            },
+                            }),
                         });
                         break
                     }
@@ -1853,7 +1854,7 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             }
             (
-                None,
+                seed::Data::default(),
                 None,
                 RaceState::default(),
                 format!("Team A"),
@@ -1928,8 +1929,8 @@ impl RaceHandler<GlobalState> for Handler {
                 ctx.send_message(&text).await?;
             }
             let state = lock!(@write @owned this.race_state.clone());
-            if let Some(seed) = existing_seed {
-                this.queue_existing_seed(ctx, state, seed, English, "a", format!("seed")).await;
+            if existing_seed.files.is_some() {
+                this.queue_existing_seed(ctx, state, existing_seed, English, "a", format!("seed")).await;
             } else {
                 match *state {
                     RaceState::Init => match goal {
@@ -2351,12 +2352,15 @@ impl RaceHandler<GlobalState> for Handler {
                     } else {
                         match goal {
                             Goal::CopaDoBrasil => self.roll_seed(ctx, state, goal.rando_version(), br::s1_settings(), false, English, "a", format!("seed")),
-                            Goal::MixedPoolsS2 => if let Some(seed) = lock!(ctx.global_state.cached_mixed_pools_seed).take() {
-                                let _ = ctx.global_state.seed_cache_tx.send(()).await;
-                                self.queue_existing_seed(ctx, state, seed, English, "a", format!("mixed pools seed")).await;
-                            } else {
-                                self.roll_seed(ctx, state, goal.rando_version(), mp::s2_settings(), spoiler_log, English, "a", format!("mixed pools seed"));
-                            },
+                            Goal::MixedPoolsS2 => {
+                                let cached_seed = mem::take(&mut *lock!(ctx.global_state.cached_mixed_pools_seed));
+                                if cached_seed.files.is_some() {
+                                    let _ = ctx.global_state.seed_cache_tx.send(()).await;
+                                    self.queue_existing_seed(ctx, state, cached_seed, English, "a", format!("mixed pools seed")).await;
+                                } else {
+                                    self.roll_seed(ctx, state, goal.rando_version(), mp::s2_settings(), spoiler_log, English, "a", format!("mixed pools seed"));
+                                }
+                            }
                             Goal::MultiworldS3 => {
                                 let settings = match args[..] {
                                     [] => {
@@ -2709,7 +2713,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     };
                                     self.queue_existing_seed(ctx, state, seed::Data {
                                         file_hash: Some(file_hash),
-                                        files: seed::Files::TfbSotd { date, ordinal },
+                                        files: Some(seed::Files::TfbSotd { date, ordinal }),
                                     }, English, "the", format!("Triforce Blitz seed of the day")).await;
                                 }
                                 [ref arg] if arg == "jr" => self.roll_tfb_seed(ctx, state, "LATEST", spoiler_log, English, "a", format!("Triforce Blitz: Jabu's Revenge seed")).await,
@@ -3338,7 +3342,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: mpsc::
                             SeedRollUpdate::WaitRateLimit(_) |
                             SeedRollUpdate::Started => {}
                             SeedRollUpdate::Done { seed, rsl_preset: _, send_spoiler_log: _ } => {
-                                *lock!(global_state.cached_mixed_pools_seed) = Some(seed);
+                                *lock!(global_state.cached_mixed_pools_seed) = seed;
                                 break 'seed
                             }
                             SeedRollUpdate::Error(RollError::Retries { num_retries, last_error }) => {
