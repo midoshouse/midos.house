@@ -3231,8 +3231,8 @@ dependencies = [
 
 [[package]]
 name = "rocket_csrf"
-version = "0.4.0-rc.1"
-source = "git+https://github.com/fenhl/rocket_csrf?branch=impl-error#69e152600b7faa4b5db03b9f4d50aa9c9cfe6146"
+version = "0.3.0"
+source = "git+https://github.com/fenhl/rocket_csrf?branch=impl-error#a05a54ac43cecaa283a438660fd864d9406f8375"
 dependencies = [
  "base64 0.13.1",
  "bcrypt",
