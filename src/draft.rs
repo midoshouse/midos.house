@@ -928,8 +928,8 @@ impl Draft {
                                     MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
                                     MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
                                         .mention_team(transaction, Some(*guild_id), team).await?
-                                        .push(" a verrouillé ")
-                                        .push(setting.default_display)
+                                        .push(" a banni ")
+                                        .push(setting.display)
                                         .push('.')
                                         .build(),
                                 })
@@ -988,8 +988,8 @@ impl Draft {
                                     MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
                                     MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
                                         .mention_team(transaction, Some(*guild_id), team).await?
-                                        .push(if is_default { " a verrouillé " } else { " a choisi " })
-                                        .push(option.display)
+                                        .push(if is_default { " a banni " } else { " a choisi " })
+                                        .push(if is_default { setting.display } else { option.display })
                                         .push('.')
                                         .build(),
                                 })
