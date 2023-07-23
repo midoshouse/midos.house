@@ -2657,7 +2657,10 @@ impl RaceHandler<GlobalState> for Handler {
                                         let mut tuples = args.into_iter().tuples();
                                         for (setting, value) in &mut tuples {
                                             if let Some(fr::S3Setting { default, other, .. }) = fr::S3_SETTINGS.into_iter().find(|fr::S3Setting { name, .. }| **name == setting) {
-                                                if value == default || other.iter().any(|(other, _, _)| value == **other) {
+                                                if setting == "dungeon-er" && value == "mixed" {
+                                                    settings.insert(Cow::Borrowed("dungeon-er"), Cow::Borrowed("on"));
+                                                    settings.insert(Cow::Borrowed("mixed-dungeons"), Cow::Borrowed("mixed"));
+                                                } else if value == default || other.iter().any(|(other, _, _)| value == **other) {
                                                     settings.insert(Cow::Owned(setting), Cow::Owned(value));
                                                 } else {
                                                     ctx.send_message(&format!("Désolé {reply_to}, je ne reconnais pas cette configuration pour {setting}. Utilisez {}", iter::once(default).chain(other.iter().map(|&(other, _, _)| other)).join(" or "))).await?;
