@@ -979,7 +979,8 @@ impl Draft {
                         },
                         StepKind::Pick { available_choices, skippable, .. } => if let Some(setting) = available_choices.get(&setting) {
                             if let Some(option) = setting.options.iter().find(|option| option.name == value) {
-                                if value != fr::S3_SETTINGS.into_iter().find(|&fr::S3Setting { name, .. }| setting.name == name).unwrap().default {
+                                let is_default = value == fr::S3_SETTINGS.into_iter().find(|&fr::S3Setting { name, .. }| setting.name == name).unwrap().default;
+                                if !is_default {
                                     self.settings.insert(Cow::Borrowed(self.active_team(kind).await?.unwrap().choose("high_seed_has_picked", "low_seed_has_picked")), Cow::Borrowed("yes"));
                                 }
                                 self.settings.insert(Cow::Borrowed(setting.name), Cow::Borrowed(option.name));
@@ -987,7 +988,7 @@ impl Draft {
                                     MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
                                     MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
                                         .mention_team(transaction, Some(*guild_id), team).await?
-                                        .push(" a choisi ")
+                                        .push(if is_default { " a verrouillé " } else { " a choisi " })
                                         .push(option.display)
                                         .push('.')
                                         .build(),
