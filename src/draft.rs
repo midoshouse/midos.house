@@ -404,7 +404,11 @@ impl Draft {
                             prev_bans @ 0..=1 => {
                                 let hard_settings_ok = self.settings.get("hard_settings_ok").map(|hard_settings_ok| &**hard_settings_ok).unwrap_or("no") == "ok";
                                 let (hard_settings, classic_settings) = fr::S3_SETTINGS.into_iter()
-                                    .filter(|&fr::S3Setting { name, .. }| !self.settings.contains_key(name))
+                                    .filter(|&fr::S3Setting { name, .. }| !self.settings.contains_key(name) && match name {
+                                        "keysy" => self.settings.get("keysanity").map_or(true, |keysanity| keysanity == "off"),
+                                        "keysanity" => self.settings.get("keysy").map_or(true, |keysy| keysy == "off"),
+                                        _ => true,
+                                    })
                                     .filter_map(|fr::S3Setting { name, display, default, default_display, other, description }| {
                                         let (is_hard, is_empty) = if hard_settings_ok {
                                             (other.iter().all(|&(_, hard, _)| hard), other.is_empty())
@@ -979,41 +983,14 @@ impl Draft {
                                     self.settings.insert(Cow::Borrowed(self.active_team(kind).await?.unwrap().choose("high_seed_has_picked", "low_seed_has_picked")), Cow::Borrowed("yes"));
                                 }
                                 self.settings.insert(Cow::Borrowed(setting.name), Cow::Borrowed(option.name));
-                                let mut msg = match msg_ctx {
-                                    MessageContext::None | MessageContext::RaceTime { .. } => None,
-                                    MessageContext::Discord { transaction, guild_id, team, .. } => {
-                                        let mut msg = MessageBuilder::default();
-                                        msg.mention_team(transaction, Some(*guild_id), team).await?;
-                                        msg.push(" a choisi ");
-                                        msg.push(option.display);
-                                        Some(msg)
-                                    }
-                                };
-                                match (setting.name, option.name) {
-                                    ("bridge", "meds") => {
-                                        let bridge_medallions = thread_rng().gen_range(4..=6);
-                                        self.settings.insert(Cow::Borrowed("bridge_medallions"), Cow::Owned(bridge_medallions.to_string()));
-                                        if let Some(ref mut msg) = msg {
-                                            msg.push(" (randomized to ");
-                                            msg.push(bridge_medallions.to_string());
-                                            msg.push(" medallions)");
-                                        }
-                                    }
-                                    ("bridge", "dungeons") => {
-                                        let bridge_rewards = thread_rng().gen_range(5..=9);
-                                        self.settings.insert(Cow::Borrowed("bridge_rewards"), Cow::Owned(bridge_rewards.to_string()));
-                                        if let Some(ref mut msg) = msg {
-                                            msg.push(" (randomized to ");
-                                            msg.push(bridge_rewards.to_string());
-                                            msg.push(" dungeons)");
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                                Ok(if let Some(mut msg) = msg {
-                                    msg.push('.').build()
-                                } else {
-                                    String::default()
+                                Ok(match msg_ctx {
+                                    MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
+                                    MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
+                                        .mention_team(transaction, Some(*guild_id), team).await?
+                                        .push(" a choisi ")
+                                        .push(option.display)
+                                        .push('.')
+                                        .build(),
                                 })
                             } else {
                                 Err(match msg_ctx {

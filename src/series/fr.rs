@@ -47,10 +47,10 @@ pub(crate) struct S3Setting {
     pub(crate) description: &'static str,
 }
 
-pub(crate) const S3_SETTINGS: [S3Setting; 27] = [
+pub(crate) const S3_SETTINGS: [S3Setting; 28] = [
     S3Setting { name: "weirdegg", display: "weird egg", default: "skip", default_display: "Skip Child Zelda", other: &[("shuffle", false, "shuffled weird egg")], description: "weirdegg: skip (défaut: Skip Child Zelda) ou shuffle" },
     S3Setting { name: "start", display: "starting items/spawns", default: "random", default_display: "random start", other: &[("vanilla", false, "vanilla start")], description: "start: random (défaut) ou vanilla (vanilla spawns, pas de consommables, pas de Deku Shield)" },
-    S3Setting { name: "smallkeys", display: "small keys", default: "dungeon", default_display: "own dungeon small keys", other: &[("keysy", false, "small keysy"), ("anywhere", true, "small keys anywhere"), ("keyrings", true, "keyrings anywhere")], description: "smallkeys: dungeon (défaut), keysy, anywhere (difficile) ou keyrings (difficile; anywhere)" },
+    S3Setting { name: "keysy", display: "keysy", default: "off", default_display: "dungeon small keys not removed", other: &[("on", false, "small keysy")], description: "keysy: off (défaut) ou on" },
     S3Setting { name: "camc", display: "CAMC", default: "on", default_display: "CAMC", other: &[("off", false, "no CAMC")], description: "camc: on (défaut) ou off" },
     S3Setting { name: "deku", display: "open Deku", default: "closed", default_display: "closed Deku", other: &[("open", false, "open Deku")], description: "deku: closed (défaut) ou open" },
     S3Setting { name: "card", display: "Gerudo card", default: "vanilla", default_display: "vanilla Gerudo card", other: &[("shuffle", false, "shuffled Gerudo card")], description: "card: vanilla (défaut) ou shuffle" },
@@ -69,9 +69,10 @@ pub(crate) const S3_SETTINGS: [S3Setting; 27] = [
     S3Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", false, "open fountain")], description: "fountain: closed (défaut) ou open" },
     S3Setting { name: "boss-er", display: "boss ER", default: "off", default_display: "no boss ER", other: &[("on", false, "boss ER")], description: "boss-er: off (défaut) ou on" },
     S3Setting { name: "1major", display: "1 major item per dungeon", default: "off", default_display: "no major items per dungeon restriction", other: &[("on", false, "1 major item per dungeon")], description: "1major: off (défaut) ou on" },
-    S3Setting { name: "bridge", display: "rainbow bridge", default: "default", default_display: "6 medallions bridge", other: &[("meds", false, "random medallions bridge"), ("stones", false, "3 stones bridge"), ("ad", false, "AD bridge"), ("vanilla", false, "vanilla bridge"), ("dungeons", false, "random dungeons bridge"), ("precompleted", false, "2 pre-completed dungeons")], description: "bridge: default (6 meds), meds (4–6 meds, GBK 6 meds), stones (3 stones, GBK 6 rewards), ad (9 rewards), vanilla (GBK 6 meds), dungeons (5–9 rewards), precompleted (9 rewards, 2 pre-completed dungeons, map/compass gives info)" },
+    S3Setting { name: "bridge", display: "rainbow bridge", default: "6meds", default_display: "6 medallions bridge", other: &[("4meds", false, "4 medallions bridge"), ("5meds", false, "5 medallions bridge"), ("stones", false, "3 stones bridge"), ("vanilla", false, "vanilla bridge"), ("5dungeons", false, "5 dungeons bridge"), ("6dungeons", false, "6 dungeons bridge"), ("7dungeons", false, "7 dungeons bridge"), ("8dungeons", false, "8 dungeons bridge"), ("9dungeons", false, "9 dungeons bridge"), ("precompleted", false, "2 pre-completed dungeons")], description: "bridge: <4–6>meds (GBK 6 meds, défaut: 6), stones (3 stones, GBK 6 rewards), vanilla (GBK 6 meds), <5–9>dungeons, precompleted (9 rewards, 2 pre-completed dungeons, map/compass gives info)" },
     S3Setting { name: "shortcuts", display: "shortcuts", default: "off", default_display: "no shortcuts", other: &[("random", true, "random shortcuts")], description: "shortcuts: off (défaut) ou on (difficile)" },
     S3Setting { name: "mixed-er", display: "mixed ER", default: "off", default_display: "no mixed ER", other: &[("on", true, "mixed ER")], description: "mixed-er: off (défaut) ou on (difficile: intérieurs et grottos mixés)" },
+    S3Setting { name: "keysanity", display: "keysanity", default: "off", default_display: "own dungeon small keys", other: &[("on", true, "small keys anywhere"), ("keyrings", true, "keyrings anywhere")], description: "keysanity: off (défaut), on (difficile) ou keyrings (difficile)" },
     S3Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("random", true, "random trials")], description: "trials: 0 (défaut) ou random (difficile)" },
     S3Setting { name: "itempool", display: "item pool", default: "balanced", default_display: "balanced item pool", other: &[("minimal", true, "minimal item pool"), ("scarce", true, "scarce item pool")], description: "itempool: balanced (défaut), minimal (difficile) ou scarce (difficile)" },
     S3Setting { name: "reachable", display: "reachable locations", default: "all", default_display: "all locations reachable", other: &[("required", true, "required only")], description: "reachable: all (défaut) ou required (difficile)" },
@@ -89,8 +90,6 @@ pub(crate) fn display_draft_picks(picks: &draft::Picks) -> String {
     }
     picks_display.extend(S3_SETTINGS.into_iter()
         .filter_map(|S3Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|&(value, _, display)| match (name, value) {
-            ("bridge", "meds") => Cow::Owned(format!("{} medallions bridge", picks.get("bridge_medallions").map(|bridge_medallions| &**bridge_medallions).unwrap_or("6"))),
-            ("bridge", "dungeons") => Cow::Owned(format!("{} dungeons bridge", picks.get("bridge_rewards").map(|bridge_rewards| &**bridge_rewards).unwrap_or("9"))),
             ("mixed-er", "on") => if picks.get("dungeon-er").map(|dungeon_er| &**dungeon_er).unwrap_or("off") == "off" {
                 Cow::Borrowed(display)
             } else if picks.get("mixed-dungeons").map(|mixed_dungeons| &**mixed_dungeons).unwrap_or("separate") == "mixed" {
@@ -107,7 +106,7 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
     // selected settings
     let weirdegg = picks.get("weirdegg").map(|weirdegg| &**weirdegg).unwrap_or("skip");
     let start = picks.get("start").map(|start| &**start).unwrap_or("random");
-    let smallkeys = picks.get("smallkeys").map(|smallkeys| &**smallkeys).unwrap_or("dungeon");
+    let keysy = picks.get("keysy").map(|keysy| &**keysy).unwrap_or("off");
     let camc = picks.get("camc").map(|camc| &**camc).unwrap_or("on");
     let deku = picks.get("deku").map(|deku| &**deku).unwrap_or("closed");
     let card = picks.get("card").map(|card| &**card).unwrap_or("vanilla");
@@ -126,18 +125,16 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
     let fountain = picks.get("fountain").map(|fountain| &**fountain).unwrap_or("closed");
     let boss_er = picks.get("boss-er").map(|boss_er| &**boss_er).unwrap_or("off");
     let one_major = picks.get("1major").map(|one_major| &**one_major).unwrap_or("off");
-    let bridge = picks.get("bridge").map(|bridge| &**bridge).unwrap_or("default");
+    let bridge = picks.get("bridge").map(|bridge| &**bridge).unwrap_or("6meds");
     let shortcuts = picks.get("shortcuts").map(|shortcuts| &**shortcuts).unwrap_or("off");
     let mixed_er = picks.get("mixed-er").map(|mixed_er| &**mixed_er).unwrap_or("off");
+    let keysanity = picks.get("keysanity").map(|keysanity| &**keysanity).unwrap_or("off");
     let trials = picks.get("trials").map(|trials| &**trials).unwrap_or("0");
     let itempool = picks.get("itempool").map(|itempool| &**itempool).unwrap_or("balanced");
     let reachable = picks.get("reachable").map(|reachable| &**reachable).unwrap_or("all");
     // special picks
     let mixed_dungeons = picks.get("mixed-dungeons").map(|mixed_dungeons| &**mixed_dungeons).unwrap_or("separate");
     let mq_dungeons_count = picks.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0");
-    // randomized settings
-    let bridge_medallions = picks.get("bridge_medallions").map(|bridge_medallions| &**bridge_medallions).unwrap_or("6");
-    let bridge_rewards = picks.get("bridge_rewards").map(|bridge_rewards| &**bridge_rewards).unwrap_or("9");
     // convert to settings JSON
     let mut starting_inventory = vec![
         "farores_wind",
@@ -164,43 +161,53 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
             _ => unreachable!(),
         },
         format!("bridge") => match bridge {
-            "default" | "meds" => json!("medallions"),
+            "4meds" | "5meds" | "6meds" => json!("medallions"),
             "stones" => json!("stones"),
-            "ad" | "dungeons" | "precompleted" => json!("dungeons"),
+            "5dungeons" | "6dungeons" | "7dungeons" | "8dungeons" | "9dungeons" | "precompleted" => json!("dungeons"),
             "vanilla" => json!("vanilla"),
             _ => unreachable!(),
         },
-        format!("bridge_medallions") => json!(bridge_medallions.parse::<u8>().unwrap()),
+        format!("bridge_medallions") => match bridge {
+            "4meds" => json!(4),
+            "5meds" => json!(5),
+            _ => json!(6),
+        },
         format!("bridge_rewards") => match bridge {
-            "default" | "meds" | "stones" | "ad" | "vanilla" | "precompleted" => json!(9),
-            "dungeons" => json!(bridge_rewards.parse::<u8>().unwrap()),
-            _ => unreachable!(),
+            "5dungeons" => json!(5),
+            "6dungeons" => json!(6),
+            "7dungeons" => json!(7),
+            "8dungeons" => json!(8),
+            _ => json!(9),
         },
         format!("trials_random") => json!(trials == "random"),
         format!("trials") => json!(0),
         format!("shuffle_ganon_bosskey") => match bridge {
-            "default" | "meds" | "vanilla" => json!("medallions"),
-            "stones" | "ad" | "dungeons" | "precompleted" => json!("dungeons"),
+            "4meds" | "5meds" | "6meds" | "vanilla" => json!("medallions"),
+            "stones" | "5dungeons" | "6dungeons" | "7dungeons" | "8dungeons" | "9dungeons" | "precompleted" => json!("dungeons"),
             _ => unreachable!(),
         },
         format!("ganon_bosskey_rewards") => match bridge {
-            "stones" => json!(6),
-            "default" | "meds" | "ad" | "vanilla" | "precompleted" => json!(9),
-            "dungeons" => json!(bridge_rewards.parse::<u8>().unwrap()),
-            _ => unreachable!(),
+            "5dungeons" => json!(5),
+            "stones" | "6dungeons" => json!(6),
+            "7dungeons" => json!(7),
+            "8dungeons" => json!(8),
+            _ => json!(9),
         },
         format!("shuffle_bosskeys") => if bosskeys == "anywhere" {
             json!("keysanity")
         } else {
             json!("dungeon")
         },
-        format!("shuffle_smallkeys") => match smallkeys {
-            "dungeon" => json!("dungeon"),
-            "keysy" => json!("remove"),
-            "anywhere" | "keyrings" => json!("keysanity"),
-            _ => unreachable!(),
+        format!("shuffle_smallkeys") => if keysy == "on" {
+            json!("remove")
+        } else {
+            match keysanity {
+                "off" => json!("dungeon"),
+                "on" | "keyrings" => json!("keysanity"),
+                _ => unreachable!(),
+            }
         },
-        format!("key_rings_choice") => if smallkeys == "keyrings" {
+        format!("key_rings_choice") => if keysanity == "keyrings" {
             json!("all")
         } else {
             json!("off")
