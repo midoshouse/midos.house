@@ -929,7 +929,7 @@ impl Draft {
                                     MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
                                         .mention_team(transaction, Some(*guild_id), team).await?
                                         .push(" a banni ")
-                                        .push(setting.display)
+                                        .push(if setting.name == "camc" { "no CAMC" } else { setting.display })
                                         .push('.')
                                         .build(),
                                 })
@@ -989,7 +989,7 @@ impl Draft {
                                     MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
                                         .mention_team(transaction, Some(*guild_id), team).await?
                                         .push(if is_default { " a banni " } else { " a choisi " })
-                                        .push(if is_default { setting.display } else { option.display })
+                                        .push(if is_default { if setting.name == "camc" { "no CAMC" } else { setting.display } } else { option.display })
                                         .push('.')
                                         .build(),
                                 })
