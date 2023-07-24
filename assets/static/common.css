@@ -42,6 +42,12 @@ a:hover,
     padding: 0;
 }
 
+.mw-logo {
+    width: 64px;
+    height: 64px;
+    padding: 0;
+}
+
 nav h1 {
     font-size: 32px;
     margin: auto 0;
