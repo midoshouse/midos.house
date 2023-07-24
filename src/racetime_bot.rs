@@ -1120,8 +1120,8 @@ impl SeedRollUpdate {
                 }).await?; //TODO for official races, explain that retrying is done using !seed
                 *lock!(@write state) = RaceState::Init;
             }
-            Self::Error(msg) => {
-                eprintln!("seed roll error: {msg:?}");
+            Self::Error(e) => {
+                eprintln!("seed roll error: {e} ({e:?})");
                 let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
                 ctx.send_message("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl.").await?;
             }
