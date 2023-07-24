@@ -207,6 +207,7 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
             for iter_team in race.teams() {
                 if iter_team.members(&mut transaction).await?.into_iter().any(|member| member.discord.map_or(false, |discord| discord.id == interaction.user_id())) {
                     team = Some(iter_team.clone());
+                    break
                 }
             }
             if let Some(ref team) = team {
@@ -582,7 +583,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(CreateCommand::new("post-status")
                     .kind(CommandType::ChatInput)
-                    .default_member_permissions(Permissions::ADMINISTRATOR)
                     .dm_permission(false)
                     .description("Posts this race's status to the thread, pinging the team whose turn it is in the settings draft.")
                 );
@@ -992,39 +992,51 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         } else if interaction.data.id == command_ids.post_status {
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
                                 let event = race.event(&mut transaction).await?;
-                                if let Some(draft_kind) = event.draft_kind() {
-                                    if let Some(ref draft) = race.draft {
-                                        let mut msg_ctx = draft::MessageContext::Discord {
-                                            teams: race.teams().cloned().collect(),
-                                            team: team.unwrap_or_else(|| Team {
-                                                name: None,
-                                                id: Id(0), // team unused in next_step
-                                                racetime_slug: None,
-                                                plural_name: None,
-                                                restream_consent: false,
-                                            }),
-                                            transaction, guild_id, command_ids,
-                                        };
-                                        let response_content = MessageBuilder::default()
-                                            //TODO include scheduling status, both for regular races and for asyncs
-                                            .push(draft.next_step(draft_kind, &mut msg_ctx).await?.message)
-                                            .build();
-                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                            .ephemeral(false)
-                                            .content(response_content)
-                                        )).await?;
-                                        msg_ctx.into_transaction().commit().await?;
+                                if event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
+                                    if let Some(draft_kind) = event.draft_kind() {
+                                        if let Some(ref draft) = race.draft {
+                                            let mut msg_ctx = draft::MessageContext::Discord {
+                                                teams: race.teams().cloned().collect(),
+                                                team: team.unwrap_or_else(|| Team {
+                                                    name: None,
+                                                    id: Id(0), // team unused in next_step
+                                                    racetime_slug: None,
+                                                    plural_name: None,
+                                                    restream_consent: false,
+                                                }),
+                                                transaction, guild_id, command_ids,
+                                            };
+                                            let response_content = MessageBuilder::default()
+                                                //TODO include scheduling status, both for regular races and for asyncs
+                                                .push(draft.next_step(draft_kind, &mut msg_ctx).await?.message)
+                                                .build();
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(false)
+                                                .content(response_content)
+                                            )).await?;
+                                            msg_ctx.into_transaction().commit().await?;
+                                        } else {
+                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                .ephemeral(true)
+                                                .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
+                                            )).await?;
+                                            transaction.rollback().await?;
+                                        }
                                     } else {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
-                                            .content("Sorry, this race's settings draft has not been initialized. Please contact a tournament organizer to fix this.")
+                                            .content("Sorry, this command is currently only available for events with settings drafts.") //TODO
                                         )).await?;
                                         transaction.rollback().await?;
                                     }
                                 } else {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
-                                        .content("Sorry, this command is currently only available for events with settings drafts.") //TODO
+                                        .content(if let French = event.language {
+                                            "Désolé, seuls les organisateurs du tournoi peuvent utiliser cette commande."
+                                        } else {
+                                            "Sorry, only organizers can use this command."
+                                        })
                                     )).await?;
                                     transaction.rollback().await?;
                                 }
