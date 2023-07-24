@@ -624,6 +624,10 @@ impl Race {
                 "2" => for row in sheet_values(http_client.clone(), "1nz43jWsDrTgsnMzdLdXI13l9J6b8xHx9Ycpp8PAv9E8", "Schedule!B2:F").await? {
                     if let [p1, p2, round, date_et, time_et] = &*row {
                         let id = Id::new(&mut *transaction, IdTable::Races).await?;
+                        let (phase, round) = match &**round {
+                            "Top 16" => (format!("Top 16"), format!("Round 1")),
+                            _ => (format!("Swiss"), round.clone()),
+                        };
                         add_or_update_race(&mut *transaction, &mut races, Self {
                             series: event.series,
                             event: event.event.to_string(),
@@ -633,8 +637,8 @@ impl Race {
                                 Entrant::Named(p1.clone()),
                                 Entrant::Named(p2.clone()),
                             ]),
-                            phase: Some(format!("Swiss")),
-                            round: Some(round.clone()),
+                            phase: Some(phase),
+                            round: Some(round),
                             game: None,
                             scheduling_thread: None,
                             schedule: RaceSchedule::Live {
