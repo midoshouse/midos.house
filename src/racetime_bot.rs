@@ -2663,7 +2663,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                 } else if value == default || other.iter().any(|(other, _, _)| value == **other) {
                                                     settings.insert(Cow::Owned(setting), Cow::Owned(value));
                                                 } else {
-                                                    ctx.send_message(&format!("Désolé {reply_to}, je ne reconnais pas cette configuration pour {setting}. Utilisez {}", iter::once(default).chain(other.iter().map(|&(other, _, _)| other)).join(" or "))).await?;
+                                                    ctx.send_message(&format!("Désolé {reply_to}, je ne reconnais pas cette configuration pour {setting}. Utilisez {}", iter::once(default).chain(other.iter().map(|&(other, _, _)| other)).join(" ou "))).await?;
                                                     return Ok(())
                                                 }
                                             } else {
