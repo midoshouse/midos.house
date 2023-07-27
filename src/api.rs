@@ -57,6 +57,7 @@ use {
         event::{
             self,
             TeamConfig,
+            teams,
         },
         racetime_bot,
         team,
@@ -199,7 +200,7 @@ struct Event(event::Data<'static>);
 #[Object] impl Event {
     /// All past, upcoming, and unscheduled races for this event, sorted chronologically.
     async fn races(&self, ctx: &Context<'_>) -> Result<Vec<Race>, cal::Error> {
-        Ok(cal::Race::for_event(db!(ctx), ctx.data_unchecked(), ctx.data_unchecked(), ctx.data_unchecked(), &self.0).await?.into_iter().map(Race).collect())
+        Ok(cal::Race::for_event(db!(ctx), ctx.data_unchecked(), *ctx.data_unchecked(), ctx.data_unchecked(), &self.0).await?.into_iter().map(Race).collect())
     }
 }
 
@@ -384,6 +385,7 @@ pub(crate) fn graphql_playground() -> RawHtml<String> {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum CsvError {
+    #[error(transparent)] Cal(#[from] cal::Error),
     #[error(transparent)] Csv(#[from] csv::Error),
     #[error(transparent)] Event(#[from] event::Error),
     #[error(transparent)] EventData(#[from] event::DataError),
@@ -400,42 +402,46 @@ impl<E: Into<CsvError>> From<E> for StatusOrError<CsvError> {
 }
 
 #[rocket::get("/api/v1/event/<series>/<event>/entrants.csv?<api_key>")]
-pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, series: event::Series, event: &str, api_key: &str) -> Result<(ContentType, Vec<u8>), StatusOrError<CsvError>> {
+pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, config: &State<Config>, series: event::Series, event: &str, api_key: &str) -> Result<(ContentType, Vec<u8>), StatusOrError<CsvError>> {
     let mut transaction = db_pool.begin().await?;
     let me = Scopes { entrants_read: true, ..Scopes::default() }.validate(&mut transaction, api_key).await?.ok_or(StatusOrError::Status(Status::Forbidden))?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if !event.organizers(&mut transaction).await?.contains(&me) && !event.restreamers(&mut transaction).await?.contains(&me) {
         return Err(StatusOrError::Status(Status::Forbidden))
     }
-    let show_qualifier_times = event.show_qualifier_times && event.is_started(&mut transaction).await?;
-    let signups = crate::event::teams::signups_sorted(&event, &mut transaction, None, show_qualifier_times).await?;
+    let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
+        show_times: event.show_qualifier_times && event.is_started(&mut transaction).await?,
+    };
+    let signups = teams::signups_sorted(&mut transaction, http_client, **env, config, None, &event, qualifier_kind).await?;
     let mut csv = csv::Writer::from_writer(Vec::default());
-    for (i, crate::event::teams::SignupsTeam { team, .. }) in signups.into_iter().enumerate() {
-        for member in team.members(&mut transaction).await? {
-            #[derive(Serialize)]
-            struct Row<'a> {
-                id: Id,
-                display_name: &'a str,
-                twitch_display_name: Option<String>,
-                discord_display_name: Option<&'a str>,
-                discord_discriminator: Option<Discriminator>,
-                racetime_id: Option<&'a str>,
-                qualifier_rank: usize,
-                restream_consent: bool,
-                discord_username: Option<&'a str>,
-            }
+    for (i, teams::SignupsTeam { team, .. }) in signups.into_iter().enumerate() {
+        if let Some(team) = team {
+            for member in team.members(&mut transaction).await? {
+                #[derive(Serialize)]
+                struct Row<'a> {
+                    id: Id,
+                    display_name: &'a str,
+                    twitch_display_name: Option<String>,
+                    discord_display_name: Option<&'a str>,
+                    discord_discriminator: Option<Discriminator>,
+                    racetime_id: Option<&'a str>,
+                    qualifier_rank: usize,
+                    restream_consent: bool,
+                    discord_username: Option<&'a str>,
+                }
 
-            csv.serialize(Row {
-                id: member.id,
-                display_name: member.display_name(),
-                twitch_display_name: member.racetime_user_data(**env, http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_display_name),
-                discord_display_name: member.discord.as_ref().map(|discord| &*discord.display_name),
-                discord_discriminator: member.discord.as_ref().and_then(|discord| discord.username_or_discriminator.as_ref().right()).copied(),
-                racetime_id: member.racetime.as_ref().map(|racetime| &*racetime.id),
-                qualifier_rank: i + 1,
-                restream_consent: team.restream_consent,
-                discord_username: member.discord.as_ref().and_then(|discord| discord.username_or_discriminator.as_ref().left()).map(|username| &**username),
-            })?;
+                csv.serialize(Row {
+                    id: member.id,
+                    display_name: member.display_name(),
+                    twitch_display_name: member.racetime_user_data(**env, http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_display_name),
+                    discord_display_name: member.discord.as_ref().map(|discord| &*discord.display_name),
+                    discord_discriminator: member.discord.as_ref().and_then(|discord| discord.username_or_discriminator.as_ref().right()).copied(),
+                    racetime_id: member.racetime.as_ref().map(|racetime| &*racetime.id),
+                    qualifier_rank: i + 1,
+                    restream_consent: team.restream_consent,
+                    discord_username: member.discord.as_ref().and_then(|discord| discord.username_or_discriminator.as_ref().left()).map(|username| &**username),
+                })?;
+            }
         }
     }
     Ok((ContentType::CSV, csv.into_inner()?))

@@ -2903,7 +2903,7 @@ impl RaceHandler<GlobalState> for Handler {
                         if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
                             match event.team_config() {
                                 TeamConfig::Solo => {
-                                    let mut times = data.entrants.iter().map(|entrant| (entrant.user.id.clone(), entrant.finish_time.map(|time| time.to_std().expect("negative finish time")))).collect_vec();
+                                    let mut times = data.entrants.iter().map(|entrant| (entrant.user.id.clone(), entrant.finish_time)).collect_vec();
                                     times.sort_by_key(|(_, time)| (time.is_none(), *time)); // sort DNF last
                                     if let [(ref winner, winning_time), (ref loser, losing_time)] = *times {
                                         if winning_time == losing_time {
@@ -3011,7 +3011,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     let mut team_times = HashMap::<_, Vec<_>>::default();
                                     for entrant in &data.entrants {
                                         if let Some(ref team) = entrant.team {
-                                            team_times.entry(&team.slug).or_default().push(entrant.finish_time.map(|time| time.to_std().expect("negative finish time")));
+                                            team_times.entry(&team.slug).or_default().push(entrant.finish_time);
                                         } else {
                                             unimplemented!("solo runner in team race")
                                         }

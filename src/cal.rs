@@ -559,7 +559,7 @@ impl Race {
         })
     }
 
-    pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: &Environment, config: &Config, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
+    pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
         async fn add_or_update_race(transaction: &mut Transaction<'_, Postgres>, races: &mut Vec<Race>, mut race: Race) -> sqlx::Result<()> {
             if let Some(found_race) = races.iter_mut().find(|iter_race|
                 iter_race.series == race.series
@@ -1295,7 +1295,7 @@ fn ics_datetime<Z: TimeZone>(datetime: DateTime<Z>) -> String {
     datetime.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string()
 }
 
-async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, http_client: &reqwest::Client, env: &Environment, config: &Config, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
+async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, http_client: &reqwest::Client, env: Environment, config: &Config, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
     for race in Race::for_event(transaction, http_client, env, config, event).await?.into_iter() {
         for race_event in race.cal_events() {
             if let Some(start) = race_event.start() {
@@ -1391,7 +1391,7 @@ pub(crate) async fn index(env: &State<Environment>, discord_ctx: &State<RwFuture
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for row in sqlx::query!(r#"SELECT series AS "series!: Series", event FROM events WHERE listed"#).fetch_all(&mut *transaction).await? {
         let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, env, config, &mut cal, &event).await?;
+        add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, **env, config, &mut cal, &event).await?;
     }
     transaction.commit().await?;
     Ok(Response(cal))
@@ -1403,7 +1403,7 @@ pub(crate) async fn for_series(env: &State<Environment>, discord_ctx: &State<RwF
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for event in sqlx::query_scalar!(r#"SELECT event FROM events WHERE listed AND series = $1"#, series as _).fetch_all(&mut *transaction).await? {
         let event = event::Data::new(&mut transaction, series, event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, env, config, &mut cal, &event).await?;
+        add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, **env, config, &mut cal, &event).await?;
     }
     transaction.commit().await?;
     Ok(Response(cal))
@@ -1414,7 +1414,7 @@ pub(crate) async fn for_event(env: &State<Environment>, discord_ctx: &State<RwFu
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
-    add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, env, config, &mut cal, &event).await?;
+    add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, **env, config, &mut cal, &event).await?;
     transaction.commit().await?;
     Ok(Response(cal))
 }
