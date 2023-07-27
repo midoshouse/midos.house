@@ -1342,7 +1342,7 @@ impl FromStr for Breaks {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (_, duration, interval) = regex_captures!("^(.+) every (.+)$", s).ok_or(())?;
+        let (_, duration, interval) = regex_captures!("^(.+?) ?e(?:very)? ?(.+?)$", s).ok_or(())?;
         Ok(Self {
             duration: parse_duration(duration, DurationUnit::Minutes).ok_or(())?,
             interval: parse_duration(interval, DurationUnit::Hours).ok_or(())?,
@@ -1407,12 +1407,8 @@ impl Handler {
 
     fn is_official(&self) -> bool { self.official_data.is_some() }
 
-    async fn goal(&self, ctx: &RaceContext<GlobalState>) -> Goal {
-        let goal_name = &ctx.data().await.goal.name;
-        match goal_name.parse::<Goal>() {
-            Ok(goal) => goal,
-            Err(GoalFromStrError) => panic!("running race handler for unknown goal {goal_name} (https://{}{}", ctx.global_state.host, ctx.data().await.url),
-        }
+    async fn goal(&self, ctx: &RaceContext<GlobalState>) -> Result<Goal, GoalFromStrError> {
+        ctx.data().await.goal.name.parse()
     }
 
     async fn can_monitor(&self, ctx: &RaceContext<GlobalState>, is_monitor: bool, msg: &ChatMessage) -> sqlx::Result<bool> {
@@ -1428,7 +1424,7 @@ impl Handler {
     }
 
     async fn send_settings(&self, ctx: &RaceContext<GlobalState>, preface: &str, reply_to: &str) -> Result<(), Error> {
-        let goal = self.goal(ctx).await;
+        let goal = self.goal(ctx).await.to_racetime()?;
         if let Some(draft_kind) = goal.draft_kind() {
             let available_settings = if let RaceState::Draft { state: ref draft, .. } = *lock!(@read self.race_state) {
                 match draft.next_step(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }).await.to_racetime()?.kind {
@@ -1463,7 +1459,7 @@ impl Handler {
     }
 
     async fn advance_draft(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
-        let goal = self.goal(ctx).await;
+        let goal = self.goal(ctx).await.to_racetime()?;
         let state = lock!(@write @owned self.race_state.clone());
         let Some(draft_kind) = goal.draft_kind() else { unreachable!() };
         let RaceState::Draft { state: ref draft, spoiler_log } = *state else { unreachable!() };
@@ -1482,7 +1478,7 @@ impl Handler {
     }
 
     async fn draft_action(&self, ctx: &RaceContext<GlobalState>, reply_to: &str, action: draft::Action) -> Result<(), Error> {
-        let goal = self.goal(ctx).await;
+        let goal = self.goal(ctx).await.to_racetime()?;
         if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
             let mut state = lock!(@write self.race_state);
             if let Some(draft_kind) = goal.draft_kind() {
@@ -1957,7 +1953,7 @@ impl RaceHandler<GlobalState> for Handler {
     }
 
     async fn command(&mut self, ctx: &RaceContext<GlobalState>, cmd_name: String, mut args: Vec<String>, _is_moderator: bool, is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
-        let goal = self.goal(ctx).await;
+        let goal = self.goal(ctx).await.to_racetime()?;
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match &*cmd_name.to_ascii_lowercase() {
             "ban" => match args[..] {
@@ -2779,7 +2775,7 @@ impl RaceHandler<GlobalState> for Handler {
 
     async fn race_data(&mut self, ctx: &RaceContext<GlobalState>, _old_race_data: RaceData) -> Result<(), Error> {
         let data = ctx.data().await;
-        let goal = self.goal(ctx).await;
+        let goal = self.goal(ctx).await.to_racetime()?;
         if let Some(OfficialRaceData { ref entrants, .. }) = self.official_data {
             for entrant in &data.entrants {
                 if entrant.status.value == EntrantStatusValue::Requested && entrants.contains(&entrant.user.id) {
