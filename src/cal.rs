@@ -626,6 +626,9 @@ impl Race {
                         let id = Id::new(&mut *transaction, IdTable::Races).await?;
                         let (phase, round) = match &**round {
                             "Top 16" => (format!("Top 16"), format!("Round 1")),
+                            "Quarterfinals" => (format!("Top 16"), format!("Quarterfinal")),
+                            "Semifinals" => (format!("Top 16"), format!("Semifinal")),
+                            "Finals" => (format!("Top 16"), format!("Final")),
                             _ => (format!("Swiss"), round.clone()),
                         };
                         add_or_update_race(&mut *transaction, &mut races, Self {
