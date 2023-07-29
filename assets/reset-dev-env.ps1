@@ -1,6 +1,5 @@
 function ThrowOnNativeFailure {
-    if (-not $?)
-    {
+    if (-not $?) {
         throw 'Native Failure'
     }
 }
@@ -20,10 +19,10 @@ ThrowOnNativeFailure
 ssh midos.house "sh -c 'sudo -u postgres pg_dump -s midos_house | sudo -u postgres psql fados_house'"
 ThrowOnNativeFailure
 
-ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, racetime_id, racetime_display_name, discord_id, discord_display_name, display_source, is_archivist) VALUES (-3874943390487736167, ''5BRGVMd30E368Lzv'', ''Fenhl'', 86841168427495424, ''Fenhl'', ''racetime'', TRUE);"'
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, racetime_id, racetime_display_name, discord_id, discord_display_name, discord_username, display_source, is_archivist) VALUES (-3874943390487736167, ''5BRGVMd30E368Lzv'', ''Fenhl'', 86841168427495424, ''Fenhl'', ''fenhl'', ''racetime'', TRUE);"'
 ThrowOnNativeFailure
 
-ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, discord_id, discord_display_name, display_source, is_archivist) VALUES (-683803002234927632, 187048694539878401, ''Xopar'', ''discord'', FALSE);"'
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, discord_id, discord_display_name, discord_username, display_source, is_archivist) VALUES (-683803002234927632, 187048694539878401, ''Xopar'', ''xopar'', ''discord'', FALSE);"'
 ThrowOnNativeFailure
 
 ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, racetime_id, racetime_display_name, display_source, is_archivist) VALUES (1, ''K517W0dv3EL82Jm6'', ''Captain Falcon'', ''racetime'', FALSE);"'
