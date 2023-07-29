@@ -65,6 +65,7 @@ use {
         },
         model::*,
     },
+    rand::prelude::*,
     reqwest::{
         IntoUrl,
         StatusCode,
@@ -571,6 +572,13 @@ impl GlobalState {
                     return Ok(())
                 }
             };
+            if let (true, Some(max_sleep_duration)) = (web_version.is_some(), delay_until.and_then(|delay_until| (delay_until - chrono::Duration::minutes(15) - Utc::now()).to_std().ok())) {
+                // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
+                // This is especially true for open races, whose rooms are opened an entire hour before start.
+                // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
+                let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
+                sleep(sleep_duration).await;
+            }
             let mw_permit = if web_version.is_some() && world_count > 1 {
                 Some(match self.ootr_api_client.mw_seed_rollers.try_acquire() {
                     Ok(permit) => permit,
@@ -719,6 +727,13 @@ impl GlobalState {
                     let plando_file = fs::read_to_string(&plando_path).await?;
                     let settings = serde_json::from_str::<Plando>(&plando_file)?.settings;
                     fs::remove_file(plando_path).await?;
+                    if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - chrono::Duration::minutes(15) - Utc::now()).to_std().ok()) {
+                        // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
+                        // This is especially true for open races, whose rooms are opened an entire hour before start.
+                        // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
+                        let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
+                        sleep(sleep_duration).await;
+                    }
                     let mw_permit = if world_count > 1 {
                         Some(match self.ootr_api_client.mw_seed_rollers.try_acquire() {
                             Ok(permit) => permit,
@@ -809,10 +824,17 @@ impl GlobalState {
         update_rx
     }
 
-    pub(crate) fn roll_tfb_seed(self: Arc<Self>, version: &'static str, room: String, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_tfb_seed(self: Arc<Self>, delay_until: Option<DateTime<Utc>>, version: &'static str, room: String, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
+            if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - chrono::Duration::minutes(15) - Utc::now()).to_std().ok()) {
+                // triforceblitz.com has a list of recently rolled seeds, making it easy to find a seed if you know when it was rolled.
+                // This is especially true for open races, whose rooms are opened an entire hour before start.
+                // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
+                let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
+                sleep(sleep_duration).await;
+            }
             let _ = update_tx.send(SeedRollUpdate::Started).await;
             let form_data = if spoiler_log {
                 vec![
@@ -1575,7 +1597,7 @@ impl Handler {
     async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: &'static str, spoiler_log: bool, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
-        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(version, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), spoiler_log), language, article, description);
+        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(delay_until, version, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), spoiler_log), language, article, description);
     }
 
     async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
