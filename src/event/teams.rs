@@ -174,6 +174,9 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 .json_with_text_in_error::<RaceData>().await?;
             if room_data.status.value != RaceStatusValue::Finished { continue }
             let mut entrants = room_data.entrants;
+            if race.id == Id(17171498007470059483) {
+                entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
+            }
             entrants.sort_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
             let par_cutoff = if entrants.len() < 20 { 3 } else { 4 };
             let par_time = entrants[0..par_cutoff].iter().map(|entrant| entrant.finish_time.expect("not enough finishers to calculate par")).sum::<Duration>() / par_cutoff as u32;
