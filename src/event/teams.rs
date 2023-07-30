@@ -58,6 +58,7 @@ use {
             page,
         },
         lang::Language::*,
+        series::*,
         team::Team,
         user::User,
         util::{
@@ -220,7 +221,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             })
             .collect()
     } else {
-        let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, restream_consent FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+        let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
             series = $1
             AND event = $2
             AND NOT resigned
@@ -250,7 +251,14 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 });
             }
             signups.push(SignupsTeam {
-                team: Some(Team { id: team.id, name: team.name, racetime_slug: team.racetime_slug, plural_name: team.plural_name, restream_consent: team.restream_consent }),
+                team: Some(Team {
+                    id: team.id,
+                    name: team.name,
+                    racetime_slug: team.racetime_slug,
+                    plural_name: team.plural_name,
+                    restream_consent: team.restream_consent,
+                    mw_impl: team.mw_impl,
+                }),
                 qualification: if let Some(pieces) = team.pieces {
                     Qualification::TriforceBlitz { qualified: team.qualified, pieces }
                 } else {

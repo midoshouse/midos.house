@@ -997,13 +997,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         if let Some(ref draft) = race.draft {
                                             let mut msg_ctx = draft::MessageContext::Discord {
                                                 teams: race.teams().cloned().collect(),
-                                                team: team.unwrap_or_else(|| Team {
-                                                    name: None,
-                                                    id: Id(0), // team unused in next_step
-                                                    racetime_slug: None,
-                                                    plural_name: None,
-                                                    restream_consent: false,
-                                                }),
+                                                team: team.unwrap_or_else(Team::dummy),
                                                 transaction, guild_id, command_ids,
                                             };
                                             let response_content = MessageBuilder::default()
@@ -1493,13 +1487,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     if let Some(ref draft) = race.draft {
                                         let mut msg_ctx = draft::MessageContext::Discord {
                                             teams: race.teams().cloned().collect(),
-                                            team: team.unwrap_or_else(|| Team {
-                                                name: None,
-                                                id: Id(0), // team unused in next_step
-                                                racetime_slug: None,
-                                                plural_name: None,
-                                                restream_consent: false,
-                                            }),
+                                            team: team.unwrap_or_else(Team::dummy),
                                             transaction, guild_id, command_ids,
                                         };
                                         let response_content = MessageBuilder::default()

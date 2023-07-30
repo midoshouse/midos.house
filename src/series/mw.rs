@@ -83,6 +83,14 @@ use {
     },
 };
 
+#[derive(Debug, Clone, Copy, sqlx::Type)]
+#[sqlx(type_name = "mw_impl", rename_all = "snake_case")]
+pub(crate) enum Impl {
+    #[sqlx(rename = "bizhawk_co_op")]
+    BizHawkCoOp,
+    MidosHouse,
+}
+
 pub(crate) struct S3Setting {
     pub(crate) name: &'static str,
     pub(crate) display: &'static str,

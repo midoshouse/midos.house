@@ -1066,13 +1066,14 @@ impl Ord for Race {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum EventKind {
     Normal,
     Async1,
     Async2,
 }
 
+#[derive(Clone)]
 pub(crate) struct Event {
     pub(crate) race: Race,
     pub(crate) kind: EventKind,

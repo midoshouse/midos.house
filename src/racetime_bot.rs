@@ -127,6 +127,7 @@ use {
             File,
         },
         traits::{
+            AsyncCommandOutputExt as _,
             IoResultExt as _,
             ReqwestResponseExt as _,
         },
@@ -1026,7 +1027,7 @@ pub(crate) enum SeedRollUpdate {
 }
 
 impl SeedRollUpdate {
-    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &ArcRwLock<RaceState>, race_id: Option<Id>, language: Language, article: &'static str, description: &str) -> Result<(), Error> {
+    async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &ArcRwLock<RaceState>, official_data: Option<&OfficialRaceData>, language: Language, article: &'static str, description: &str) -> Result<(), Error> {
         match self {
             Self::Queued(0) => ctx.send_message("I'm already rolling other multiworld seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
             Self::Queued(1) => ctx.send_message("I'm already rolling other multiworld seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
@@ -1048,24 +1049,24 @@ impl SeedRollUpdate {
                     }
                 }
                 let extra = seed.extra(Utc::now()).await.to_racetime()?;
-                if let Some(race_id) = race_id {
+                if let Some(OfficialRaceData { cal_event, .. }) = official_data {
                     match seed.files.as_ref().expect("received seed with no files") {
                         seed::Files::MidosHouse { file_stem, .. } => {
                             sqlx::query!(
                                 "UPDATE races SET file_stem = $1 WHERE id = $2",
-                                file_stem, race_id as _,
+                                file_stem, cal_event.race.id as _,
                             ).execute(db_pool).await.to_racetime()?;
                         }
                         seed::Files::OotrWeb { id, gen_time, file_stem } => {
                             sqlx::query!(
                                 "UPDATE races SET web_id = $1, web_gen_time = $2, file_stem = $3 WHERE id = $4",
-                                *id as i64, gen_time, file_stem, race_id as _,
+                                *id as i64, gen_time, file_stem, cal_event.race.id as _,
                             ).execute(db_pool).await.to_racetime()?;
                         }
                         seed::Files::TriforceBlitz { uuid } => {
                             sqlx::query!(
                                 "UPDATE races SET tfb_uuid = $1 WHERE id = $2",
-                                uuid, race_id as _,
+                                uuid, cal_event.race.id as _,
                             ).execute(db_pool).await.to_racetime()?;
                         }
                         seed::Files::TfbSotd { .. } => unimplemented!("Triforce Blitz seed of the day not supported for official races"),
@@ -1073,7 +1074,7 @@ impl SeedRollUpdate {
                     if let Some([hash1, hash2, hash3, hash4, hash5]) = extra.file_hash {
                         sqlx::query!(
                             "UPDATE races SET hash1 = $1, hash2 = $2, hash3 = $3, hash4 = $4, hash5 = $5 WHERE id = $6",
-                            hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, race_id as _,
+                            hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, cal_event.race.id as _,
                         ).execute(db_pool).await.to_racetime()?;
                         if let Some(preset) = rsl_preset {
                             match seed.files.as_ref().expect("received seed with no files") {
@@ -1127,6 +1128,75 @@ impl SeedRollUpdate {
                     if let Some(preset) = rsl_preset { format!("{}\n", preset.race_info()) } else { String::default() },
                     extra.file_hash.map(|file_hash| format!("{}\n", format_hash(file_hash))).unwrap_or_default(),
                 )).await?;
+                if let Some(official_data) = official_data {
+                    // send multiworld rooms
+                    let OfficialRaceData { cal_event, event, .. } = official_data;
+                    let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
+                    for team in cal_event.active_teams() {
+                        if let Some(mw::Impl::MidosHouse) = team.mw_impl {
+                            let members = team.members_roles(&mut transaction).await.to_racetime()?;
+                            let mut reply_to = String::default();
+                            for (member, role) in &members {
+                                if event.team_config().role_is_racing(*role) {
+                                    if let Some(ref racetime) = member.racetime {
+                                        if !reply_to.is_empty() {
+                                            reply_to.push_str(", ");
+                                        }
+                                        reply_to.push_str(&racetime.display_name);
+                                    } else {
+                                        reply_to = team.name.clone().unwrap_or_else(|| format!("(unnamed team)"));
+                                        break
+                                    }
+                                }
+                            }
+                            let mut mw_room_name = if let Ok(other_team) = cal_event.active_teams().filter(|iter_team| iter_team.id != team.id).exactly_one() {
+                                format!(
+                                    "{}vs. {}",
+                                    if let Some(game) = cal_event.race.game { format!("game {game} ") } else { String::default() },
+                                    other_team.name.as_deref().unwrap_or("unnamed team"),
+                                )
+                            } else {
+                                let mut mw_room_name = match (&cal_event.race.phase, &cal_event.race.round) {
+                                    (Some(phase), Some(round)) => format!("{phase} {round}"),
+                                    (Some(phase), None) => phase.clone(),
+                                    (None, Some(round)) => round.clone(),
+                                    (None, None) => event.display_name.clone(),
+                                };
+                                if let Some(game) = cal_event.race.game {
+                                    mw_room_name.push_str(&format!(", game {game}"));
+                                }
+                                mw_room_name
+                            };
+                            if mw_room_name.len() > 64 {
+                                // maximum room name length in database is 64
+                                let ellipsis = "[…]";
+                                let split_at = (0..=64 - ellipsis.len()).rev().find(|&idx| mw_room_name.is_char_boundary(idx)).unwrap_or(0);
+                                mw_room_name.truncate(split_at);
+                                mw_room_name.push_str(ellipsis);
+                            }
+                            if let Some([hash1, hash2, hash3, hash4, hash5]) = extra.file_hash {
+                                let mut cmd = Command::new("/home/fenhl/bin/ootrmwd");
+                                cmd.arg("create-tournament-room");
+                                cmd.arg(&mw_room_name);
+                                cmd.arg(hash1.to_string());
+                                cmd.arg(hash2.to_string());
+                                cmd.arg(hash3.to_string());
+                                cmd.arg(hash4.to_string());
+                                cmd.arg(hash5.to_string());
+                                for (member, role) in members {
+                                    if event.team_config().role_is_racing(role) {
+                                        cmd.arg(member.id.to_string());
+                                    }
+                                }
+                                cmd.check("ootrmwd create-tournament-room").await.to_racetime()?;
+                                ctx.send_message(&format!("{reply_to}, your Mido's House Multiworld room named “{mw_room_name}” is now open. You can find it at the top of the room list.")).await?;
+                            } else {
+                                ctx.send_message(&format!("Sorry {reply_to}, there was an error creating your Mido's House Multiworld room. Please create one manually.")).await?;
+                            }
+                        }
+                    }
+                    transaction.commit().await.to_racetime()?;
+                }
                 *lock!(@write state) = RaceState::Rolled(seed);
             }
             Self::Error(RollError::Retries { num_retries, last_error }) => {
@@ -1385,6 +1455,7 @@ enum RaceState {
     SpoilerSent,
 }
 
+#[derive(Clone)]
 struct OfficialRaceData {
     cal_event: cal::Event,
     event: event::Data<'static>,
@@ -1393,7 +1464,7 @@ struct OfficialRaceData {
     fpa_invoked: bool,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct RestreamState {
     language: Option<Language>,
     restreamer_racetime_id: Option<String>,
@@ -1542,7 +1613,7 @@ impl Handler {
         let db_pool = ctx.global_state.db_pool.clone();
         let ctx = ctx.clone();
         let state = self.race_state.clone();
-        let id = self.official_data.as_ref().map(|official_data| official_data.cal_event.race.id);
+        let official_data = self.official_data.clone();
         tokio::spawn(async move {
             let mut seed_state = None::<SeedRollUpdate>;
             if let Some(delay) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
@@ -1564,10 +1635,10 @@ impl Handler {
                     select! {
                         () = &mut sleep => {
                             if let Some(update) = seed_state.take() {
-                                update.handle(&db_pool, &ctx, &state, id, language, article, &description).await?;
+                                update.handle(&db_pool, &ctx, &state, official_data.as_ref(), language, article, &description).await?;
                             }
                             while let Some(update) = updates.recv().await {
-                                update.handle(&db_pool, &ctx, &state, id, language, article, &description).await?;
+                                update.handle(&db_pool, &ctx, &state, official_data.as_ref(), language, article, &description).await?;
                             }
                         }
                         Some(update) = updates.recv() => seed_state = Some(update),
@@ -1575,7 +1646,7 @@ impl Handler {
                 }
             } else {
                 while let Some(update) = updates.recv().await {
-                    update.handle(&db_pool, &ctx, &state, id, language, article, &description).await?;
+                    update.handle(&db_pool, &ctx, &state, official_data.as_ref(), language, article, &description).await?;
                 }
             }
             Ok::<_, Error>(())
@@ -3179,8 +3250,8 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                 } else {
                     let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
                         (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
-                        (Some(phase), None) => Some(phase.to_owned()),
-                        (None, Some(round)) => Some(round.to_owned()),
+                        (Some(phase), None) => Some(phase.clone()),
+                        (None, Some(round)) => Some(round.clone()),
                         (None, None) => None,
                     };
                     let mut info_user = match cal_event.race.entrants {
@@ -3293,8 +3364,8 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                 } else {
                     let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
                         (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
-                        (Some(phase), None) => Some(phase.to_owned()),
-                        (None, Some(round)) => Some(round.to_owned()),
+                        (Some(phase), None) => Some(phase.clone()),
+                        (None, Some(round)) => Some(round.clone()),
                         (None, None) => None,
                     };
                     let mut msg = MessageBuilder::default();
