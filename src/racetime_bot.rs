@@ -1775,27 +1775,29 @@ impl RaceHandler<GlobalState> for Handler {
                 restreamer_racetime_id: cal_event.race.restreamers.get(&language).cloned(),
                 ready: false,
             })).collect();
-            let fpa_enabled = if let RaceStatusValue::Invitational = data.status.value {
-                ctx.send_message(if let French = goal.language() {
-                    "Le FPA est activé pour cette race. Les joueurs pourront utiliser !fpa pendant la race pour signaler d'un problème technique de leur côté. Les race monitors doivent activer les notifications en cliquant sur l'icône de cloche 🔔 sous le chat."
-                } else {
-                    "Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat."
-                }).await?; //TODO different message for monitorless FPA?
-                if event.series == Series::SpeedGaming && event.event == "2023onl" {
-                    let delay_until = cal_event.start().expect("handling room for official race without start time") - chrono::Duration::minutes(20);
-                    if let Ok(delay) = (delay_until - Utc::now()).to_std() {
-                        let ctx = ctx.clone();
-                        tokio::spawn(async move {
-                            sleep_until(Instant::now() + delay).await;
-                            ctx.send_message("@entrants Remember to go live with a 15 minute (900 second) delay!").await.expect("failed to send stream delay notice");
-                            sleep(Duration::from_secs(15 * 60)).await;
-                            ctx.set_invitational().await.expect("failed to make the room invitational");
-                        });
-                    }
+            if event.series == Series::SpeedGaming && event.event == "2023onl" {
+                let delay_until = cal_event.start().expect("handling room for official race without start time") - chrono::Duration::minutes(20);
+                if let Ok(delay) = (delay_until - Utc::now()).to_std() {
+                    let ctx = ctx.clone();
+                    tokio::spawn(async move {
+                        sleep_until(Instant::now() + delay).await;
+                        ctx.send_message("@entrants Remember to go live with a 15 minute (900 second) delay!").await.expect("failed to send stream delay notice");
+                        sleep(Duration::from_secs(15 * 60)).await;
+                        ctx.set_invitational().await.expect("failed to make the room invitational");
+                    });
                 }
-                true
-            } else {
-                false
+            }
+            let fpa_enabled = match data.status.value {
+                RaceStatusValue::Invitational => {
+                    ctx.send_message(if let French = goal.language() {
+                        "Le FPA est activé pour cette race. Les joueurs pourront utiliser !fpa pendant la race pour signaler d'un problème technique de leur côté. Les race monitors doivent activer les notifications en cliquant sur l'icône de cloche 🔔 sous le chat."
+                    } else {
+                        "Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat."
+                    }).await?; //TODO different message for monitorless FPA?
+                    true
+                }
+                RaceStatusValue::Open => false,
+                _ => data.entrants.len() < 10, // guess based on entrant count, assuming an open race for 10 or more
             };
             (
                 cal_event.race.seed.clone(),
