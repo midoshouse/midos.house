@@ -511,7 +511,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                 }
                             }
                             @match (qualifier_kind, qualification) {
-                                (QualifierKind::None, _) => {}
+                                (QualifierKind::None, _) | (QualifierKind::Single { show_times: true }, Qualification::Single { .. }) => {}
                                 (QualifierKind::Single { show_times: false }, Qualification::Single { qualified } | Qualification::TriforceBlitz { qualified, .. }) => td {
                                     @if qualified {
                                         : "✓";
