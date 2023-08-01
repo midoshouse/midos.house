@@ -3474,7 +3474,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
     loop {
         select! {
             () = &mut shutdown => break,
-            _ = sleep(Duration::from_secs(60)) => { //TODO exact timing (coordinate with everything that can change the schedule)
+            _ = sleep(Duration::from_secs(30)) => { //TODO exact timing (coordinate with everything that can change the schedule)
                 let new_room_lock = lock!(global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
                 let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
                 let rooms_to_open = cal::Event::rooms_to_open(&mut transaction, &global_state.http_client, &global_state.startgg_token).await.to_racetime()?;

@@ -175,6 +175,7 @@ impl GenericInteraction for ComponentInteraction {
     }
 }
 
+//TODO refactor (MH admins should have permissions, room already being open should not remove permissions but only remove the team from return)
 async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: &impl GenericInteraction, game: Option<i16>) -> Result<Option<(Transaction<'a, Postgres>, Race, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
     let (mut transaction, http_client, startgg_token) = {
         let data = ctx.data.read().await;
