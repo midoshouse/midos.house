@@ -32,6 +32,7 @@ use {
             URL,
         },
     },
+    if_chain::if_chain,
     itertools::Itertools as _,
     lazy_regex::regex_captures,
     log_lock::{
@@ -796,7 +797,16 @@ impl Race {
                     }
                 },
                 Entrant::Named(_) => return Ok(None),
-                Entrant::Discord(_) => return Ok(None), //TODO if this Discord account is associated with a Mido's House account, check racetime.gg for a Twitch username
+                Entrant::Discord(user_id) => if_chain! {
+                    if let Some(user) = User::from_discord(&mut **transaction, *user_id).await?;
+                    if let Some(racetime_user_data) = user.racetime_user_data(env, http_client).await?;
+                    if let Some(twitch_name) = racetime_user_data.twitch_name;
+                    then {
+                        channels.push(Cow::Owned(twitch_name));
+                    } else {
+                        return Ok(None)
+                    }
+                },
                 Entrant::NamedWithTwitch(_, twitch_name) | Entrant::DiscordTwitch(_, twitch_name) => channels.push(Cow::Borrowed(&**twitch_name)),
             }
             Ok(Some(channels))
