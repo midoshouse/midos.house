@@ -31,6 +31,7 @@ pub(crate) use self::{
     form::{
         EmptyForm,
         form_field,
+        form_table_cell,
         full_form,
     },
     id::{

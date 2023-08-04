@@ -140,6 +140,7 @@ use {
             StatusOrError,
             as_variant,
             form_field,
+            form_table_cell,
             format_datetime,
             full_form,
             io_error_from_reqwest,
@@ -1689,35 +1690,47 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                     });
                 }
             }
-            @for language in all::<Language>() {
-                @let field_name = format!("video_urls.{}", language.short_code());
-                : form_field(&field_name, &mut errors, html! {
-                    label(for = &field_name) {
-                        : language;
-                        : " restream URL:";
+            table {
+                thead {
+                    tr {
+                        th;
+                        th {
+                            : "Restream URL";
+                            br;
+                            small(style = "font-weight: normal;") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
+                        }
+                        th {
+                            : "Restreamer";
+                            br;
+                            small(style = "font-weight: normal;") : "racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID. Enter “me” to assign yourself.";
+                        }
                     }
-                    input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {
-                        ctx.field_value(&*field_name).map(|room| room.to_string())
-                    } else {
-                        race.video_urls.get(&language).map(|video_url| video_url.to_string())
-                    });
-                    label(class = "help") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
-                });
-                @let field_name = format!("restreamers.{}", language.short_code());
-                : form_field(&field_name, &mut errors, html! {
-                    label(for = &field_name) {
-                        : language;
-                        : " restreamer:";
+                }
+                tbody {
+                    @for language in all::<Language>() {
+                        tr {
+                            th : language;
+                            @let field_name = format!("video_urls.{}", language.short_code());
+                            : form_table_cell(&field_name, &mut errors, html! {
+                                input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {
+                                    ctx.field_value(&*field_name).map(|room| room.to_string())
+                                } else {
+                                    race.video_urls.get(&language).map(|video_url| video_url.to_string())
+                                });
+                            });
+                            @let field_name = format!("restreamers.{}", language.short_code());
+                            : form_table_cell(&field_name, &mut errors, html! {
+                                input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {
+                                    ctx.field_value(&*field_name)
+                                } else if me.as_ref().and_then(|me| me.racetime.as_ref()).map_or(false, |racetime| race.restreamers.get(&language).map_or(false, |restreamer| *restreamer == racetime.id)) {
+                                    Some("me")
+                                } else {
+                                    race.restreamers.get(&language).map(|restreamer| restreamer.as_str()) //TODO display as racetime.gg profile URL
+                                });
+                            });
+                        }
                     }
-                    input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {
-                        ctx.field_value(&*field_name)
-                    } else if me.as_ref().and_then(|me| me.racetime.as_ref()).map_or(false, |racetime| race.restreamers.get(&language).map_or(false, |restreamer| *restreamer == racetime.id)) {
-                        Some("me")
-                    } else {
-                        race.restreamers.get(&language).map(|restreamer| restreamer.as_str()) //TODO display as racetime.gg profile URL
-                    });
-                    label(class = "help") : "(racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID. Enter “me” to assign yourself.)";
-                });
+                }
             }
         }, errors, "Save")
     } else {

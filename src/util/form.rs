@@ -40,6 +40,19 @@ pub(crate) fn form_field(name: &str, errors: &mut Vec<&form::Error<'_>>, content
     }
 }
 
+pub(crate) fn form_table_cell(name: &str, errors: &mut Vec<&form::Error<'_>>, content: impl ToHtml) -> RawHtml<String> {
+    let field_errors;
+    (field_errors, *errors) = mem::take(errors).into_iter().partition(|error| error.is_for(name));
+    html! {
+        td {
+            @for error in field_errors {
+                : render_form_error(error);
+            }
+            : content;
+        }
+    }
+}
+
 pub(crate) fn full_form(uri: Origin<'_>, csrf: Option<&CsrfToken>, content: impl ToHtml, errors: Vec<&form::Error<'_>>, submit_text: &str) -> RawHtml<String> {
     html! {
         form(action = uri.to_string(), method = "post") {

@@ -214,6 +214,11 @@ table td {
     padding: 4px;
 }
 
+td > input[type="text"] {
+    box-sizing: border-box;
+    width: 100%;
+}
+
 .sheikah {
     color: #6000c0;
 }
