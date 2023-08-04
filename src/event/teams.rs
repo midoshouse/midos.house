@@ -216,7 +216,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     }
                     Qualification::Multiple {
                         num_qualifiers,
-                        score: scores.into_iter().sum::<R64>() / r64(num_qualifiers.max(3) as f64),
+                        score: scores.iter().copied().sum::<R64>() / r64(scores.len().max(3) as f64),
                     }
                 },
                 hard_settings_ok: false,
