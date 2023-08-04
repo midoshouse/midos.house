@@ -1593,7 +1593,12 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
             };
             let [team1, team2] = [team1, team2].map(|team| team.expect("validated"));
             let draft = match event.draft_kind() {
-                Some(draft::Kind::MultiworldS3) => unimplemented!(), //TODO
+                Some(draft::Kind::MultiworldS3) => Some(Draft {
+                    high_seed: team1.id,
+                    went_first: None,
+                    skipped_bans: 0,
+                    settings: HashMap::default(),
+                }),
                 Some(draft::Kind::TournoiFrancoS3) => {
                     let high_seed = *[team1.id, team2.id].choose(&mut thread_rng()).unwrap();
                     Some(Draft {
