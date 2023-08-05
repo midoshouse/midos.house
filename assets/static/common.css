@@ -491,3 +491,29 @@ footer,
         filter: invert(1);
     }
 }
+
+@media (pointer: coarse) {
+    .favicon-container > .favicon {
+        background-color: white;
+        border: 1px solid black;
+        border-radius: 8px;
+        padding: 8px;
+    }
+
+    .favicon-container > .favicon:hover {
+        background-color: black;
+        color: white;
+    }
+}
+
+@media (pointer: coarse) and (prefers-color-scheme: dark) {
+    .favicon-container > .favicon {
+        background-color: black;
+        border-color: white;
+    }
+
+    .favicon-container > .favicon:hover {
+        background-color: white;
+        color: black;
+    }
+}
