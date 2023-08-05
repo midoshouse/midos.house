@@ -16,18 +16,22 @@ use {
         ToHtml,
         html,
     },
+    serde::Deserialize,
     self::Language::*,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Sequence, sqlx::Type, FromFormField)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Sequence, Deserialize, sqlx::Type, FromFormField)]
 #[sqlx(type_name = "language")]
 pub(crate) enum Language {
+    #[serde(rename = "en")]
     #[sqlx(rename = "en")]
     #[field(value = "en")]
     English,
+    #[serde(rename = "fr")]
     #[sqlx(rename = "fr")]
     #[field(value = "fr")]
     French,
+    #[serde(rename = "pt")]
     #[sqlx(rename = "pt")]
     #[field(value = "pt")]
     Portuguese,

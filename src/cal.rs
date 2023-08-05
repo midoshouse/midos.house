@@ -129,6 +129,7 @@ use {
         },
         racetime_bot,
         seed,
+        series::*,
         startgg,
         team::Team,
         user::User,
@@ -708,7 +709,30 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::SpeedGaming => match &*event.event {
-                "2023onl" | "2023live" => {} //TODO sync with SGL restream schedule website, automate Challonge match source
+                "2023onl" => {
+                    let restreams = sgl::restreams(http_client).await?;
+                    for race in &mut races {
+                        if race.phase.as_ref().map_or(false, |phase| phase == "Qualifier") {
+                            for restream in &restreams {
+                                if !restream.match1.iter()
+                                    .chain(&restream.match2)
+                                    .flat_map(|restream_match| regex_captures!("^Qualifier #([0-9]+)$", &restream_match.title))
+                                    .any(|(_, iter_round)| race.round.as_ref().map_or(false, |round| round == iter_round))
+                                { continue }
+                                for channel in &restream.channels {
+                                    if let hash_map::Entry::Vacant(entry) = race.video_urls.entry(channel.language) {
+                                        entry.insert(Url::parse(&format!("https://twitch.tv/{}", channel.slug))?);
+                                    }
+                                    //TODO register restreamer, if any
+                                }
+                            }
+                        } else {
+                            //TODO add restreams for bracket races as well
+                        }
+                    }
+                    //TODO automate Challonge match source
+                }
+                "2023live" => {} //TODO integrate with SG and Challonge
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {
