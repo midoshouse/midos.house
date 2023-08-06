@@ -219,6 +219,15 @@ struct Race(cal::Race);
         }
     }
 
+    /// The race room URL. Null if no room has been opened yet or if this race is asynced.
+    async fn room(&self) -> Option<&str> {
+        if let RaceSchedule::Live { ref room, .. } = self.0.schedule {
+            room.as_ref().map(|url| url.as_str())
+        } else {
+            None
+        }
+    }
+
     /// A categorization of races within the event, e.g. “Swiss”, “Challenge Cup”, “Live Qualifier”, “Top 8”, “Groups”, or “Bracket”. Combine with round, entrants, and game for a human-readable description of the race.
     /// Null if this event only has one phase or for the main phase of the event (e.g. Standard top 64 as opposed to Challenge Cup).
     async fn phase(&self) -> Option<&str> { self.0.phase.as_deref() }
@@ -227,7 +236,7 @@ struct Race(cal::Race);
     /// Null if this phase only has one match or if all matches in this phase are equivalent (e.g. a leaderboard phase).
     async fn round(&self) -> Option<&str> { self.0.round.as_deref() }
 
-    /// If this race is part of a best-of-N-races match, the ordinal of the race within the match. Null for best-of-1 matches.
+    /// If this race is part of a best-of-N-races match, the ordinal of the race within the match, counting from 1. Null for best-of-1 matches.
     async fn game(&self) -> Option<i16> { self.0.game }
 
     /// All teams participating in this race. For solo events, these will be single-member teams.
