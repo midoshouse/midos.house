@@ -424,6 +424,42 @@ impl Race {
         } else {
             (None, None, row.phase, row.round, None)
         };
+        let mut video_urls = HashMap::default();
+        if let Some(video_url_en) = row.video_url {
+            video_urls.insert(English, video_url_en.parse()?);
+        }
+        if let Some(video_url_fr) = row.video_url_fr {
+            video_urls.insert(French, video_url_fr.parse()?);
+        }
+        if let Some(video_url_pt) = row.video_url_pt {
+            video_urls.insert(Portuguese, video_url_pt.parse()?);
+        }
+        if row.series == Series::SpeedGaming && row.event == "2023onl" {
+            let restreams = sgl::restreams(http_client).await?;
+            if phase.as_ref().map_or(false, |phase| phase == "Qualifier") {
+                for restream in &restreams {
+                    if !restream.match1.iter()
+                        .chain(&restream.match2)
+                        .flat_map(|restream_match| regex_captures!("^Qualifier #([0-9]+)$", &restream_match.title))
+                        .any(|(_, iter_round)| round.as_ref().map_or(false, |round| round == iter_round))
+                    { continue }
+                    for channel in &restream.channels {
+                        if let hash_map::Entry::Vacant(entry) = video_urls.entry(channel.language) {
+                            let video_url = Url::parse(&format!("https://twitch.tv/{}", channel.slug))?;
+                            match channel.language {
+                                English => { sqlx::query!("UPDATE races SET video_url = $1 WHERE id = $2", video_url.as_str(), id as _).execute(&mut **transaction).await?; }
+                                French => { sqlx::query!("UPDATE races SET video_url_fr = $1 WHERE id = $2", video_url.as_str(), id as _).execute(&mut **transaction).await?; }
+                                Portuguese => { sqlx::query!("UPDATE races SET video_url_pt = $1 WHERE id = $2", video_url.as_str(), id as _).execute(&mut **transaction).await?; }
+                            }
+                            entry.insert(video_url);
+                        }
+                        //TODO register restreamer, if any
+                    }
+                }
+            } else {
+                //TODO add restreams for bracket races as well
+            }
+        }
         let entrants = {
             let p1 = if let Some(team1) = row.team1 {
                 Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?))
@@ -530,19 +566,6 @@ impl Race {
                 },
                 files: seed_files,
             },
-            video_urls: {
-                let mut video_urls = HashMap::default();
-                if let Some(video_url_en) = row.video_url {
-                    video_urls.insert(English, video_url_en.parse()?);
-                }
-                if let Some(video_url_fr) = row.video_url_fr {
-                    video_urls.insert(French, video_url_fr.parse()?);
-                }
-                if let Some(video_url_pt) = row.video_url_pt {
-                    video_urls.insert(Portuguese, video_url_pt.parse()?);
-                }
-                video_urls
-            },
             restreamers: {
                 let mut restreamers = HashMap::default();
                 if let Some(restreamer_en) = row.restreamer {
@@ -558,7 +581,7 @@ impl Race {
             },
             ignored: row.ignored,
             schedule_locked: row.schedule_locked,
-            id, startgg_event, startgg_set, entrants, phase, round,
+            id, startgg_event, startgg_set, entrants, phase, round, video_urls,
         })
     }
 
@@ -709,29 +732,7 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::SpeedGaming => match &*event.event {
-                "2023onl" => {
-                    let restreams = sgl::restreams(http_client).await?;
-                    for race in &mut races {
-                        if race.phase.as_ref().map_or(false, |phase| phase == "Qualifier") {
-                            for restream in &restreams {
-                                if !restream.match1.iter()
-                                    .chain(&restream.match2)
-                                    .flat_map(|restream_match| regex_captures!("^Qualifier #([0-9]+)$", &restream_match.title))
-                                    .any(|(_, iter_round)| race.round.as_ref().map_or(false, |round| round == iter_round))
-                                { continue }
-                                for channel in &restream.channels {
-                                    if let hash_map::Entry::Vacant(entry) = race.video_urls.entry(channel.language) {
-                                        entry.insert(Url::parse(&format!("https://twitch.tv/{}", channel.slug))?);
-                                    }
-                                    //TODO register restreamer, if any
-                                }
-                            }
-                        } else {
-                            //TODO add restreams for bracket races as well
-                        }
-                    }
-                    //TODO automate Challonge match source
-                }
+                "2023onl" => {} //TODO automate Challonge match source
                 "2023live" => {} //TODO integrate with SG and Challonge
                 _ => unimplemented!(),
             },
