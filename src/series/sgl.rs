@@ -56,7 +56,7 @@ pub(crate) type Response = Vec<Restream>;
 pub(crate) async fn restreams(http_client: &reqwest::Client) -> wheel::Result<Response> {
     let (ref mut next_request, ref mut cache) = *lock!(CACHE);
     if *next_request <= Instant::now() {
-        *cache = http_client.get("https://speedgaming.org/api/schedule?event=sgl23ootr")
+        *cache = http_client.get("https://speedgaming.org/api/schedule?event=sgl23ootr&from=2023-07-29T14:00:00Z")
             .send().await?
             .detailed_error_for_status().await?
             .json_with_text_in_error().await?;
