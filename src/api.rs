@@ -78,13 +78,15 @@ macro_rules! db {
 #[derive(Default, PartialEq, Eq)]
 struct Scopes {
     entrants_read: bool,
+    user_search: bool,
 }
 
 impl Scopes {
     async fn validate(&self, transaction: &mut Transaction<'_, Postgres>, api_key: &str) -> sqlx::Result<Option<user::User>> {
-        let Some(row) = sqlx::query!(r#"SELECT user_id AS "user_id: Id", entrants_read FROM api_keys WHERE key = $1"#, api_key).fetch_optional(&mut **transaction).await? else { return Ok(None) };
-        if (Self { entrants_read: row.entrants_read }) >= *self {
-            user::User::from_id(&mut **transaction, row.user_id).await
+        let Some(key_scope) = sqlx::query_as!(Self, "SELECT entrants_read, user_search FROM api_keys WHERE key = $1", api_key).fetch_optional(&mut **transaction).await? else { return Ok(None) };
+        if key_scope >= *self {
+            let user_id = sqlx::query_scalar!(r#"SELECT user_id AS "user_id: Id" FROM api_keys WHERE key = $1"#, api_key).fetch_one(&mut **transaction).await?;
+            user::User::from_id(&mut **transaction, user_id).await
         } else {
             Ok(None)
         }
@@ -95,12 +97,24 @@ impl PartialOrd for Scopes {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         let mut any_less = false;
         let mut any_greater = false;
-        let Self { entrants_read } = *self;
-        match (entrants_read, other.entrants_read) {
-            (false, false) | (true, true) => {}
-            (false, true) => any_less = true,
-            (true, false) => any_greater = true,
+
+        macro_rules! compare_fields {
+            ($($field:ident,)+) => {
+                let Self { $($field),+ } = *self;
+                $(
+                    match ($field, other.$field) {
+                        (false, false) | (true, true) => {}
+                        (false, true) => any_less = true,
+                        (true, false) => any_greater = true,
+                    }
+                )+
+            };
         }
+
+        compare_fields![
+            entrants_read,
+            user_search,
+        ];
         match (any_less, any_greater) {
             (false, false) => Some(Equal),
             (false, true) => Some(Greater),
@@ -174,6 +188,12 @@ type MidosHouseSchema = Schema<Query, EmptyMutation, EmptySubscription>;
 
 pub(crate) struct Query;
 
+#[derive(Debug, thiserror::Error)]
+enum UserFromDiscordError {
+    #[error(transparent)] DiscordUserIdParse(#[from] serenity::all::UserIdParseError),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+}
+
 #[Object] impl Query {
     /// Custom racetime.gg goals in the OoTR category handled by Mido instead of RandoBot.
     async fn goal_names(&self) -> Vec<&'static str> {
@@ -183,6 +203,20 @@ pub(crate) struct Query;
     /// Returns a series (group of events) by its URL part.
     async fn series(&self, name: String) -> Option<Series> {
         name.parse().ok().map(Series)
+    }
+
+    /// Returns the Mido's House user connected to the given racetime.gg user ID, if any.
+    /// Requires an API key with `user_search` scope.
+    #[graphql(guard = "Scopes { user_search: true, ..Scopes::default() }")]
+    async fn user_from_racetime(&self, ctx: &Context<'_>, id: GqlId) -> sqlx::Result<Option<User>> {
+        Ok(user::User::from_racetime(&mut **db!(ctx), id.as_str()).await?.map(User))
+    }
+
+    /// Returns the Mido's House user connected to the given Discord user snowflake ID, if any.
+    /// Requires an API key with `user_search` scope.
+    #[graphql(guard = "Scopes { user_search: true, ..Scopes::default() }")]
+    async fn user_from_discord(&self, ctx: &Context<'_>, id: GqlId) -> Result<Option<User>, UserFromDiscordError> {
+        Ok(user::User::from_discord(&mut **db!(ctx), id.parse()?).await?.map(User))
     }
 }
 
@@ -301,6 +335,17 @@ struct User(user::User);
 
     /// The user's Mido's House display name.
     async fn display_name(&self) -> &str { self.0.display_name() }
+
+
+    /// Returns the user's connected racetime.gg user ID, if any.
+    async fn racetime_id(&self) -> Option<&str> {
+        self.0.racetime.as_ref().map(|racetime| &*racetime.id)
+    }
+
+    /// Returns the user's connected Discord user snowflake ID, if any.
+    async fn discord_id(&self) -> Option<ID> {
+        self.0.discord.as_ref().map(|discord| discord.id.into())
+    }
 }
 
 pub(crate) fn schema(db_pool: PgPool) -> MidosHouseSchema {
@@ -338,9 +383,16 @@ impl<'r> FromRequest<'r> for ApiKey {
             request::Outcome::Failure((status, ())) => return request::Outcome::Failure((status, ApiKeyFromRequestError::DbPool)),
         };
         match req.headers().get("X-API-Key").at_most_one() {
-            Ok(Some(api_key)) => match sqlx::query!(r#"SELECT user_id AS "user_id: Id", entrants_read FROM api_keys WHERE key = $1"#, api_key).fetch_optional(&**db_pool).await {
+            Ok(Some(api_key)) => match sqlx::query!(r#"SELECT
+                entrants_read,
+                user_search,
+                user_id AS "user_id: Id"
+            FROM api_keys WHERE key = $1"#, api_key).fetch_optional(&**db_pool).await {
                 Ok(Some(row)) => request::Outcome::Success(Self {
-                    scopes: Scopes { entrants_read: row.entrants_read },
+                    scopes: Scopes {
+                        entrants_read: row.entrants_read,
+                        user_search: row.user_search,
+                    },
                     user: match user::User::from_id(&**db_pool, row.user_id).await {
                         Ok(user) => user.expect("database constraint validated: API keys belong to existing users"),
                         Err(e) => return request::Outcome::Failure((Status::InternalServerError, ApiKeyFromRequestError::Sql(e))),
