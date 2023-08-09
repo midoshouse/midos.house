@@ -386,13 +386,15 @@ pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>,
                 return Err(StatusOrError::Status(Status::NotFound))
             };
             let spoiler_filename = format!("{file_stem}_Spoiler.json");
-            let (spoiler_status, hash, chests) = if let Ok(spoiler) = fs::read_json::<SpoilerLog>(Path::new(DIR).join(&spoiler_filename)).await {
-                (SpoilerStatus::Unlocked(spoiler_filename), Some(spoiler.file_hash), ChestAppearances::from(spoiler))
-            } else if let Some(Some(locked_spoiler_log_path)) = sqlx::query_scalar!("SELECT locked_spoiler_log_path FROM races WHERE file_stem = $1", file_stem).fetch_optional(&mut *transaction).await? {
-                let spoiler = fs::read_json::<SpoilerLog>(locked_spoiler_log_path).await?;
-                (SpoilerStatus::Locked, Some(spoiler.file_hash), ChestAppearances::random()) // keeping chests random for locked spoilers to avoid leaking seed info
-            } else {
-                (SpoilerStatus::NotFound, None, ChestAppearances::random())
+            let (spoiler_status, hash, chests) = match fs::read_json::<SpoilerLog>(Path::new(DIR).join(&spoiler_filename)).await {
+                Ok(spoiler) => (SpoilerStatus::Unlocked(spoiler_filename), Some(spoiler.file_hash), ChestAppearances::from(spoiler)),
+                Err(wheel::Error::Io { inner, .. }) if inner.kind() == io::ErrorKind::NotFound => if let Some(Some(locked_spoiler_log_path)) = sqlx::query_scalar!("SELECT locked_spoiler_log_path FROM races WHERE file_stem = $1", file_stem).fetch_optional(&mut *transaction).await? {
+                    let spoiler = fs::read_json::<SpoilerLog>(locked_spoiler_log_path).await?;
+                    (SpoilerStatus::Locked, Some(spoiler.file_hash), ChestAppearances::random()) // keeping chests random for locked spoilers to avoid leaking seed info
+                } else {
+                    (SpoilerStatus::NotFound, None, ChestAppearances::random())
+                },
+                Err(e) => return Err(e.into()),
             };
             GetResponse::Page(page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, chests, ..PageStyle::default() }, "Seed — Mido's House", html! {
                 @if let Some(hash) = hash {
