@@ -207,14 +207,14 @@ enum UserFromDiscordError {
 
     /// Returns the Mido's House user connected to the given racetime.gg user ID, if any.
     /// Requires an API key with `user_search` scope.
-    #[graphql(guard = "Scopes { user_search: true, ..Scopes::default() }")]
+    #[graphql(guard = Scopes { user_search: true, ..Scopes::default() })]
     async fn user_from_racetime(&self, ctx: &Context<'_>, id: GqlId) -> sqlx::Result<Option<User>> {
         Ok(user::User::from_racetime(&mut **db!(ctx), id.as_str()).await?.map(User))
     }
 
     /// Returns the Mido's House user connected to the given Discord user snowflake ID, if any.
     /// Requires an API key with `user_search` scope.
-    #[graphql(guard = "Scopes { user_search: true, ..Scopes::default() }")]
+    #[graphql(guard = Scopes { user_search: true, ..Scopes::default() })]
     async fn user_from_discord(&self, ctx: &Context<'_>, id: GqlId) -> Result<Option<User>, UserFromDiscordError> {
         Ok(user::User::from_discord(&mut **db!(ctx), id.parse()?).await?.map(User))
     }
@@ -283,7 +283,7 @@ struct Race(cal::Race);
     /// Whether all teams in this race have consented to be restreamed.
     /// Null if the race is open (not invitational) or if the event does not use Mido's House to manage entrants.
     /// Requires permission to view restream consent and an API key with `entrants_read` scope.
-    #[graphql(guard = "Scopes { entrants_read: true, ..Scopes::default() }.and(ShowRestreamConsent(&self.0))")]
+    #[graphql(guard = Scopes { entrants_read: true, ..Scopes::default() }.and(ShowRestreamConsent(&self.0)))]
     async fn restream_consent(&self) -> Option<bool> {
         self.0.teams_opt().map(|mut teams| teams.all(|team| team.restream_consent))
     }
