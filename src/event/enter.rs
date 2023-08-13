@@ -5,6 +5,7 @@ use {
     },
     chrono::prelude::*,
     futures::future::Future,
+    if_chain::if_chain,
     itertools::Itertools as _,
     lazy_regex::Regex,
     rocket::{
@@ -51,6 +52,8 @@ use {
     crate::{
         Environment,
         auth,
+        cal::Race,
+        config::Config,
         event::{
             Data,
             DataError,
@@ -59,6 +62,7 @@ use {
             SignupStatus,
             Tab,
             TeamConfig,
+            teams,
         },
         http::{
             PageError,
@@ -148,6 +152,8 @@ enum Requirement {
     #[serde(rename_all = "camelCase")]
     QualifierPlacement {
         num_players: usize,
+        #[serde(default)]
+        min_races: usize,
     },
     /// A signup requirement that cannot be checked automatically
     External {
@@ -176,7 +182,7 @@ impl Requirement {
         }
     }
 
-    async fn is_checked(&self, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>) -> Result<Option<bool>, Error> {
+    async fn is_checked(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>) -> Result<Option<bool>, Error> {
         Ok(match self {
             Self::RaceTime => Some(me.map_or(false, |me| me.racetime.is_some())),
             Self::Discord => Some(me.map_or(false, |me| me.discord.is_some())),
@@ -193,15 +199,32 @@ impl Requirement {
             Self::Rules { .. } => Some(false),
             Self::RestreamConsent => Some(false),
             Self::Qualifier { .. } => Some(false),
-            Self::QualifierPlacement { .. } => Some(false), //TODO
+            Self::QualifierPlacement { num_players, min_races } => Some(if_chain! {
+                // All qualifiers must be completed to ensure the qualifier placements are final.
+                //TODO This could be relaxed by calculating whether the player has secured a spot ahead of time.
+                if Race::for_event(&mut *transaction, http_client, env, config, data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.schedule.is_ended());
+                if let Some(me) = me;
+                let teams = teams::signups_sorted(transaction, http_client, env, config, Some(me), data, teams::QualifierKind::Multiple).await?;
+                if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| match member.user {
+                    teams::MemberUser::MidosHouse(ref user) => user == me,
+                    teams::MemberUser::RaceTime { ref id, .. } => me.racetime.as_ref().map_or(false, |racetime| racetime.id == *id),
+                }));
+                if let teams::Qualification::Multiple { num_qualifiers, .. } = team.qualification;
+                then {
+                    placement < *num_players //TODO adjust for opt-outs
+                    && num_qualifiers >= *min_races
+                } else {
+                    false
+                }
+            }),
             Self::External { .. } => None,
         })
     }
 
-    async fn check_get(&self, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>, redirect_uri: rocket::http::uri::Origin<'_>) -> Result<RequirementStatus, Error> {
+    async fn check_get(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>, redirect_uri: rocket::http::uri::Origin<'_>) -> Result<RequirementStatus, Error> {
         Ok(match self {
             Self::RaceTime => {
-                let is_checked = self.is_checked(discord_ctx, me, data).await?.unwrap();
+                let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
                 let mut html_content = html! {
                     : "Connect a racetime.gg account to your Mido's House account";
                 };
@@ -217,7 +240,7 @@ impl Requirement {
                 }
             }
             Self::Discord => {
-                let is_checked = self.is_checked(discord_ctx, me, data).await?.unwrap();
+                let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
                 let mut html_content = html! {
                     : "Connect a Discord account to your Mido's House account";
                 };
@@ -234,7 +257,7 @@ impl Requirement {
             }
             Self::DiscordGuild { name } => {
                 let name = name.clone();
-                let is_checked = self.is_checked(discord_ctx, me, data).await?.unwrap();
+                let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
                 RequirementStatus {
                     blocks_submit: !is_checked,
                     html_content: Box::new(move |_| html! {
@@ -245,7 +268,7 @@ impl Requirement {
                 }
             }
             Self::Challonge => {
-                let is_checked = self.is_checked(discord_ctx, me, data).await?.unwrap();
+                let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
                 let mut html_content = html! {
                     : "Connect a Challonge account to your Mido's House account";
                 };
@@ -349,10 +372,17 @@ impl Requirement {
                     }),
                 }
             }
-            &Self::QualifierPlacement { num_players } => RequirementStatus {
+            &Self::QualifierPlacement { num_players, min_races } => RequirementStatus {
                 blocks_submit: true, //TODO
                 html_content: Box::new(move |_| html! {
-                    : "Place in the top ";
+                    @if min_races == 0 {
+                        : "Place";
+                    } else {
+                        : "Enter at least ";
+                        : min_races;
+                        : " qualifier races and place";
+                    }
+                    : " in the top ";
                     : num_players.to_string();
                     : " of qualifier scores.";
                     br;
@@ -373,7 +403,7 @@ impl Requirement {
         })
     }
 
-    async fn check_form(&self, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
+    async fn check_form(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
         match self {
             Self::TextField { regex, regex_error_messages, fallback_error_message, .. } => if !regex.is_match(&value.text_field) {
                 let error_message = if let Some((_, error_message)) = regex_error_messages.iter().find(|(regex, _)| regex.is_match(&value.text_field)) {
@@ -400,7 +430,7 @@ impl Requirement {
                 }
             }
             Self::External { .. } => form_ctx.push_error(form::Error::validation("Please complete event entry via the external method.")),
-            _ => if !self.is_checked(discord_ctx, Some(me), data).await?.unwrap_or(false) {
+            _ => if !self.is_checked(transaction, http_client, env, config, discord_ctx, Some(me), data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation(match self {
                     Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.", //TODO direct link?
                     Self::Discord => "A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.", //TODO direct link?
@@ -417,6 +447,7 @@ impl Requirement {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum Error {
+    #[error(transparent)] Cal(#[from] crate::cal::Error),
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Event(#[from] crate::event::Error),
     #[error(transparent)] Page(#[from] PageError),
@@ -451,7 +482,7 @@ pub(crate) struct EnterForm {
     text_field: String,
 }
 
-async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: Environment, discord_ctx: &RwFuture<DiscordCtx>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, client: &reqwest::Client, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
+async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, client: &reqwest::Client, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
     //TODO if already entered, redirect to status page
     let content = if data.is_started(&mut transaction).await? {
         html! {
@@ -501,9 +532,9 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: Environment
                         let mut can_submit = true;
                         let mut requirements_display = Vec::with_capacity(requirements.len());
                         for requirement in requirements {
-                            let status = requirement.check_get(discord_ctx, me.as_ref(), &data, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))).await?;
+                            let status = requirement.check_get(&mut transaction, http_client, env, config, discord_ctx, me.as_ref(), &data, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))).await?;
                             if status.blocks_submit { can_submit = false }
-                            requirements_display.push((requirement.is_checked(discord_ctx, me.as_ref(), &data).await?, status.html_content));
+                            requirements_display.push((requirement.is_checked(&mut transaction, http_client, env, config, discord_ctx, me.as_ref(), &data).await?, status.html_content));
                         }
                         if can_submit {
                             let mut errors = defaults.errors();
@@ -621,14 +652,14 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
 }
 
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
-pub(crate) async fn get(pool: &State<PgPool>, env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<crate::series::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, config: &State<Config>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<crate::series::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(enter_form(transaction, **env, discord_ctx, me, uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
+    Ok(enter_form(transaction, http_client, **env, config, discord_ctx, me, uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
 }
 
 #[rocket::post("/event/<series>/<event>/enter", data = "<form>")]
-pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, config: &State<Config>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -647,7 +678,7 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
                         }
                     } else {
                         for requirement in requirements {
-                            requirement.check_form(discord_ctx, &me, &data, &mut form.context, value).await?;
+                            requirement.check_form(&mut transaction, http_client, **env, config, discord_ctx, &me, &data, &mut form.context, value).await?;
                             if let Requirement::Qualifier { .. } = requirement {
                                 request_qualifier = true;
                             }
@@ -895,5 +926,5 @@ pub(crate) async fn post(pool: &State<PgPool>, env: &State<Environment>, discord
             return Ok(RedirectOrContent::Content(enter_form_step2(transaction, **env, Some(me), uri, client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Context(form.context)).await?))
         }
     }
-    Ok(RedirectOrContent::Content(enter_form(transaction, **env, discord_ctx, Some(me), uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Context(form.context)).await?))
+    Ok(RedirectOrContent::Content(enter_form(transaction, http_client, **env, config, discord_ctx, Some(me), uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Context(form.context)).await?))
 }

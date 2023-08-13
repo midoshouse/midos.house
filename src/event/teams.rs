@@ -78,7 +78,7 @@ pub(crate) enum QualifierKind {
     Multiple,
 }
 
-enum MemberUser {
+pub(crate) enum MemberUser {
     MidosHouse(User),
     RaceTime {
         id: String,
@@ -131,16 +131,16 @@ impl Ord for MemberUser {
     }
 }
 
-struct SignupsMember {
+pub(crate) struct SignupsMember {
     role: Role,
-    user: MemberUser,
+    pub(crate) user: MemberUser,
     is_confirmed: bool,
     qualifier_time: Option<Duration>,
     qualifier_vod: Option<String>,
 }
 
 #[derive(Clone, Copy)]
-enum Qualification {
+pub(crate) enum Qualification {
     Single {
         qualified: bool,
     },
@@ -156,8 +156,8 @@ enum Qualification {
 
 pub(crate) struct SignupsTeam {
     pub(crate) team: Option<Team>,
-    members: Vec<SignupsMember>,
-    qualification: Qualification,
+    pub(crate) members: Vec<SignupsMember>,
+    pub(crate) qualification: Qualification,
     hard_settings_ok: bool,
     mq_ok: bool,
 }
@@ -174,6 +174,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 .json_with_text_in_error::<RaceData>().await?;
             if room_data.status.value != RaceStatusValue::Finished { continue }
             let mut entrants = room_data.entrants;
+            entrants.retain(|entrant| entrant.user.id != "yMewn83Vj3405Jv7"); // user was banned
             if race.id == Id(17171498007470059483) {
                 entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
             }
