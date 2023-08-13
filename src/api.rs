@@ -4,6 +4,7 @@ use {
             self,
             *,
         },
+        fmt,
         sync::Arc,
     },
     async_graphql::{
@@ -59,6 +60,7 @@ use {
             TeamConfig,
             teams,
         },
+        lang::Language::*,
         racetime_bot,
         team,
         user,
@@ -124,13 +126,37 @@ impl PartialOrd for Scopes {
     }
 }
 
+impl fmt::Display for Scopes {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { entrants_read, user_search } = *self;
+        let mut scopes = Vec::default();
+        if entrants_read { scopes.push("entrants_read") }
+        if user_search { scopes.push("user_search") }
+        let plural = scopes.len() != 1;
+        if let Some(scopes) = English.join_str(scopes) {
+            scopes.fmt(f)?;
+            if plural {
+                write!(f, " scopes")
+            } else {
+                write!(f, " scope")
+            }
+        } else {
+            write!(f, "any scope")
+        }
+    }
+}
+
 #[async_trait]
 impl Guard for Scopes {
     async fn check(&self, ctx: &Context<'_>) -> Result<()> {
-        if ctx.data::<ApiKey>()?.scopes >= *self {
+        if ctx.data::<ApiKey>().map_err(|e| Error {
+            message: format!("This query requires an API key with {self}. Provide one using the X-API-Key header."),
+            source: Some(Arc::new(e)),
+            extensions: None,
+        })?.scopes >= *self {
             Ok(())
         } else {
-            Err("API key missing scopes".into())
+            Err(format!("Your API key is missing scopes, it needs {self}.").into())
         }
     }
 }
@@ -140,12 +166,16 @@ struct ShowRestreamConsent<'a>(&'a cal::Race);
 #[async_trait]
 impl Guard for ShowRestreamConsent<'_> {
     async fn check(&self, ctx: &Context<'_>) -> Result<()> {
-        let me = &ctx.data::<ApiKey>()?.user;
+        let me = &ctx.data::<ApiKey>().map_err(|e| Error {
+            message: format!("This query requires an API key. Provide one using the X-API-Key header."),
+            source: Some(Arc::new(e)),
+            extensions: None,
+        })?.user;
         let event = self.0.event(db!(ctx)).await?;
         if event.organizers(db!(ctx)).await?.contains(me) || event.restreamers(db!(ctx)).await?.contains(me) {
             Ok(())
         } else {
-            Err("Only event organizers and restreamers can view restream consent info".into())
+            Err("Only event organizers and restreamers can view restream consent info.".into())
         }
     }
 }
