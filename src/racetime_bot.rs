@@ -173,6 +173,7 @@ use {
     async_proto::Protocol,
     xdg::BaseDirectories,
 };
+#[cfg(windows)] use directories::UserDirs;
 
 #[cfg(unix)] const PYTHON: &str = "python3";
 #[cfg(windows)] const PYTHON: &str = "py";
@@ -261,13 +262,18 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
 pub(crate) enum VersionedBranch {
     Pinned(rando::Version),
     Latest(rando::Branch),
+    Custom {
+        github_username: &'static str,
+        branch: &'static str,
+    },
 }
 
 impl VersionedBranch {
-    fn branch(&self) -> rando::Branch {
+    fn branch(&self) -> Option<rando::Branch> {
         match self {
-            Self::Pinned(version) => version.branch(),
-            Self::Latest(branch) => *branch,
+            Self::Pinned(version) => Some(version.branch()),
+            Self::Latest(branch) => Some(*branch),
+            Self::Custom { .. } => None,
         }
     }
 }
@@ -375,6 +381,7 @@ pub(crate) enum Goal {
     MixedPoolsS2,
     MultiworldS3,
     NineDaysOfSaws,
+    Pic7,
     PicRs2,
     Rsl,
     Sgl2023,
@@ -397,6 +404,7 @@ impl Goal {
             Self::MixedPoolsS2 => series == Series::MixedPools && event == "2",
             Self::MultiworldS3 => series == Series::Multiworld && event == "3",
             Self::NineDaysOfSaws => series == Series::NineDaysOfSaws,
+            Self::Pic7 => series == Series::Pictionary && event == "7",
             Self::PicRs2 => series == Series::Pictionary && event == "rs2",
             Self::Rsl => series == Series::Rsl,
             Self::Sgl2023 => series == Series::SpeedGaming && matches!(event, "2023onl" | "2023live"),
@@ -408,7 +416,7 @@ impl Goal {
     pub(crate) fn is_custom(&self) -> bool {
         match self {
             Self::Rsl | Self::TriforceBlitz => false,
-            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::MultiworldS3 | Self::NineDaysOfSaws | Self::PicRs2 | Self::Sgl2023 | Self::TournoiFrancoS3 => true,
+            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::MultiworldS3 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Sgl2023 | Self::TournoiFrancoS3 => true,
         }
     }
 
@@ -418,6 +426,7 @@ impl Goal {
             Self::MixedPoolsS2 => "2nd Mixed Pools Tournament",
             Self::MultiworldS3 => "3rd Multiworld Tournament",
             Self::NineDaysOfSaws => "9 Days of SAWS",
+            Self::Pic7 => "7th Pictionary Spoiler Log Race",
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
             Self::Rsl => "Random settings league",
             Self::Sgl2023 => "SGL 2023",
@@ -438,7 +447,7 @@ impl Goal {
         match self {
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
-            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::PicRs2 | Self::Rsl | Self::Sgl2023 | Self::TriforceBlitz => None,
+            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Rsl | Self::Sgl2023 | Self::TriforceBlitz => None,
         }
     }
 
@@ -448,6 +457,7 @@ impl Goal {
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
+            Self::Pic7 => VersionedBranch::Custom { github_username: "fenhl", branch: "frogs2-melody" },
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl),
             Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
@@ -458,13 +468,13 @@ impl Goal {
     fn should_create_rooms(&self) -> bool {
         match self {
             Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::Rsl => false,
-            Self::CopaDoBrasil | Self::MultiworldS3 | Self::PicRs2 | Self::Sgl2023 | Self::TournoiFrancoS3 | Self::TriforceBlitz => true,
+            Self::CopaDoBrasil | Self::MultiworldS3 | Self::Pic7 | Self::PicRs2 | Self::Sgl2023 | Self::TournoiFrancoS3 | Self::TriforceBlitz => true,
         }
     }
 
     async fn send_presets(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         match self {
-            Self::PicRs2 => ctx.send_message("!seed: The settings used for the race").await?,
+            Self::Pic7 | Self::PicRs2 => ctx.send_message("!seed: The settings used for the race").await?,
             Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::Sgl2023 => ctx.send_message("!seed: The settings used for the tournament").await?,
             Self::MultiworldS3 => {
                 ctx.send_message("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
@@ -610,8 +620,8 @@ impl GlobalState {
             } else {
                 None
             };
-            if let Some(web_version) = web_version {
-                match self.ootr_api_client.roll_seed_web(update_tx.clone(), delay_until, version.branch(), web_version, false, spoiler_log, settings).await {
+            if let (Some(web_version), Some(branch)) = (web_version, version.branch()) {
+                match self.ootr_api_client.roll_seed_web(update_tx.clone(), delay_until, branch, web_version, false, spoiler_log, settings).await {
                     Ok((id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
                             file_hash: Some(file_hash),
@@ -626,7 +636,7 @@ impl GlobalState {
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
                 drop(mw_permit);
-            } else if let VersionedBranch::Pinned(version) = version {
+            } else {
                 update_tx.send(SeedRollUpdate::Started).await?;
                 match roll_seed_locally(delay_until, version, settings).await {
                     Ok((patch_filename, spoiler_log_path)) => update_tx.send(match spoiler_log_path.into_os_string().into_string() {
@@ -648,8 +658,6 @@ impl GlobalState {
                     }).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
                 }
-            } else {
-                update_tx.send(SeedRollUpdate::Error(RollError::LatestLocal)).await?; //TODO resolve latest version of this branch, roll locally
             }
             Ok::<_, mpsc::error::SendError<_>>(())
         });
@@ -883,8 +891,39 @@ impl GlobalState {
     }
 }
 
-async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: rando::Version, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
-    version.clone_repo().await?;
+async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: VersionedBranch, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
+    let rando_path = match version {
+        VersionedBranch::Pinned(version) => {
+            version.clone_repo().await?;
+            version.dir()?
+        }
+        VersionedBranch::Latest(branch) => {
+            branch.clone_repo().await?;
+            branch.dir()?
+        }
+        VersionedBranch::Custom { github_username, branch } => {
+            let parent = {
+                #[cfg(unix)] { Path::new("/opt/git/github.com").join(github_username).join("OoT-Randomizer").join("branch") }
+                #[cfg(windows)] { UserDirs::new().ok_or(RollError::UserDirs)?.home_dir().join("git").join("github.com").join(github_username).join("OoT-Randomizer").join("branch") }
+            };
+            let dir = parent.join(branch);
+            if dir.exists() {
+                //TODO hard reset to remote instead?
+                //TODO use git2 or gix instead?
+                Command::new("git").arg("pull").current_dir(&dir).check("git").await?;
+            } else {
+                fs::create_dir_all(&parent).await?;
+                let mut command = Command::new("git"); //TODO use git2 or gix instead? (git2 doesn't support shallow clones, gix is very low level)
+                command.arg("clone");
+                command.arg(format!("https://github.com/{github_username}/OoT-Randomizer.git"));
+                command.arg(format!("--branch={branch}"));
+                command.arg(branch);
+                command.current_dir(parent);
+                command.check("git").await?;
+            }
+            dir
+        }
+    };
     #[cfg(unix)] {
         settings.insert(format!("rom"), json!(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join("oot-ntscu-1.0.z64")).ok_or(RollError::RomPath)?));
         if settings.get("language").and_then(|language| language.as_str()).map_or(false, |language| matches!(language, "french" | "german")) {
@@ -901,7 +940,6 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: rando::V
                 last_error,
             })
         }
-        let rando_path = version.dir()?;
         let mut rando_process = Command::new(PYTHON).arg("OoTRandomizer.py").arg("--no_log").arg("--settings=-").current_dir(&rando_path).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().at_command(PYTHON)?;
         rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await.at_command(PYTHON)?;
         let output = rando_process.wait_with_output().await.at_command(PYTHON)?;
@@ -943,8 +981,6 @@ pub(crate) enum RollError {
     },
     #[error("there is nothing waiting for this seed anymore")]
     ChannelClosed,
-    #[error("attempted to roll with the latest version, but web claimed it was unsupported")]
-    LatestLocal,
     #[cfg(unix)]
     #[error("randomizer settings must be a JSON object")]
     NonObjectSettings,
@@ -979,6 +1015,9 @@ pub(crate) enum RollError {
     TfbUrl,
     #[error("seed status API endpoint returned unknown value {0}")]
     UnespectedSeedStatus(u8),
+    #[cfg(windows)]
+    #[error("failed to access user directories")]
+    UserDirs,
 }
 
 impl From<mpsc::error::SendError<SeedRollUpdate>> for RollError {
@@ -1286,9 +1325,9 @@ impl OotrApiClient {
 
     async fn can_roll_on_web(&self, rsl_preset: Option<&VersionedRslPreset>, version: &VersionedBranch, world_count: u8) -> Result<Option<Version>, RollError> {
         if world_count > 3 { return Ok(None) }
-        if rsl_preset.is_some() && version.branch().web_name_random_settings().is_none() { return Ok(None) }
+        if rsl_preset.is_some() && version.branch().map_or(true, |branch| branch.web_name_random_settings().is_none()) { return Ok(None) }
         // check if randomizer version is available on web
-        match version {
+        Ok(match version {
             VersionedBranch::Pinned(version) => {
                 if !KNOWN_GOOD_WEB_VERSIONS.contains(&version) {
                     if version.supplementary().is_some() && !matches!(rsl_preset, Some(VersionedRslPreset::Xopar { .. })) {
@@ -1307,10 +1346,11 @@ impl OotrApiClient {
                         return Ok(None)
                     }
                 }
-                Ok(Some(version.base().clone()))
+                Some(version.base().clone())
             }
-            VersionedBranch::Latest(branch) => Ok(self.get_version(*branch, rsl_preset.is_some()).await.ok()),
-        }
+            VersionedBranch::Latest(branch) => self.get_version(*branch, rsl_preset.is_some()).await.ok(),
+            VersionedBranch::Custom { .. } => None,
+        })
     }
 
     async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, branch: rando::Branch, version: Version, random_settings: bool, spoiler_log: bool, settings: serde_json::Map<String, Json>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
@@ -1932,6 +1972,10 @@ impl RaceHandler<GlobalState> for Handler {
                             ctx.send_message("Welcome! This is a practice room for 9 Days of SAWS. Learn more about the event at https://docs.google.com/document/d/1xELThZtIctwN-vYtYhUqtd88JigNzabk8OZHANa0gqY/edit").await?;
                             ctx.send_message("You can roll a seed using “!seed day1”, “!seed day2”, etc. For more info about these options, use !presets").await?;
                         }
+                        Goal::Pic7 => {
+                            ctx.send_message("Welcome! This is a practice room for the 7th Pictionary Spoiler Log Race. Learn more about the race at https://midos.house/event/pic/7").await?;
+                            ctx.send_message("Create a seed with !seed").await?;
+                        }
                         Goal::PicRs2 => {
                             ctx.send_message("Welcome! This is a practice room for the 2nd Random Settings Pictionary Spoiler Log Race. Learn more about the race at https://midos.house/event/pic/rs2").await?;
                             ctx.send_message("Create a seed with !seed").await?;
@@ -2042,6 +2086,7 @@ impl RaceHandler<GlobalState> for Handler {
                         Goal::MultiworldS3 | Goal::TournoiFrancoS3 => unreachable!("should have draft state set"),
                         Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
                         Goal::CopaDoBrasil => this.roll_seed(ctx, state, goal.rando_version(), br::s1_settings(), false, English, "a", format!("seed")),
+                        Goal::Pic7 => this.roll_seed(ctx, state, goal.rando_version(), pic::race7_settings(), true, English, "a", format!("seed")),
                         Goal::PicRs2 => this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
                             version: Some((Version::new(2, 3, 8), 10)),
                             preset: RslDevFenhlPreset::Pictionary,
@@ -2635,6 +2680,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     goal.send_presets(ctx).await?;
                                 }
                             }
+                            Goal::Pic7 => self.roll_seed(ctx, state, goal.rando_version(), pic::race7_settings(), true, English, "a", format!("seed")),
                             Goal::PicRs2 => self.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
                                 version: Some((Version::new(2, 3, 8), 10)),
                                 preset: RslDevFenhlPreset::Pictionary,
@@ -2937,11 +2983,15 @@ impl RaceHandler<GlobalState> for Handler {
                     });
                 }
                 match goal {
-                    Goal::PicRs2 => {
+                    Goal::Pic7 | Goal::PicRs2 => {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
-                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + chrono::Duration::minutes(25) - Utc::now();
+                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + chrono::Duration::minutes(match goal {
+                                    Goal::Pic7 => 10,
+                                    Goal::PicRs2 => 25,
+                                    _ => unreachable!(),
+                                }) - Utc::now();
                                 if let Ok(initial_wait) = initial_wait.to_std() {
                                     sleep(initial_wait).await;
                                     if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }

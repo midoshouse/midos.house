@@ -4,6 +4,7 @@ use {
         cmp::Ordering::*,
     },
     chrono::prelude::*,
+    collect_mac::collect,
     futures::stream,
     itertools::Itertools as _,
     rocket::{
@@ -21,6 +22,10 @@ use {
         Origin,
         ToHtml,
         html,
+    },
+    serde_json::{
+        Value as Json,
+        json,
     },
     sqlx::{
         Postgres,
@@ -96,6 +101,26 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 li : "keyrings shuffled in their own dungeons";
                 li : "3 big Poes";
                 li : "midnight start";
+            }
+        },
+        "7" => html! {
+            p {
+                : "The seed will be rolled on ";
+                a(href = "https://github.com/OoTRandomizer/OoT-Randomizer/pull/2064") : "pull request #2064";
+                : " which is based on version 7.1.166 of the randomizer.";
+            }
+            ul {
+                li : "S6 base";
+                li : "CAMC off";
+                li : "no hints (including altar)";
+                li : "shuffle songs anywhere";
+                li : "shuffle ocarinas (no ocarina start)";
+                li : "shuffle ocarina note buttons";
+                li : "randomize song melodies (including frogs 2)";
+                li : "randomize warp song destinations";
+                li : "shuffle frogs";
+                li : "shuffle cows (house cow disabled)";
+                li : "child start, closed Door of Time";
             }
         },
         "rs1" => html! {
@@ -650,4 +675,79 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, e
             }
         }
     }).await?)
+}
+
+pub(crate) fn race7_settings() -> serde_json::Map<String, Json> {
+    collect![
+        format!("user_message") => json!("7th Pictionary Spoiler log Race"),
+        format!("open_forest") => json!("closed_deku"),
+        format!("open_kakariko") => json!("open"),
+        format!("gerudo_fortress") => json!("fast"),
+        format!("trials") => json!(0),
+        format!("warp_songs") => json!(true),
+        format!("spawn_positions") => json!([
+            "child",
+        ]),
+        format!("free_bombchu_drops") => json!(false),
+        format!("shuffle_song_items") => json!("any"),
+        format!("shuffle_cows") => json!(true),
+        format!("shuffle_ocarinas") => json!(true),
+        format!("shuffle_frog_song_rupees") => json!(true),
+        format!("shuffle_individual_ocarina_notes") => json!(true),
+        format!("shuffle_mapcompass") => json!("startwith"),
+        format!("shuffle_ganon_bosskey") => json!("remove"),
+        format!("disabled_locations") => json!([
+            "Deku Theater Mask of Truth",
+            "KF Links House Cow",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_fewer_tunic_requirements",
+            "logic_grottos_without_agony",
+            "logic_child_deadhand",
+            "logic_man_on_roof",
+            "logic_dc_jump",
+            "logic_rusted_switches",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_forest_vines",
+            "logic_lens_botw",
+            "logic_lens_castle",
+            "logic_lens_gtg",
+            "logic_lens_shadow",
+            "logic_lens_shadow_platform",
+            "logic_lens_bongo",
+            "logic_lens_spirit",
+        ]),
+        format!("starting_equipment") => json!([
+            "deku_shield",
+        ]),
+        format!("starting_inventory") => json!([
+            "zeldas_letter",
+        ]),
+        format!("start_with_consumables") => json!(true),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("fast_bunny_hood") => json!(true),
+        format!("chicken_count") => json!(4),
+        format!("big_poe_count") => json!(1),
+        format!("ocarina_songs") => json!([
+            "frog",
+            "warp",
+            "frogs2",
+        ]),
+        format!("correct_potcrate_appearances") => json!("textures_content"),
+        format!("hints") => json!("none"),
+        format!("hint_dist") => json!("useless"),
+        format!("misc_hints") => json!([]),
+        format!("junk_ice_traps") => json!("off"),
+        format!("ice_trap_appearance") => json!("junk_only"),
+        format!("adult_trade_start") => json!([
+            "Prescription",
+            "Eyeball Frog",
+            "Eyedrops",
+            "Claim Check",
+        ]),
+    ]
 }
