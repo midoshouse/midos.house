@@ -643,6 +643,49 @@ impl Race {
             },
             Series::League => match &*event.event {
                 "4" => {} // added to database
+                "5" => {
+                    let schedule = http_client.get("https://league.ootrandomizer.com/scheduleJson")
+                        .send().await?
+                        .detailed_error_for_status().await?
+                        .json_with_text_in_error::<league::Schedule>().await?;
+                    for race in schedule.matches {
+                        let id = Id::new(&mut *transaction, IdTable::Races).await?;
+                        add_or_update_race(&mut *transaction, &mut races, Self {
+                            series: event.series,
+                            event: event.event.to_string(),
+                            startgg_event: None,
+                            startgg_set: None,
+                            entrants: Entrants::Two([
+                                race.player_a.into_entrant(),
+                                race.player_b.into_entrant(),
+                            ]),
+                            phase: None,
+                            round: Some(race.division),
+                            game: None,
+                            scheduling_thread: None,
+                            schedule: RaceSchedule::Live {
+                                start: race.time_utc,
+                                end: None,
+                                room: None,
+                            },
+                            draft: None,
+                            seed: seed::Data::default(),
+                            video_urls: if let Some(twitch_username) = race.restreamers.into_iter().filter_map(|restreamer| restreamer.twitch_username).at_most_one().expect("multiple restreams for a League race") {
+                                //HACK: League schedule does not include language info, mark as English
+                                iter::once((English, Url::parse(&format!("https://twitch.tv/{twitch_username}"))?)).collect()
+                            } else {
+                                HashMap::default()
+                            },
+                            restreamers: HashMap::default(),
+                            ignored: match race.status {
+                                league::MatchStatus::Canceled => true,
+                                league::MatchStatus::Confirmed => false,
+                            },
+                            schedule_locked: false,
+                            id,
+                        }).await?;
+                    }
+                }
                 _ => unimplemented!(),
             },
             Series::MixedPools => match &*event.event {
