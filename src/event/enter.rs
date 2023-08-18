@@ -372,25 +372,28 @@ impl Requirement {
                     }),
                 }
             }
-            &Self::QualifierPlacement { num_players, min_races } => RequirementStatus {
-                blocks_submit: true, //TODO
-                html_content: Box::new(move |_| html! {
-                    @if min_races == 0 {
-                        : "Place";
-                    } else {
-                        : "Enter at least ";
-                        : min_races;
-                        : " qualifier races and place";
-                    }
-                    : " in the top ";
-                    : num_players.to_string();
-                    : " of qualifier scores.";
-                    br;
-                    : "Note: You may be eligible to enter even if you don't initially place in the top ";
-                    : num_players.to_string();
-                    : " due to other players opting out. You will be notified by an organizer if this is the case.";
-                }),
-            },
+            &Self::QualifierPlacement { num_players, min_races } => {
+                let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
+                RequirementStatus {
+                    blocks_submit: !is_checked,
+                    html_content: Box::new(move |_| html! {
+                        @if min_races == 0 {
+                            : "Place";
+                        } else {
+                            : "Enter at least ";
+                            : min_races;
+                            : " qualifier races and place";
+                        }
+                        : " in the top ";
+                        : num_players.to_string();
+                        : " of qualifier scores.";
+                        br;
+                        : "Note: You may be eligible to enter even if you don't initially place in the top ";
+                        : num_players.to_string();
+                        : " due to other players opting out. You will be notified by an organizer if this is the case.";
+                    }),
+                }
+                }
             Self::External { text } => {
                 let text = text.clone();
                 RequirementStatus {
