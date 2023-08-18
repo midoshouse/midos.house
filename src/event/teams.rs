@@ -193,7 +193,12 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 }));
             }
         }
+        let opt_outs = sqlx::query_scalar!("SELECT racetime_id FROM multi_qualifier_opt_outs WHERE series = $1 AND event = $2", data.series as _, &data.event).fetch_all(&mut **transaction).await?;
         scores.into_iter()
+            .filter(|(user, _)| match user {
+                MemberUser::RaceTime { id, .. } => !opt_outs.contains(id),
+                MemberUser::MidosHouse(_) => true,
+            })
             .map(|(user, mut scores)| SignupsTeam {
                 team: None, //TODO
                 members: vec![SignupsMember {
