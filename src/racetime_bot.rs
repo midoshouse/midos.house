@@ -1900,8 +1900,11 @@ impl RaceHandler<GlobalState> for Handler {
                             "@entrants Remember to go live with a 15 minute (900 second) delay!"
                         }).await.expect("failed to send stream delay notice");
                         sleep(Duration::from_secs(15 * 60)).await;
-                        if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
-                        ctx.set_invitational().await.expect("failed to make the room invitational");
+                        let data = ctx.data().await;
+                        if !Self::should_handle_inner(&*data, ctx.global_state.clone(), false).await { return }
+                        if let RaceStatusValue::Open = data.status.value {
+                            ctx.set_invitational().await.expect("failed to make the room invitational");
+                        }
                     });
                 }
             }
