@@ -1890,10 +1890,15 @@ impl RaceHandler<GlobalState> for Handler {
                 let delay_until = cal_event.start().expect("handling room for official race without start time") - chrono::Duration::minutes(20);
                 if let Ok(delay) = (delay_until - Utc::now()).to_std() {
                     let ctx = ctx.clone();
+                    let requires_emote_only = cal_event.race.phase.as_ref().map_or(false, |phase| phase == "Qualifier");
                     tokio::spawn(async move {
                         sleep_until(Instant::now() + delay).await;
                         if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
-                        ctx.send_message("@entrants Remember to go live with a 15 minute (900 second) delay!").await.expect("failed to send stream delay notice");
+                        ctx.send_message(if requires_emote_only {
+                            "@entrants Remember to go live with a 15 minute (900 second) delay and set you chat to emote only!"
+                        } else {
+                            "@entrants Remember to go live with a 15 minute (900 second) delay!"
+                        }).await.expect("failed to send stream delay notice");
                         sleep(Duration::from_secs(15 * 60)).await;
                         if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
                         ctx.set_invitational().await.expect("failed to make the room invitational");
