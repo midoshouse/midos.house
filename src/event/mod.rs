@@ -478,6 +478,13 @@ impl<'a> Data<'a> {
         }
     }
 
+    pub(crate) fn asyncs_allowed(&self) -> bool {
+        match self.series {
+            Series::SpeedGaming => false,
+            _ => true,
+        }
+    }
+
     pub(crate) fn is_single_race(&self) -> bool {
         match self.series {
             Series::CopaDoBrasil => false,

@@ -644,7 +644,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 );
                 idx
             };
-            let schedule_async = {
+            let schedule_async = { //TODO only register this command if there are any events that allow asyncs?
                 let idx = commands.len();
                 commands.push(CreateCommand::new("schedule-async")
                     .kind(CommandType::ChatInput)
@@ -881,9 +881,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         response_content.push_safe(startgg_set); //TODO linkify set page, use phase/round/identifier
                                         response_content.push(". Use ");
                                         response_content.mention_command(command_ids.schedule, "schedule");
-                                        response_content.push(" to schedule as a live race or ");
-                                        response_content.mention_command(command_ids.schedule_async, "schedule-async");
-                                        response_content.push(" to schedule as an async."); //TODO adjust message if asyncing is not allowed
+                                        if event.asyncs_allowed() {
+                                            response_content.push(" to schedule as a live race or ");
+                                            response_content.mention_command(command_ids.schedule_async, "schedule-async");
+                                            response_content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate at <https://hammertime.cyou/>");
+                                        } else {
+                                            response_content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate at <https://hammertime.cyou/>");
+                                        }
                                         if let (Some(high_seed), Some(first), Some(second)) = (high_seed, command_ids.first, command_ids.second) {
                                             response_content.push_line("");
                                             response_content.mention_team(&mut transaction, Some(guild_id), &high_seed).await?;
@@ -1226,7 +1230,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
                                 let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
-                                if team.is_some() || is_organizer {
+                                if team.is_some() && event.asyncs_allowed() || is_organizer {
                                     let start = match interaction.data.options[0].value {
                                         CommandDataOptionValue::String(ref start) => start,
                                         _ => panic!("unexpected slash command option type"),
@@ -1811,6 +1815,7 @@ pub(crate) async fn create_scheduling_thread(ctx: &Context, transaction: &mut Tr
         if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
         if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await?;
         if game_count == 1;
+        if event.asyncs_allowed();
         if let None | Some(draft::Kind::TournoiFrancoS3) = event.draft_kind();
         then {
             let mut content = MessageBuilder::default();
@@ -1824,7 +1829,7 @@ pub(crate) async fn create_scheduling_thread(ctx: &Context, transaction: &mut Tr
             content.mention_command(command_ids.schedule, "schedule");
             content.push(" pour schedule votre race en live ou ");
             content.mention_command(command_ids.schedule_async, "schedule-async");
-            content.push(" pour schedule votre async. Vous devez insérer un timestamp Discord que vous pouvez créer sur <https://hammertime.cyou/>"); //TODO adjust message if asyncing is not allowed
+            content.push(" pour schedule votre async. Vous devez insérer un timestamp Discord que vous pouvez créer sur <https://hammertime.cyou/>");
             match event.draft_kind() {
                 Some(draft::Kind::MultiworldS3) => unreachable!(),
                 Some(draft::Kind::TournoiFrancoS3) => if let Some(ref draft) = race.draft {
@@ -1861,9 +1866,13 @@ pub(crate) async fn create_scheduling_thread(ctx: &Context, transaction: &mut Tr
             }
             content.push("match. Use ");
             content.mention_command(command_ids.schedule, "schedule");
-            content.push(" to schedule as a live race or ");
-            content.mention_command(command_ids.schedule_async, "schedule-async");
-            content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate at <https://hammertime.cyou/>"); //TODO adjust message if asyncing is not allowed
+            if event.asyncs_allowed() {
+                content.push(" to schedule as a live race or ");
+                content.mention_command(command_ids.schedule_async, "schedule-async");
+                content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate at <https://hammertime.cyou/>");
+            } else {
+                content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate at <https://hammertime.cyou/>");
+            }
             if game_count > 1 {
                 content.push(". You can use the ");
                 content.push_mono("game:");
