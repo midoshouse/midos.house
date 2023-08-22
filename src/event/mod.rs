@@ -199,6 +199,7 @@ pub(crate) enum Series {
     NineDaysOfSaws,
     Pictionary,
     Rsl,
+    Scrubs,
     SpeedGaming,
     Standard,
     TournoiFrancophone,
@@ -215,6 +216,7 @@ impl Series {
             Self::NineDaysOfSaws => "9dos",
             Self::Pictionary => "pic",
             Self::Rsl => "rsl",
+            Self::Scrubs => "scrubs",
             Self::SpeedGaming => "sgl",
             Self::Standard => "s",
             Self::TournoiFrancophone => "fr",
@@ -467,6 +469,8 @@ impl<'a> Data<'a> {
                 from_file!("../../assets/event/rsl/chests-5-05bfcd2.json")
             }
             (Series::Rsl, _) => unimplemented!(),
+            (Series::Scrubs, "5") => from_file!("../../assets/event/scrubs/chests-5-7.1.175.json"),
+            (Series::Scrubs, _) => unimplemented!(),
             (Series::SpeedGaming, "2023onl" | "2023live") => from_file!("../../assets/event/sgl/chests-2023-42da4aa.json"),
             (Series::SpeedGaming, _) => unimplemented!(),
             (Series::Standard, "6") => from_file!("../../assets/event/s/chests-6-6.9.10.json"),
@@ -494,6 +498,7 @@ impl<'a> Data<'a> {
             Series::NineDaysOfSaws => true,
             Series::Pictionary => true,
             Series::Rsl => false,
+            Series::Scrubs => false,
             Series::SpeedGaming => false,
             Series::Standard => false,
             Series::TournoiFrancophone => false,
@@ -521,6 +526,7 @@ impl<'a> Data<'a> {
             },
             Series::Pictionary => TeamConfig::Pictionary,
             Series::Rsl => TeamConfig::Solo,
+            Series::Scrubs => TeamConfig::Solo,
             Series::SpeedGaming => TeamConfig::Solo,
             Series::Standard => TeamConfig::Solo,
             Series::TournoiFrancophone => TeamConfig::Solo,
@@ -809,6 +815,7 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
         Series::NineDaysOfSaws => Some(ndos::info(&mut transaction, &data).await?),
         Series::Pictionary => pic::info(&mut transaction, &data).await?,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
+        Series::Scrubs => None,
         Series::SpeedGaming => sgl::info(&mut transaction, &data).await?,
         Series::Standard => s::info(event),
         Series::TournoiFrancophone => fr::info(&mut transaction, &data).await?,
@@ -1126,6 +1133,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                             : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
                         }
                         Series::Rsl => @unimplemented // no signups on Mido's House
+                        Series::Scrubs => @unimplemented // no signups on Mido's House
                         Series::SpeedGaming => p { //TODO indicate whether qualified?
                             : "Please see the rules document for how to qualify, and "; //TODO linkify
                             a(href = uri!(races(data.series, &*data.event)).to_string()) : "the race schedule";

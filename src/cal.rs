@@ -9,16 +9,11 @@ use {
         convert::identity,
         iter,
         path::Path,
-        time::{
-            Duration as UDuration,
-            Instant,
-        },
     },
     chrono::{
         Duration,
         prelude::*,
     },
-    chrono_tz::America,
     collect_mac::collect,
     enum_iterator::all,
     futures::stream::TryStreamExt as _,
@@ -35,11 +30,6 @@ use {
     if_chain::if_chain,
     itertools::Itertools as _,
     lazy_regex::regex_captures,
-    log_lock::{
-        Mutex,
-        lock,
-    },
-    once_cell::sync::Lazy,
     ootr_utils::spoiler::{
         HashIcon,
         SpoilerLog,
@@ -72,7 +62,6 @@ use {
         ToHtml,
         html,
     },
-    serde::Deserialize,
     serenity::{
         all::Context as DiscordCtx,
         model::prelude::*,
@@ -92,15 +81,7 @@ use {
             self,
             File,
         },
-        traits::{
-            IoResultExt as _,
-            IsNetworkError,
-            ReqwestResponseExt as _,
-        },
-    },
-    yup_oauth2::{
-        ServiceAccountAuthenticator,
-        read_service_account_key,
+        traits::ReqwestResponseExt as _,
     },
     crate::{
         Environment,
@@ -689,45 +670,7 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::MixedPools => match &*event.event {
-                "1" => {} // added to database
-                "2" => for row in sheet_values(http_client.clone(), "1nz43jWsDrTgsnMzdLdXI13l9J6b8xHx9Ycpp8PAv9E8", "Schedule!B2:F").await? {
-                    if let [p1, p2, round, date_et, time_et] = &*row {
-                        let id = Id::new(&mut *transaction, IdTable::Races).await?;
-                        let (phase, round) = match &**round {
-                            "Top 16" => (format!("Top 16"), format!("Round 1")),
-                            "Quarterfinals" => (format!("Top 16"), format!("Quarterfinal")),
-                            "Semifinals" => (format!("Top 16"), format!("Semifinal")),
-                            "Finals" => (format!("Top 16"), format!("Final")),
-                            _ => (format!("Swiss"), round.clone()),
-                        };
-                        add_or_update_race(&mut *transaction, &mut races, Self {
-                            series: event.series,
-                            event: event.event.to_string(),
-                            startgg_event: None,
-                            startgg_set: None,
-                            entrants: Entrants::Two([
-                                Entrant::Named(p1.clone()),
-                                Entrant::Named(p2.clone()),
-                            ]),
-                            phase: Some(phase),
-                            round: Some(round),
-                            game: None,
-                            scheduling_thread: None,
-                            schedule: RaceSchedule::Live {
-                                start: America::New_York.datetime_from_str(&format!("{date_et} at {time_et}"), "%d.%m.%Y at %H:%M:%S").expect(&format!("failed to parse {date_et:?} at {time_et:?}")).with_timezone(&Utc),
-                                end: None,
-                                room: None,
-                            },
-                            draft: None,
-                            seed: seed::Data::default(),
-                            video_urls: HashMap::default(),
-                            restreamers: HashMap::default(),
-                            ignored: false,
-                            schedule_locked: false,
-                            id,
-                        }).await?;
-                    }
-                },
+                "1" | "2" => {} // added to database
                 _ => unimplemented!(),
             },
             Series::Multiworld => match &*event.event {
@@ -772,6 +715,10 @@ impl Race {
             Series::Rsl => match &*event.event {
                 "1" => {} // no match data available
                 "2" | "3" | "4" | "5" => {} // added to database
+                _ => unimplemented!(),
+            },
+            Series::Scrubs => match &*event.event {
+                "5" => {} //TODO get bracket races from Google sheet
                 _ => unimplemented!(),
             },
             Series::SpeedGaming => match &*event.event {
@@ -1277,7 +1224,6 @@ pub(crate) enum Error {
     #[error(transparent)] Discord(#[from] discord_bot::Error),
     #[error(transparent)] Event(#[from] event::DataError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
-    #[error(transparent)] Sheets(#[from] SheetsError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
@@ -1294,84 +1240,6 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     fn from(e: E) -> Self {
         Self::Err(e.into())
     }
-}
-
-static SHEETS_CACHE: Lazy<Mutex<HashMap<(String, String), (Instant, Vec<Vec<String>>)>>> = Lazy::new(|| Mutex::default());
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum SheetsError {
-    #[error(transparent)] OAuth(#[from] yup_oauth2::Error),
-    #[error(transparent)] Reqwest(#[from] reqwest::Error),
-    #[error(transparent)] Wheel(#[from] wheel::Error),
-    #[error("empty token is not valid")]
-    EmptyToken,
-    #[error("OAuth token is expired")]
-    TokenExpired,
-}
-
-impl IsNetworkError for SheetsError {
-    fn is_network_error(&self) -> bool {
-        match self {
-            Self::OAuth(_) => false,
-            Self::Reqwest(e) => e.is_network_error(),
-            Self::Wheel(e) => e.is_network_error(),
-            Self::EmptyToken => false,
-            Self::TokenExpired => false,
-        }
-    }
-}
-
-async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str) -> Result<Vec<Vec<String>>, SheetsError> {
-    #[derive(Deserialize)]
-    struct ValueRange {
-        values: Vec<Vec<String>>,
-    }
-
-    async fn sheet_values_uncached(http_client: &reqwest::Client, sheet_id: &str, range: &str) -> Result<Vec<Vec<String>>, SheetsError> {
-        let gsuite_secret = read_service_account_key("assets/google-client-secret.json").await.at("assets/google-client-secret.json")?;
-        let auth = ServiceAccountAuthenticator::builder(gsuite_secret)
-            .build().await.at_unknown()?;
-        let token = auth.token(&["https://www.googleapis.com/auth/spreadsheets"]).await?;
-        if token.is_expired() { return Err(SheetsError::TokenExpired) }
-        let Some(token) = token.token() else { return Err(SheetsError::EmptyToken) };
-        if token.is_empty() { return Err(SheetsError::EmptyToken) }
-        let ValueRange { values } = http_client.get(&format!("https://sheets.googleapis.com/v4/spreadsheets/{sheet_id}/values/{range}"))
-            .bearer_auth(token)
-            .query(&[
-                ("valueRenderOption", "FORMATTED_VALUE"),
-                ("dateTimeRenderOption", "FORMATTED_STRING"),
-                ("majorDimension", "ROWS"),
-            ])
-            .send().await?
-            .detailed_error_for_status().await?
-            .json_with_text_in_error::<ValueRange>().await?;
-        Ok(values)
-    }
-
-    let key = (sheet_id.to_owned(), range.to_owned());
-    let mut cache = lock!(SHEETS_CACHE);
-    Ok(match cache.entry(key) {
-        hash_map::Entry::Occupied(mut entry) => {
-            let (retrieved, values) = entry.get();
-            if retrieved.elapsed() < UDuration::from_secs(5 * 60) {
-                values.clone()
-            } else {
-                match sheet_values_uncached(&http_client, sheet_id, range).await {
-                    Ok(values) => {
-                        entry.insert((Instant::now(), values.clone()));
-                        values
-                    }
-                    Err(e) if e.is_network_error() && retrieved.elapsed() < UDuration::from_secs(60 * 60) => values.clone(),
-                    Err(e) => return Err(e),
-                }
-            }
-        }
-        hash_map::Entry::Vacant(entry) => {
-            let values = sheet_values_uncached(&http_client, sheet_id, range).await?;
-            entry.insert((Instant::now(), values.clone()));
-            values
-        }
-    })
 }
 
 fn ics_datetime<Z: TimeZone>(datetime: DateTime<Z>) -> String {
@@ -1437,7 +1305,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                 cal_event.push(DtStart::new(ics_datetime(start)));
                 cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + match event.series {
                     Series::TriforceBlitz => Duration::hours(2),
-                    Series::MixedPools | Series::SpeedGaming => Duration::hours(3),
+                    Series::MixedPools | Series::Scrubs | Series::SpeedGaming => Duration::hours(3),
                     Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::Standard | Series::TournoiFrancophone => Duration::hours(3) + Duration::minutes(30),
                     Series::Multiworld | Series::Pictionary => Duration::hours(4),
                     Series::Rsl => Duration::hours(4) + Duration::minutes(30),

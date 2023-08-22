@@ -644,7 +644,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 );
                 idx
             };
-            let schedule_async = { //TODO only register this command if there are any events that allow asyncs?
+            let schedule_async = {
                 let idx = commands.len();
                 commands.push(CreateCommand::new("schedule-async")
                     .kind(CommandType::ChatInput)
@@ -1367,10 +1367,14 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 } else {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
-                                        .content(if let French = event.language {
-                                            "Désolé, seuls les participants de cette race et les organisateurs peuvent utiliser cette commande."
+                                        .content(if event.asyncs_allowed() {
+                                            if let French = event.language {
+                                                "Désolé, seuls les participants de cette race et les organisateurs peuvent utiliser cette commande."
+                                            } else {
+                                                "Sorry, only participants in this race and organizers can use this command."
+                                            }
                                         } else {
-                                            "Sorry, only participants in this race and organizers can use this command."
+                                            "Sorry, asyncing races is not allowed for this event."
                                         })
                                     )).await?;
                                     transaction.rollback().await?;
