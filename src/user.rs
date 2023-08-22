@@ -68,6 +68,7 @@ pub(crate) enum RaceTimePronouns {
     Other,
 }
 
+#[derive(Debug)]
 pub(crate) struct UserRaceTime {
     pub(crate) id: String,
     pub(crate) display_name: String,
@@ -75,12 +76,14 @@ pub(crate) struct UserRaceTime {
     pub(crate) pronouns: Option<RaceTimePronouns>,
 }
 
+#[derive(Debug)]
 pub(crate) struct UserDiscord {
     pub(crate) id: UserId,
     pub(crate) display_name: String,
     pub(crate) username_or_discriminator: Either<String, Discriminator>,
 }
 
+#[derive(Debug)]
 pub(crate) struct User {
     pub(crate) id: Id,
     display_source: DisplaySource, //TODO allow users with both accounts connected to set this in their preferences

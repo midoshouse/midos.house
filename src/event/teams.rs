@@ -11,6 +11,7 @@ use {
         },
         time::Duration,
     },
+    either::Either,
     itertools::Itertools as _,
     noisy_float::prelude::*,
     racetime::model::{
@@ -193,42 +194,54 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 }));
             }
         }
-        let opt_outs = sqlx::query_scalar!("SELECT racetime_id FROM multi_qualifier_opt_outs WHERE series = $1 AND event = $2", data.series as _, &data.event).fetch_all(&mut **transaction).await?;
-        scores.into_iter()
-            .filter(|(user, _)| match user {
-                MemberUser::RaceTime { id, .. } => !opt_outs.contains(id),
-                MemberUser::MidosHouse(_) => true,
-            })
-            .map(|(user, mut scores)| SignupsTeam {
-                team: None, //TODO
-                members: vec![SignupsMember {
-                    role: Role::None,
-                    is_confirmed: false, //TODO
-                    qualifier_time: None,
-                    qualifier_vod: None,
-                    user,
-                }],
-                qualification: {
-                    let num_qualifiers = scores.len();
-                    scores.truncate(5); // only count the first 5 qualifiers chronologically
-                    scores.sort();
-                    if num_qualifiers >= 4 {
-                        // remove best score
-                        scores.pop();
-                    }
-                    if num_qualifiers >= 5 {
-                        // remove worst score
-                        scores.swap_remove(0);
-                    }
-                    Qualification::Multiple {
-                        num_qualifiers,
-                        score: scores.iter().copied().sum::<R64>() / r64(scores.len().max(3) as f64),
-                    }
-                },
-                hard_settings_ok: false,
-                mq_ok: false,
-            })
-            .collect()
+        let scores = if data.is_started(&mut *transaction).await? {
+            let teams = Team::for_event(&mut *transaction, data.series, &data.event).await?;
+            let mut entrant_scores = Vec::with_capacity(teams.len());
+            for team in teams {
+                let user = team.members(&mut *transaction).await?.into_iter().exactly_one().expect("QualifierKind::Multiple in team-based event");
+                let id = user.racetime.as_ref().expect("QualifierKind::Multiple with entrant without racetime.gg account").id.clone();
+                entrant_scores.push((MemberUser::MidosHouse(user), scores.remove(&MemberUser::RaceTime { id, url: String::default(), name: String::default() }).expect("Unqualified QualifierKind::Multiple entrant")));
+            }
+            Either::Left(entrant_scores.into_iter())
+        } else {
+            let opt_outs = sqlx::query_scalar!("SELECT racetime_id FROM multi_qualifier_opt_outs WHERE series = $1 AND event = $2", data.series as _, &data.event).fetch_all(&mut **transaction).await?;
+            Either::Right(
+                scores.into_iter()
+                    .filter(move |(user, _)| match user {
+                        MemberUser::RaceTime { id, .. } => !opt_outs.contains(id),
+                        MemberUser::MidosHouse(_) => true,
+                    })
+            )
+        };
+        scores.map(|(user, mut scores)| SignupsTeam {
+            team: None, //TODO
+            members: vec![SignupsMember {
+                role: Role::None,
+                is_confirmed: false, //TODO
+                qualifier_time: None,
+                qualifier_vod: None,
+                user,
+            }],
+            qualification: {
+                let num_qualifiers = scores.len();
+                scores.truncate(5); // only count the first 5 qualifiers chronologically
+                scores.sort();
+                if num_qualifiers >= 4 {
+                    // remove best score
+                    scores.pop();
+                }
+                if num_qualifiers >= 5 {
+                    // remove worst score
+                    scores.swap_remove(0);
+                }
+                Qualification::Multiple {
+                    num_qualifiers,
+                    score: scores.iter().copied().sum::<R64>() / r64(scores.len().max(3) as f64),
+                }
+            },
+            hard_settings_ok: false,
+            mq_ok: false,
+        }).collect()
     } else {
         let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
             series = $1
