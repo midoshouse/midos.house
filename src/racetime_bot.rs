@@ -3040,6 +3040,9 @@ impl RaceHandler<GlobalState> for Handler {
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx).await? {
                 if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, .. }) = self.official_data {
+                    if event.series == Series::SpeedGaming && event.event == "2023onl" {
+                        sleep(Duration::from_secs(15 * 60)).await;
+                    }
                     let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
                     if cal_event.is_first_async_half() {
                         if let Some(organizer_channel) = event.discord_organizer_channel {
