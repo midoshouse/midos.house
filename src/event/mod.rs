@@ -733,6 +733,7 @@ impl<'a> Data<'a> {
                     a(class = "button", href = url.to_string()) {
                         : favicon(url);
                         @match url.host_str() {
+                            Some("discord.gg") => : "Discord Server";
                             Some("racetime.gg") => : "Race Room";
                             Some("challonge.com" | "www.challonge.com" | "start.gg" | "www.start.gg") => : "Brackets";
                             _ => : "Website";
@@ -815,7 +816,7 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
         Series::NineDaysOfSaws => Some(ndos::info(&mut transaction, &data).await?),
         Series::Pictionary => pic::info(&mut transaction, &data).await?,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
-        Series::Scrubs => None,
+        Series::Scrubs => scrubs::info(&mut transaction, &data).await?,
         Series::SpeedGaming => sgl::info(&mut transaction, &data).await?,
         Series::Standard => s::info(event),
         Series::TournoiFrancophone => fr::info(&mut transaction, &data).await?,
