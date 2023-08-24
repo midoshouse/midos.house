@@ -450,6 +450,13 @@ impl Goal {
         }
     }
 
+    fn preroll_seeds(&self) -> bool {
+        match self {
+            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::MultiworldS3 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Rsl | Self::TournoiFrancoS3 => true,
+            Self::Sgl2023 | Self::TriforceBlitz => false,
+        }
+    }
+
     fn rando_version(&self) -> VersionedBranch {
         match self {
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
@@ -567,7 +574,7 @@ impl GlobalState {
         }
     }
 
-    pub(crate) fn roll_seed(self: Arc<Self>, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_seed(self: Arc<Self>, preroll: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
@@ -578,12 +585,20 @@ impl GlobalState {
                     return Ok(())
                 }
             };
-            if let (true, Some(max_sleep_duration)) = (web_version.is_some(), delay_until.and_then(|delay_until| (delay_until - chrono::Duration::minutes(15) - Utc::now()).to_std().ok())) {
-                // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
-                // This is especially true for open races, whose rooms are opened an entire hour before start.
-                // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
-                let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
-                sleep(sleep_duration).await;
+            if preroll {
+                if let (true, Some(max_sleep_duration)) = (web_version.is_some(), delay_until.and_then(|delay_until| (delay_until - chrono::Duration::minutes(15) - Utc::now()).to_std().ok())) {
+                    // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
+                    // This is especially true for open races, whose rooms are opened an entire hour before start.
+                    // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
+                    let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
+                    sleep(sleep_duration).await;
+                }
+            } else {
+                if let Some(sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
+                    // The type of seed being rolled is unlikely to require a long time or multiple attempts to generate,
+                    // so we avoid the issue with sequential IDs by simply not rolling ahead of time.
+                    sleep(sleep_duration).await;
+                }
             }
             let mw_permit = if web_version.is_some() && world_count > 1 {
                 Some(match self.ootr_api_client.mw_seed_rollers.try_acquire() {
@@ -1598,7 +1613,7 @@ impl Handler {
             } else {
                 ("a", format!("seed with {}", step.message))
             };
-            self.roll_seed(ctx, state, goal.rando_version(), settings, spoiler_log, goal.language(), article, description);
+            self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), settings, spoiler_log, goal.language(), article, description);
         } else {
             ctx.send_message(&step.message).await?;
         }
@@ -1688,10 +1703,10 @@ impl Handler {
         });
     }
 
-    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool, language: Language, article: &'static str, description: String) {
+    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preroll: bool, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
-        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_seed(delay_until, version, settings, spoiler_log), language, article, description);
+        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_seed(preroll, delay_until, version, settings, spoiler_log), language, article, description);
     }
 
     fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: VersionedRslPreset, world_count: u8, spoiler_log: bool, language: Language, article: &'static str, description: String) {
@@ -2090,13 +2105,13 @@ impl RaceHandler<GlobalState> for Handler {
                         Goal::MixedPoolsS2 | Goal::Rsl => unreachable!("no official race rooms"),
                         Goal::MultiworldS3 | Goal::TournoiFrancoS3 => unreachable!("should have draft state set"),
                         Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
-                        Goal::CopaDoBrasil => this.roll_seed(ctx, state, goal.rando_version(), br::s1_settings(), false, English, "a", format!("seed")),
-                        Goal::Pic7 => this.roll_seed(ctx, state, goal.rando_version(), pic::race7_settings(), true, English, "a", format!("seed")),
+                        Goal::CopaDoBrasil => this.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), br::s1_settings(), false, English, "a", format!("seed")),
+                        Goal::Pic7 => this.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), pic::race7_settings(), true, English, "a", format!("seed")),
                         Goal::PicRs2 => this.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
                             version: Some((Version::new(2, 3, 8), 10)),
                             preset: RslDevFenhlPreset::Pictionary,
                         }, 1, true, English, "a", format!("random settings Pictionary seed")),
-                        Goal::Sgl2023 => this.roll_seed(ctx, state, goal.rando_version(), sgl::settings_2023(), false, English, "a", format!("seed")),
+                        Goal::Sgl2023 => this.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), sgl::settings_2023(), false, English, "a", format!("seed")),
                         Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, "LATEST", false, English, "a", format!("Triforce Blitz S2 seed")).await,
                     },
                     RaceState::Draft { .. } => {
@@ -2505,8 +2520,8 @@ impl RaceHandler<GlobalState> for Handler {
                         }).await?;
                     } else {
                         match goal {
-                            Goal::CopaDoBrasil => self.roll_seed(ctx, state, goal.rando_version(), br::s1_settings(), false, English, "a", format!("seed")),
-                            Goal::MixedPoolsS2 => self.roll_seed(ctx, state, goal.rando_version(), mp::s2_settings(), spoiler_log, English, "a", format!("mixed pools seed")),
+                            Goal::CopaDoBrasil => self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), br::s1_settings(), false, English, "a", format!("seed")),
+                            Goal::MixedPoolsS2 => self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), mp::s2_settings(), spoiler_log, English, "a", format!("mixed pools seed")),
                             Goal::MultiworldS3 => {
                                 let settings = match args[..] {
                                     [] => {
@@ -2572,7 +2587,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         }
                                     }
                                 };
-                                self.roll_seed(ctx, state, goal.rando_version(), mw::resolve_draft_settings(&settings), spoiler_log, English, "a", format!("seed with {}", mw::display_draft_picks(&settings)));
+                                self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), mw::resolve_draft_settings(&settings), spoiler_log, English, "a", format!("seed with {}", mw::display_draft_picks(&settings)));
                             }
                             Goal::NineDaysOfSaws => match args[..] {
                                 [] => {
@@ -2667,7 +2682,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     _ => None,
                                 } {
                                     settings.insert(format!("user_message"), json!(format!("9 Days of SAWS: day {}", &arg[3..])));
-                                    self.roll_seed(ctx, state, goal.rando_version(), settings, spoiler_log, goal.language(), "a", format!("{description} seed"));
+                                    self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), settings, spoiler_log, goal.language(), "a", format!("{description} seed"));
                                 } else {
                                     ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
@@ -2677,7 +2692,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     goal.send_presets(ctx).await?;
                                 }
                             }
-                            Goal::Pic7 => self.roll_seed(ctx, state, goal.rando_version(), pic::race7_settings(), true, English, "a", format!("seed")),
+                            Goal::Pic7 => self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), pic::race7_settings(), true, English, "a", format!("seed")),
                             Goal::PicRs2 => self.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
                                 version: Some((Version::new(2, 3, 8), 10)),
                                 preset: RslDevFenhlPreset::Pictionary,
@@ -2740,7 +2755,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 };
                                 self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, spoiler_log, English, article, description);
                             }
-                            Goal::Sgl2023 => self.roll_seed(ctx, state, goal.rando_version(), sgl::settings_2023(), false, English, "a", format!("seed")),
+                            Goal::Sgl2023 => self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), sgl::settings_2023(), false, English, "a", format!("seed")),
                             Goal::TournoiFrancoS3 => {
                                 let mut mq_dungeons_count = None::<u8>;
                                 let mut hard_settings_ok = false;
@@ -2828,7 +2843,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         }
                                     }
                                 };
-                                self.roll_seed(ctx, state, goal.rando_version(), fr::resolve_draft_settings(&settings), spoiler_log, French, "une", format!("seed avec {}", fr::display_draft_picks(&settings)));
+                                self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), fr::resolve_draft_settings(&settings), spoiler_log, French, "une", format!("seed avec {}", fr::display_draft_picks(&settings)));
                             }
                             Goal::TriforceBlitz => match args[..] {
                                 [] => {
