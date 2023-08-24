@@ -8,7 +8,6 @@ use {
         fmt,
         io::prelude::*,
         iter,
-        mem,
         path::{
             Path,
             PathBuf,
@@ -554,21 +553,17 @@ pub(crate) struct GlobalState {
     ootr_api_client: OotrApiClient,
     discord_ctx: RwFuture<DiscordCtx>,
     clean_shutdown: Arc<Mutex<CleanShutdown>>,
-    cached_mixed_pools_seed: Mutex<seed::Data>,
-    seed_cache_tx: mpsc::Sender<()>,
 }
 
 impl GlobalState {
-    pub(crate) async fn new(new_room_lock: Arc<Mutex<()>>, racetime_config: ConfigRaceTime, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>, seed_cache_tx: mpsc::Sender<()>) -> Self {
-        let _ = seed_cache_tx.send(()).await;
+    pub(crate) async fn new(new_room_lock: Arc<Mutex<()>>, racetime_config: ConfigRaceTime, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Self {
         Self {
             host_info: racetime::HostInfo {
                 hostname: Cow::Borrowed(host),
                 ..racetime::HostInfo::default()
             },
             ootr_api_client: OotrApiClient::new(http_client.clone(), ootr_api_key),
-            cached_mixed_pools_seed: Mutex::default(),
-            new_room_lock, host, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown, seed_cache_tx,
+            new_room_lock, host, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown,
         }
     }
 
@@ -2511,15 +2506,7 @@ impl RaceHandler<GlobalState> for Handler {
                     } else {
                         match goal {
                             Goal::CopaDoBrasil => self.roll_seed(ctx, state, goal.rando_version(), br::s1_settings(), false, English, "a", format!("seed")),
-                            Goal::MixedPoolsS2 => {
-                                let cached_seed = mem::take(&mut *lock!(ctx.global_state.cached_mixed_pools_seed));
-                                if cached_seed.files.is_some() {
-                                    let _ = ctx.global_state.seed_cache_tx.send(()).await;
-                                    self.queue_existing_seed(ctx, state, cached_seed, English, "a", format!("mixed pools seed")).await;
-                                } else {
-                                    self.roll_seed(ctx, state, goal.rando_version(), mp::s2_settings(), spoiler_log, English, "a", format!("mixed pools seed"));
-                                }
-                            }
+                            Goal::MixedPoolsS2 => self.roll_seed(ctx, state, goal.rando_version(), mp::s2_settings(), spoiler_log, English, "a", format!("mixed pools seed")),
                             Goal::MultiworldS3 => {
                                 let settings = match args[..] {
                                     [] => {
@@ -3495,48 +3482,6 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
     }
 }
 
-/// 2nd Mixed Pools Tournament seeds have a low success rate, so we keep one seed cached at all times.
-async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: mpsc::Receiver<()>, mut shutdown: rocket::Shutdown) -> Result<(), Error> {
-    'outer: loop {
-        select! {
-            () = &mut shutdown => break,
-            Some(()) = seed_cache_rx.recv() => 'seed: loop {
-                let mut seed_rx = global_state.clone().roll_seed(
-                    Some(Utc::now() + chrono::Duration::days(1)), // only report errors once per day to reduce noise in the log while the cause of the low success rate is still being investigated
-                    Goal::MixedPoolsS2.rando_version(),
-                    mp::s2_settings(),
-                    false,
-                );
-                loop {
-                    select! {
-                        () = &mut shutdown => break 'outer,
-                        Some(update) = seed_rx.recv() => match update {
-                            SeedRollUpdate::Queued(_) |
-                            SeedRollUpdate::MovedForward(_) |
-                            SeedRollUpdate::WaitRateLimit(_) |
-                            SeedRollUpdate::Started => {}
-                            SeedRollUpdate::Done { seed, rsl_preset: _, send_spoiler_log: _ } => {
-                                *lock!(global_state.cached_mixed_pools_seed) = seed;
-                                break 'seed
-                            }
-                            SeedRollUpdate::Error(RollError::Retries { num_retries, last_error }) => {
-                                if let Some(last_error) = last_error {
-                                    eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
-                                } else {
-                                    eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
-                                }
-                                continue 'seed
-                            }
-                            SeedRollUpdate::Error(e) => return Err(e).to_racetime(),
-                        },
-                    }
-                }
-            },
-        }
-    }
-    Ok(())
-}
-
 async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shutdown) -> Result<(), Error> {
     loop {
         select! {
@@ -3613,9 +3558,8 @@ async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRa
     }
 }
 
-pub(crate) async fn main(env: Environment, config: Config, shutdown: rocket::Shutdown, global_state: Arc<GlobalState>, seed_cache_rx: mpsc::Receiver<()>) -> Result<(), Error> {
-    let ((), (), ()) = tokio::try_join!(
-        prepare_seeds(global_state.clone(), seed_cache_rx, shutdown.clone()),
+pub(crate) async fn main(env: Environment, config: Config, shutdown: rocket::Shutdown, global_state: Arc<GlobalState>) -> Result<(), Error> {
+    let ((), ()) = tokio::try_join!(
         create_rooms(global_state.clone(), shutdown.clone()),
         handle_rooms(global_state, if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }, shutdown),
     )?;
