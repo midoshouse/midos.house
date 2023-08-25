@@ -1905,7 +1905,7 @@ impl RaceHandler<GlobalState> for Handler {
                         sleep_until(Instant::now() + delay).await;
                         if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
                         ctx.send_message(if requires_emote_only {
-                            "@entrants Remember to go live with a 15 minute (900 second) delay and set you chat to emote only!"
+                            "@entrants Remember to go live with a 15 minute (900 second) delay and set your chat to emote only!"
                         } else {
                             "@entrants Remember to go live with a 15 minute (900 second) delay!"
                         }).await.expect("failed to send stream delay notice");
