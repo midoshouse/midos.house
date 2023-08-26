@@ -403,7 +403,7 @@ async fn mw_platforms(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -
             }
             tr {
                 th : "Wii Virtual Console";
-                td(colspan = "3") : "Would require a modification to Virtual Console itself. The “Multiworld 2.0” project claims to have solved this issue but has not shared any details.";
+                td(colspan = "3") : "Would require a modification to Virtual Console itself. The “Multiworld 2.0” project claims to have solved this issue but has not shared any details out of concerns for competitive integrity.";
             }
             tr {
                 th : "BizHawk";

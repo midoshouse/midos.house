@@ -379,6 +379,7 @@ pub(crate) enum Goal {
     CopaDoBrasil,
     MixedPoolsS2,
     MultiworldS3,
+    MultiworldS4,
     NineDaysOfSaws,
     Pic7,
     PicRs2,
@@ -402,6 +403,7 @@ impl Goal {
             Self::CopaDoBrasil => series == Series::CopaDoBrasil && event == "1",
             Self::MixedPoolsS2 => series == Series::MixedPools && event == "2",
             Self::MultiworldS3 => series == Series::Multiworld && event == "3",
+            Self::MultiworldS4 => series == Series::Multiworld && event == "4",
             Self::NineDaysOfSaws => series == Series::NineDaysOfSaws,
             Self::Pic7 => series == Series::Pictionary && event == "7",
             Self::PicRs2 => series == Series::Pictionary && event == "rs2",
@@ -415,7 +417,7 @@ impl Goal {
     pub(crate) fn is_custom(&self) -> bool {
         match self {
             Self::Rsl | Self::TriforceBlitz => false,
-            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::MultiworldS3 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Sgl2023 | Self::TournoiFrancoS3 => true,
+            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::MultiworldS3 | Self::MultiworldS4 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Sgl2023 | Self::TournoiFrancoS3 => true,
         }
     }
 
@@ -424,6 +426,7 @@ impl Goal {
             Self::CopaDoBrasil => "Copa do Brasil",
             Self::MixedPoolsS2 => "2nd Mixed Pools Tournament",
             Self::MultiworldS3 => "3rd Multiworld Tournament",
+            Self::MultiworldS4 => "4th Multiworld Tournament",
             Self::NineDaysOfSaws => "9 Days of SAWS",
             Self::Pic7 => "7th Pictionary Spoiler Log Race",
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
@@ -445,6 +448,7 @@ impl Goal {
     fn draft_kind(&self) -> Option<draft::Kind> {
         match self {
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
+            Self::MultiworldS4 => None, //TODO
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
             Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Rsl | Self::Sgl2023 | Self::TriforceBlitz => None,
         }
@@ -452,7 +456,7 @@ impl Goal {
 
     fn preroll_seeds(&self) -> bool {
         match self {
-            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::MultiworldS3 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Rsl | Self::TournoiFrancoS3 => true,
+            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::MultiworldS3 | Self::MultiworldS4 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Rsl | Self::TournoiFrancoS3 => true,
             Self::Sgl2023 | Self::TriforceBlitz => false,
         }
     }
@@ -462,6 +466,7 @@ impl Goal {
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
+            Self::MultiworldS4 => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 175)), //TODO update after settings are finalized
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
             Self::Pic7 => VersionedBranch::Custom { github_username: "fenhl", branch: "frogs2-melody" },
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl),
@@ -474,7 +479,7 @@ impl Goal {
     fn should_create_rooms(&self) -> bool {
         match self {
             Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::Rsl => false,
-            Self::CopaDoBrasil | Self::MultiworldS3 | Self::Pic7 | Self::PicRs2 | Self::Sgl2023 | Self::TournoiFrancoS3 | Self::TriforceBlitz => true,
+            Self::CopaDoBrasil | Self::MultiworldS3 | Self::MultiworldS4 | Self::Pic7 | Self::PicRs2 | Self::Sgl2023 | Self::TournoiFrancoS3 | Self::TriforceBlitz => true,
         }
     }
 
@@ -487,6 +492,14 @@ impl Goal {
                 ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
                 ctx.send_message("!seed draft: Pick the settings here in the chat.").await?;
                 ctx.send_message("!seed <setting> <value> <setting> <value>... (e.g. !seed trials 2 wincon scrubs): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
+            }
+            Self::MultiworldS4 => {
+                ctx.send_message("All presets use the preliminary base settings plus one setting to be tested:").await?;
+                ctx.send_message("!seed warps: Randomize Warp Song Destinations").await?;
+                ctx.send_message("!seed cows: Shuffle Cows").await?;
+                ctx.send_message("!seed bees: Shuffle Beehives").await?;
+                ctx.send_message("!seed merchants: Shuffle Expensive Merchants (Medigoron, Carpet Salesman, Granny)").await?;
+                ctx.send_message("!seed frogs: Shuffle Frog Song Rupees").await?;
             }
             Self::NineDaysOfSaws => {
                 ctx.send_message("!seed day1: S6").await?;
@@ -1988,6 +2001,11 @@ impl RaceHandler<GlobalState> for Handler {
                             ctx.send_message("Welcome! This is a practice room for the 3rd Multiworld Tournament. Learn more about the tournament at https://midos.house/event/mw/3").await?;
                             ctx.send_message("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials 2 wincon scrubs). For more info about these options, use !presets").await?;
                         }
+                        Goal::MultiworldS4 => {
+                            //TODO update text after settings testing concludes
+                            ctx.send_message("Welcome! This is a settings testing room for the 4th Multiworld Tournament.").await?; //TODO event link
+                            ctx.send_message("Pick a setting to test and roll a seed using “!seed warps”, “!seed cows”, “!seed bees”, “!seed merchants”, or “!seed frogs”. For more info about these options, use !presets").await?;
+                        }
                         Goal::NineDaysOfSaws => {
                             ctx.send_message("Welcome! This is a practice room for 9 Days of SAWS. Learn more about the event at https://docs.google.com/document/d/1xELThZtIctwN-vYtYhUqtd88JigNzabk8OZHANa0gqY/edit").await?;
                             ctx.send_message("You can roll a seed using “!seed day1”, “!seed day2”, etc. For more info about these options, use !presets").await?;
@@ -2103,7 +2121,7 @@ impl RaceHandler<GlobalState> for Handler {
                 match *state {
                     RaceState::Init => match goal {
                         Goal::MixedPoolsS2 | Goal::Rsl => unreachable!("no official race rooms"),
-                        Goal::MultiworldS3 | Goal::TournoiFrancoS3 => unreachable!("should have draft state set"),
+                        Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::TournoiFrancoS3 => unreachable!("should have draft state set"),
                         Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
                         Goal::CopaDoBrasil => this.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), br::s1_settings(), false, English, "a", format!("seed")),
                         Goal::Pic7 => this.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), pic::race7_settings(), true, English, "a", format!("seed")),
@@ -2587,8 +2605,49 @@ impl RaceHandler<GlobalState> for Handler {
                                         }
                                     }
                                 };
-                                self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), mw::resolve_draft_settings(&settings), spoiler_log, English, "a", format!("seed with {}", mw::display_draft_picks(&settings)));
+                                self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), mw::resolve_s3_draft_settings(&settings), spoiler_log, English, "a", format!("seed with {}", mw::display_s3_draft_picks(&settings)));
                             }
+                            Goal::MultiworldS4 => match args[..] {
+                                [] => {
+                                    ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
+                                    goal.send_presets(ctx).await?;
+                                }
+                                [ref arg] => {
+                                    let mut settings = mw::s4_test_base_settings();
+                                    let description = match &**arg {
+                                        "warps" => {
+                                            settings.insert(format!("warp_songs"), json!(true));
+                                            "randomized warp song destinations"
+                                        }
+                                        "cows" => {
+                                            settings.insert(format!("shuffle_cows"), json!(true));
+                                            "shuffled cows"
+                                        }
+                                        "bees" => {
+                                            settings.insert(format!("shuffle_beehives"), json!(true));
+                                            "shuffled beehives"
+                                        }
+                                        "merchants" => {
+                                            settings.insert(format!("shuffle_expensive_merchants"), json!(true));
+                                            "shuffled expensive merchants"
+                                        }
+                                        "frogs" => {
+                                            settings.insert(format!("shuffle_frog_song_rupees"), json!(true));
+                                            "shuffled frog song rupees"
+                                        }
+                                        _ => {
+                                            ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                            goal.send_presets(ctx).await?;
+                                            return Ok(())
+                                        }
+                                    };
+                                    self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), settings, spoiler_log, goal.language(), "a", format!("seed with {description}"));
+                                }
+                                [..] => {
+                                    ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
+                                    goal.send_presets(ctx).await?;
+                                }
+                            },
                             Goal::NineDaysOfSaws => match args[..] {
                                 [] => {
                                     ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
@@ -3037,7 +3096,7 @@ impl RaceHandler<GlobalState> for Handler {
                             })
                         });
                     }
-                    Goal::CopaDoBrasil | Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::NineDaysOfSaws | Goal::Rsl | Goal::Sgl2023 | Goal::TournoiFrancoS3 => {}
+                    Goal::CopaDoBrasil | Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::NineDaysOfSaws | Goal::Rsl | Goal::Sgl2023 | Goal::TournoiFrancoS3 => {}
                 }
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx).await? {

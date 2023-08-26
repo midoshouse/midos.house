@@ -449,12 +449,18 @@ impl<'a> Data<'a> {
             (Series::MixedPools, "2") => from_file!("../../assets/event/mp/chests-2-7.1.117-fenhl.17.json"),
             (Series::MixedPools, _) => unimplemented!(),
             (Series::Multiworld, "1" | "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
-            (Series::Multiworld, "3") => mw::chests(&Draft {
+            (Series::Multiworld, "3") => mw::s3_chests(&Draft {
                 high_seed: Id(0), // Draft::complete_randomly doesn't check for active team
                 went_first: None,
                 skipped_bans: 0,
                 settings: HashMap::default(),
             }.complete_randomly(draft::Kind::MultiworldS3).await.unwrap()),
+            (Series::Multiworld, "4") => mw::s3_chests(&Draft {
+                high_seed: Id(0), // Draft::complete_randomly doesn't check for active team
+                went_first: None,
+                skipped_bans: 0,
+                settings: HashMap::default(),
+            }.complete_randomly(draft::Kind::MultiworldS3).await.unwrap()), //TODO update for S4 test settings, then for final draft rules
             (Series::Multiworld, _) => unimplemented!(),
             (Series::NineDaysOfSaws, _) => ChestAppearances::VANILLA, // no CAMC in SAWS
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
@@ -546,6 +552,7 @@ impl<'a> Data<'a> {
     pub(crate) fn draft_kind(&self) -> Option<draft::Kind> {
         match (self.series, &*self.event) {
             (Series::Multiworld, "3") => Some(draft::Kind::MultiworldS3),
+            //TODO mw/4
             (Series::TournoiFrancophone, "3") => Some(draft::Kind::TournoiFrancoS3),
             (_, _) => None,
         }

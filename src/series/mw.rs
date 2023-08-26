@@ -111,14 +111,14 @@ pub(crate) const S3_SETTINGS: [S3Setting; 8] = [
     S3Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
 ];
 
-pub(crate) fn display_draft_picks(picks: &draft::Picks) -> String {
+pub(crate) fn display_s3_draft_picks(picks: &draft::Picks) -> String {
     English.join_str(
         S3_SETTINGS.into_iter()
             .filter_map(|S3Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _)| pick == other)).map(|(_, display)| display)),
     ).unwrap_or_else(|| format!("base settings"))
 }
 
-pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
+pub(crate) fn resolve_s3_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
     let wincon = picks.get("wincon").map(|wincon| &**wincon).unwrap_or("meds");
     let dungeons = picks.get("dungeons").map(|dungeons| &**dungeons).unwrap_or("tournament");
     let er = picks.get("er").map(|er| &**er).unwrap_or("off");
@@ -206,7 +206,7 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
         format!("disabled_locations") => json!([
             "Deku Theater Mask of Truth",
             "Kak 40 Gold Skulltula Reward",
-            "Kak 50 Gold Skulltula Reward"
+            "Kak 50 Gold Skulltula Reward",
         ]),
         format!("allowed_tricks") => json!([
             "logic_fewer_tunic_requirements",
@@ -225,13 +225,13 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
             "logic_lens_shadow_platform",
             "logic_lens_bongo",
             "logic_lens_spirit",
-            "logic_dc_scarecrow_gs"
+            "logic_dc_scarecrow_gs",
         ]),
         format!("adult_trade_start") => json!(["Claim Check"]),
         format!("starting_items") => json!([
             "ocarina",
             "farores_wind",
-            "lens"
+            "lens",
         ]),
         format!("correct_chest_appearances") => json!("both"),
         format!("hint_dist") => json!("mw3"),
@@ -245,14 +245,104 @@ pub(crate) fn resolve_draft_settings(picks: &draft::Picks) -> serde_json::Map<St
     ]
 }
 
-pub(crate) fn chests(picks: &draft::Picks) -> ChestAppearances {
+pub(crate) fn s3_chests(picks: &draft::Picks) -> ChestAppearances {
     static WEIGHTS: Lazy<HashMap<String, Vec<(ChestAppearances, usize)>>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/mw/chests-3-6.2.181.json")).expect("failed to parse chest weights")); //TODO update to 6.2.205
 
-    if let Some(settings_weights) = WEIGHTS.get(&display_draft_picks(picks)) {
+    if let Some(settings_weights) = WEIGHTS.get(&display_s3_draft_picks(picks)) {
         settings_weights.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
     } else {
         ChestAppearances::INVISIBLE
     }
+}
+
+pub(crate) fn s4_test_base_settings() -> serde_json::Map<String, Json> {
+    collect![
+        format!("user_message") => json!("4th Multiworld Tournament Test Settings"),
+        format!("world_count") => json!(3),
+        format!("open_forest") => json!("open"),
+        format!("open_kakariko") => json!("open"),
+        format!("open_door_of_time") => json!(true),
+        format!("zora_fountain") => json!("closed"),
+        format!("gerudo_fortress") => json!("fast"),
+        format!("bridge") => json!("medallions"),
+        format!("bridge_medallions") => json!(6),
+        format!("bridge_stones") => json!(3),
+        format!("bridge_rewards") => json!(4),
+        format!("triforce_hunt") => json!(false),
+        format!("triforce_count_per_world") => json!(30),
+        format!("triforce_goal_per_world") => json!(25),
+        format!("trials") => json!(0),
+        format!("shuffle_child_trade") => json!([]),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("free_scarecrow") => json!(true),
+        format!("fast_bunny_hood") => json!(true),
+        format!("start_with_rupees") => json!(true),
+        format!("start_with_consumables") => json!(true),
+        format!("chicken_count") => json!(3),
+        format!("big_poe_count") => json!(1),
+        format!("ruto_already_f1_jabu") => json!(true),
+        format!("shuffle_dungeon_entrances") => json!("off"),
+        format!("spawn_positions") => json!([]),
+        format!("shuffle_scrubs") => json!("low"),
+        format!("shopsanity") => json!("4"),
+        format!("tokensanity") => json!("off"),
+        format!("shuffle_mapcompass") => json!("startwith"),
+        format!("shuffle_smallkeys") => json!("dungeon"),
+        format!("key_rings_choice") => json!("off"),
+        format!("shuffle_bosskeys") => json!("dungeon"),
+        format!("shuffle_ganon_bosskey") => json!("medallions"),
+        format!("enhance_map_compass") => json!(true),
+        format!("disabled_locations") => json!([
+            "Deku Theater Mask of Truth",
+            "Kak 40 Gold Skulltula Reward",
+            "Kak 50 Gold Skulltula Reward",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_fewer_tunic_requirements",
+            "logic_grottos_without_agony",
+            "logic_child_deadhand",
+            "logic_man_on_roof",
+            "logic_dc_jump",
+            "logic_rusted_switches",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_forest_vines",
+            "logic_lens_botw",
+            "logic_lens_castle",
+            "logic_lens_gtg",
+            "logic_lens_shadow",
+            "logic_lens_shadow_platform",
+            "logic_lens_bongo",
+            "logic_lens_spirit",
+            "logic_dc_scarecrow_gs",
+        ]),
+        format!("adult_trade_start") => json!(["Claim Check"]),
+        format!("starting_items") => json!([
+            "ocarina",
+            "farores_wind",
+            "lens",
+            "zeldas_letter",
+        ]),
+        format!("correct_chest_appearances") => json!("textures"),
+        format!("key_appearance_match_dungeon") => json!(true),
+        format!("hint_dist") => json!("mw3"),
+        format!("misc_hints") => json!([
+            "altar",
+            "ganondorf",
+            "warp_songs_and_owls",
+            "20_skulltulas",
+            "30_skulltulas",
+            "unique_merchants",
+            "frogs2",
+        ]),
+        format!("blue_fire_arrows") => json!(true),
+        format!("ice_trap_appearance") => json!("junk_only"),
+        format!("junk_ice_traps") => json!("off"),
+        format!("starting_age") => json!("adult"),
+    ]
 }
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {

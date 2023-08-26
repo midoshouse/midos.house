@@ -325,11 +325,11 @@ impl Draft {
                             }
                         }
                         6.. => Step {
-                            kind: StepKind::Done(mw::resolve_draft_settings(&self.settings)),
+                            kind: StepKind::Done(mw::resolve_s3_draft_settings(&self.settings)),
                             message: match msg_ctx {
                                 MessageContext::None => String::default(),
-                                MessageContext::Discord { .. } => format!("Settings draft completed. You will be playing with {}.", mw::display_draft_picks(&self.settings)),
-                                MessageContext::RaceTime { .. } => mw::display_draft_picks(&self.settings),
+                                MessageContext::Discord { .. } => format!("Settings draft completed. You will be playing with {}.", mw::display_s3_draft_picks(&self.settings)),
+                                MessageContext::RaceTime { .. } => mw::display_s3_draft_picks(&self.settings),
                             },
                         },
                     }

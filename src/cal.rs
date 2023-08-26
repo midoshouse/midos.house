@@ -676,6 +676,7 @@ impl Race {
             Series::Multiworld => match &*event.event {
                 "1" => {} // no match data available
                 "2" | "3" => {} // added to database
+                "4" => {} //TODO get from start.gg or Challonge?
                 _ => unimplemented!(),
             },
             Series::NineDaysOfSaws | Series::Pictionary => {
