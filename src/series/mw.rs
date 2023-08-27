@@ -320,7 +320,7 @@ pub(crate) fn s4_test_base_settings() -> serde_json::Map<String, Json> {
             "logic_dc_scarecrow_gs",
         ]),
         format!("adult_trade_start") => json!(["Claim Check"]),
-        format!("starting_items") => json!([
+        format!("starting_inventory") => json!([
             "ocarina",
             "farores_wind",
             "lens",
