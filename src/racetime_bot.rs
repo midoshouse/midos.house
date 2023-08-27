@@ -180,10 +180,11 @@ use {
 pub(crate) const CATEGORY: &str = "ootr";
 
 /// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
-const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 7] = [
+const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 8] = [
     rando::Version::from_dev(6, 2, 181),
     rando::Version::from_dev(6, 2, 205),
     rando::Version::from_dev(7, 1, 143),
+    rando::Version::from_dev(7, 1, 181),
     rando::Version::from_branch(rando::Branch::DevR, 6, 2, 238, 1),
     rando::Version::from_branch(rando::Branch::DevR, 7, 1, 83, 1), // commit 578a64f4c78a831cde4215e0ac31565d3bf9bc46
     rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1), // commit 06390ece7e38fce1dd02ca60a28a7b1ff9fceb10
@@ -466,7 +467,7 @@ impl Goal {
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
-            Self::MultiworldS4 => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 175)), //TODO update after settings are finalized
+            Self::MultiworldS4 => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 181)), //TODO update after settings are finalized
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
             Self::Pic7 => VersionedBranch::Custom { github_username: "fenhl", branch: "frogs2-melody" },
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl),
