@@ -2593,7 +2593,9 @@ impl RaceHandler<GlobalState> for Handler {
                                                 }
                                             } else {
                                                 drop(state);
-                                                self.send_settings(ctx, &format!("Sorry {reply_to}, I don't recognize one of those settings. Use one of the following:"), reply_to).await?;
+                                                self.send_settings(ctx, &format!("Sorry {reply_to}, I don't recognize {}. Use one of the following:",
+                                                    if setting.chars().all(|c| c.is_ascii_alphanumeric()) { Cow::Owned(format!("the setting “{setting}”")) } else { Cow::Borrowed("one of those settings") },
+                                                ), reply_to).await?;
                                                 return Ok(())
                                             }
                                         }
@@ -2890,7 +2892,9 @@ impl RaceHandler<GlobalState> for Handler {
                                                 }
                                             } else {
                                                 drop(state);
-                                                self.send_settings(ctx, &format!("Désolé {reply_to}, je ne reconnais pas un des settings. Utilisez cette liste :"), reply_to).await?;
+                                                self.send_settings(ctx, &format!("Désolé {reply_to}, je ne reconnais pas {}. Utilisez cette liste :",
+                                                    if setting.chars().all(|c| c.is_ascii_alphanumeric()) { Cow::Owned(format!("le setting « {setting} »")) } else { Cow::Borrowed("un des settings") },
+                                                ), reply_to).await?;
                                                 return Ok(())
                                             }
                                         }
