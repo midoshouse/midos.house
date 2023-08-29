@@ -29,11 +29,16 @@ use {
 
 pub(crate) const PATH: &str = "/usr/local/share/midos-house/sock";
 
+fn json_arg(arg: &str) -> serde_json::Result<Json> {
+    serde_json::from_str(arg)
+}
+
 #[derive(clap::Subcommand, Protocol)]
 pub(crate) enum ClientMessage {
     PrepareStop,
     Roll {
         version: ootr_utils::Version,
+        #[clap(value_parser = json_arg)]
         settings: Json,
         #[clap(short = 'l', long)]
         spoiler_log: bool,
@@ -91,6 +96,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                 }
                             } else {
                                 Some(SeedRollUpdate::Error(RollError::NonObjectSettings)).write(&mut sock).await.expect("error writing to UNIX socket");
+                                break
                             },
                             Ok(ClientMessage::RollRsl { preset, branch, rsl_version, worlds, spoiler_log }) => {
                                 let preset = if let Some(rsl_version) = rsl_version {
@@ -107,6 +113,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                     }
                                 } else {
                                     Some(SeedRollUpdate::Error(RollError::RslVersion)).write(&mut sock).await.expect("error writing to UNIX socket");
+                                    break
                                 }
                             }
                             Err(ReadError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => break,
