@@ -1106,8 +1106,9 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                 @if row.resigned {
                     p : "You have resigned from this event.";
                 } else {
+                    //TODO deduplicate async handling code
                     @match data.series {
-                        Series::CopaDoBrasil => p : "Please schedule your races using the Discord threads."; //TODO tiebreaker async support?
+                        Series::CopaDoBrasil => : br::status(&mut transaction, csrf, &data, row.id, &mut ctx).await?;
                         Series::League => @unimplemented // no signups on Mido's House
                         Series::MixedPools => @unimplemented // no signups on Mido's House
                         Series::Multiworld => : mw::status(&mut transaction, discord_ctx, csrf, &data, row.id, &mut ctx).await?;
