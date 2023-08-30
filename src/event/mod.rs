@@ -1715,7 +1715,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
                     let mut message = MessageBuilder::default();
                     message.push("Please welcome ");
                     message.mention_team(&mut transaction, Some(discord_guild), &team).await?;
-                    if let Some(sum) = times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
+                    if let Some(sum) = times.iter().take(players.len()).try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
                         message.push(" who finished with a time of ");
                         message.push(English.format_duration(sum / u32::try_from(times.len()).expect("too many players in team"), true));
                         message.push_line('!');
