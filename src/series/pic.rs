@@ -118,7 +118,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 li : "shuffle ocarina note buttons";
                 li : "randomize song melodies (including frogs 2)";
                 li : "randomize warp song destinations";
-                li : "shuffle frogs";
+                li : "shuffle frog song rupees";
                 li : "shuffle cows (house cow disabled)";
                 li : "child start, closed Door of Time";
             }
