@@ -35,7 +35,10 @@ fn json_arg(arg: &str) -> serde_json::Result<Json> {
 
 #[derive(clap::Subcommand, Protocol)]
 pub(crate) enum ClientMessage {
-    PrepareStop,
+    PrepareStop {
+        #[clap(long)]
+        no_new_rooms: bool,
+    },
     Roll {
         version: ootr_utils::Version,
         #[clap(value_parser = json_arg)]
@@ -69,10 +72,11 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                 tokio::spawn(async move {
                     loop {
                         match ClientMessage::read(&mut sock).await {
-                            Ok(ClientMessage::PrepareStop) => {
+                            Ok(ClientMessage::PrepareStop { no_new_rooms }) => {
                                 println!("preparing to stop Mido's House: acquiring clean shutdown mutex");
                                 let mut clean_shutdown = lock!(clean_shutdown);
                                 clean_shutdown.requested = true;
+                                if no_new_rooms { clean_shutdown.block_new = true }
                                 if !clean_shutdown.open_rooms.is_empty() {
                                     println!("preparing to stop Mido's House: waiting for {} rooms to close:", clean_shutdown.open_rooms.len());
                                     for room_url in &clean_shutdown.open_rooms {

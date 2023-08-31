@@ -557,8 +557,15 @@ impl FromStr for Goal {
 #[derive(Default)]
 pub(crate) struct CleanShutdown {
     pub(crate) requested: bool,
+    pub(crate) block_new: bool,
     pub(crate) open_rooms: HashSet<String>,
     pub(crate) notifier: Arc<Notify>,
+}
+
+impl CleanShutdown {
+    fn should_handle_new(&self) -> bool {
+        !self.requested || !self.block_new && !self.open_rooms.is_empty()
+    }
 }
 
 pub(crate) struct GlobalState {
@@ -1549,17 +1556,16 @@ struct Handler {
 }
 
 impl Handler {
-    async fn should_handle_inner(race_data: &RaceData, global_state: Arc<GlobalState>, increment_num_rooms: bool) -> bool {
-        let mut clean_shutdown = lock!(global_state.clean_shutdown);
+    async fn should_handle_inner(race_data: &RaceData, global_state: Arc<GlobalState>, is_new: bool) -> bool {
         let Ok(bot_goal) = race_data.goal.name.parse::<Goal>() else { return false };
-        race_data.goal.custom == bot_goal.is_custom()
-        && !matches!(race_data.status.value, RaceStatusValue::Finished | RaceStatusValue::Cancelled)
-        && if !clean_shutdown.requested || !clean_shutdown.open_rooms.is_empty() {
-            if increment_num_rooms { assert!(clean_shutdown.open_rooms.insert(race_data.url.clone())) }
-            true
-        } else {
-            false
+        if race_data.goal.custom != bot_goal.is_custom() { return false }
+        if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
+        if is_new {
+            let mut clean_shutdown = lock!(global_state.clean_shutdown);
+            if !clean_shutdown.should_handle_new() { return false }
+            assert!(clean_shutdown.open_rooms.insert(race_data.url.clone()));
         }
+        true
     }
 
     fn is_official(&self) -> bool { self.official_data.is_some() }
