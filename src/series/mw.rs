@@ -286,6 +286,7 @@ pub(crate) fn s4_test_base_settings() -> serde_json::Map<String, Json> {
         format!("ruto_already_f1_jabu") => json!(true),
         format!("shuffle_dungeon_entrances") => json!("off"),
         format!("spawn_positions") => json!([]),
+        format!("free_bombchu_drops") => json!(false),
         format!("shuffle_scrubs") => json!("low"),
         format!("shopsanity") => json!("4"),
         format!("tokensanity") => json!("off"),
