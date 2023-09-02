@@ -1556,6 +1556,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                 }
                 None => None,
             };
+            let mut scheduling_thread = None;
             for game in 1..=value.game_count {
                 let mut race = Race {
                     id: Id::new(&mut transaction, IdTable::Races).await?,
@@ -1570,7 +1571,6 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                     phase: phase.clone(),
                     round: round.clone(),
                     game: (value.game_count > 1).then_some(game),
-                    scheduling_thread: None,
                     schedule: RaceSchedule::Unscheduled,
                     draft: draft.clone(),
                     seed: seed::Data::default(),
@@ -1578,9 +1578,11 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                     restreamers: HashMap::default(),
                     ignored: false,
                     schedule_locked: false,
+                    scheduling_thread,
                 };
                 if game == 1 {
                     discord_bot::create_scheduling_thread(&*discord_ctx.read().await, &mut transaction, &mut race, value.game_count).await?;
+                    scheduling_thread = race.scheduling_thread;
                 }
                 race.save(&mut transaction).await?;
             }
