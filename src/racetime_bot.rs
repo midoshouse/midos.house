@@ -486,35 +486,35 @@ impl Goal {
 
     async fn send_presets(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         match self {
-            Self::Pic7 | Self::PicRs2 => ctx.send_message("!seed: The settings used for the race").await?,
-            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::Sgl2023 => ctx.send_message("!seed: The settings used for the tournament").await?,
+            Self::Pic7 | Self::PicRs2 => ctx.say("!seed: The settings used for the race").await?,
+            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::Sgl2023 => ctx.say("!seed: The settings used for the tournament").await?,
             Self::MultiworldS3 => {
-                ctx.send_message("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
-                ctx.send_message("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
-                ctx.send_message("!seed draft: Pick the settings here in the chat.").await?;
-                ctx.send_message("!seed <setting> <value> <setting> <value>... (e.g. !seed trials 2 wincon scrubs): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
+                ctx.say("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
+                ctx.say("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
+                ctx.say("!seed draft: Pick the settings here in the chat.").await?;
+                ctx.say("!seed <setting> <value> <setting> <value>... (e.g. !seed trials 2 wincon scrubs): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
             }
             Self::MultiworldS4 => {
-                ctx.send_message("All presets use the preliminary base settings plus one setting to be tested:").await?;
-                ctx.send_message("!seed warps: Randomize Warp Song Destinations").await?;
-                ctx.send_message("!seed cows: Shuffle Cows").await?;
-                ctx.send_message("!seed bees: Shuffle Beehives").await?;
-                ctx.send_message("!seed merchants: Shuffle Expensive Merchants (Medigoron, Carpet Salesman, Granny)").await?;
-                ctx.send_message("!seed frogs: Shuffle Frog Song Rupees").await?;
+                ctx.say("All presets use the preliminary base settings plus one setting to be tested:").await?;
+                ctx.say("!seed warps: Randomize Warp Song Destinations").await?;
+                ctx.say("!seed cows: Shuffle Cows").await?;
+                ctx.say("!seed bees: Shuffle Beehives").await?;
+                ctx.say("!seed merchants: Shuffle Expensive Merchants (Medigoron, Carpet Salesman, Granny)").await?;
+                ctx.say("!seed frogs: Shuffle Frog Song Rupees").await?;
             }
             Self::NineDaysOfSaws => {
-                ctx.send_message("!seed day1: S6").await?;
-                ctx.send_message("!seed day2: Beginner").await?;
-                ctx.send_message("!seed day3: Advanced").await?;
-                ctx.send_message("!seed day4: S5 + one bonk KO").await?;
-                ctx.send_message("!seed day5: Beginner + mixed pools").await?;
-                ctx.send_message("!seed day6: Beginner 3-player multiworld").await?;
-                ctx.send_message("!seed day7: Beginner").await?;
-                ctx.send_message("!seed day8: S6 + dungeon ER").await?;
-                ctx.send_message("!seed day9: S6").await?;
+                ctx.say("!seed day1: S6").await?;
+                ctx.say("!seed day2: Beginner").await?;
+                ctx.say("!seed day3: Advanced").await?;
+                ctx.say("!seed day4: S5 + one bonk KO").await?;
+                ctx.say("!seed day5: Beginner + mixed pools").await?;
+                ctx.say("!seed day6: Beginner 3-player multiworld").await?;
+                ctx.say("!seed day7: Beginner").await?;
+                ctx.say("!seed day8: S6 + dungeon ER").await?;
+                ctx.say("!seed day9: S6").await?;
             }
             Self::Rsl => for preset in all::<rsl::Preset>() {
-                ctx.send_message(&format!("!seed{}: {}", match preset {
+                ctx.say(&format!("!seed{}: {}", match preset {
                     rsl::Preset::League => String::default(),
                     rsl::Preset::Multiworld => format!(" {} <worldcount>", preset.name()),
                     _ => format!(" {}", preset.name()),
@@ -529,17 +529,17 @@ impl Goal {
                 })).await?;
             },
             Self::TournoiFrancoS3 => {
-                ctx.send_message("!seed base : Settings de base.").await?;
-                ctx.send_message("!seed random : Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.").await?;
-                ctx.send_message("!seed draft : Vous fait effectuer un draft dans le chat.").await?;
-                ctx.send_message("!seed <setting> <configuration> <setting> <configuration>... ex : !seed trials random bridge ad : Créé une seed avec les settings que vous définissez. Tapez “!settings” pour obtenir la liste des settings.").await?;
-                ctx.send_message("Utilisez “!seed random advanced” ou “!seed draft advanced” pour autoriser les settings difficiles.").await?;
-                ctx.send_message("Activez les donjons Master Quest en utilisant par exemple : “!seed base 6mq” ou “!seed draft advanced 12mq”").await?;
+                ctx.say("!seed base : Settings de base.").await?;
+                ctx.say("!seed random : Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.").await?;
+                ctx.say("!seed draft : Vous fait effectuer un draft dans le chat.").await?;
+                ctx.say("!seed <setting> <configuration> <setting> <configuration>... ex : !seed trials random bridge ad : Créé une seed avec les settings que vous définissez. Tapez “!settings” pour obtenir la liste des settings.").await?;
+                ctx.say("Utilisez “!seed random advanced” ou “!seed draft advanced” pour autoriser les settings difficiles.").await?;
+                ctx.say("Activez les donjons Master Quest en utilisant par exemple : “!seed base 6mq” ou “!seed draft advanced 12mq”").await?;
             }
             Self::TriforceBlitz => {
-                ctx.send_message("!seed jr: Jabu's Revenge").await?;
-                ctx.send_message("!seed s2: Triforce Blitz season 2 settings").await?;
-                ctx.send_message("!seed daily: Triforce Blitz Seed of the Day").await?;
+                ctx.say("!seed jr: Jabu's Revenge").await?;
+                ctx.say("!seed s2: Triforce Blitz season 2 settings").await?;
+                ctx.say("!seed daily: Triforce Blitz Seed of the Day").await?;
             }
         }
         Ok(())
@@ -1099,14 +1099,14 @@ pub(crate) enum SeedRollUpdate {
 impl SeedRollUpdate {
     async fn handle(self, db_pool: &PgPool, ctx: &RaceContext<GlobalState>, state: &ArcRwLock<RaceState>, official_data: Option<&OfficialRaceData>, language: Language, article: &'static str, description: &str) -> Result<(), Error> {
         match self {
-            Self::Queued(0) => ctx.send_message("I'm already rolling other multiworld seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
-            Self::Queued(1) => ctx.send_message("I'm already rolling other multiworld seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
-            Self::Queued(pos) => ctx.send_message(&format!("I'm already rolling other multiworld seeds so your seed has been queued. There are {pos} seeds in front of it in the queue.")).await?,
-            Self::MovedForward(0) => ctx.send_message("The queue has moved and your seed is now at the front so it will be rolled next.").await?,
-            Self::MovedForward(1) => ctx.send_message("The queue has moved and there is only 1 more seed in front of yours.").await?,
-            Self::MovedForward(pos) => ctx.send_message(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
-            Self::WaitRateLimit(duration) => ctx.send_message(&format!("Your seed will be rolled in {}.", English.format_duration(duration, true))).await?,
-            Self::Started => ctx.send_message(&if let French = language {
+            Self::Queued(0) => ctx.say("I'm already rolling other multiworld seeds so your seed has been queued. It is at the front of the queue so it will be rolled next.").await?,
+            Self::Queued(1) => ctx.say("I'm already rolling other multiworld seeds so your seed has been queued. There is 1 seed in front of it in the queue.").await?,
+            Self::Queued(pos) => ctx.say(&format!("I'm already rolling other multiworld seeds so your seed has been queued. There are {pos} seeds in front of it in the queue.")).await?,
+            Self::MovedForward(0) => ctx.say("The queue has moved and your seed is now at the front so it will be rolled next.").await?,
+            Self::MovedForward(1) => ctx.say("The queue has moved and there is only 1 more seed in front of yours.").await?,
+            Self::MovedForward(pos) => ctx.say(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
+            Self::WaitRateLimit(duration) => ctx.say(&format!("Your seed will be rolled in {}.", English.format_duration(duration, true))).await?,
+            Self::Started => ctx.say(&if let French = language {
                 format!("Génération d'{article} {description}…")
             } else {
                 format!("Rolling {article} {description}…")
@@ -1171,23 +1171,23 @@ impl SeedRollUpdate {
                     seed::Files::TriforceBlitz { uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
                     seed::Files::TfbSotd { ordinal, .. } => format!("https://www.triforceblitz.com/seed/daily/{ordinal}"),
                 };
-                ctx.send_message(&if let French = language {
+                ctx.say(&if let French = language {
                     format!("@entrants Voici votre seed : {seed_url}")
                 } else {
                     format!("@entrants Here is your seed: {seed_url}")
                 }).await?;
                 if send_spoiler_log {
-                    ctx.send_message("The spoiler log is also available on the seed page.").await?;
+                    ctx.say("The spoiler log is also available on the seed page.").await?;
                 } else if let Some(seed::Files::TfbSotd { date, .. }) = seed.files {
                     if let Some(unlock_date) = date.succ_opt().and_then(|next| next.succ_opt()) {
                         let unlock_time = Utc.from_utc_datetime(&unlock_date.and_hms_opt(20, 0, 0).expect("failed to construct naive datetime at 20:00:00"));
                         let unlock_time = (unlock_time - Utc::now()).to_std().expect("unlock time for current daily seed in the past");
-                        ctx.send_message(&format!("The spoiler log will be available on the seed page in {}.", English.format_duration(unlock_time, true))).await?;
+                        ctx.say(&format!("The spoiler log will be available on the seed page in {}.", English.format_duration(unlock_time, true))).await?;
                     } else {
                         unimplemented!("distant future Triforce Blitz SotD")
                     }
                 } else {
-                    ctx.send_message(if let French = language {
+                    ctx.say(if let French = language {
                         "Le spoiler log sera disponible sur le lien de la seed après la seed."
                     } else {
                         "The spoiler log will be available on the seed page after the race."
@@ -1259,9 +1259,9 @@ impl SeedRollUpdate {
                                     }
                                 }
                                 cmd.check("ootrmwd create-tournament-room").await.to_racetime()?;
-                                ctx.send_message(&format!("{reply_to}, your Mido's House Multiworld room named “{mw_room_name}” is now open. You can find it at the top of the room list.")).await?;
+                                ctx.say(&format!("{reply_to}, your Mido's House Multiworld room named “{mw_room_name}” is now open. You can find it at the top of the room list.")).await?;
                             } else {
-                                ctx.send_message(&format!("Sorry {reply_to}, there was an error creating your Mido's House Multiworld room. Please create one manually.")).await?;
+                                ctx.say(&format!("Sorry {reply_to}, there was an error creating your Mido's House Multiworld room. Please create one manually.")).await?;
                             }
                         }
                     }
@@ -1275,7 +1275,7 @@ impl SeedRollUpdate {
                 } else {
                     eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
                 }
-                ctx.send_message(&if let French = language {
+                ctx.say(&if let French = language {
                     format!("Désolé @entrants, le randomizer a rapporté une erreur {num_retries} fois de suite donc je vais laisser tomber. Veuillez réessayer et, si l'erreur persiste, essayer de roll une seed de votre côté et contacter Fenhl.")
                 } else {
                     format!("Sorry @entrants, the randomizer reported an error {num_retries} times, so I'm giving up on rolling the seed. Please try again. If this error persists, please report it to Fenhl.")
@@ -1285,7 +1285,7 @@ impl SeedRollUpdate {
             Self::Error(e) => {
                 eprintln!("seed roll error: {e} ({e:?})");
                 let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
-                ctx.send_message("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl.").await?;
+                ctx.say("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl.").await?;
             }
         }
         Ok(())
@@ -1604,19 +1604,19 @@ impl Handler {
                 draft::Kind::TournoiFrancoS3 => fr::S3_SETTINGS.into_iter().map(|fr::S3Setting { description, .. }| description).collect(),
             });
             if available_settings.is_empty() {
-                ctx.send_message(&if let French = goal.language() {
+                ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, aucun setting n'est demandé pour le moment.")
                 } else {
                     format!("Sorry {reply_to}, no settings are currently available.")
                 }).await?;
             } else {
-                ctx.send_message(preface).await?;
+                ctx.say(preface).await?;
                 for setting in available_settings {
-                    ctx.send_message(setting).await?;
+                    ctx.say(setting).await?;
                 }
             }
         } else {
-            ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?;
+            ctx.say(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?;
         }
         Ok(())
     }
@@ -1635,7 +1635,7 @@ impl Handler {
             };
             self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), settings, spoiler_log, goal.language(), article, description);
         } else {
-            ctx.send_message(&step.message).await?;
+            ctx.say(&step.message).await?;
         }
         Ok(())
     }
@@ -1647,8 +1647,8 @@ impl Handler {
             if let Some(draft_kind) = goal.draft_kind() {
                 match *state {
                     RaceState::Init => match draft_kind {
-                        draft::Kind::MultiworldS3 => ctx.send_message(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        draft::Kind::TournoiFrancoS3 => ctx.send_message(&format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
+                        draft::Kind::MultiworldS3 => ctx.say(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
+                        draft::Kind::TournoiFrancoS3 => ctx.say(&format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
                     },
                     RaceState::Draft { state: ref mut draft, .. } => match draft.apply(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }, action).await.to_racetime()? {
                         Ok(_) => {
@@ -1657,21 +1657,21 @@ impl Handler {
                         }
                         Err(error_msg) => {
                             drop(state);
-                            ctx.send_message(&error_msg).await?;
+                            ctx.say(&error_msg).await?;
                         }
                     },
                     RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => match goal.language() {
-                        French => ctx.send_message(&format!("Désolé {reply_to}, mais il n'y a pas de draft, ou la phase de pick&ban est terminée.")).await?,
-                        _ => ctx.send_message(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
+                        French => ctx.say(&format!("Désolé {reply_to}, mais il n'y a pas de draft, ou la phase de pick&ban est terminée.")).await?,
+                        _ => ctx.say(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
                     },
                 }
             } else {
-                ctx.send_message(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?;
+                ctx.say(&format!("Sorry {reply_to}, this event doesn't have a settings draft.")).await?;
             }
         } else {
             match goal.language() {
-                French => ctx.send_message(&format!("Désolé {reply_to}, mais la race a débuté.")).await?,
-                _ => ctx.send_message(&format!("Sorry {reply_to}, but the race has already started.")).await?,
+                French => ctx.say(&format!("Désolé {reply_to}, mais la race a débuté.")).await?,
+                _ => ctx.say(&format!("Sorry {reply_to}, but the race has already started.")).await?,
             }
         }
         Ok(())
@@ -1695,7 +1695,7 @@ impl Handler {
                 } else {
                     delay
                 };
-                ctx.send_message(&if let French = language {
+                ctx.say(&if let French = language {
                     format!("Votre {description} sera postée dans {}.", French.format_duration(display_delay, true))
                 } else {
                     format!("Your {description} will be posted in {}.", English.format_duration(display_delay, true))
@@ -1842,7 +1842,7 @@ impl RaceHandler<GlobalState> for Handler {
                             }
                             entrants.push(member.id);
                         } else {
-                            ctx.send_message(&format!(
+                            ctx.say(&format!(
                                 "Warning: {name} could not be invited because {subj} {has_not} linked {poss} racetime.gg account to {poss} Mido's House account. Please contact an organizer to invite {obj} manually for now.",
                                 name = member,
                                 subj = member.subjective_pronoun(),
@@ -1854,7 +1854,7 @@ impl RaceHandler<GlobalState> for Handler {
                     }
                 }
             }
-            ctx.send_message(&if_chain! {
+            ctx.say(&if_chain! {
                 if let French = goal.language();
                 if !event.is_single_race();
                 if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
@@ -1924,7 +1924,7 @@ impl RaceHandler<GlobalState> for Handler {
                     tokio::spawn(async move {
                         sleep_until(Instant::now() + delay).await;
                         if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
-                        ctx.send_message(if requires_emote_only {
+                        ctx.say(if requires_emote_only {
                             "@entrants Remember to go live with a 15 minute (900 second) delay and set your chat to emote only!"
                         } else {
                             "@entrants Remember to go live with a 15 minute (900 second) delay!"
@@ -1940,7 +1940,7 @@ impl RaceHandler<GlobalState> for Handler {
             }
             let fpa_enabled = match data.status.value {
                 RaceStatusValue::Invitational => {
-                    ctx.send_message(if let French = goal.language() {
+                    ctx.say(if let French = goal.language() {
                         "Le FPA est activé pour cette race. Les joueurs pourront utiliser !fpa pendant la race pour signaler d'un problème technique de leur côté. Les race monitors doivent activer les notifications en cliquant sur l'icône de cloche 🔔 sous le chat."
                     } else {
                         "Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat."
@@ -1992,57 +1992,57 @@ impl RaceHandler<GlobalState> for Handler {
             }
             if let RaceStatusValue::Pending | RaceStatusValue::InProgress = data.status.value { //TODO also check this in official races
                 //TODO get chatlog and recover breaks config instead of sending this
-                ctx.send_message("@entrants I just restarted and it looks like the race is already in progress. If the !breaks command was used, break notifications may be broken now. Sorry about that.").await?;
+                ctx.say("@entrants I just restarted and it looks like the race is already in progress. If the !breaks command was used, break notifications may be broken now. Sorry about that.").await?;
             } else {
                 match race_state {
                     RaceState::Init => match goal {
                         Goal::CopaDoBrasil => {
-                            ctx.send_message("Welcome! This is a practice room for the Copa do Brasil. Learn more about the tournament at https://midos.house/event/br/1").await?;
-                            ctx.send_message("Create a seed with !seed").await?;
+                            ctx.say("Welcome! This is a practice room for the Copa do Brasil. Learn more about the tournament at https://midos.house/event/br/1").await?;
+                            ctx.say("Create a seed with !seed").await?;
                         }
                         Goal::MixedPoolsS2 => {
-                            ctx.send_message("Welcome! This is a practice room for the 2nd Mixed Pools Tournament. Learn more about the tournament at https://midos.house/event/mp/2").await?;
-                            ctx.send_message("Create a seed with !seed").await?;
+                            ctx.say("Welcome! This is a practice room for the 2nd Mixed Pools Tournament. Learn more about the tournament at https://midos.house/event/mp/2").await?;
+                            ctx.say("Create a seed with !seed").await?;
                         }
                         Goal::MultiworldS3 => {
-                            ctx.send_message("Welcome! This is a practice room for the 3rd Multiworld Tournament. Learn more about the tournament at https://midos.house/event/mw/3").await?;
-                            ctx.send_message("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials 2 wincon scrubs). For more info about these options, use !presets").await?;
+                            ctx.say("Welcome! This is a practice room for the 3rd Multiworld Tournament. Learn more about the tournament at https://midos.house/event/mw/3").await?;
+                            ctx.say("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials 2 wincon scrubs). For more info about these options, use !presets").await?;
                         }
                         Goal::MultiworldS4 => {
                             //TODO update text after settings testing concludes
-                            ctx.send_message("Welcome! This is a settings testing room for the 4th Multiworld Tournament.").await?; //TODO event link
-                            ctx.send_message("Pick a setting to test and roll a seed using “!seed warps”, “!seed cows”, “!seed bees”, “!seed merchants”, or “!seed frogs”. For more info about these options, use !presets").await?;
+                            ctx.say("Welcome! This is a settings testing room for the 4th Multiworld Tournament.").await?; //TODO event link
+                            ctx.say("Pick a setting to test and roll a seed using “!seed warps”, “!seed cows”, “!seed bees”, “!seed merchants”, or “!seed frogs”. For more info about these options, use !presets").await?;
                         }
                         Goal::NineDaysOfSaws => {
-                            ctx.send_message("Welcome! This is a practice room for 9 Days of SAWS. Learn more about the event at https://docs.google.com/document/d/1xELThZtIctwN-vYtYhUqtd88JigNzabk8OZHANa0gqY/edit").await?;
-                            ctx.send_message("You can roll a seed using “!seed day1”, “!seed day2”, etc. For more info about these options, use !presets").await?;
+                            ctx.say("Welcome! This is a practice room for 9 Days of SAWS. Learn more about the event at https://docs.google.com/document/d/1xELThZtIctwN-vYtYhUqtd88JigNzabk8OZHANa0gqY/edit").await?;
+                            ctx.say("You can roll a seed using “!seed day1”, “!seed day2”, etc. For more info about these options, use !presets").await?;
                         }
                         Goal::Pic7 => {
-                            ctx.send_message("Welcome! This is a practice room for the 7th Pictionary Spoiler Log Race. Learn more about the race at https://midos.house/event/pic/7").await?;
-                            ctx.send_message("Create a seed with !seed").await?;
+                            ctx.say("Welcome! This is a practice room for the 7th Pictionary Spoiler Log Race. Learn more about the race at https://midos.house/event/pic/7").await?;
+                            ctx.say("Create a seed with !seed").await?;
                         }
                         Goal::PicRs2 => {
-                            ctx.send_message("Welcome! This is a practice room for the 2nd Random Settings Pictionary Spoiler Log Race. Learn more about the race at https://midos.house/event/pic/rs2").await?;
-                            ctx.send_message("Create a seed with !seed").await?;
+                            ctx.say("Welcome! This is a practice room for the 2nd Random Settings Pictionary Spoiler Log Race. Learn more about the race at https://midos.house/event/pic/rs2").await?;
+                            ctx.say("Create a seed with !seed").await?;
                         }
                         Goal::Rsl => {
-                            ctx.send_message("Welcome to the OoTR Random Settings League! Create a seed with !seed <preset>").await?;
-                            ctx.send_message("If no preset is selected, default RSL settings will be used. For a list of presets, use !presets").await?;
+                            ctx.say("Welcome to the OoTR Random Settings League! Create a seed with !seed <preset>").await?;
+                            ctx.say("If no preset is selected, default RSL settings will be used. For a list of presets, use !presets").await?;
                         }
                         Goal::Sgl2023 => {
-                            ctx.send_message("Welcome! This is a practice room for SpeedGaming Live 2023. Learn more about the tournaments at https://docs.google.com/document/d/1EACqBl8ZOreD6xT5jQ2HrdLOnpBpKyjS3FUYK8XFeqg/edit").await?;
-                            ctx.send_message("Create a seed with !seed").await?;
+                            ctx.say("Welcome! This is a practice room for SpeedGaming Live 2023. Learn more about the tournaments at https://docs.google.com/document/d/1EACqBl8ZOreD6xT5jQ2HrdLOnpBpKyjS3FUYK8XFeqg/edit").await?;
+                            ctx.say("Create a seed with !seed").await?;
                         }
                         Goal::TournoiFrancoS3 => {
-                            ctx.send_message("Bienvenue ! Ceci est une practice room pour le tournoi francophone saison 3. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/fr/3").await?;
-                            ctx.send_message("Vous pouvez roll une seed en utilisant “!seed base”, “!seed random” ou “!seed draft”. Vous pouvez également définir directement les settings (ex : !seed trials random bridge ad). Pour plus d'informations, tapez !presets").await?;
+                            ctx.say("Bienvenue ! Ceci est une practice room pour le tournoi francophone saison 3. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/fr/3").await?;
+                            ctx.say("Vous pouvez roll une seed en utilisant “!seed base”, “!seed random” ou “!seed draft”. Vous pouvez également définir directement les settings (ex : !seed trials random bridge ad). Pour plus d'informations, tapez !presets").await?;
                         }
                         Goal::TriforceBlitz => {
-                            ctx.send_message("Welcome to Triforce Blitz!").await?;
-                            ctx.send_message("You can roll a seed using “!seed jr” for Jabu's Revenge or “!seed s2” for S2 settings, or link the seed of the day with “!seed daily”").await?;
+                            ctx.say("Welcome to Triforce Blitz!").await?;
+                            ctx.say("You can roll a seed using “!seed jr” for Jabu's Revenge or “!seed s2” for S2 settings, or link the seed of the day with “!seed daily”").await?;
                         }
                     },
-                    RaceState::Rolled(_) => ctx.send_message("@entrants I just restarted. You may have to reconfigure !breaks and !fpa. Sorry about that.").await?,
+                    RaceState::Rolled(_) => ctx.say("@entrants I just restarted. You may have to reconfigure !breaks and !fpa. Sorry about that.").await?,
                     RaceState::Draft { .. } | RaceState::Rolling | RaceState::SpoilerSent => unreachable!(),
                 }
             }
@@ -2119,7 +2119,7 @@ impl RaceHandler<GlobalState> for Handler {
                 } else {
                     format!("This race is being restreamed {restreams_text} — auto-start is disabled. Restreamers can use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.")
                 };
-                ctx.send_message(&text).await?;
+                ctx.say(&text).await?;
             }
             let state = lock!(@write @owned this.race_state.clone());
             if existing_seed.files.is_some() {
@@ -2161,7 +2161,7 @@ impl RaceHandler<GlobalState> for Handler {
                     format!("Sorry {reply_to}, the setting is required. Use one of the following:")
                 }, reply_to).await?,
                 [ref setting] => self.draft_action(ctx, reply_to, draft::Action::Ban { setting: setting.clone() }).await?,
-                [..] => ctx.send_message(&if let French = goal.language() {
+                [..] => ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, seul un setting peut être ban à la fois. Veuillez seulement utiliser “!ban <setting>”")
                 } else {
                     format!("Sorry {reply_to}, only one setting can be banned at a time. Use “!ban <setting>”")
@@ -2169,13 +2169,13 @@ impl RaceHandler<GlobalState> for Handler {
             },
             "breaks" => match args[..] {
                 [] => if let Some(breaks) = self.breaks {
-                    ctx.send_message(&if let French = goal.language() {
+                    ctx.say(&if let French = goal.language() {
                         format!("Vous aurez une pause de {}. Vous pouvez les désactiver avec !breaks off.", breaks.format(French))
                     } else {
                         format!("Breaks are currently set to {}. Disable with !breaks off", breaks.format(English))
                     }).await?;
                 } else {
-                    ctx.send_message(if let French = goal.language() {
+                    ctx.say(if let French = goal.language() {
                         "Les pauses sont actuellement désactivées. Exemple pour les activer : !breaks 5m every 2h30."
                     } else {
                         "Breaks are currently disabled. Example command to enable: !breaks 5m every 2h30"
@@ -2183,13 +2183,13 @@ impl RaceHandler<GlobalState> for Handler {
                 },
                 [ref arg] if arg == "off" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                     self.breaks = None;
-                    ctx.send_message(if let French = goal.language() {
+                    ctx.say(if let French = goal.language() {
                         "Les pauses sont désormais désactivées."
                     } else {
                         "Breaks are now disabled."
                     }).await?;
                 } else {
-                    ctx.send_message(&if let French = goal.language() {
+                    ctx.say(&if let French = goal.language() {
                         format!("Désolé {reply_to}, mais la race a débuté.")
                     } else {
                         format!("Sorry {reply_to}, but the race has already started.")
@@ -2197,33 +2197,33 @@ impl RaceHandler<GlobalState> for Handler {
                 },
                 _ => if let Ok(breaks) = args.join(" ").parse::<Breaks>() {
                     if breaks.duration < Duration::from_secs(60) {
-                        ctx.send_message(&if let French = goal.language() {
+                        ctx.say(&if let French = goal.language() {
                             format!("Désolé {reply_to}, le temps minimum pour une pause (si active) est de 1 minute. Vous pouvez désactiver les pauses avec !breaks off")
                         } else {
                             format!("Sorry {reply_to}, minimum break time (if enabled at all) is 1 minute. You can disable breaks entirely with !breaks off")
                         }).await?;
                     } else if breaks.interval < breaks.duration + Duration::from_secs(5 * 60) {
-                        ctx.send_message(&if let French = goal.language() {
+                        ctx.say(&if let French = goal.language() {
                             format!("Désolé {reply_to}, il doit y avoir un minimum de 5 minutes entre les pauses.")
                         } else {
                             format!("Sorry {reply_to}, there must be a minimum of 5 minutes between breaks since I notify runners 5 minutes in advance.")
                         }).await?;
                     } else if breaks.duration + breaks.interval >= Duration::from_secs(24 * 60 * 60) {
-                        ctx.send_message(&if let French = goal.language() {
+                        ctx.say(&if let French = goal.language() {
                             format!("Désolé {reply_to}, vous ne pouvez pas faire de pauses si tard dans la race, vu que les race rooms se ferment au bout de 24 heures.")
                         } else {
                             format!("Sorry {reply_to}, race rooms are automatically closed after 24 hours so these breaks wouldn't work.")
                         }).await?;
                     } else {
                         self.breaks = Some(breaks);
-                        ctx.send_message(&if let French = goal.language() {
+                        ctx.say(&if let French = goal.language() {
                             format!("Vous aurez une pause de {}.", breaks.format(French))
                         } else {
                             format!("Breaks set to {}.", breaks.format(English))
                         }).await?;
                     }
                 } else {
-                    ctx.send_message(&if let French = goal.language() {
+                    ctx.say(&if let French = goal.language() {
                         format!("Désolé {reply_to}, je ne reconnais pas ce format pour les pauses. Exemple pour les activer : !breaks 5m every 2h30.")
                     } else {
                         format!("Sorry {reply_to}, I don't recognise that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off")
@@ -2236,13 +2236,13 @@ impl RaceHandler<GlobalState> for Handler {
                 } else {
                     format!("Sorry {reply_to}, the setting is required. Use one of the following:")
                 }, reply_to).await?,
-                [_] => ctx.send_message(&if let French = goal.language() {
+                [_] => ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, une configuration est requise.")
                 } else {
                     format!("Sorry {reply_to}, the value is required.")
                 }).await?, //TODO list available values
                 [ref setting, ref value] => self.draft_action(ctx, reply_to, draft::Action::Pick { setting: setting.clone(), value: value.clone() }).await?,
-                [..] => ctx.send_message(&if let French = goal.language() {
+                [..] => ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, vous ne pouvez pick qu'un setting à la fois. Veuillez seulement utiliser “!draft <setting> <configuration>”")
                 } else {
                     format!("Sorry {reply_to}, only one setting can be drafted at a time. Use “!draft <setting> <value>”")
@@ -2252,7 +2252,7 @@ impl RaceHandler<GlobalState> for Handler {
             "fpa" => match args[..] {
                 [] => if self.fpa_enabled {
                     if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                        ctx.send_message(if let French = goal.language() {
+                        ctx.say(if let French = goal.language() {
                             "Le FPA ne peut pas être appelé avant que la race ne commence."
                         } else {
                             "FPA cannot be invoked before the race starts."
@@ -2261,7 +2261,7 @@ impl RaceHandler<GlobalState> for Handler {
                         if let Some(OfficialRaceData { ref restreams, ref mut fpa_invoked, ref event, .. }) = self.official_data {
                             *fpa_invoked = true;
                             if restreams.is_empty() {
-                                ctx.send_message(&if_chain! {
+                                ctx.say(&if_chain! {
                                     if let French = goal.language();
                                     if let TeamConfig::Solo = event.team_config();
                                     then {
@@ -2272,14 +2272,14 @@ impl RaceHandler<GlobalState> for Handler {
                                     }
                                 }).await?;
                             } else {
-                                ctx.send_message(&if let French = goal.language() {
+                                ctx.say(&if let French = goal.language() {
                                     format!("@everyone Le FPA a été appelé par {reply_to}. Merci d'arrêter de jouer, la race étant restreamée.")
                                 } else {
                                     format!("@everyone FPA has been invoked by {reply_to}. Please pause since this race is being restreamed.")
                                 }).await?;
                             }
                         } else {
-                            ctx.send_message(&if let French = goal.language() {
+                            ctx.say(&if let French = goal.language() {
                                 format!("@everyone Le FPA a été appelé par {reply_to}.")
                             } else {
                                 format!("@everyone FPA has been invoked by {reply_to}.")
@@ -2287,7 +2287,7 @@ impl RaceHandler<GlobalState> for Handler {
                         }
                     }
                 } else {
-                    ctx.send_message(if let French = goal.language() {
+                    ctx.say(if let French = goal.language() {
                         "Le FPA n'est pas activé. Les Race Monitors peuvent l'activer avec !fpa on."
                     } else {
                         "Fair play agreement is not active. Race monitors may enable FPA for this race with !fpa on"
@@ -2295,64 +2295,64 @@ impl RaceHandler<GlobalState> for Handler {
                 },
                 [ref arg] => match &*arg.to_ascii_lowercase() {
                     "on" => if self.is_official() {
-                        ctx.send_message(if let French = goal.language() {
+                        ctx.say(if let French = goal.language() {
                             "Le FPA est toujours activé dans les races officielles."
                         } else {
                             "Fair play agreement is always active in official races."
                         }).await?;
                     } else if !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
-                        ctx.send_message(&if let French = goal.language() {
+                        ctx.say(&if let French = goal.language() {
                             format!("Désolé {reply_to}, seuls {} peuvent faire cela.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
                         } else {
                             format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
                         }).await?;
                     } else if self.fpa_enabled {
-                        ctx.send_message(if let French = goal.language() {
+                        ctx.say(if let French = goal.language() {
                             "Le FPA est déjà activé."
                         } else {
                             "Fair play agreement is already activated."
                         }).await?;
                     } else {
                         self.fpa_enabled = true;
-                        ctx.send_message(if let French = goal.language() {
+                        ctx.say(if let French = goal.language() {
                             "Le FPA est désormais activé. Les joueurs pourront utiliser !fpa pendant la race pour signaler d'un problème technique de leur côté. Les race monitors doivent activer les notifications en cliquant sur l'icône de cloche 🔔 sous le chat."
                         } else {
                             "Fair play agreement is now active. @entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat."
                         }).await?;
                     },
                     "off" => if self.is_official() {
-                        ctx.send_message(&if let French = goal.language() {
+                        ctx.say(&if let French = goal.language() {
                             format!("Désolé {reply_to}, mais le FPA ne peut pas être désactivé pour les races officielles.")
                         } else {
                             format!("Sorry {reply_to}, but FPA can't be deactivated for official races.")
                         }).await?;
                     } else if !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
-                        ctx.send_message(&if let French = goal.language() {
+                        ctx.say(&if let French = goal.language() {
                             format!("Désolé {reply_to}, seuls {} peuvent faire cela.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
                         } else {
                             format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
                         }).await?;
                     } else if self.fpa_enabled {
                         self.fpa_enabled = false;
-                        ctx.send_message(if let French = goal.language() {
+                        ctx.say(if let French = goal.language() {
                             "Le FPA est désormais désactivé."
                         } else {
                             "Fair play agreement is now deactivated."
                         }).await?;
                     } else {
-                        ctx.send_message(if let French = goal.language() {
+                        ctx.say(if let French = goal.language() {
                             "Le FPA est déjà désactivé."
                         } else {
                             "Fair play agreement is not active."
                         }).await?;
                     },
-                    _ => ctx.send_message(&if let French = goal.language() {
+                    _ => ctx.say(&if let French = goal.language() {
                         format!("Désolé {reply_to}, les seules commandes sont “!fpa on”, “!fpa off” ou “!fpa”.")
                     } else {
                         format!("Sorry {reply_to}, I don't recognize that subcommand. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")
                     }).await?,
                 },
-                [..] => ctx.send_message(&if let French = goal.language() {
+                [..] => ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, les seules commandes sont “!fpa on”, “!fpa off” ou “!fpa”.")
                 } else {
                     format!("Sorry {reply_to}, I didn't quite understand that. Use “!fpa on” or “!fpa off”, or just “!fpa” to invoke FPA.")
@@ -2360,7 +2360,7 @@ impl RaceHandler<GlobalState> for Handler {
             },
             "lock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 self.locked = true;
-                ctx.send_message(&if_chain! {
+                ctx.say(&if_chain! {
                     if let French = goal.language();
                     if !self.is_official();
                     then {
@@ -2370,7 +2370,7 @@ impl RaceHandler<GlobalState> for Handler {
                     }
                 }).await?;
             } else {
-                ctx.send_message(&if let French = goal.language() {
+                ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, seuls {} peuvent faire cela.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
                 } else {
                     format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
@@ -2402,13 +2402,13 @@ impl RaceHandler<GlobalState> for Handler {
                     ctx.remove_entrant(monitor).await?;
                 }
             } else if self.is_official() {
-                ctx.send_message(&if let French = goal.language() {
+                ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, seuls les organisateurs du tournoi peuvent faire cela.")
                 } else {
                     format!("Sorry {reply_to}, only tournament organizers can do that.")
                 }).await?;
             } else {
-                ctx.send_message(&if let French = goal.language() {
+                ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, cette commande n'est disponible que pour les races officielles.")
                 } else {
                     format!("Sorry {reply_to}, this command is only available for official races.")
@@ -2420,7 +2420,7 @@ impl RaceHandler<GlobalState> for Handler {
                 if let Some(state) = restreams.values_mut().find(|state| state.restreamer_racetime_id.as_ref() == Some(&msg.user.as_ref().expect("received !ready command from bot").id)) {
                     state.ready = true;
                 } else {
-                    ctx.send_message(&if let French = goal.language() {
+                    ctx.say(&if let French = goal.language() {
                         format!("Désolé {reply_to}, seuls les restreamers peuvent faire cela.")
                     } else {
                         format!("Sorry {reply_to}, only restreamers can do that.")
@@ -2428,7 +2428,7 @@ impl RaceHandler<GlobalState> for Handler {
                     return Ok(())
                 }
                 if restreams.values().all(|state| state.ready) {
-                    ctx.send_message(if_chain! {
+                    ctx.say(if_chain! {
                         if let French = goal.language();
                         if let Ok((_, state)) = restreams.iter().exactly_one();
                         if let Some(French) = state.language;
@@ -2461,10 +2461,10 @@ impl RaceHandler<GlobalState> for Handler {
                         chat_message_delay: 0,
                     }.edit_with_host(&ctx.global_state.host_info, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
                 } else {
-                    ctx.send_message(&format!("Restream ready, still waiting for other restreams.")).await?;
+                    ctx.say(&format!("Restream ready, still waiting for other restreams.")).await?;
                 }
             } else {
-                ctx.send_message(&if let French = goal.language() {
+                ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, cette commande n'est disponible que pour les races officielles.")
                 } else {
                     format!("Sorry {reply_to}, this command is only available for official races.")
@@ -2507,26 +2507,26 @@ impl RaceHandler<GlobalState> for Handler {
                                         }.edit_with_host(&ctx.global_state.host_info, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
                                     }
                                     restreams.entry(restream_url).or_default().restreamer_racetime_id = Some(restreamer_racetime_id.clone());
-                                    ctx.send_message("Restreamer assigned. Use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.").await?; //TODO mention restreamer
+                                    ctx.say("Restreamer assigned. Use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.").await?; //TODO mention restreamer
                                 }
-                                Err(e) => ctx.send_message(&format!("Sorry {reply_to}, I couldn't parse the restreamer: {e}")).await?,
+                                Err(e) => ctx.say(&format!("Sorry {reply_to}, I couldn't parse the restreamer: {e}")).await?,
                             }
                             transaction.commit().await.to_racetime()?;
                         } else {
-                            ctx.send_message(&format!("Sorry {reply_to}, that doesn't seem to be a valid URL or Twitch channel.")).await?;
+                            ctx.say(&format!("Sorry {reply_to}, that doesn't seem to be a valid URL or Twitch channel.")).await?;
                         }
                     } else {
-                        ctx.send_message(&format!("Sorry {reply_to}, I don't recognise that format for adding a restreamer.")).await?; //TODO better help message
+                        ctx.say(&format!("Sorry {reply_to}, I don't recognise that format for adding a restreamer.")).await?; //TODO better help message
                     }
                 } else {
-                    ctx.send_message(&if let French = goal.language() {
+                    ctx.say(&if let French = goal.language() {
                         format!("Désolé {reply_to}, cette commande n'est disponible que pour les races officielles.")
                     } else {
                         format!("Sorry {reply_to}, this command is only available for official races.")
                     }).await?;
                 }
             } else {
-                ctx.send_message(&if let French = goal.language() {
+                ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, seuls {} peuvent faire cela.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
                 } else {
                     format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
@@ -2538,7 +2538,7 @@ impl RaceHandler<GlobalState> for Handler {
                 let mut state = lock!(@write @owned self.race_state.clone());
                 match *state {
                     RaceState::Init => if self.locked && !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
-                        ctx.send_message(&if let French = goal.language() {
+                        ctx.say(&if let French = goal.language() {
                             format!("Désolé {reply_to}, la race est verrouillée. Seuls {} peuvent générer une seed pour cette race.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
                         } else {
                             format!("Sorry {reply_to}, seed rolling is locked. Only {} may roll a seed for this race.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })
@@ -2550,7 +2550,7 @@ impl RaceHandler<GlobalState> for Handler {
                             Goal::MultiworldS3 => {
                                 let settings = match args[..] {
                                     [] => {
-                                        ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
+                                        ctx.say(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
                                         goal.send_presets(ctx).await?;
                                         return Ok(())
                                     }
@@ -2581,7 +2581,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         return Ok(())
                                     }
                                     [_] => {
-                                        ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                        ctx.say(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
                                         goal.send_presets(ctx).await?;
                                         return Ok(())
                                     }
@@ -2594,7 +2594,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                 if value == default || other.iter().any(|(other, _)| value == **other) {
                                                     settings.insert(Cow::Owned(setting), Cow::Owned(value));
                                                 } else {
-                                                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that value for the {setting} setting. Use {}", iter::once(default).chain(other.iter().map(|&(other, _)| other)).join(" or "))).await?;
+                                                    ctx.say(&format!("Sorry {reply_to}, I don't recognize that value for the {setting} setting. Use {}", iter::once(default).chain(other.iter().map(|&(other, _)| other)).join(" or "))).await?;
                                                     return Ok(())
                                                 }
                                             } else {
@@ -2618,7 +2618,7 @@ impl RaceHandler<GlobalState> for Handler {
                             }
                             Goal::MultiworldS4 => match args[..] {
                                 [] => {
-                                    ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
+                                    ctx.say(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
                                 }
                                 [ref arg] => {
@@ -2645,7 +2645,7 @@ impl RaceHandler<GlobalState> for Handler {
                                             "shuffled frog song rupees"
                                         }
                                         _ => {
-                                            ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                            ctx.say(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
                                             goal.send_presets(ctx).await?;
                                             return Ok(())
                                         }
@@ -2653,13 +2653,13 @@ impl RaceHandler<GlobalState> for Handler {
                                     self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), settings, spoiler_log, goal.language(), "a", format!("seed with {description}"));
                                 }
                                 [..] => {
-                                    ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
+                                    ctx.say(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
                                 }
                             },
                             Goal::NineDaysOfSaws => match args[..] {
                                 [] => {
-                                    ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
+                                    ctx.say(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
                                 }
                                 [ref arg] => if let Some((description, mut settings)) = match &**arg {
@@ -2752,11 +2752,11 @@ impl RaceHandler<GlobalState> for Handler {
                                     settings.insert(format!("user_message"), json!(format!("9 Days of SAWS: day {}", &arg[3..])));
                                     self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), settings, spoiler_log, goal.language(), "a", format!("{description} seed"));
                                 } else {
-                                    ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                    ctx.say(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
                                 },
                                 [..] => {
-                                    ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
+                                    ctx.say(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
                                 }
                             }
@@ -2770,13 +2770,13 @@ impl RaceHandler<GlobalState> for Handler {
                                     [] => (rsl::Preset::League, 1),
                                     [ref preset] => if let Ok(preset) = preset.parse() {
                                         if let rsl::Preset::Multiworld = preset {
-                                            ctx.send_message("Missing world count (e.g. “!seed multiworld 2” for 2 worlds)").await?;
+                                            ctx.say("Missing world count (e.g. “!seed multiworld 2” for 2 worlds)").await?;
                                             return Ok(())
                                         } else {
                                             (preset, 1)
                                         }
                                     } else {
-                                        ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                        ctx.say(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
                                         goal.send_presets(ctx).await?;
                                         return Ok(())
                                     },
@@ -2784,30 +2784,30 @@ impl RaceHandler<GlobalState> for Handler {
                                         if let rsl::Preset::Multiworld = preset {
                                             if let Ok(world_count) = world_count.parse() {
                                                 if world_count < 2 {
-                                                    ctx.send_message(&format!("Sorry {reply_to}, the world count must be a number between 2 and 15.")).await?;
+                                                    ctx.say(&format!("Sorry {reply_to}, the world count must be a number between 2 and 15.")).await?;
                                                     return Ok(())
                                                 } else if world_count > 15 {
-                                                    ctx.send_message(&format!("Sorry {reply_to}, I can currently only roll seeds with up to 15 worlds. Please download the RSL script from https://github.com/matthewkirby/plando-random-settings to roll seeds for more than 15 players.")).await?;
+                                                    ctx.say(&format!("Sorry {reply_to}, I can currently only roll seeds with up to 15 worlds. Please download the RSL script from https://github.com/matthewkirby/plando-random-settings to roll seeds for more than 15 players.")).await?;
                                                     return Ok(())
                                                 } else {
                                                     (preset, world_count)
                                                 }
                                             } else {
-                                                ctx.send_message(&format!("Sorry {reply_to}, the world count must be a number between 2 and 255.")).await?;
+                                                ctx.say(&format!("Sorry {reply_to}, the world count must be a number between 2 and 255.")).await?;
                                                 return Ok(())
                                             }
                                         } else {
-                                            ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
+                                            ctx.say(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
                                             goal.send_presets(ctx).await?;
                                             return Ok(())
                                         }
                                     } else {
-                                        ctx.send_message(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
+                                        ctx.say(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
                                         goal.send_presets(ctx).await?;
                                         return Ok(())
                                     },
                                     [..] => {
-                                        ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
+                                        ctx.say(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
                                         goal.send_presets(ctx).await?;
                                         return Ok(())
                                     }
@@ -2838,7 +2838,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 });
                                 let settings = match args[..] {
                                     [] => {
-                                        ctx.send_message(&format!("Désolé {reply_to}, un preset doit être défini. Veuillez utiliser un des suivants :")).await?;
+                                        ctx.say(&format!("Désolé {reply_to}, un preset doit être défini. Veuillez utiliser un des suivants :")).await?;
                                         goal.send_presets(ctx).await?;
                                         return Ok(())
                                     }
@@ -2877,7 +2877,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         return Ok(())
                                     }
                                     [_] => {
-                                        ctx.send_message(&format!("Désolé {reply_to}, je ne reconnais pas ce preset. Veuillez utiliser un des suivants :")).await?;
+                                        ctx.say(&format!("Désolé {reply_to}, je ne reconnais pas ce preset. Veuillez utiliser un des suivants :")).await?;
                                         goal.send_presets(ctx).await?;
                                         return Ok(())
                                     }
@@ -2893,7 +2893,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                 } else if value == default || other.iter().any(|(other, _, _)| value == **other) {
                                                     settings.insert(Cow::Owned(setting), Cow::Owned(value));
                                                 } else {
-                                                    ctx.send_message(&format!("Désolé {reply_to}, je ne reconnais pas cette configuration pour {setting}. Utilisez {}", iter::once(default).chain(other.iter().map(|&(other, _, _)| other)).join(" ou "))).await?;
+                                                    ctx.say(&format!("Désolé {reply_to}, je ne reconnais pas cette configuration pour {setting}. Utilisez {}", iter::once(default).chain(other.iter().map(|&(other, _, _)| other)).join(" ou "))).await?;
                                                     return Ok(())
                                                 }
                                             } else {
@@ -2917,7 +2917,7 @@ impl RaceHandler<GlobalState> for Handler {
                             }
                             Goal::TriforceBlitz => match args[..] {
                                 [] => {
-                                    ctx.send_message(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
+                                    ctx.say(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
                                     return Ok(())
                                 }
@@ -2954,18 +2954,18 @@ impl RaceHandler<GlobalState> for Handler {
                                 [ref arg] if arg == "jr" => self.roll_tfb_seed(ctx, state, "LATEST", spoiler_log, English, "a", format!("Triforce Blitz: Jabu's Revenge seed")).await,
                                 [ref arg] if arg == "s2" => self.roll_tfb_seed(ctx, state, "v7.1.3-blitz-0.42", spoiler_log, English, "a", format!("Triforce Blitz S2 seed")).await,
                                 [..] => {
-                                    ctx.send_message(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
+                                    ctx.say(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
                                     goal.send_presets(ctx).await?;
                                 }
                             },
                         }
                     },
-                    RaceState::Draft { .. } => ctx.send_message(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
-                    RaceState::Rolling => ctx.send_message(&format!("Sorry {reply_to}, but I'm already rolling a seed for this room. Please wait.")).await?,
-                    RaceState::Rolled(_) | RaceState::SpoilerSent => ctx.send_message(&format!("Sorry {reply_to}, but I already rolled a seed. Check the race info!")).await?,
+                    RaceState::Draft { .. } => ctx.say(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
+                    RaceState::Rolling => ctx.say(&format!("Sorry {reply_to}, but I'm already rolling a seed for this room. Please wait.")).await?,
+                    RaceState::Rolled(_) | RaceState::SpoilerSent => ctx.say(&format!("Sorry {reply_to}, but I already rolled a seed. Check the race info!")).await?,
                 }
             } else {
-                ctx.send_message(&if let French = goal.language() {
+                ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, mais la race a débuté.")
                 } else {
                     format!("Sorry {reply_to}, but the race has already started.")
@@ -2987,20 +2987,20 @@ impl RaceHandler<GlobalState> for Handler {
             "skip" => self.draft_action(ctx, reply_to, draft::Action::Skip).await?,
             "unlock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 self.locked = false;
-                ctx.send_message(if let French = goal.language() {
+                ctx.say(if let French = goal.language() {
                     "Race déverrouillée. N'importe qui peut désormais générer une seed."
                 } else {
                     "Lock released. Anyone may now roll a seed."
                 }).await?;
             } else {
-                ctx.send_message(&if let French = goal.language() {
+                ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, seuls {} peuvent faire cela.", if self.is_official() { "les race monitors et les organisateurs du tournoi" } else { "les race monitors" })
                 } else {
                     format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
                 }).await?;
             },
             "yes" => self.draft_action(ctx, reply_to, draft::Action::BooleanChoice(true)).await?,
-            _ => ctx.send_message(&if let French = goal.language() {
+            _ => ctx.say(&if let French = goal.language() {
                 format!("Désolé {reply_to}, je ne reconnais pas cette commande.")
             } else {
                 format!("Sorry {reply_to}, I don't recognize that command.")
@@ -3034,7 +3034,7 @@ impl RaceHandler<GlobalState> for Handler {
                             sleep(breaks.interval - Duration::from_secs(5 * 60)).await;
                             while Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await {
                                 let (_, ()) = tokio::join!(
-                                    ctx.send_message(if let French = goal.language() {
+                                    ctx.say(if let French = goal.language() {
                                         "@entrants Rappel : pause dans 5 minutes."
                                     } else {
                                         "@entrants Reminder: Next break in 5 minutes."
@@ -3048,12 +3048,12 @@ impl RaceHandler<GlobalState> for Handler {
                                     format!("@entrants Break time! Please pause for {}.", English.format_duration(breaks.duration, true))
                                 };
                                 let (_, ()) = tokio::join!(
-                                    ctx.send_message(&msg),
+                                    ctx.say(&msg),
                                     sleep(breaks.duration),
                                 );
                                 if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
                                 let (_, ()) = tokio::join!(
-                                    ctx.send_message(if let French = goal.language() {
+                                    ctx.say(if let French = goal.language() {
                                         "@entrants Fin de la pause. Vous pouvez recommencer à jouer."
                                     } else {
                                         "@entrants Break ended. You may resume playing."
@@ -3078,10 +3078,10 @@ impl RaceHandler<GlobalState> for Handler {
                                     sleep(initial_wait).await;
                                     if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
                                     let (_, ()) = tokio::join!(
-                                        ctx.send_message("@entrants Reminder: 5 minutes until you can start drawing/playing."),
+                                        ctx.say("@entrants Reminder: 5 minutes until you can start drawing/playing."),
                                         sleep(Duration::from_secs(5 * 60)),
                                     );
-                                    let _ = ctx.send_message("@entrants You may now start drawing/playing.").await;
+                                    let _ = ctx.say("@entrants You may now start drawing/playing.").await;
                                 }
                             })
                         });
@@ -3098,7 +3098,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         if !Self::should_handle_inner(&*data, ctx.global_state.clone(), false).await { return }
                                         data.entrants_count == 2
                                     };
-                                    let _ = ctx.send_message(if is_1v1 {
+                                    let _ = ctx.say(if is_1v1 {
                                         "@entrants Time limit reached. If anyone has found at least 1 Triforce piece, please .done. If neither player has any pieces, please continue and .done when one is found."
                                     } else {
                                         "@entrants Time limit reached. If you've found at least 1 Triforce piece, please mark yourself as done. If you haven't, you may continue playing until you find one."

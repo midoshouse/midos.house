@@ -8,7 +8,7 @@ lto = true
 strip = true
 
 [build-dependencies]
-git2 = "0.17"
+git2 = "0.18"
 thiserror = "1"
 
 [dependencies]
@@ -24,7 +24,7 @@ csv = "1"
 either = "1"
 enum-iterator = "1"
 futures = "0.3"
-git2 = "0.17"
+git2 = "0.18"
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
 if_chain = "1"
 ics = "0.5"
@@ -33,7 +33,7 @@ kuchiki = "0.8"
 lazy-regex = "3"
 noisy_float = "0.2"
 once_cell = "1"
-racetime = "0.18"
+racetime = "0.19"
 rand = "0.8"
 rocket = "0.5.0-rc.3"
 rocket_oauth2 = "0.5.0-rc.1"
