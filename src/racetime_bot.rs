@@ -486,7 +486,8 @@ impl Goal {
 
     async fn send_presets(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         match self {
-            Self::Pic7 | Self::PicRs2 => ctx.say("!seed: The settings used for the race").await?,
+            Self::Pic7 => ctx.say("!seed: The settings used for the race").await?,
+            Self::PicRs2 => ctx.say("!seed: The weights used for the race").await?,
             Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::Sgl2023 => ctx.say("!seed: The settings used for the tournament").await?,
             Self::MultiworldS3 => {
                 ctx.say("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
@@ -1996,51 +1997,334 @@ impl RaceHandler<GlobalState> for Handler {
             } else {
                 match race_state {
                     RaceState::Init => match goal {
-                        Goal::CopaDoBrasil => {
-                            ctx.say("Welcome! This is a practice room for the Copa do Brasil. Learn more about the tournament at https://midos.house/event/br/1").await?;
-                            ctx.say("Create a seed with !seed").await?;
-                        }
-                        Goal::MixedPoolsS2 => {
-                            ctx.say("Welcome! This is a practice room for the 2nd Mixed Pools Tournament. Learn more about the tournament at https://midos.house/event/mp/2").await?;
-                            ctx.say("Create a seed with !seed").await?;
-                        }
-                        Goal::MultiworldS3 => {
-                            ctx.say("Welcome! This is a practice room for the 3rd Multiworld Tournament. Learn more about the tournament at https://midos.house/event/mw/3").await?;
-                            ctx.say("You can roll a seed using “!seed base”, “!seed random”, or “!seed draft”. You can also choose settings directly (e.g. !seed trials 2 wincon scrubs). For more info about these options, use !presets").await?;
-                        }
-                        Goal::MultiworldS4 => {
+                        Goal::CopaDoBrasil => ctx.send_message(
+                            "Welcome! This is a practice room for the Copa do Brasil. Learn more about the tournament at https://midos.house/event/br/1",
+                            true,
+                            vec![
+                                ("Roll seed", ActionButton::Message {
+                                    message: format!("!seed"),
+                                    help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                            ],
+                        ).await?,
+                        Goal::MixedPoolsS2 => ctx.send_message(
+                            "Welcome! This is a practice room for the 2nd Mixed Pools Tournament. Learn more about the tournament at https://midos.house/event/mp/2",
+                            true,
+                            vec![
+                                ("Roll seed", ActionButton::Message {
+                                    message: format!("!seed"),
+                                    help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                            ],
+                        ).await?,
+                        Goal::MultiworldS3 => ctx.send_message(
+                            "Welcome! This is a practice room for the 3rd Multiworld Tournament. Learn more about the tournament at https://midos.house/event/mw/3",
+                            true,
+                            vec![
+                                ("Roll seed (base settings)", ActionButton::Message {
+                                    message: format!("!seed base"),
+                                    help_text: Some(format!("Create a seed with the settings used for the qualifier and tiebreaker asyncs.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                                ("Roll seed (random settings)", ActionButton::Message {
+                                    message: format!("!seed random"),
+                                    help_text: Some(format!("Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                                ("Roll seed (custom settings)", ActionButton::Message {
+                                    message: format!("!seed {}", mw::S3_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
+                                    help_text: Some(format!("Pick a set of draftable settings without doing a full draft.")),
+                                    survey: Some(mw::S3_SETTINGS.into_iter().map(|setting| SurveyQuestion {
+                                        name: setting.name.to_owned(),
+                                        label: setting.display.to_owned(),
+                                        default: Some(setting.default.to_owned()),
+                                        help_text: None,
+                                        kind: SurveyQuestionKind::Radio,
+                                        placeholder: None,
+                                        options: iter::once((setting.default.to_owned(), setting.default_display.to_owned()))
+                                            .chain(setting.other.iter().map(|(name, display)| (name.to_string(), display.to_string())))
+                                            .collect(),
+                                    }).collect()),
+                                    submit: Some(format!("Roll")),
+                                }),
+                                ("Roll seed (settings draft)", ActionButton::Message {
+                                    message: format!("!seed draft"),
+                                    help_text: Some(format!("Pick the settings here in the chat.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                            ],
+                        ).await?,
+                        Goal::MultiworldS4 => ctx.send_message(
                             //TODO update text after settings testing concludes
-                            ctx.say("Welcome! This is a settings testing room for the 4th Multiworld Tournament.").await?; //TODO event link
-                            ctx.say("Pick a setting to test and roll a seed using “!seed warps”, “!seed cows”, “!seed bees”, “!seed merchants”, or “!seed frogs”. For more info about these options, use !presets").await?;
-                        }
-                        Goal::NineDaysOfSaws => {
-                            ctx.say("Welcome! This is a practice room for 9 Days of SAWS. Learn more about the event at https://docs.google.com/document/d/1xELThZtIctwN-vYtYhUqtd88JigNzabk8OZHANa0gqY/edit").await?;
-                            ctx.say("You can roll a seed using “!seed day1”, “!seed day2”, etc. For more info about these options, use !presets").await?;
-                        }
-                        Goal::Pic7 => {
-                            ctx.say("Welcome! This is a practice room for the 7th Pictionary Spoiler Log Race. Learn more about the race at https://midos.house/event/pic/7").await?;
-                            ctx.say("Create a seed with !seed").await?;
-                        }
-                        Goal::PicRs2 => {
-                            ctx.say("Welcome! This is a practice room for the 2nd Random Settings Pictionary Spoiler Log Race. Learn more about the race at https://midos.house/event/pic/rs2").await?;
-                            ctx.say("Create a seed with !seed").await?;
-                        }
-                        Goal::Rsl => {
-                            ctx.say("Welcome to the OoTR Random Settings League! Create a seed with !seed <preset>").await?;
-                            ctx.say("If no preset is selected, default RSL settings will be used. For a list of presets, use !presets").await?;
-                        }
-                        Goal::Sgl2023 => {
-                            ctx.say("Welcome! This is a practice room for SpeedGaming Live 2023. Learn more about the tournaments at https://docs.google.com/document/d/1EACqBl8ZOreD6xT5jQ2HrdLOnpBpKyjS3FUYK8XFeqg/edit").await?;
-                            ctx.say("Create a seed with !seed").await?;
-                        }
-                        Goal::TournoiFrancoS3 => {
-                            ctx.say("Bienvenue ! Ceci est une practice room pour le tournoi francophone saison 3. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/fr/3").await?;
-                            ctx.say("Vous pouvez roll une seed en utilisant “!seed base”, “!seed random” ou “!seed draft”. Vous pouvez également définir directement les settings (ex : !seed trials random bridge ad). Pour plus d'informations, tapez !presets").await?;
-                        }
-                        Goal::TriforceBlitz => {
-                            ctx.say("Welcome to Triforce Blitz!").await?;
-                            ctx.say("You can roll a seed using “!seed jr” for Jabu's Revenge or “!seed s2” for S2 settings, or link the seed of the day with “!seed daily”").await?;
-                        }
+                            "Welcome! This is a settings testing room for the 4th Multiworld Tournament.", //TODO event link
+                            true,
+                            vec![
+                                ("Roll seed", ActionButton::Message {
+                                    message: format!("!seed ${{preset}}"),
+                                    help_text: Some(format!("Pick a setting to test and create a seed.")),
+                                    survey: Some(vec![
+                                        SurveyQuestion {
+                                            name: format!("preset"),
+                                            label: format!("Preset"),
+                                            default: None,
+                                            help_text: Some(format!("All presets use the preliminary base settings plus one setting to be tested.")),
+                                            kind: SurveyQuestionKind::Select,
+                                            placeholder: None,
+                                            options: vec![
+                                                (format!("warps"), format!("Randomize Warp Song Destinations")),
+                                                (format!("cows"), format!("Shuffle Cows")),
+                                                (format!("bees"), format!("Shuffle Beehives")),
+                                                (format!("merchants"), format!("Shuffle Expensive Merchants (Medigoron, Carpet Salesman, Granny)")),
+                                                (format!("frogs"), format!("Shuffle Frog Song Rupees")),
+                                            ],
+                                        },
+                                    ]),
+                                    submit: Some(format!("Roll")),
+                                }),
+                            ],
+                        ).await?,
+                        Goal::NineDaysOfSaws => ctx.send_message(
+                            "Welcome! This is a practice room for 9 Days of SAWS. Learn more about the event at https://docs.google.com/document/d/1xELThZtIctwN-vYtYhUqtd88JigNzabk8OZHANa0gqY/edit",
+                            true,
+                            vec![
+                                ("Roll seed", ActionButton::Message {
+                                    message: format!("!seed ${{preset}}"),
+                                    help_text: Some(format!("Select a preset and create a seed.")),
+                                    survey: Some(vec![
+                                        SurveyQuestion {
+                                            name: format!("preset"),
+                                            label: format!("Preset"),
+                                            default: None,
+                                            help_text: Some(format!("Days 7 and 9 are identical to days 2 and 1, respectively. They are listed for the sake of convenience.")),
+                                            kind: SurveyQuestionKind::Select,
+                                            placeholder: None,
+                                            options: vec![
+                                                (format!("day1"), format!("Day 1: S6")),
+                                                (format!("day2"), format!("Day 2: Beginner")),
+                                                (format!("day3"), format!("Day 3: Advanced")),
+                                                (format!("day4"), format!("Day 4: S5 + one bonk KO")),
+                                                (format!("day5"), format!("Day 5: Beginner + mixed pools")),
+                                                (format!("day6"), format!("Day 6: Beginner 3-player multiworld")),
+                                                (format!("day7"), format!("Day 7: Beginner")),
+                                                (format!("day8"), format!("Day 8: S6 + dungeon ER")),
+                                                (format!("day9"), format!("Day 9: S6")),
+                                            ],
+                                        },
+                                    ]),
+                                    submit: Some(format!("Roll")),
+                                }),
+                            ],
+                        ).await?,
+                        Goal::Pic7 => ctx.send_message(
+                            "Welcome! This is a practice room for the 7th Pictionary Spoiler Log Race. Learn more about the race at https://midos.house/event/pic/7",
+                            true,
+                            vec![
+                                ("Roll seed", ActionButton::Message {
+                                    message: format!("!seed"),
+                                    help_text: Some(format!("Create a seed with the settings used for the race.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                            ],
+                        ).await?,
+                        Goal::PicRs2 => ctx.send_message(
+                            "Welcome! This is a practice room for the 2nd Random Settings Pictionary Spoiler Log Race. Learn more about the race at https://midos.house/event/pic/rs2",
+                            true,
+                            vec![
+                                ("Roll seed", ActionButton::Message {
+                                    message: format!("!seed"),
+                                    help_text: Some(format!("Create a seed with the weights used for the race.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                            ],
+                        ).await?,
+                        Goal::Rsl => ctx.send_message(
+                            "Welcome to the OoTR Random Settings League! Learn more at https://rsl.one/",
+                            true,
+                            vec![
+                                ("Roll RSL seed", ActionButton::Message {
+                                    message: format!("!seed"),
+                                    help_text: Some(format!("Create a seed with official Random Settings League weights.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                                ("Roll multiworld seed", ActionButton::Message {
+                                    message: format!("!seed mw ${{worldcount}}"),
+                                    help_text: Some(format!("Create a random settings multiworld seed. Supports up to 15 players.")),
+                                    survey: Some(vec![
+                                        SurveyQuestion {
+                                            name: format!("worldcount"),
+                                            label: format!("World count"),
+                                            default: None,
+                                            help_text: Some(format!("Please download the RSL script from https://github.com/matthewkirby/plando-random-settings if you want to roll seeds for more than 15 players.")),
+                                            kind: SurveyQuestionKind::Radio,
+                                            placeholder: None,
+                                            options: (2..=15).map(|world_count| (world_count.to_string(), world_count.to_string())).collect(),
+                                        },
+                                    ]),
+                                    submit: Some(format!("Roll")),
+                                }),
+                                ("More presets", ActionButton::Message {
+                                    message: format!("!seed ${{preset}}"),
+                                    help_text: Some(format!("Select a preset and create a seed.")),
+                                    survey: Some(vec![
+                                        SurveyQuestion {
+                                            name: format!("preset"),
+                                            label: format!("Preset"),
+                                            default: None,
+                                            help_text: Some(format!("Use !presets for more info.")),
+                                            kind: SurveyQuestionKind::Select,
+                                            placeholder: None,
+                                            options: all()
+                                                .filter(|preset| !matches!(preset, rsl::Preset::League | rsl::Preset::Multiworld))
+                                                .map(|preset| (preset.name().to_owned(), preset.race_info().to_owned()))
+                                                .collect(),
+                                        },
+                                    ]),
+                                    submit: Some(format!("Roll")),
+                                }),
+                            ],
+                        ).await?,
+                        Goal::Sgl2023 => ctx.send_message(
+                            "Welcome! This is a practice room for SpeedGaming Live 2023. Learn more about the tournaments at https://docs.google.com/document/d/1EACqBl8ZOreD6xT5jQ2HrdLOnpBpKyjS3FUYK8XFeqg/edit",
+                            true,
+                            vec![
+                                ("Roll seed", ActionButton::Message {
+                                    message: format!("!seed"),
+                                    help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                            ],
+                        ).await?,
+                        Goal::TournoiFrancoS3 => ctx.send_message(
+                            "Bienvenue ! Ceci est une practice room pour le tournoi francophone saison 3. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/fr/3",
+                            true,
+                            vec![
+                                ("Roll seed (base settings)", ActionButton::Message {
+                                    message: format!("!seed base ${{mq}}mq"),
+                                    help_text: Some(format!("Create a seed with the base settings.")),
+                                    survey: Some(vec![
+                                        SurveyQuestion {
+                                            name: format!("mq"),
+                                            label: format!("Donjons Master Quest"),
+                                            default: Some(format!("0")),
+                                            help_text: None,
+                                            kind: SurveyQuestionKind::Select,
+                                            placeholder: None,
+                                            options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                        },
+                                    ]),
+                                    submit: Some(format!("Roll")),
+                                }),
+                                ("Roll seed (random settings)", ActionButton::Message {
+                                    message: format!("!seed random advanced=${{advanced}} ${{mq}}mq"),
+                                    help_text: Some(format!("Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.")),
+                                    survey: Some(vec![
+                                        SurveyQuestion {
+                                            name: format!("advanced"),
+                                            label: format!("Allow advanced settings"),
+                                            default: None,
+                                            help_text: None,
+                                            kind: SurveyQuestionKind::Bool,
+                                            placeholder: None,
+                                            options: Vec::default(),
+                                        },
+                                        SurveyQuestion {
+                                            name: format!("mq"),
+                                            label: format!("Donjons Master Quest"),
+                                            default: Some(format!("0")),
+                                            help_text: None,
+                                            kind: SurveyQuestionKind::Select,
+                                            placeholder: None,
+                                            options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                        },
+                                    ]),
+                                    submit: Some(format!("Roll")),
+                                }),
+                                ("Roll seed (custom settings)", ActionButton::Message {
+                                    message: format!("!seed {} ${{mq}}mq", fr::S3_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
+                                    help_text: Some(format!("Pick a set of draftable settings without doing a full draft.")),
+                                    survey: Some(fr::S3_SETTINGS.into_iter().map(|setting| SurveyQuestion {
+                                        name: setting.name.to_owned(),
+                                        label: setting.display.to_owned(),
+                                        default: Some(setting.default.to_owned()),
+                                        help_text: None,
+                                        kind: SurveyQuestionKind::Radio,
+                                        placeholder: None,
+                                        options: iter::once((setting.default.to_owned(), setting.default_display.to_owned()))
+                                            .chain(setting.other.iter().map(|(name, _, display)| (name.to_string(), display.to_string())))
+                                            .collect(),
+                                    }).chain(iter::once(SurveyQuestion {
+                                        name: format!("mq"),
+                                        label: format!("Donjons Master Quest"),
+                                        default: Some(format!("0")),
+                                        help_text: None,
+                                        kind: SurveyQuestionKind::Select,
+                                        placeholder: None,
+                                        options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                    })).collect()),
+                                    submit: Some(format!("Roll")),
+                                }),
+                                ("Roll seed (settings draft)", ActionButton::Message {
+                                    message: format!("!seed draft advanced=${{advanced}} ${{mq}}mq"),
+                                    help_text: Some(format!("Vous fait effectuer un draft dans le chat.")),
+                                    survey: Some(vec![
+                                        SurveyQuestion {
+                                            name: format!("advanced"),
+                                            label: format!("Allow advanced settings"),
+                                            default: None,
+                                            help_text: None,
+                                            kind: SurveyQuestionKind::Bool,
+                                            placeholder: None,
+                                            options: Vec::default(),
+                                        },
+                                        SurveyQuestion {
+                                            name: format!("mq"),
+                                            label: format!("Donjons Master Quest"),
+                                            default: Some(format!("0")),
+                                            help_text: None,
+                                            kind: SurveyQuestionKind::Select,
+                                            placeholder: None,
+                                            options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                        },
+                                    ]),
+                                    submit: Some(format!("Roll")),
+                                }),
+                            ],
+                        ).await?,
+                        Goal::TriforceBlitz => ctx.send_message(
+                            "Welcome to Triforce Blitz! Learn more at https://triforceblitz.com/",
+                            true,
+                            vec![
+                                ("Roll Jabu's Revenge seed", ActionButton::Message {
+                                    message: format!("!seed jr"),
+                                    help_text: Some(format!("Create a Triforce Blitz: Jabu's Revenge seed.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                                ("Roll S2 seed", ActionButton::Message {
+                                    message: format!("!seed s2"),
+                                    help_text: Some(format!("Create a Triforce Blitz season 2 seed.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                                ("Seed of the day", ActionButton::Message {
+                                    message: format!("!seed daily"),
+                                    help_text: Some(format!("Link the current seed of the day.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                            ],
+                        ).await?,
                     },
                     RaceState::Rolled(_) => ctx.say("@entrants I just restarted. You may have to reconfigure !breaks and !fpa. Sorry about that.").await?,
                     RaceState::Draft { .. } | RaceState::Rolling | RaceState::SpoilerSent => unreachable!(),
@@ -2827,14 +3111,18 @@ impl RaceHandler<GlobalState> for Handler {
                             Goal::TournoiFrancoS3 => {
                                 let mut mq_dungeons_count = None::<u8>;
                                 let mut hard_settings_ok = false;
-                                args.retain(|arg| if arg == "advanced" && !hard_settings_ok {
-                                    hard_settings_ok = true;
-                                    false
-                                } else if let (None, Some(mq)) = (mq_dungeons_count, regex_captures!("^([0-9]+)mq$"i, arg).and_then(|(_, mq)| mq.parse().ok())) {
-                                    mq_dungeons_count = Some(mq);
-                                    false
-                                } else {
-                                    true
+                                args.retain(|arg| match &**arg {
+                                    "advanced" | "advanced=true" if !hard_settings_ok => {
+                                        hard_settings_ok = true;
+                                        false
+                                    }
+                                    "advanced=false" if !hard_settings_ok => false,
+                                    _ => if let (None, Some(mq)) = (mq_dungeons_count, regex_captures!("^([0-9]+)mq$"i, arg).and_then(|(_, mq)| mq.parse().ok())) {
+                                        mq_dungeons_count = Some(mq);
+                                        false
+                                    } else {
+                                        true
+                                    },
                                 });
                                 let settings = match args[..] {
                                     [] => {
