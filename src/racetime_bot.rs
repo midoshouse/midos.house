@@ -1855,7 +1855,7 @@ impl RaceHandler<GlobalState> for Handler {
                     }
                 }
             }
-            ctx.say(&if_chain! {
+            ctx.send_message(&if_chain! {
                 if let French = goal.language();
                 if !event.is_single_race();
                 if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
@@ -1885,7 +1885,7 @@ impl RaceHandler<GlobalState> for Handler {
                         event.event,
                     )
                 }
-            }).await?;
+            }, true, Vec::default()).await?;
             let (race_state, high_seed_name, low_seed_name) = if event.draft_kind().is_some() {
                 let state = cal_event.race.draft.clone().expect("missing draft state");
                 let [high_seed_name, low_seed_name] = match cal_event.race.entrants {
@@ -2403,7 +2403,7 @@ impl RaceHandler<GlobalState> for Handler {
                 } else {
                     format!("This race is being restreamed {restreams_text} — auto-start is disabled. Restreamers can use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.")
                 };
-                ctx.say(&text).await?;
+                ctx.send_message(&text, true, Vec::default()).await?;
             }
             let state = lock!(@write @owned this.race_state.clone());
             if existing_seed.files.is_some() {
