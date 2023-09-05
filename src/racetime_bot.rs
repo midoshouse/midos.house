@@ -2226,7 +2226,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     submit: Some(format!("Roll")),
                                 }),
                                 ("Roll seed (random settings)", ActionButton::Message {
-                                    message: format!("!seed random advanced=${{advanced}} ${{mq}}mq"),
+                                    message: format!("!seed random ${{advanced}} ${{mq}}mq"),
                                     help_text: Some(format!("Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.")),
                                     survey: Some(vec![
                                         SurveyQuestion {
@@ -2275,7 +2275,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     submit: Some(format!("Roll")),
                                 }),
                                 ("Roll seed (settings draft)", ActionButton::Message {
-                                    message: format!("!seed draft advanced=${{advanced}} ${{mq}}mq"),
+                                    message: format!("!seed draft ${{advanced}} ${{mq}}mq"),
                                     help_text: Some(format!("Vous fait effectuer un draft dans le chat.")),
                                     survey: Some(vec![
                                         SurveyQuestion {
@@ -3111,18 +3111,14 @@ impl RaceHandler<GlobalState> for Handler {
                             Goal::TournoiFrancoS3 => {
                                 let mut mq_dungeons_count = None::<u8>;
                                 let mut hard_settings_ok = false;
-                                args.retain(|arg| match &**arg {
-                                    "advanced" | "advanced=true" if !hard_settings_ok => {
-                                        hard_settings_ok = true;
-                                        false
-                                    }
-                                    "advanced=false" if !hard_settings_ok => false,
-                                    _ => if let (None, Some(mq)) = (mq_dungeons_count, regex_captures!("^([0-9]+)mq$"i, arg).and_then(|(_, mq)| mq.parse().ok())) {
-                                        mq_dungeons_count = Some(mq);
-                                        false
-                                    } else {
-                                        true
-                                    },
+                                args.retain(|arg| if arg == "advanced" && !hard_settings_ok {
+                                    hard_settings_ok = true;
+                                    false
+                                } else if let (None, Some(mq)) = (mq_dungeons_count, regex_captures!("^([0-9]+)mq$"i, arg).and_then(|(_, mq)| mq.parse().ok())) {
+                                    mq_dungeons_count = Some(mq);
+                                    false
+                                } else {
+                                    true
                                 });
                                 let settings = match args[..] {
                                     [] => {
