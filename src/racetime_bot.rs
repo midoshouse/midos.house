@@ -572,8 +572,8 @@ impl CleanShutdown {
 pub(crate) struct GlobalState {
     /// Locked while event rooms are being created. Wait with handling new rooms while it's held.
     new_room_lock: Arc<Mutex<()>>,
+    pub(crate) env: Environment,
     host_info: racetime::HostInfo,
-    pub(crate) host: &'static str,
     racetime_config: ConfigRaceTime,
     extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>,
     db_pool: PgPool,
@@ -585,14 +585,14 @@ pub(crate) struct GlobalState {
 }
 
 impl GlobalState {
-    pub(crate) async fn new(new_room_lock: Arc<Mutex<()>>, racetime_config: ConfigRaceTime, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, host: &'static str, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Self {
+    pub(crate) async fn new(new_room_lock: Arc<Mutex<()>>, racetime_config: ConfigRaceTime, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, startgg_token: String, env: Environment, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Self {
         Self {
             host_info: racetime::HostInfo {
-                hostname: Cow::Borrowed(host),
+                hostname: Cow::Borrowed(env.racetime_host()),
                 ..racetime::HostInfo::default()
             },
             ootr_api_client: OotrApiClient::new(http_client.clone(), ootr_api_key),
-            new_room_lock, host, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown,
+            new_room_lock, env, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown,
         }
     }
 
@@ -1152,13 +1152,13 @@ impl SeedRollUpdate {
                                 seed::Files::MidosHouse { file_stem, .. } => {
                                     sqlx::query!(
                                         "INSERT INTO rsl_seeds (room, file_stem, preset, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-                                        format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), &file_stem, preset as _, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
+                                        format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url), &file_stem, preset as _, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
                                     ).execute(db_pool).await.to_racetime()?;
                                 }
                                 seed::Files::OotrWeb { id, gen_time, file_stem } => {
                                     sqlx::query!(
                                         "INSERT INTO rsl_seeds (room, file_stem, preset, web_id, web_gen_time, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
-                                        format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), &file_stem, preset as _, *id as i64, gen_time, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
+                                        format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url), &file_stem, preset as _, *id as i64, gen_time, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
                                     ).execute(db_pool).await.to_racetime()?;
                                 }
                                 seed::Files::TriforceBlitz { .. } | seed::Files::TfbSotd { .. } => unreachable!(), // no such thing as random settings Triforce Blitz
@@ -1285,7 +1285,9 @@ impl SeedRollUpdate {
             }
             Self::Error(e) => {
                 eprintln!("seed roll error: {e} ({e:?})");
-                let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
+                if let Environment::Production = ctx.global_state.env {
+                    let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
+                }
                 ctx.say("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl.").await?;
             }
         }
@@ -1739,7 +1741,7 @@ impl Handler {
     async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: &'static str, spoiler_log: bool, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
-        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(delay_until, version, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url), spoiler_log), language, article, description);
+        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(delay_until, version, format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url), spoiler_log), language, article, description);
     }
 
     async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
@@ -1798,7 +1800,7 @@ impl RaceHandler<GlobalState> for Handler {
     async fn task(global_state: Arc<GlobalState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
         let race_data = ArcRwLock::from(race_data);
         tokio::spawn(async move {
-            println!("race handler for https://{}{} started", global_state.host, lock!(@read race_data).url);
+            println!("race handler for https://{}{} started", global_state.env.racetime_host(), lock!(@read race_data).url);
             let res = join_handle.await;
             let mut clean_shutdown = lock!(global_state.clean_shutdown);
             assert!(clean_shutdown.open_rooms.remove(&lock!(@read race_data).url));
@@ -1806,9 +1808,9 @@ impl RaceHandler<GlobalState> for Handler {
                 clean_shutdown.notifier.notify_waiters();
             }
             if let Ok(()) = res {
-                println!("race handler for https://{}{} stopped", global_state.host, lock!(@read race_data).url);
+                println!("race handler for https://{}{} stopped", global_state.env.racetime_host(), lock!(@read race_data).url);
             } else {
-                println!("race handler for https://{}{} panicked", global_state.host, lock!(@read race_data).url);
+                println!("race handler for https://{}{} panicked", global_state.env.racetime_host(), lock!(@read race_data).url);
             }
         });
         Ok(())
@@ -1819,7 +1821,7 @@ impl RaceHandler<GlobalState> for Handler {
         let goal = data.goal.name.parse::<Goal>().to_racetime()?;
         let new_room_lock = lock!(ctx.global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-        let (existing_seed, official_data, race_state, high_seed_name, low_seed_name, fpa_enabled) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url).parse()?).await.to_racetime()? {
+        let (existing_seed, official_data, race_state, high_seed_name, low_seed_name, fpa_enabled) = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token, format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url).parse()?).await.to_racetime()? {
             let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
             let mut entrants = Vec::default();
             for team in cal_event.active_teams() {
@@ -2209,9 +2211,9 @@ impl RaceHandler<GlobalState> for Handler {
                             "Bienvenue ! Ceci est une practice room pour le tournoi francophone saison 3. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/fr/3",
                             true,
                             vec![
-                                ("Roll seed (base settings)", ActionButton::Message {
+                                ("Roll seed (settings de base)", ActionButton::Message {
                                     message: format!("!seed base ${{mq}}mq"),
-                                    help_text: Some(format!("Create a seed with the base settings.")),
+                                    help_text: Some(format!("Roll une seed avec les settings de base, sans setting additionnel.")),
                                     survey: Some(vec![
                                         SurveyQuestion {
                                             name: format!("mq"),
@@ -2225,13 +2227,13 @@ impl RaceHandler<GlobalState> for Handler {
                                     ]),
                                     submit: Some(format!("Roll")),
                                 }),
-                                ("Roll seed (random settings)", ActionButton::Message {
+                                ("Roll seed (settings aléatoires)", ActionButton::Message {
                                     message: format!("!seed random ${{advanced}} ${{mq}}mq"),
-                                    help_text: Some(format!("Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.")),
+                                    help_text: Some(format!("Simule en draft en sélectionnant des settings au hasard.")),
                                     survey: Some(vec![
                                         SurveyQuestion {
                                             name: format!("advanced"),
-                                            label: format!("Allow advanced settings"),
+                                            label: format!("Active les settings difficiles"),
                                             default: None,
                                             help_text: None,
                                             kind: SurveyQuestionKind::Bool,
@@ -2250,9 +2252,9 @@ impl RaceHandler<GlobalState> for Handler {
                                     ]),
                                     submit: Some(format!("Roll")),
                                 }),
-                                ("Roll seed (custom settings)", ActionButton::Message {
+                                ("Roll seed (settings à choisir)", ActionButton::Message {
                                     message: format!("!seed {} ${{mq}}mq", fr::S3_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
-                                    help_text: Some(format!("Pick a set of draftable settings without doing a full draft.")),
+                                    help_text: Some(format!("Vous laisse sélectionner les settings que vous voulez dans votre seed.")),
                                     survey: Some(fr::S3_SETTINGS.into_iter().map(|setting| SurveyQuestion {
                                         name: setting.name.to_owned(),
                                         label: setting.display.to_owned(),
@@ -2262,6 +2264,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         placeholder: None,
                                         options: iter::once((setting.default.to_owned(), setting.default_display.to_owned()))
                                             .chain(setting.other.iter().map(|(name, _, display)| (name.to_string(), display.to_string())))
+                                            .chain((setting.name == "dungeon-er").then(|| (format!("mixed"), format!("dungeon ER (mixés)"))))
                                             .collect(),
                                     }).chain(iter::once(SurveyQuestion {
                                         name: format!("mq"),
@@ -2274,13 +2277,13 @@ impl RaceHandler<GlobalState> for Handler {
                                     })).collect()),
                                     submit: Some(format!("Roll")),
                                 }),
-                                ("Roll seed (settings draft)", ActionButton::Message {
+                                ("Roll seed (avec draft)", ActionButton::Message {
                                     message: format!("!seed draft ${{advanced}} ${{mq}}mq"),
-                                    help_text: Some(format!("Vous fait effectuer un draft dans le chat.")),
+                                    help_text: Some(format!("Vous fait effectuer un draft dans le chat racetime.")),
                                     survey: Some(vec![
                                         SurveyQuestion {
                                             name: format!("advanced"),
-                                            label: format!("Allow advanced settings"),
+                                            label: format!("Active les settings difficiles"),
                                             default: None,
                                             help_text: None,
                                             kind: SurveyQuestionKind::Bool,
@@ -2764,7 +2767,7 @@ impl RaceHandler<GlobalState> for Handler {
                         };
                         if let Ok(restream_url) = restream_url {
                             let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                            match parse_user(&mut transaction, &ctx.global_state.http_client, ctx.global_state.host, restreamer).await {
+                            match parse_user(&mut transaction, &ctx.global_state.http_client, ctx.global_state.env.racetime_host(), restreamer).await {
                                 Ok(restreamer_racetime_id) => {
                                     if restreams.is_empty() {
                                         let (access_token, _) = racetime::authorize_with_host(&ctx.global_state.host_info, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
@@ -3305,7 +3308,7 @@ impl RaceHandler<GlobalState> for Handler {
         }
         if !self.start_saved {
             if let (Goal::Rsl, Some(start)) = (goal, data.started_at) {
-                sqlx::query!("UPDATE rsl_seeds SET start = $1 WHERE room = $2", start, format!("https://{}{}", ctx.global_state.host, ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
+                sqlx::query!("UPDATE rsl_seeds SET start = $1 WHERE room = $2", start, format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
                 self.start_saved = true;
             }
         }
@@ -3405,7 +3408,7 @@ impl RaceHandler<GlobalState> for Handler {
                             organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
                                 //TODO mention organizer role
                                 .push("first half of async finished: <https://")
-                                .push(ctx.global_state.host)
+                                .push(ctx.global_state.env.racetime_host())
                                 .push(&ctx.data().await.url)
                                 .push('>')
                                 .build()
@@ -3416,7 +3419,7 @@ impl RaceHandler<GlobalState> for Handler {
                             organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
                                 //TODO mention organizer role
                                 .push("race finished with FPA call: <https://")
-                                .push(ctx.global_state.host)
+                                .push(ctx.global_state.env.racetime_host())
                                 .push(&ctx.data().await.url)
                                 .push('>')
                                 .build()
@@ -3456,7 +3459,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                         }
                                                         builder
                                                             .push(" <https://")
-                                                            .push(ctx.global_state.host)
+                                                            .push(ctx.global_state.env.racetime_host())
                                                             .push(&ctx.data().await.url)
                                                             .push('>')
                                                             .build()
@@ -3478,7 +3481,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                         }
                                                         builder
                                                             .push(" <https://")
-                                                            .push(ctx.global_state.host)
+                                                            .push(ctx.global_state.env.racetime_host())
                                                             .push(&ctx.data().await.url)
                                                             .push('>')
                                                             .build()
@@ -3501,7 +3504,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                             .push(" (")
                                                             .push(losing_time.map_or(Cow::Borrowed("forfait"), |time| Cow::Owned(French.format_duration(time, false))))
                                                             .push(") <https://")
-                                                            .push(ctx.global_state.host)
+                                                            .push(ctx.global_state.env.racetime_host())
                                                             .push(&ctx.data().await.url)
                                                             .push('>')
                                                             .build()
@@ -3521,7 +3524,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                             .push(" (")
                                                             .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
                                                             .push(") <https://")
-                                                            .push(ctx.global_state.host)
+                                                            .push(ctx.global_state.env.racetime_host())
                                                             .push(&ctx.data().await.url)
                                                             .push('>')
                                                             .build()
@@ -3568,7 +3571,7 @@ impl RaceHandler<GlobalState> for Handler {
                                             }
                                             results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder
                                                 .push(" <https://")
-                                                .push(ctx.global_state.host)
+                                                .push(ctx.global_state.env.racetime_host())
                                                 .push(&ctx.data().await.url)
                                                 .push('>')
                                                 .build()
@@ -3585,7 +3588,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                 .push(" (")
                                                 .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
                                                 .push(") <https://")
-                                                .push(ctx.global_state.host)
+                                                .push(ctx.global_state.env.racetime_host())
                                                 .push(&ctx.data().await.url)
                                                 .push('>')
                                                 .build()
@@ -3607,7 +3610,7 @@ impl RaceHandler<GlobalState> for Handler {
                         organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
                             //TODO mention organizer role
                             .push("race cancelled: <https://")
-                            .push(ctx.global_state.host)
+                            .push(ctx.global_state.env.racetime_host())
                             .push(&ctx.data().await.url)
                             .push('>')
                             .build()
@@ -3616,7 +3619,7 @@ impl RaceHandler<GlobalState> for Handler {
                 }
                 self.unlock_spoiler_log(ctx).await?;
                 if let Goal::Rsl = goal {
-                    sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", ctx.global_state.host, ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
+                    sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
                 }
             }
             _ => {}

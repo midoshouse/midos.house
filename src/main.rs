@@ -131,10 +131,12 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
         }
     } else {
         let default_panic_hook = std::panic::take_hook();
-        std::panic::set_hook(Box::new(move |info| {
-            let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
-            default_panic_hook(info)
-        }));
+        if let Environment::Production = env {
+            std::panic::set_hook(Box::new(move |info| {
+                let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
+                default_panic_hook(info)
+            }));
+        }
         let config = Config::load().await?;
         let http_client = reqwest::Client::builder()
             .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION")))
@@ -161,7 +163,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
             http_client,
             config.ootr_api_key.clone(),
             startgg_token.clone(),
-            env.racetime_host(),
+            env,
             discord_builder.ctx_fut.clone(),
             Arc::clone(&clean_shutdown),
         ).await);
