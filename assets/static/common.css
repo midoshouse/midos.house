@@ -299,6 +299,15 @@ label.help {
     margin-inline-start: 8px;
 }
 
+.warning {
+    border: 1px solid #909000;
+}
+
+p.warning {
+    background-color: #ffff90;
+    padding: 8px;
+}
+
 .error {
     border: 1px solid #c00000;
 }
@@ -469,6 +478,14 @@ footer,
 
     .courage {
         color: #20e020;
+    }
+
+    .warning {
+        border-color: #ffff00;
+    }
+
+    p.warning {
+        background-color: #404000;
     }
 
     .error {
