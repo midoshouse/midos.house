@@ -41,8 +41,8 @@ impl Config {
                 bail!("missing config file")
             }
         }
-        #[cfg(windows)] { // allow testing without having rust-analyzer slow down mercredi
-            Ok(serde_json::from_slice(&Command::new("ssh").arg("mercredi").arg("cat").arg("/etc/xdg/midos-house.json").output().await?.stdout)?)
+        #[cfg(windows)] { // allow testing without having rust-analyzer slow down the server
+            Ok(serde_json::from_slice(&Command::new("ssh").arg("midos.house").arg("cat").arg("/etc/xdg/midos-house.json").output().await?.stdout)?)
         }
     }
 }
