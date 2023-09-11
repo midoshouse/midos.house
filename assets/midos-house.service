@@ -9,7 +9,7 @@ Restart=always
 ExecStart=/home/fenhl/bin/midos-house
 User=mido
 Group=nogroup
-WorkingDirectory=/opt/git/github.com/midoshouse/midos.house/master
+WorkingDirectory=/opt/git/github.com/midoshouse/midos.house/main
 Environment="RUST_BACKTRACE=1"
 
 [Install]

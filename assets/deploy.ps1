@@ -29,7 +29,7 @@ if (-not $?)
     throw 'Native Failure'
 }
 
-ssh midos.house /opt/git/github.com/midoshouse/midos.house/master/assets/deploy-local.sh
+ssh midos.house /opt/git/github.com/midoshouse/midos.house/main/assets/deploy-local.sh
 if (-not $?)
 {
     throw 'Native Failure'
