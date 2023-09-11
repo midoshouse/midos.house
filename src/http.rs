@@ -3,7 +3,6 @@ use {
         Engine as _,
         general_purpose::STANDARD as BASE64,
     },
-    chrono::prelude::*,
     itertools::Itertools as _,
     ootr_utils::camc::ChestTexture,
     rand::prelude::*,
@@ -198,15 +197,6 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                                     }
                                 }
                             }
-                        }
-                    }
-                    @if Utc::now() < Utc.with_ymd_and_hms(2023, 9, 15, 0, 0, 0).single().expect("wrong hardcoded datetime") {
-                        p(class = "warning") {
-                            : "Maintenance on the Mido's House server is scheduled from ";
-                            : format_datetime(Utc.with_ymd_and_hms(2023, 9, 11, 0, 0, 0).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
-                            : " until ";
-                            : format_datetime(Utc.with_ymd_and_hms(2023, 9, 15, 0, 0, 0).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
-                            : ". This website, multiworld, and the Discord and racetime.gg bots may go offline for a while during that time.";
                         }
                     }
                     @if let Some(content) = content {
