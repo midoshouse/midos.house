@@ -8,6 +8,7 @@ set -e
 
 sudo systemctl stop midos-house
 env -C /opt/git/github.com/midoshouse/midos.house/main git pull
-mv bin/midos-house-next bin/midos-house
-chmod +x bin/midos-house
+sudo chown mido:www-data bin/midos-house-next
+sudo chmod +x bin/midos-house-next
+mv bin/midos-house-next /usr/local/share/midos-house/bin/midos-house
 sudo systemctl start midos-house

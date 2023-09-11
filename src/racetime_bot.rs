@@ -1246,7 +1246,7 @@ impl SeedRollUpdate {
                                 mw_room_name.push_str(ellipsis);
                             }
                             if let Some([hash1, hash2, hash3, hash4, hash5]) = extra.file_hash {
-                                let mut cmd = Command::new("/home/fenhl/bin/ootrmwd");
+                                let mut cmd = Command::new("/usr/local/share/midos-house/bin/ootrmwd");
                                 cmd.arg("create-tournament-room");
                                 cmd.arg(&mw_room_name);
                                 cmd.arg(hash1.to_string());
