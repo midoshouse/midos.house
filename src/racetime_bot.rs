@@ -1,60 +1,19 @@
 use {
     std::{
-        borrow::Cow,
-        collections::{
-            HashMap,
-            HashSet,
-        },
-        fmt,
         io::prelude::*,
-        iter,
-        path::{
-            Path,
-            PathBuf,
-        },
-        pin::pin,
         process::Stdio,
-        str::FromStr,
-        sync::Arc,
         time::Duration,
-    },
-    async_trait::async_trait,
-    chrono::prelude::*,
-    collect_mac::collect,
-    enum_iterator::{
-        Sequence,
-        all,
-    },
-    futures::{
-        future::FutureExt as _,
-        stream::TryStreamExt as _,
     },
     git2::{
         BranchType,
         Repository,
         ResetType,
     },
-    if_chain::if_chain,
-    itertools::Itertools as _,
     kuchiki::{
         NodeRef,
         traits::TendrilSink as _,
     },
-    lazy_regex::{
-        regex_captures,
-        regex_is_match,
-    },
-    log_lock::{
-        ArcRwLock,
-        Mutex,
-        OwnedRwLockWriteGuard,
-        RwLock,
-        lock,
-    },
-    ootr_utils::{
-        self as rando,
-        spoiler::HashIcon,
-    },
+    ootr_utils as rando,
     racetime::{
         Error,
         ResultExt as _,
@@ -64,113 +23,37 @@ use {
         },
         model::*,
     },
-    rand::prelude::*,
     reqwest::{
         IntoUrl,
         StatusCode,
     },
     semver::Version,
-    serde::{
-        Deserialize,
-        Serialize,
-    },
-    serde_json::{
-        Value as Json,
-        json,
-    },
+    serde_json::Value as Json,
     serde_with::{
         DisplayFromStr,
         json::JsonString,
-        serde_as,
     },
-    serenity::all::{
-        Context as DiscordCtx,
-        MessageBuilder,
-        UserId,
-    },
-    serenity_utils::{
-        RwFuture,
-        message::MessageBuilderExt as _,
-    },
-    sqlx::{
-        PgPool,
-        Postgres,
-        Transaction,
-    },
+    serenity::all::UserId,
     tokio::{
         io::{
-            self,
             AsyncBufReadExt as _,
             AsyncWriteExt as _,
             BufReader,
         },
-        process::Command,
-        select,
         sync::{
             Notify,
             Semaphore,
             TryAcquireError,
             mpsc,
         },
-        time::{
-            Instant,
-            sleep,
-            sleep_until,
-        },
+        time::sleep,
     },
-    tokio_util::io::StreamReader,
-    url::Url,
-    wheel::{
-        fs::{
-            self,
-            File,
-        },
-        traits::{
-            AsyncCommandOutputExt as _,
-            IoResultExt as _,
-            ReqwestResponseExt as _,
-        },
-    },
+    wheel::traits::AsyncCommandOutputExt as _,
     crate::{
-        Environment,
-        cal::{
-            self,
-            Entrant,
-            Entrants,
-        },
-        config::{
-            Config,
-            ConfigRaceTime,
-        },
-        draft::{
-            self,
-            Draft,
-        },
-        event::{
-            self,
-            Series,
-            TeamConfig,
-        },
-        lang::Language::{
-            self,
-            *,
-        },
-        seed,
-        series::*,
-        team::Team,
-        user::User,
-        util::{
-            DurationUnit,
-            Id,
-            MessageBuilderExt as _,
-            io_error_from_reqwest,
-            parse_duration,
-        },
+        cal::Entrant,
+        config::ConfigRaceTime,
+        prelude::*,
     },
-};
-#[cfg(unix)] use {
-    async_proto::Protocol,
-    xdg::BaseDirectories,
 };
 #[cfg(windows)] use directories::UserDirs;
 

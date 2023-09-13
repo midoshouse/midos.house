@@ -6,24 +6,13 @@
 use {
     std::{
         env,
-        sync::Arc,
         time::Duration,
     },
-    futures::future::FutureExt as _,
-    log_lock::RwLock,
     rocket::Rocket,
-    sqlx::{
-        PgPool,
-        postgres::PgConnectOptions,
-    },
-    tokio::{
-        process::Command,
-        sync::mpsc,
-    },
-    crate::config::Config,
+    sqlx::postgres::PgConnectOptions,
+    crate::prelude::*,
 };
 #[cfg(unix)] use {
-    async_proto::Protocol as _,
     openssl as _, // `vendored` feature required to fix release build
     tokio::net::UnixStream,
     crate::{
@@ -31,7 +20,6 @@ use {
         unix_socket::ClientMessage as Subcommand,
     },
 };
-#[cfg(not(unix))] use futures::future;
 
 mod api;
 mod auth;
@@ -44,6 +32,7 @@ mod favicon;
 #[macro_use] mod http;
 mod lang;
 mod notification;
+mod prelude;
 mod racetime_bot;
 mod seed;
 mod series;

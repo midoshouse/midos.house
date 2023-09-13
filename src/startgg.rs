@@ -1,32 +1,11 @@
 use {
     std::{
-        collections::hash_map::{
-            self,
-            HashMap,
-        },
-        hash::Hash,
         marker::PhantomData,
         time::Duration,
     },
     graphql_client::GraphQLQuery,
-    log_lock::{
-        Mutex,
-        lock,
-    },
-    once_cell::sync::Lazy,
-    serde::{
-        Deserialize,
-        Serialize,
-    },
-    tokio::time::{
-        Instant,
-        sleep_until,
-    },
-    typemap_rev::{
-        TypeMap,
-        TypeMapKey,
-    },
-    wheel::traits::ReqwestResponseExt as _,
+    typemap_rev::TypeMap,
+    crate::prelude::*,
 };
 
 static CACHE: Lazy<Mutex<(Instant, TypeMap)>> = Lazy::new(|| Mutex::new((Instant::now(), TypeMap::default())));

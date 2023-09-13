@@ -1,47 +1,13 @@
 use {
-    collect_mac::collect,
-    itertools::Itertools as _,
-    rocket::{
-        form::Context,
-        response::content::RawHtml,
-        uri,
-    },
-    rocket_csrf::CsrfToken,
-    rocket_util::{
-        Origin,
-        html,
-    },
-    serde_json::{
-        Value as Json,
-        json,
-    },
-    sqlx::{
-        Postgres,
-        Transaction,
-    },
+    serde_json::Value as Json,
     crate::{
-        Environment,
-        auth,
         event::{
-            self,
             Data,
             FindTeamError,
             InfoError,
-            Series,
             Tab,
-            TeamConfig,
         },
-        http::{
-            PageStyle,
-            page,
-        },
-        lang::Language::English,
-        user::User,
-        util::{
-            Id,
-            form_field,
-            full_form,
-        },
+        prelude::*,
     },
 };
 

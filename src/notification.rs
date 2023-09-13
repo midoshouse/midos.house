@@ -1,55 +1,9 @@
-use {
-    futures::stream::TryStreamExt as _,
-    rocket::{
-        State,
-        form::{
-            Contextual,
-            Form,
-        },
-        response::{
-            Redirect,
-            content::RawHtml,
-        },
-        uri,
+use crate::{
+    event::{
+        Role,
+        SignupStatus,
     },
-    rocket_csrf::CsrfToken,
-    rocket_util::{
-        ContextualExt as _,
-        Origin,
-        html,
-    },
-    sqlx::{
-        PgPool,
-        Postgres,
-        Transaction,
-    },
-    crate::{
-        Environment,
-        auth,
-        event::{
-            self,
-            Role,
-            Series,
-            SignupStatus,
-            TeamConfig,
-        },
-        http::{
-            PageError,
-            PageKind,
-            PageStyle,
-            page,
-        },
-        lang::Language::English,
-        series::{
-            mw,
-            pic,
-        },
-        user::User,
-        util::{
-            EmptyForm,
-            Id,
-        },
-    },
+    prelude::*,
 };
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]

@@ -1,23 +1,8 @@
 #![allow(unused_qualifications)] // in derive macro
 
 use {
-    std::{
-        fmt,
-        iter,
-        time::Duration,
-    },
-    enum_iterator::Sequence,
-    itertools::Itertools as _,
-    rocket::{
-        FromFormField,
-        response::content::RawHtml,
-    },
-    rocket_util::{
-        ToHtml,
-        html,
-    },
-    serde::Deserialize,
-    self::Language::*,
+    std::time::Duration,
+    crate::prelude::*,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Sequence, Deserialize, sqlx::Type, FromFormField)]

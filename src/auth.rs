@@ -1,67 +1,25 @@
 use {
-    std::{
-        fmt,
-        time::Duration,
-    },
+    std::time::Duration,
     futures::future::TryFutureExt as _,
-    lazy_regex::regex_is_match,
     rocket::{
-        State,
         http::{
             Cookie,
             CookieJar,
             SameSite,
-            Status,
             ext::IntoOwned as _,
         },
         outcome::Outcome,
-        request::{
-            self,
-            FromRequest,
-            Request,
-        },
-        response::{
-            Redirect,
-            content::RawHtml,
-        },
-        uri,
     },
     rocket_oauth2::{
         OAuth2,
         TokenResponse,
     },
-    rocket_util::{
-        Error,
-        Origin,
-        ToHtml,
-        html,
-    },
-    serde::{
-        Deserialize,
-        Deserializer,
-        de::Error as _,
-    },
+    rocket_util::Error,
     serde_plain::derive_serialize_from_display,
-    serenity::model::prelude::*,
-    sqlx::PgPool,
-    wheel::traits::ReqwestResponseExt as _,
     crate::{
-        Environment,
-        http::{
-            PageError,
-            PageKind,
-            PageResult,
-            PageStyle,
-            page,
-        },
-        user::{
-            RaceTimePronouns,
-            User,
-        },
-        util::{
-            Id,
-            IdTable,
-        },
+        http::PageResult,
+        prelude::*,
+        user::RaceTimePronouns,
     },
 };
 

@@ -1,85 +1,18 @@
 use {
-    std::{
-        borrow::Cow,
-        collections::HashMap,
-        fmt,
-        iter,
-    },
-    collect_mac::collect,
-    enum_iterator::Sequence,
-    futures::{
-        future::{
-            self,
-            Future,
-            FutureExt as _,
-        },
-        stream,
-    },
-    itertools::Itertools as _,
-    once_cell::sync::Lazy,
-    ootr_utils::spoiler::HashIcon,
-    rand::prelude::*,
-    rocket::{
-        FromFormField,
-        form::{
-            self,
-            Context,
-        },
-        response::content::RawHtml,
-        uri,
-    },
-    rocket_csrf::CsrfToken,
-    rocket_util::{
-        Origin,
-        ToHtml,
-        html,
-    },
-    serde::Deserialize,
-    serde_json::{
-        Value as Json,
-        json,
-    },
-    serenity::{
-        all::Context as DiscordCtx,
-        model::prelude::*,
-    },
-    sqlx::{
-        Postgres,
-        Transaction,
-    },
-    wheel::traits::ReqwestResponseExt as _,
+    serde_json::Value as Json,
     crate::{
-        Environment,
-        auth,
-        draft,
         event::{
-            self,
             AsyncKind,
             Data,
             Error,
             FindTeamError,
             InfoError,
-            Series,
             StatusContext,
             Tab,
             enter,
         },
-        favicon::ChestAppearances,
-        http::{
-            self,
-            PageStyle,
-            page,
-        },
-        lang::Language::English,
-        seed,
-        user::User,
-        util::{
-            DateTimeFormat,
-            Id,
-            form_field,
-            format_datetime,
-            full_form,
-        },
+        http,
+        prelude::*,
     },
 };
 

@@ -1,25 +1,9 @@
-use {
-    chrono::prelude::*,
-    rocket::response::content::RawHtml,
-    rocket_util::html,
-    serde::{
-        Deserialize,
-        Deserializer,
-        de::Error as _,
+use crate::{
+    event::{
+        Data,
+        InfoError,
     },
-    serenity::model::prelude::*,
-    sqlx::{
-        Postgres,
-        Transaction,
-    },
-    crate::{
-        cal::Entrant,
-        event::{
-            Data,
-            InfoError,
-        },
-        lang::Language::English,
-    },
+    prelude::*,
 };
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {

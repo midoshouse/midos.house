@@ -1,26 +1,6 @@
-use {
-    std::borrow::Cow,
-    itertools::Itertools as _,
-    rocket::response::content::RawHtml,
-    rocket_util::{
-        ToHtml as _,
-        html,
-    },
-    serenity::model::prelude::*,
-    sqlx::{
-        Postgres,
-        Transaction,
-    },
-    crate::{
-        Environment,
-        event::{
-            Role,
-            Series,
-        },
-        series::*,
-        user::User,
-        util::Id,
-    },
+use crate::{
+    event::Role,
+    prelude::*,
 };
 
 #[derive(Clone)]
@@ -157,13 +137,13 @@ impl PartialEq for Team {
 impl Eq for Team {}
 
 impl PartialOrd for Team {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Team {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.id.cmp(&other.id)
     }
 }

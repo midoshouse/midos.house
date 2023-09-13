@@ -1,77 +1,26 @@
 use {
-    std::{
-        borrow::Cow,
-        num::NonZeroU8,
-        path::{
-            Path,
-            PathBuf,
-        },
-    },
-    chrono::prelude::*,
     futures::stream::{
         Stream,
         StreamExt as _,
     },
-    if_chain::if_chain,
-    lazy_regex::regex_is_match,
-    ootr_utils::spoiler::{
-        HashIcon,
-        SpoilerLog,
-    },
     rocket::{
-        Responder,
-        State,
         fs::NamedFile,
         http::{
             Header,
-            Status,
             hyper::header::{
                 CONTENT_DISPOSITION,
                 LINK,
             },
         },
-        response::content::{
-            RawHtml,
-            RawJson,
-        },
+        response::content::RawJson,
         uri,
     },
-    rocket_util::{
-        OptSuffix,
-        Origin,
-        Suffix,
-        html,
-    },
-    serde::Deserialize,
-    sqlx::PgPool,
-    tokio::{
-        io,
-        pin,
-        process::Command,
-    },
-    uuid::Uuid,
-    wheel::{
-        fs,
-        traits::IoResultExt as _,
-    },
+    rocket_util::OptSuffix,
     crate::{
-        Environment,
-        favicon::{
-            self,
-            ChestAppearances,
-            ChestTextures,
-        },
-        http::{
-            PageKind,
-            PageStyle,
-            page,
-            static_url,
-        },
-        user::User,
-        util::StatusOrError,
+        http::static_url,
+        prelude::*,
     },
 };
-#[cfg(unix)] use async_proto::Protocol;
 
 #[cfg(unix)] pub(crate) const DIR: &str = "/var/www/midos.house/seed";
 #[cfg(windows)] pub(crate) const DIR: &str = "C:/Users/fenhl/games/zelda/oot/midos-house-seeds";
@@ -296,7 +245,7 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
 }
 
 pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -> Result<RawHtml<String>, ExtraDataError> {
-    pin!(seeds);
+    let mut seeds = pin!(seeds);
     let now = Utc::now();
     Ok(html! {
         table(class = "seeds") {
@@ -328,7 +277,7 @@ pub(crate) enum GetResponse {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum GetError {
-    #[error(transparent)] Page(#[from] crate::http::PageError),
+    #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
 }

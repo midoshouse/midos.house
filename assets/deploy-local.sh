@@ -1,7 +1,7 @@
 #!/bin/sh
 
 if systemctl is-active midos-house; then
-    sudo -u mido bin/midos-house prepare-stop
+    sudo -u mido /usr/local/share/midos-house/bin/midos-house prepare-stop
 fi
 
 set -e

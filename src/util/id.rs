@@ -1,29 +1,15 @@
 use {
-    std::{
-        fmt,
-        str::FromStr,
-    },
-    rand::prelude::*,
     rocket::{
         UriDisplayPath,
         UriDisplayQuery,
-        form::{
-            self,
-            FromFormField,
-        },
-        request::FromParam,
-    },
-    serde::{
-        Deserialize,
-        Serialize,
+        form::FromFormField,
     },
     sqlx::{
         Database,
         Decode,
         Encode,
-        Postgres,
-        Transaction,
     },
+    crate::prelude::*,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Deserialize, Serialize, UriDisplayPath, UriDisplayQuery)]

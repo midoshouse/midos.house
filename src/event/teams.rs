@@ -1,72 +1,19 @@
 use {
     std::{
-        cmp::Ordering::{
-            self,
-            *,
-        },
-        collections::HashMap,
-        hash::{
-            Hash,
-            Hasher,
-        },
+        hash::Hasher,
         time::Duration,
     },
-    either::Either,
-    itertools::Itertools as _,
     noisy_float::prelude::*,
-    racetime::model::{
-        RaceData,
-        RaceStatusValue,
-    },
-    rocket::{
-        State,
-        http::Status,
-        response::content::RawHtml,
-        uri,
-    },
-    rocket_csrf::CsrfToken,
-    rocket_util::{
-        Origin,
-        html,
-    },
-    sqlx::{
-        PgPool,
-        Postgres,
-        Transaction,
-    },
-    url::Url,
-    wheel::traits::ReqwestResponseExt as _,
+    racetime::model::RaceStatusValue,
     crate::{
-        Environment,
-        cal::{
-            self,
-            Race,
-        },
-        config::Config,
-        draft,
         event::{
             Data,
             DataError,
             Role,
-            Series,
             SignupStatus,
             Tab,
-            TeamConfig,
         },
-        http::{
-            PageError,
-            PageStyle,
-            page,
-        },
-        lang::Language::*,
-        series::*,
-        team::Team,
-        user::User,
-        util::{
-            Id,
-            StatusOrError,
-            decode_pginterval,
-        },
+        prelude::*,
     },
 };
 
@@ -364,7 +311,7 @@ pub(crate) enum Error {
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Event(#[from] crate::event::Error),
     #[error(transparent)] Page(#[from] PageError),
-    #[error(transparent)] PgInterval(#[from] crate::util::PgIntervalDecodeError),
+    #[error(transparent)] PgInterval(#[from] PgIntervalDecodeError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
 }
 

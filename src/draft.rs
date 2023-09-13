@@ -1,34 +1,8 @@
 use {
-    std::{
-        borrow::Cow,
-        collections::HashMap,
-        fmt,
-        iter,
-    },
-    itertools::Itertools as _,
-    rand::prelude::*,
-    serde::{
-        Deserialize,
-        Serialize,
-    },
     serde_json::Value as Json,
-    serenity::{
-        all::MessageBuilder,
-        model::prelude::*,
-    },
-    serenity_utils::message::MessageBuilderExt as _,
-    sqlx::{
-        Postgres,
-        Transaction,
-    },
     crate::{
         discord_bot::CommandIds,
-        series::*,
-        team,
-        util::{
-            Id,
-            MessageBuilderExt as _,
-        },
+        prelude::*,
     },
 };
 

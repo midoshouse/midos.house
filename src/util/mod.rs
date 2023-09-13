@@ -1,31 +1,6 @@
-use {
-    std::io,
-    async_trait::async_trait,
-    itertools::Itertools as _,
-    rocket::{
-        Responder,
-        http::Status,
-        response::{
-            Redirect,
-            content::RawHtml,
-        },
-    },
-    rocket_util::html,
-    serenity::{
-        all::MessageBuilder,
-        model::prelude::*,
-    },
-    sqlx::{
-        Postgres,
-        Transaction,
-    },
-    url::Url,
-    crate::{
-        cal::Entrant,
-        http::static_url,
-        team::Team,
-        user::User,
-    },
+use crate::{
+    http::static_url,
+    prelude::*,
 };
 pub(crate) use self::{
     form::{

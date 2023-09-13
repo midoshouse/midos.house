@@ -1,45 +1,16 @@
 use {
-    std::fmt,
     convert_case::{
         Case,
         Casing as _,
     },
-    either::Either,
-    rocket::{
-        State,
-        http::Status,
-        response::content::RawHtml,
-        uri,
-    },
-    rocket_util::{
-        Origin,
-        ToHtml,
-        html,
-    },
-    serde::Deserialize,
-    serenity::model::prelude::*,
-    sqlx::{
-        PgExecutor,
-        PgPool,
-    },
-    wheel::traits::ReqwestResponseExt as _,
+    sqlx::PgExecutor,
     crate::{
-        Environment,
         auth::{
             DiscordUser,
             Discriminator,
             RaceTimeUser,
         },
-        http::{
-            PageError,
-            PageKind,
-            PageStyle,
-            page,
-        },
-        util::{
-            Id,
-            StatusOrError,
-        },
+        prelude::*,
     },
 };
 

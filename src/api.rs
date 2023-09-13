@@ -1,14 +1,20 @@
 use {
-    std::{
-        cmp::Ordering::{
-            self,
-            *,
-        },
-        fmt,
-        sync::Arc,
-    },
     async_graphql::{
-        *,
+        Context,
+        EmptyMutation,
+        EmptySubscription,
+        Error,
+        Guard,
+        ID,
+        InputValueError,
+        InputValueResult,
+        Object,
+        Result,
+        Scalar,
+        ScalarType,
+        Schema,
+        SimpleObject,
+        Value,
         http::{
             GraphQLPlaygroundConfig,
             playground_source,
@@ -20,54 +26,11 @@ use {
         GraphQLRequest,
         GraphQLResponse,
     },
-    async_trait::async_trait,
-    chrono::prelude::*,
-    enum_iterator::all,
-    itertools::Itertools as _,
-    log_lock::{
-        Mutex,
-        lock,
-    },
-    rocket::{
-        State,
-        http::{
-            ContentType,
-            Status,
-        },
-        request::{
-            self,
-            FromRequest,
-            Request,
-        },
-        response::content::RawHtml,
-    },
-    serde::Serialize,
-    sqlx::{
-        PgPool,
-        Postgres,
-        Transaction,
-    },
+    rocket::http::ContentType,
     crate::{
-        Config,
-        Environment,
         auth::Discriminator,
-        cal::{
-            self,
-            RaceSchedule,
-        },
-        event::{
-            self,
-            TeamConfig,
-            teams,
-        },
-        lang::Language::*,
-        racetime_bot,
-        team,
-        user,
-        util::{
-            Id,
-            StatusOrError,
-        },
+        event::teams,
+        prelude::*,
     },
 };
 
@@ -220,7 +183,7 @@ pub(crate) struct Query;
 
 #[derive(Debug, thiserror::Error)]
 enum UserFromDiscordError {
-    #[error(transparent)] DiscordUserIdParse(#[from] serenity::all::UserIdParseError),
+    #[error(transparent)] DiscordUserIdParse(#[from] UserIdParseError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
 }
 

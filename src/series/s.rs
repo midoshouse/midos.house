@@ -1,7 +1,4 @@
-use {
-    rocket::response::content::RawHtml,
-    rocket_util::html,
-};
+use crate::prelude::*;
 
 pub(crate) fn info(event: &str) -> Option<RawHtml<String>> {
     match event {

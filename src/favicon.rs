@@ -1,31 +1,15 @@
 use {
-    std::{
-        fmt::{
-            self,
-            Write as _,
-        },
-        io,
-        num::NonZeroU8,
-    },
+    std::fmt::Write as _,
     derive_more::From,
     image::{
         GenericImage as _,
         RgbaImage,
         io::Reader as ImageReader,
     },
-    itertools::Itertools as _,
-    once_cell::sync::Lazy,
     ootr_utils::{
-        camc::{
-            ChestAppearance,
-            ChestTexture,
-        },
-        spoiler::{
-            Item,
-            SpoilerLog,
-        },
+        camc::ChestAppearance,
+        spoiler::Item,
     },
-    rand::prelude::*,
     rocket::{
         fs::NamedFile,
         http::{
@@ -40,11 +24,8 @@ use {
         },
         request::FromParam,
     },
-    rocket_util::{
-        Response,
-        Suffix,
-    },
-    serde::Deserialize,
+    rocket_util::Response,
+    crate::prelude::*,
 };
 
 #[derive(Clone, Copy, Deserialize)]

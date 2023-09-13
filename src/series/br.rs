@@ -1,49 +1,14 @@
 use {
-    std::{
-        borrow::Cow,
-        iter,
-    },
-    collect_mac::collect,
-    futures::stream,
-    itertools::Itertools as _,
-    ootr_utils::spoiler::HashIcon,
-    rand::prelude::*,
-    rocket::{
-        response::content::RawHtml,
-        uri,
-    },
-    rocket_csrf::CsrfToken,
-    rocket_util::html,
-    serde_json::{
-        Value as Json,
-        json,
-    },
-    sqlx::{
-        Postgres,
-        Transaction,
-    },
+    serde_json::Value as Json,
     crate::{
         event::{
-            self,
             AsyncKind,
             Data,
             Error,
             InfoError,
-            Series,
             StatusContext,
         },
-        lang::Language::{
-            English,
-            Portuguese,
-        },
-        seed,
-        util::{
-            DateTimeFormat,
-            Id,
-            form_field,
-            format_datetime,
-            full_form,
-        },
+        prelude::*,
     },
 };
 

@@ -1,43 +1,11 @@
-use {
-    std::{
-        borrow::Cow,
-        iter,
+use crate::{
+    event::{
+        Data,
+        Error,
+        InfoError,
+        StatusContext,
     },
-    futures::stream,
-    if_chain::if_chain,
-    itertools::Itertools as _,
-    ootr_utils::spoiler::HashIcon,
-    rocket::{
-        response::content::RawHtml,
-        uri,
-    },
-    rocket_csrf::CsrfToken,
-    rocket_util::html,
-    sqlx::{
-        Postgres,
-        Transaction,
-    },
-    url::Url,
-    uuid::Uuid,
-    crate::{
-        event::{
-            self,
-            Data,
-            Error,
-            InfoError,
-            Series,
-            StatusContext,
-        },
-        lang::Language::English,
-        seed,
-        util::{
-            DateTimeFormat,
-            Id,
-            form_field,
-            format_datetime,
-            full_form,
-        },
-    },
+    prelude::*,
 };
 
 pub(crate) fn parse_seed_url(seed: &Url) -> Option<Uuid> {

@@ -1,62 +1,16 @@
 use {
-    std::{
-        borrow::Cow,
-        cmp::Ordering::*,
-    },
-    chrono::prelude::*,
-    collect_mac::collect,
-    futures::stream,
-    itertools::Itertools as _,
-    rocket::{
-        FromFormField,
-        UriDisplayQuery,
-        form::{
-            self,
-            Context,
-        },
-        response::content::RawHtml,
-        uri,
-    },
-    rocket_csrf::CsrfToken,
-    rocket_util::{
-        Origin,
-        ToHtml,
-        html,
-    },
-    serde_json::{
-        Value as Json,
-        json,
-    },
-    sqlx::{
-        Postgres,
-        Transaction,
-    },
+    rocket::UriDisplayQuery,
+    serde_json::Value as Json,
     crate::{
-        Environment,
-        auth,
         event::{
-            self,
             Data,
             Error,
             FindTeamError,
             InfoError,
-            Series,
             Tab,
             enter,
         },
-        http::{
-            PageStyle,
-            page,
-        },
-        lang::Language::English,
-        seed,
-        user::User,
-        util::{
-            Id,
-            as_variant,
-            form_field,
-            full_form,
-        },
+        prelude::*,
     },
 };
 

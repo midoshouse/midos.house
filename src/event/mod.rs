@@ -1,80 +1,25 @@
 use {
-    std::{
-        borrow::Cow,
-        collections::{
-            HashMap,
-            HashSet,
-        },
-        convert::identity,
-        fmt,
-        io,
-        mem,
-        str::FromStr,
-        time::Duration,
-    },
+    std::time::Duration,
     anyhow::anyhow,
-    chrono::prelude::*,
-    enum_iterator::{
-        Sequence,
-        all,
-    },
-    futures::stream::TryStreamExt as _,
-    itertools::Itertools as _,
-    once_cell::sync::Lazy,
-    rand::prelude::*,
-    rocket::{
-        FromForm,
-        FromFormField,
-        State,
-        form::{
+    rocket::http::{
+        impl_from_uri_param_identity,
+        uri::{
             self,
-            Context,
-            Contextual,
-            Form,
-        },
-        http::{
-            Status,
-            impl_from_uri_param_identity,
-            uri::{
-                self,
-                fmt::{
-                    Path,
-                    UriDisplay,
-                },
+            fmt::{
+                Path,
+                UriDisplay,
             },
         },
-        request::FromParam,
-        response::{
-            Redirect,
-            content::RawHtml,
-        },
-        uri,
     },
-    rocket_csrf::CsrfToken,
-    rocket_util::{
-        ContextualExt as _,
-        CsrfForm,
-        Origin,
-        ToHtml,
-        html,
+    serenity::all::{
+        CreateMessage,
+        EditMember,
+        EditRole,
     },
-    serenity::{
-        all::{
-            Context as DiscordCtx,
-            CreateMessage,
-            EditMember,
-            EditRole,
-            MessageBuilder,
-        },
-        model::prelude::*,
-    },
-    serenity_utils::RwFuture,
     sqlx::{
         Decode,
         Encode,
-        Transaction,
         postgres::{
-            Postgres,
             PgArgumentBuffer,
             PgPool,
             PgTypeInfo,
@@ -82,53 +27,9 @@ use {
         },
         types::Json,
     },
-    url::Url,
     crate::{
-        Environment,
-        auth,
-        cal::{
-            self,
-            Entrants,
-            Race,
-            RaceSchedule,
-        },
-        config::Config,
-        draft::{
-            self,
-            Draft,
-        },
-        favicon::ChestAppearances,
-        http::{
-            PageError,
-            PageStyle,
-            page,
-        },
-        lang::Language::{
-            self,
-            *,
-        },
         notification::SimpleNotificationKind,
-        racetime_bot,
-        seed,
-        series::*,
-        team::Team,
-        user::User,
-        util::{
-            DateTimeFormat,
-            DurationUnit,
-            EmptyForm,
-            Id,
-            IdTable,
-            MessageBuilderExt as _,
-            RedirectOrContent,
-            StatusOrError,
-            decode_pginterval,
-            favicon,
-            form_field,
-            format_datetime,
-            full_form,
-            parse_duration,
-        },
+        prelude::*,
     },
 };
 
@@ -365,7 +266,7 @@ pub(crate) struct Data<'a> {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum DataError {
-    #[error(transparent)] PgInterval(#[from] crate::util::PgIntervalDecodeError),
+    #[error(transparent)] PgInterval(#[from] PgIntervalDecodeError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error("no event with this series and identifier")]

@@ -1,21 +1,11 @@
 use {
-    collect_mac::collect,
-    rocket::response::content::RawHtml,
-    rocket_util::html,
-    serde_json::{
-        Value as Json,
-        json,
-    },
-    sqlx::{
-        Postgres,
-        Transaction,
-    },
+    serde_json::Value as Json,
     crate::{
         event::{
             Data,
             InfoError,
         },
-        lang::Language::English,
+        prelude::*,
     },
 };
 

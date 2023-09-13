@@ -1,17 +1,6 @@
 use {
-    std::mem,
-    rocket::{
-        FromForm,
-        form,
-        http::uri::Origin,
-        response::content::RawHtml,
-    },
-    rocket_csrf::CsrfToken,
-    rocket_util::{
-        CsrfForm,
-        ToHtml,
-        html,
-    },
+    rocket::http::uri::Origin,
+    crate::prelude::*,
 };
 
 /// A form that only holds a CSRF token

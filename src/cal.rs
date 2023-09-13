@@ -1,22 +1,5 @@
 use {
-    std::{
-        borrow::Cow,
-        cmp::Ordering,
-        collections::hash_map::{
-            self,
-            HashMap,
-        },
-        convert::identity,
-        iter,
-        path::Path,
-    },
-    chrono::{
-        Duration,
-        prelude::*,
-    },
-    collect_mac::collect,
-    enum_iterator::all,
-    futures::stream::TryStreamExt as _,
+    chrono::Duration,
     ics::{
         ICalendar,
         properties::{
@@ -27,106 +10,14 @@ use {
             URL,
         },
     },
-    if_chain::if_chain,
-    itertools::Itertools as _,
-    lazy_regex::regex_captures,
-    ootr_utils::spoiler::{
-        HashIcon,
-        SpoilerLog,
-    },
-    racetime::model::RaceData,
-    rand::prelude::*,
     reqwest::StatusCode,
-    rocket::{
-        FromForm,
-        State,
-        form::{
-            self,
-            Context,
-            Contextual,
-            Form,
-        },
-        http::Status,
-        response::{
-            Redirect,
-            content::RawHtml,
-        },
-        uri,
-    },
-    rocket_csrf::CsrfToken,
-    rocket_util::{
-        ContextualExt as _,
-        CsrfForm,
-        Origin,
-        Response,
-        ToHtml,
-        html,
-    },
-    serenity::{
-        all::Context as DiscordCtx,
-        model::prelude::*,
-    },
-    serenity_utils::RwFuture,
-    sqlx::{
-        PgPool,
-        Postgres,
-        Transaction,
-        types::Json,
-    },
-    tokio::io,
-    tokio_util::io::StreamReader,
-    url::Url,
-    wheel::{
-        fs::{
-            self,
-            File,
-        },
-        traits::ReqwestResponseExt as _,
-    },
+    rocket_util::Response,
+    sqlx::types::Json,
     crate::{
-        Environment,
-        auth,
-        config::Config,
         discord_bot,
-        draft::{
-            self,
-            Draft,
-        },
-        event::{
-            self,
-            MatchSource,
-            Series,
-            Tab,
-            TeamConfig,
-        },
-        http::{
-            PageError,
-            PageStyle,
-            page,
-        },
-        lang::Language::{
-            self,
-            *,
-        },
-        racetime_bot,
-        seed,
-        series::*,
+        event::Tab,
+        prelude::*,
         startgg,
-        team::Team,
-        user::User,
-        util::{
-            DateTimeFormat,
-            Id,
-            IdTable,
-            RedirectOrContent,
-            StatusOrError,
-            as_variant,
-            form_field,
-            form_table_cell,
-            format_datetime,
-            full_form,
-            io_error_from_reqwest,
-        },
     },
 };
 
@@ -265,7 +156,7 @@ impl RaceSchedule {
 
 impl PartialEq for RaceSchedule {
     fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
+        self.cmp(other) == Equal
     }
 }
 
@@ -1068,7 +959,7 @@ impl Race {
 
 impl PartialEq for Race {
     fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
+        self.cmp(other) == Equal
     }
 }
 

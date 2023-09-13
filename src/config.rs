@@ -1,17 +1,11 @@
 use {
     anyhow::Result,
-    serde::Deserialize,
-    serenity::{
-        model::prelude::*,
-        prelude::*,
-    },
+    crate::prelude::*,
 };
 #[cfg(unix)] use {
     anyhow::bail,
-    xdg::BaseDirectories,
     tokio::fs,
 };
-#[cfg(windows)] use tokio::process::Command;
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]

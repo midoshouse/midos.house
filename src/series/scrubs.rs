@@ -1,17 +1,9 @@
-use {
-    rocket::response::content::RawHtml,
-    rocket_util::html,
-    sqlx::{
-        Postgres,
-        Transaction,
+use crate::{
+    event::{
+        Data,
+        InfoError,
     },
-    crate::{
-        event::{
-            Data,
-            InfoError,
-        },
-        lang::Language::English,
-    },
+    prelude::*,
 };
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {

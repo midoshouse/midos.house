@@ -1,83 +1,26 @@
 use {
-    std::{
-        borrow::Cow,
-        collections::HashMap,
-        sync::Arc,
-        time::Duration as UDuration,
-    },
-    async_trait::async_trait,
-    chrono::{
-        Duration,
-        prelude::*,
-    },
-    enum_iterator::all,
-    if_chain::if_chain,
-    itertools::Itertools as _,
-    lazy_regex::regex_captures,
-    log_lock::{
-        Mutex,
-        RwLock,
-        lock,
-    },
-    serenity::{
-        all::{
-            CreateButton,
-            CreateCommand,
-            CreateCommandOption,
-            CreateForumPost,
-            CreateInteractionResponse,
-            CreateInteractionResponseMessage,
-            CreateMessage,
-            CreateThread,
-            EditRole,
-            MessageBuilder,
-        },
-        model::prelude::*,
-        prelude::*,
+    std::time::Duration as UDuration,
+    chrono::Duration,
+    serenity::all::{
+        CacheHttp,
+        CreateButton,
+        CreateCommand,
+        CreateCommandOption,
+        CreateForumPost,
+        CreateInteractionResponse,
+        CreateInteractionResponseMessage,
+        CreateMessage,
+        CreateThread,
+        EditRole,
     },
     serenity_utils::{
         builder::ErrorNotifier,
         handler::HandlerMethods as _,
-        message::MessageBuilderExt as _,
     },
-    sqlx::{
-        PgPool,
-        Postgres,
-        Transaction,
-        types::Json,
-    },
-    tokio::sync::mpsc,
+    sqlx::types::Json,
     crate::{
-        Environment,
-        cal::{
-            self,
-            Entrant,
-            Entrants,
-            Race,
-            RaceSchedule,
-        },
-        config::{
-            Config,
-            ConfigRaceTime,
-        },
-        draft::{
-            self,
-            Draft,
-        },
-        event::{
-            self,
-            MatchSource,
-            Series,
-            TeamConfig,
-        },
-        lang::Language::*,
-        racetime_bot,
-        team::Team,
-        util::{
-            Id,
-            IdTable,
-            MessageBuilderExt as _,
-        },
+        config::ConfigRaceTime,
+        prelude::*,
     },
 };
 
@@ -176,7 +119,7 @@ impl GenericInteraction for ComponentInteraction {
 }
 
 //TODO refactor (MH admins should have permissions, room already being open should not remove permissions but only remove the team from return)
-async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: &impl GenericInteraction, game: Option<i16>) -> Result<Option<(Transaction<'a, Postgres>, Race, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
+async fn check_scheduling_thread_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl GenericInteraction, game: Option<i16>) -> Result<Option<(Transaction<'a, Postgres>, Race, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
     let (mut transaction, http_client, startgg_token) = {
         let data = ctx.data.read().await;
         (
@@ -234,7 +177,7 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a Context, interaction: 
     })
 }
 
-async fn check_draft_permissions<'a>(ctx: &'a Context, interaction: &impl GenericInteraction) -> Result<Option<(event::Data<'static>, Race, draft::Kind, draft::MessageContext<'a>)>, Box<dyn std::error::Error + Send + Sync>> {
+async fn check_draft_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl GenericInteraction) -> Result<Option<(event::Data<'static>, Race, draft::Kind, draft::MessageContext<'a>)>, Box<dyn std::error::Error + Send + Sync>> {
     let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? else { return Ok(None) };
     let guild_id = interaction.guild_id().expect("Received interaction from outside of a guild");
     let event = race.event(&mut transaction).await?;
@@ -292,7 +235,7 @@ async fn check_draft_permissions<'a>(ctx: &'a Context, interaction: &impl Generi
     })
 }
 
-async fn send_draft_settings_page(ctx: &Context, interaction: &impl GenericInteraction, action: &str, page: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericInteraction, action: &str, page: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
     match race.draft.as_ref().unwrap().next_step(draft_kind, &mut msg_ctx).await?.kind {
         draft::StepKind::GoFirst | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) => match race.draft.as_mut().unwrap().apply(draft_kind, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
@@ -379,7 +322,7 @@ async fn send_draft_settings_page(ctx: &Context, interaction: &impl GenericInter
     Ok(())
 }
 
-async fn draft_action(ctx: &Context, interaction: &impl GenericInteraction, action: draft::Action) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn draft_action(ctx: &DiscordCtx, interaction: &impl GenericInteraction, action: draft::Action) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
     match race.draft.as_mut().unwrap().apply(draft_kind, &mut msg_ctx, action).await? {
         Ok(apply_response) => {
@@ -1765,7 +1708,7 @@ pub(crate) enum Error {
     UnregisteredDiscordGuild,
 }
 
-pub(crate) async fn create_scheduling_thread(ctx: &Context, transaction: &mut Transaction<'_, Postgres>, race: &mut Race, game_count: i16) -> Result<(), Error> {
+pub(crate) async fn create_scheduling_thread(ctx: &DiscordCtx, transaction: &mut Transaction<'_, Postgres>, race: &mut Race, game_count: i16) -> Result<(), Error> {
     let event = race.event(&mut *transaction).await?;
     let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) else { return Ok(()) };
     let Some(command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied()) else { return Err(Error::UnregisteredDiscordGuild) };
