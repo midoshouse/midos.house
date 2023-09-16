@@ -633,7 +633,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, e
 
 pub(crate) fn race7_settings() -> serde_json::Map<String, Json> {
     collect![
-        format!("user_message") => json!("7th Pictionary Spoiler log Race"),
+        format!("user_message") => json!("7th Pictionary Spoiler Log Race"),
         format!("open_forest") => json!("closed_deku"),
         format!("open_kakariko") => json!("open"),
         format!("gerudo_fortress") => json!("fast"),
