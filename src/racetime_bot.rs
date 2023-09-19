@@ -2401,7 +2401,7 @@ impl RaceHandler<GlobalState> for Handler {
                     }).await?;
                 },
             },
-            "draft" => match args[..] {
+            "draft" | "pick" => match args[..] {
                 [] => self.send_settings(ctx, &if let French = goal.language() {
                     format!("Désolé {reply_to}, un setting doit être choisi. Utilisez un des suivants :")
                 } else {
