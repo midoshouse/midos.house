@@ -68,7 +68,7 @@ pub(crate) const S3_SETTINGS: [S3Setting; 28] = [
 
 pub(crate) fn display_draft_picks(picks: &draft::Picks) -> String {
     let mut picks_display = Vec::default();
-    if picks.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
+    if picks.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" || picks.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0") != "0" {
         let mq_dungeons_count = picks.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0");
         picks_display.push(if mq_dungeons_count == "1" {
             Cow::Borrowed("1 donjon MQ")
