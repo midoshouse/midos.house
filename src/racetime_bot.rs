@@ -3080,6 +3080,7 @@ impl RaceHandler<GlobalState> for Handler {
                                             self.send_settings(ctx, &format!("Désolé {reply_to}, vous devez associer un setting avec une configuration."), reply_to).await?;
                                             return Ok(())
                                         } else {
+                                            settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()));
                                             settings
                                         }
                                     }
