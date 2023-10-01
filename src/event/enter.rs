@@ -403,7 +403,7 @@ pub(crate) struct EnterForm {
     #[field(default = String::new())]
     team_name: String,
     my_role: Option<pic::Role>,
-    teammate: Option<Id>,
+    teammate: Option<Id<Users>>,
     step2: bool,
     roles: HashMap<String, Role>,
     startgg_id: HashMap<String, String>,
@@ -582,7 +582,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
 }
 
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
-pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, config: &State<Config>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<crate::series::pic::Role>, teammate: Option<Id>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, config: &State<Config>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<crate::series::pic::Role>, teammate: Option<Id<Users>>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     Ok(enter_form(transaction, http_client, **env, config, discord_ctx, me, uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
@@ -627,7 +627,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                     form.context.push_error(form::Error::validation("You are already signed up for this event."));
                 }
                 if form.context.errors().next().is_none() {
-                    let id = Id::new(&mut transaction, IdTable::Teams).await?;
+                    let id = Id::<Teams>::new(&mut transaction).await?;
                     sqlx::query!("INSERT INTO teams (id, series, event, plural_name) VALUES ($1, $2, $3, FALSE)", id as _, series as _, event).execute(&mut *transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', 'none')", id as _, me.id as _).execute(&mut *transaction).await?;
                     if request_qualifier {
@@ -702,7 +702,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                     }
                 };
                 if form.context.errors().next().is_none() {
-                    let id = Id::new(&mut transaction, IdTable::Teams).await?;
+                    let id = Id::<Teams>::new(&mut transaction).await?;
                     sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, $2, $3, $4)", id as _, series as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut *transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, Role::from(my_role.expect("validated")) as _).execute(&mut *transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", id as _, teammate.expect("validated") as _, match my_role.expect("validated") { pic::Role::Sheikah => Role::Gerudo, pic::Role::Gerudo => Role::Sheikah } as _).execute(&mut *transaction).await?;
@@ -836,7 +836,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                 };
                 if form.context.errors().next().is_none() {
                     return Ok(if value.step2 {
-                        let id = Id::new(&mut transaction, IdTable::Teams).await?;
+                        let id = Id::<Teams>::new(&mut transaction).await?;
                         sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent, text_field) VALUES ($1, $2, $3, $4, $5, $6, $7)", id as _, series as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent, value.text_field).execute(&mut *transaction).await?;
                         for ((user, role), startgg_id) in users.into_iter().zip_eq(roles).zip_eq(startgg_ids) {
                             sqlx::query!(

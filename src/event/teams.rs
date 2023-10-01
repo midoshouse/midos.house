@@ -123,7 +123,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             if room_data.status.value != RaceStatusValue::Finished { continue }
             let mut entrants = room_data.entrants;
             entrants.retain(|entrant| entrant.user.id != "yMewn83Vj3405Jv7"); // user was banned
-            if race.id == Id(17171498007470059483) {
+            if race.id == Id::from(17171498007470059483_u64) {
                 entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
             }
             entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
@@ -190,7 +190,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             mq_ok: false,
         }).collect()
     } else {
-        let teams = sqlx::query!(r#"SELECT id AS "id!: Id", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+        let teams = sqlx::query!(r#"SELECT id AS "id!: Id<Teams>", name, racetime_slug, plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
             series = $1
             AND event = $2
             AND NOT resigned
@@ -206,7 +206,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             let mut members = Vec::with_capacity(roles.len());
             for &(role, _) in roles {
                 let row = sqlx::query!(r#"
-                    SELECT member AS "id: Id", status AS "status: SignupStatus", time, vod
+                    SELECT member AS "id: Id<Users>", status AS "status: SignupStatus", time, vod
                     FROM team_members LEFT OUTER JOIN async_players ON (member = player AND series = $1 AND event = $2 AND kind = 'qualifier')
                     WHERE team = $3 AND role = $4
                 "#, data.series as _, &data.event, team.id as _, role as _).fetch_one(&mut **transaction).await?;

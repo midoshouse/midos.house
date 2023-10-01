@@ -768,7 +768,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, e
     let header = data.header(&mut transaction, env, me.as_ref(), Tab::FindTeam, false).await?;
     let mut me_listed = false;
     let mut looking_for_team = Vec::default();
-    for row in sqlx::query!(r#"SELECT user_id AS "user!: Id", availability, notes FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {
+    for row in sqlx::query!(r#"SELECT user_id AS "user!: Id<Users>", availability, notes FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {
         let user = User::from_id(&mut *transaction, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
         if me.as_ref().map_or(false, |me| user.id == me.id) { me_listed = true }
         looking_for_team.push((user, row.availability, row.notes));
@@ -844,9 +844,9 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, e
     }).await?)
 }
 
-pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<&CsrfToken>, data: &Data<'_>, team_id: Id, ctx: &mut StatusContext<'_>) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, csrf: Option<&CsrfToken>, data: &Data<'_>, team_id: Id<Teams>, ctx: &mut StatusContext<'_>) -> Result<RawHtml<String>, Error> {
     Ok(if let Some(async_kind) = data.active_async(&mut *transaction, Some(team_id)).await? {
-        let async_row = sqlx::query!(r#"SELECT discord_channel AS "discord_channel: Id", tfb_uuid, web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut **transaction).await?;
+        let async_row = sqlx::query!(r#"SELECT discord_channel AS "discord_channel: PgSnowflake<ChannelId>", tfb_uuid, web_id, web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut **transaction).await?;
         if let Some(team_row) = sqlx::query!(r#"SELECT requested AS "requested!", submitted FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL"#, team_id as _, async_kind as _).fetch_optional(&mut **transaction).await? {
             if team_row.submitted.is_some() {
                 if data.is_started(transaction).await? {
@@ -871,7 +871,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                     },
                     files: Some(match (async_row.tfb_uuid, async_row.web_id, async_row.web_gen_time, async_row.file_stem.as_ref()) {
                         (Some(uuid), _, _, _) => seed::Files::TriforceBlitz { uuid },
-                        (None, Some(Id(id)), Some(gen_time), Some(file_stem)) => seed::Files::OotrWeb {
+                        (None, Some(id), Some(gen_time), Some(file_stem)) => seed::Files::OotrWeb {
                             file_stem: Cow::Owned(file_stem.clone()),
                             id, gen_time,
                         },
@@ -902,9 +902,9 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                                 input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
                                 label(class = "help") {
                                     : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
-                                    @if let Some(Id(discord_channel)) = async_row.discord_channel {
+                                    @if let Some(PgSnowflake(discord_channel)) = async_row.discord_channel {
                                         : "post it in ";
-                                        @if let Some(discord_channel) = ChannelId::new(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                        @if let Some(discord_channel) = discord_channel.to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
                                             : "#";
                                             : discord_channel.name;
                                         } else {
@@ -927,9 +927,9 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                                 input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
                                 label(class = "help") {
                                     : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
-                                    @if let Some(Id(discord_channel)) = async_row.discord_channel {
+                                    @if let Some(PgSnowflake(discord_channel)) = async_row.discord_channel {
                                         : "post it in ";
-                                        @if let Some(discord_channel) = ChannelId::new(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                        @if let Some(discord_channel) = discord_channel.to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
                                             : "#";
                                             : discord_channel.name;
                                         } else {
@@ -952,9 +952,9 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                                 input(type = "text", name = "vod3", value? = ctx.field_value("vod3"));
                                 label(class = "help") {
                                     : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
-                                    @if let Some(Id(discord_channel)) = async_row.discord_channel {
+                                    @if let Some(PgSnowflake(discord_channel)) = async_row.discord_channel {
                                         : "post it in ";
-                                        @if let Some(discord_channel) = ChannelId::new(discord_channel).to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                        @if let Some(discord_channel) = discord_channel.to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
                                             : "#";
                                             : discord_channel.name;
                                         } else {

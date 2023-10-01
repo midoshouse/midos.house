@@ -300,7 +300,7 @@ impl<'r> FromRequest<'r> for User {
                     Outcome::Failure(e) => found_user = found_user.or(Err(e)),
                 };
                 match found_user {
-                    Ok(user) => if let Some(user_id) = guard_try!(sqlx::query_scalar!(r#"SELECT view_as AS "view_as: Id" FROM view_as WHERE viewer = $1"#, user.id as _).fetch_optional(&**pool).await) {
+                    Ok(user) => if let Some(user_id) = guard_try!(sqlx::query_scalar!(r#"SELECT view_as AS "view_as: Id<Users>" FROM view_as WHERE viewer = $1"#, user.id as _).fetch_optional(&**pool).await) {
                         if let Some(user) = guard_try!(User::from_id(&**pool, user_id).await) {
                             Outcome::Success(user)
                         } else {
@@ -468,7 +468,7 @@ async fn register_racetime_inner(pool: &State<PgPool>, me: Option<User>, racetim
             transaction.commit().await?;
             Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(me.id))))
         } else {
-            let id = Id::new(&mut transaction, IdTable::Users).await?;
+            let id = Id::<Users>::new(&mut transaction).await?;
             sqlx::query!("INSERT INTO users (id, display_source, racetime_id, racetime_display_name, racetime_discriminator, racetime_pronouns) VALUES ($1, 'racetime', $2, $3, $4, $5)", id as _, racetime_user.id, racetime_user.name, racetime_user.discriminator as _, racetime_user.pronouns as _).execute(&mut *transaction).await?;
             transaction.commit().await?;
             Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(id))))
@@ -494,7 +494,7 @@ async fn register_discord_inner(pool: &State<PgPool>, me: Option<User>, discord_
                 transaction.commit().await?;
                 Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(me.id))))
             } else {
-                let id = Id::new(&mut transaction, IdTable::Users).await?;
+                let id = Id::<Users>::new(&mut transaction).await?;
                 sqlx::query!("INSERT INTO users (id, display_source, discord_id, discord_display_name, discord_discriminator, discord_username) VALUES ($1, 'discord', $2, $3, $4, $5)", id as _, i64::from(discord_user.id), display_name, discord_user.discriminator as _, username).execute(&mut *transaction).await?;
                 transaction.commit().await?;
                 Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(id))))

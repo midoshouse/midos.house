@@ -85,8 +85,8 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
     } else {
         (None, Some(content))
     };
-    let fenhl = User::from_id(&mut *transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
-    let xopar = User::from_id(&mut *transaction, Id(17762941071474623984)).await?.ok_or(PageError::XoparUserData)?;
+    let fenhl = User::from_id(&mut *transaction, Id::from(14571800683221815449_u64)).await?.ok_or(PageError::FenhlUserData)?;
+    let xopar = User::from_id(&mut *transaction, Id::from(17762941071474623984_u64)).await?.ok_or(PageError::XoparUserData)?;
     transaction.commit().await?;
     Ok(html! {
         : Doctype;
@@ -285,7 +285,7 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Res
 #[rocket::get("/new")]
 async fn new_event(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
     let mut transaction = pool.begin().await?;
-    let fenhl = User::from_id(&mut *transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+    let fenhl = User::from_id(&mut *transaction, Id::from(14571800683221815449_u64)).await?.ok_or(PageError::FenhlUserData)?;
     page(transaction, &me, &uri, PageStyle::default(), "New Event — Mido's House", html! {
         p {
             : "If you are planning a tournament, community race, or other event for the Ocarina of Time randomizer community, or if you would like Mido's House to archive data about a past event you organized, please contact ";

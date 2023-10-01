@@ -66,7 +66,7 @@ pub(crate) fn qualifier_async_rules() -> RawHtml<String> {
     }
 }
 
-pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Option<&CsrfToken>, data: &Data<'_>, team_id: Option<Id>, ctx: &mut StatusContext<'_>) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Option<&CsrfToken>, data: &Data<'_>, team_id: Option<Id<Teams>>, ctx: &mut StatusContext<'_>) -> Result<RawHtml<String>, Error> {
     Ok(if let Some(async_kind) = data.active_async(&mut *transaction, team_id).await? {
         let async_row = sqlx::query!(r#"SELECT file_stem AS "file_stem!", hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut **transaction).await?;
         let team_row = if let Some(team_id) = team_id {

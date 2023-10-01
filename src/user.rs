@@ -56,7 +56,7 @@ pub(crate) struct UserDiscord {
 
 #[derive(Debug)]
 pub(crate) struct User {
-    pub(crate) id: Id,
+    pub(crate) id: Id<Users>,
     display_source: DisplaySource, //TODO allow users with both accounts connected to set this in their preferences
     pub(crate) racetime: Option<UserRaceTime>,
     pub(crate) discord: Option<UserDiscord>,
@@ -66,13 +66,13 @@ pub(crate) struct User {
 
 impl User {
     fn from_row(
-        id: Id,
+        id: Id<Users>,
         display_source: DisplaySource,
         racetime_id: Option<String>,
         racetime_display_name: Option<String>,
         racetime_discriminator: Option<Discriminator>,
         racetime_pronouns: Option<RaceTimePronouns>,
-        discord_id: Option<Id>,
+        discord_id: Option<PgSnowflake<UserId>>,
         discord_display_name: Option<String>,
         discord_discriminator: Option<Discriminator>,
         discord_username: Option<String>,
@@ -90,14 +90,13 @@ impl User {
                 (_, _) => unreachable!("database constraint"),
             },
             discord: match (discord_id, discord_display_name) {
-                (Some(Id(id)), Some(display_name)) => Some(UserDiscord {
-                    display_name,
-                    id: id.into(),
+                (Some(PgSnowflake(id)), Some(display_name)) => Some(UserDiscord {
                     username_or_discriminator: match (discord_username, discord_discriminator) {
                         (Some(username), None) => Either::Left(username),
                         (None, Some(discriminator)) => Either::Right(discriminator),
                         (_, _) => unreachable!("database constraint"),
                     },
+                    id, display_name,
                 }),
                 (None, None) => None,
                 (_, _) => unreachable!("database constraint"),
@@ -106,7 +105,7 @@ impl User {
         }
     }
 
-    pub(crate) async fn from_id(pool: impl PgExecutor<'_>, id: Id) -> sqlx::Result<Option<Self>> {
+    pub(crate) async fn from_id(pool: impl PgExecutor<'_>, id: Id<Users>) -> sqlx::Result<Option<Self>> {
         Ok(
             sqlx::query!(r#"SELECT
                 display_source AS "display_source: DisplaySource",
@@ -114,7 +113,7 @@ impl User {
                 racetime_display_name,
                 racetime_discriminator AS "racetime_discriminator: Discriminator",
                 racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
-                discord_id AS "discord_id: Id",
+                discord_id AS "discord_id: PgSnowflake<UserId>",
                 discord_display_name,
                 discord_discriminator AS "discord_discriminator: Discriminator",
                 discord_username,
@@ -141,12 +140,12 @@ impl User {
     pub(crate) async fn from_racetime(pool: impl PgExecutor<'_>, racetime_id: &str) -> sqlx::Result<Option<Self>> {
         Ok(
             sqlx::query!(r#"SELECT
-                id AS "id: Id",
+                id AS "id: Id<Users>",
                 display_source AS "display_source: DisplaySource",
                 racetime_display_name,
                 racetime_discriminator AS "racetime_discriminator: Discriminator",
                 racetime_pronouns AS "racetime_pronouns: RaceTimePronouns",
-                discord_id AS "discord_id: Id",
+                discord_id AS "discord_id: PgSnowflake<UserId>",
                 discord_display_name,
                 discord_discriminator AS "discord_discriminator: Discriminator",
                 discord_username,
@@ -173,7 +172,7 @@ impl User {
     pub(crate) async fn from_discord(pool: impl PgExecutor<'_>, discord_id: UserId) -> sqlx::Result<Option<Self>> {
         Ok(
             sqlx::query!(r#"SELECT
-                id AS "id: Id",
+                id AS "id: Id<Users>",
                 display_source AS "display_source: DisplaySource",
                 racetime_id,
                 racetime_display_name,
@@ -192,7 +191,7 @@ impl User {
                 row.racetime_display_name,
                 row.racetime_discriminator,
                 row.racetime_pronouns,
-                Some(Id(discord_id.get())),
+                Some(PgSnowflake(discord_id)),
                 row.discord_display_name,
                 row.discord_discriminator,
                 row.discord_username,
@@ -278,7 +277,7 @@ impl PartialEq for User {
 impl Eq for User {}
 
 #[rocket::get("/user/<id>")]
-pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, racetime_user: Option<RaceTimeUser>, discord_user: Option<DiscordUser>, id: Id) -> Result<RawHtml<String>, StatusOrError<PageError>> {
+pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, racetime_user: Option<RaceTimeUser>, discord_user: Option<DiscordUser>, id: Id<Users>) -> Result<RawHtml<String>, StatusOrError<PageError>> {
     let mut transaction = pool.begin().await?;
     let user = if let Some(user) = User::from_id(&mut *transaction, id).await? {
         user
@@ -302,7 +301,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
     } else if me.as_ref().map_or(false, |me| me.id == user.id) {
         if let Some(racetime_user) = racetime_user {
             if let Some(racetime_user) = User::from_racetime(&mut *transaction, &racetime_user.id).await? {
-                let fenhl = User::from_id(&mut *transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+                let fenhl = User::from_id(&mut *transaction, Id::from(14571800683221815449_u64)).await?.ok_or(PageError::FenhlUserData)?;
                 html! {
                     p {
                         @let racetime = racetime_user.racetime.expect("racetime.gg user without racetime.gg ID");
@@ -379,7 +378,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
     } else if me.as_ref().map_or(false, |me| me.id == user.id) {
         if let Some(discord_user) = discord_user {
             if let Some(discord_user) = User::from_discord(&mut *transaction, discord_user.id).await? {
-                let fenhl = User::from_id(&mut *transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+                let fenhl = User::from_id(&mut *transaction, Id::from(14571800683221815449_u64)).await?.ok_or(PageError::FenhlUserData)?;
                 html! {
                     p {
                         @let discord = discord_user.discord.expect("Discord user without Discord ID");
@@ -460,7 +459,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
         }
         p {
             : "Mido's House user ID: ";
-            code : user.id.0;
+            code : user.id.to_string();
         }
         : racetime;
         : discord;

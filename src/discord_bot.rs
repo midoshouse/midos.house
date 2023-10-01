@@ -1,5 +1,8 @@
 use {
-    std::time::Duration as UDuration,
+    std::{
+        num::NonZeroU64,
+        time::Duration as UDuration,
+    },
     chrono::Duration,
     serenity::all::{
         CacheHttp,
@@ -17,7 +20,12 @@ use {
         builder::ErrorNotifier,
         handler::HandlerMethods as _,
     },
-    sqlx::types::Json,
+    sqlx::{
+        Database,
+        Decode,
+        Encode,
+        types::Json,
+    },
     crate::{
         config::ConfigRaceTime,
         prelude::*,
@@ -26,6 +34,48 @@ use {
 
 const FENHL: UserId = UserId::new(86841168427495424);
 const BUTTONS_PER_PAGE: usize = 25;
+
+#[derive(Debug)]
+pub(crate) struct PgSnowflake<T>(pub(crate) T);
+
+impl<'r, T: From<NonZeroU64>, DB: Database> Decode<'r, DB> for PgSnowflake<T>
+where i64: Decode<'r, DB> {
+    fn decode(value: <DB as sqlx::database::HasValueRef<'r>>::ValueRef) -> Result<Self, Box<dyn std::error::Error + 'static + Send + Sync>> {
+        let id = i64::decode(value)?;
+        let id = NonZeroU64::try_from(id as u64)?;
+        Ok(Self(id.into()))
+    }
+}
+
+impl<'q, T: Copy + Into<i64>, DB: Database> Encode<'q, DB> for PgSnowflake<T>
+where i64: Encode<'q, DB> {
+    fn encode_by_ref(&self, buf: &mut <DB as sqlx::database::HasArguments<'q>>::ArgumentBuffer) -> sqlx::encode::IsNull {
+        self.0.into().encode(buf)
+    }
+
+    fn encode(self, buf: &mut <DB as sqlx::database::HasArguments<'q>>::ArgumentBuffer) -> sqlx::encode::IsNull {
+        self.0.into().encode(buf)
+    }
+
+    fn produces(&self) -> Option<<DB as Database>::TypeInfo> {
+        self.0.into().produces()
+    }
+
+    fn size_hint(&self) -> usize {
+        Encode::size_hint(&self.0.into())
+    }
+}
+
+impl<T, DB: Database> sqlx::Type<DB> for PgSnowflake<T>
+where i64: sqlx::Type<DB> {
+    fn type_info() -> <DB as Database>::TypeInfo {
+        i64::type_info()
+    }
+
+    fn compatible(ty: &<DB as Database>::TypeInfo) -> bool {
+        i64::compatible(ty)
+    }
+}
 
 enum DbPool {}
 
@@ -796,7 +846,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         } else {
                                             None
                                         };
-                                        let id = Id::new(&mut transaction, IdTable::Races).await?;
+                                        let id = Id::<Races>::new(&mut transaction).await?;
                                         match event.draft_kind() {
                                             Some(draft::Kind::MultiworldS3) => sqlx::query!("INSERT INTO races
                                                 (id, startgg_set, game, series, event, scheduling_thread, draft_state) VALUES ($1, $2, $3, $4, $5, $6, $7)

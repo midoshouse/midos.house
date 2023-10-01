@@ -1,8 +1,5 @@
 use {
-    std::{
-        marker::PhantomData,
-        time::Duration,
-    },
+    std::time::Duration,
     graphql_client::GraphQLQuery,
     typemap_rev::TypeMap,
     crate::prelude::*,

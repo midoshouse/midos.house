@@ -289,11 +289,11 @@ impl<'a> Data<'a> {
             teams_url,
             enter_url,
             video_url,
-            discord_guild AS "discord_guild: Id",
-            discord_race_room_channel AS "discord_race_room_channel: Id",
-            discord_race_results_channel AS "discord_race_results_channel: Id",
-            discord_organizer_channel AS "discord_organizer_channel: Id",
-            discord_scheduling_channel AS "discord_scheduling_channel: Id",
+            discord_guild AS "discord_guild: PgSnowflake<GuildId>",
+            discord_race_room_channel AS "discord_race_room_channel: PgSnowflake<ChannelId>",
+            discord_race_results_channel AS "discord_race_results_channel: PgSnowflake<ChannelId>",
+            discord_organizer_channel AS "discord_organizer_channel: PgSnowflake<ChannelId>",
+            discord_scheduling_channel AS "discord_scheduling_channel: PgSnowflake<ChannelId>",
             enter_flow AS "enter_flow: Json<enter::Flow>",
             show_qualifier_times,
             default_game_count,
@@ -311,11 +311,11 @@ impl<'a> Data<'a> {
                 teams_url: row.teams_url.map(|url| url.parse()).transpose()?,
                 enter_url: row.enter_url.map(|url| url.parse()).transpose()?,
                 video_url: row.video_url.map(|url| url.parse()).transpose()?,
-                discord_guild: row.discord_guild.map(|Id(id)| id.into()),
-                discord_race_room_channel: row.discord_race_room_channel.map(|Id(id)| id.into()),
-                discord_race_results_channel: row.discord_race_results_channel.map(|Id(id)| id.into()),
-                discord_organizer_channel: row.discord_organizer_channel.map(|Id(id)| id.into()),
-                discord_scheduling_channel: row.discord_scheduling_channel.map(|Id(id)| id.into()),
+                discord_guild: row.discord_guild.map(|PgSnowflake(id)| id),
+                discord_race_room_channel: row.discord_race_room_channel.map(|PgSnowflake(id)| id),
+                discord_race_results_channel: row.discord_race_results_channel.map(|PgSnowflake(id)| id),
+                discord_organizer_channel: row.discord_organizer_channel.map(|PgSnowflake(id)| id),
+                discord_scheduling_channel: row.discord_scheduling_channel.map(|PgSnowflake(id)| id),
                 enter_flow: row.enter_flow.map(|Json(flow)| flow),
                 show_qualifier_times: row.show_qualifier_times,
                 default_game_count: row.default_game_count,
@@ -351,13 +351,13 @@ impl<'a> Data<'a> {
             (Series::MixedPools, _) => unimplemented!(),
             (Series::Multiworld, "1" | "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
             (Series::Multiworld, "3") => mw::s3_chests(&Draft {
-                high_seed: Id(0), // Draft::complete_randomly doesn't check for active team
+                high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
                 went_first: None,
                 skipped_bans: 0,
                 settings: HashMap::default(),
             }.complete_randomly(draft::Kind::MultiworldS3).await.unwrap()),
             (Series::Multiworld, "4") => mw::s3_chests(&Draft {
-                high_seed: Id(0), // Draft::complete_randomly doesn't check for active team
+                high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
                 went_first: None,
                 skipped_bans: 0,
                 settings: HashMap::default(),
@@ -505,7 +505,7 @@ impl<'a> Data<'a> {
 
     pub(crate) async fn organizers(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<User>, Error> {
         let mut buf = Vec::<User>::default();
-        for id in sqlx::query_scalar!(r#"SELECT organizer AS "organizer: Id" FROM organizers WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut **transaction).await? {
+        for id in sqlx::query_scalar!(r#"SELECT organizer AS "organizer: Id<Users>" FROM organizers WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut **transaction).await? {
             let user = User::from_id(&mut **transaction, id).await?.ok_or(Error::OrganizerUserData)?;
             let (Ok(idx) | Err(idx)) = buf.binary_search_by(|probe| probe.display_name().cmp(user.display_name()).then_with(|| probe.id.cmp(&user.id)));
             buf.insert(idx, user);
@@ -515,7 +515,7 @@ impl<'a> Data<'a> {
 
     pub(crate) async fn restreamers(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<User>, Error> {
         let mut buf = Vec::<User>::default();
-        for id in sqlx::query_scalar!(r#"SELECT restreamer AS "restreamer: Id" FROM restreamers WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut **transaction).await? {
+        for id in sqlx::query_scalar!(r#"SELECT restreamer AS "restreamer: Id<Users>" FROM restreamers WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut **transaction).await? {
             let user = User::from_id(&mut **transaction, id).await?.ok_or(Error::RestreamerUserData)?;
             let (Ok(idx) | Err(idx)) = buf.binary_search_by(|probe| probe.display_name().cmp(user.display_name()).then_with(|| probe.id.cmp(&user.id)));
             buf.insert(idx, user);
@@ -523,7 +523,7 @@ impl<'a> Data<'a> {
         Ok(buf)
     }
 
-    pub(crate) async fn active_async(&self, transaction: &mut Transaction<'_, Postgres>, team_id: Option<Id>) -> Result<Option<AsyncKind>, DataError> {
+    pub(crate) async fn active_async(&self, transaction: &mut Transaction<'_, Postgres>, team_id: Option<Id<Teams>>) -> Result<Option<AsyncKind>, DataError> {
         for kind in sqlx::query_scalar!(r#"SELECT kind AS "kind: AsyncKind" FROM asyncs WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut **transaction).await? {
             match kind {
                 AsyncKind::Qualifier => if !self.is_started(&mut *transaction).await? {
@@ -972,7 +972,7 @@ impl<'v> StatusContext<'v> {
 async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environment, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, mut ctx: StatusContext<'_>) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, env, me.as_ref(), Tab::MyStatus, false).await?;
     let content = if let Some(ref me) = me {
-        if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id", name, racetime_slug, role AS "role: Role", resigned, restream_consent FROM teams, team_members WHERE
+        if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, role AS "role: Role", resigned, restream_consent FROM teams, team_members WHERE
             id = team
             AND series = $1
             AND event = $2
@@ -1122,7 +1122,7 @@ pub(crate) async fn status_post(env: &State<Environment>, config: &State<Config>
     if data.is_ended() {
         form.context.push_error(form::Error::validation("This event has already ended."));
     }
-    let row = sqlx::query!(r#"SELECT id AS "id: Id", restream_consent FROM teams, team_members WHERE
+    let row = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", restream_consent FROM teams, team_members WHERE
         id = team
         AND series = $1
         AND event = $2
@@ -1258,7 +1258,7 @@ impl<E: Into<AcceptError>> From<E> for StatusOrError<AcceptError> {
 }
 
 #[rocket::post("/event/<series>/<event>/confirm/<team>", data = "<form>")]
-pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, team: Id, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, StatusOrError<AcceptError>> {
+pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, team: Id<Teams>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, StatusOrError<AcceptError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1269,8 +1269,8 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
         if role == Role::Sheikah && me.racetime.is_none() {
             return Err(AcceptError::RaceTimeAccountRequired.into())
         }
-        for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, team as _).fetch_all(&mut *transaction).await? {
-            let id = Id::new(&mut transaction, IdTable::Notifications).await?;
+        for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id<Users>" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, team as _).fetch_all(&mut *transaction).await? {
+            let id = Id::<Notifications>::new(&mut transaction).await?;
             sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', $3, $4, $5)", id as _, member as _, series as _, event, me.id as _).execute(&mut *transaction).await?;
         }
         sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", team as _, me.id as _).execute(&mut *transaction).await?;
@@ -1282,18 +1282,18 @@ pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwF
             // create and assign Discord roles
             if let Some(discord_guild) = data.discord_guild {
                 let discord_ctx = discord_ctx.read().await;
-                for row in sqlx::query!(r#"SELECT discord_id AS "discord_id!: Id", role AS "role: Role" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, team as _).fetch_all(&mut *transaction).await? {
-                    if let Ok(mut member) = discord_guild.member(&*discord_ctx, UserId::new(row.discord_id.0)).await {
+                for row in sqlx::query!(r#"SELECT discord_id AS "discord_id!: PgSnowflake<UserId>", role AS "role: Role" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, team as _).fetch_all(&mut *transaction).await? {
+                    if let Ok(mut member) = discord_guild.member(&*discord_ctx, row.discord_id.0).await {
                         let mut roles_to_assign = member.roles.iter().copied().collect::<HashSet<_>>();
-                        if let Some(Id(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, i64::from(discord_guild), series as _, event).fetch_optional(&mut *transaction).await? {
-                            roles_to_assign.insert(RoleId::new(participant_role));
+                        if let Some(PgSnowflake(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, i64::from(discord_guild), series as _, event).fetch_optional(&mut *transaction).await? {
+                            roles_to_assign.insert(participant_role);
                         }
-                        if let Some(Id(role_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND role = $2"#, i64::from(discord_guild), row.role as _).fetch_optional(&mut *transaction).await? {
-                            roles_to_assign.insert(RoleId::new(role_role));
+                        if let Some(PgSnowflake(role_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND role = $2"#, i64::from(discord_guild), row.role as _).fetch_optional(&mut *transaction).await? {
+                            roles_to_assign.insert(role_role);
                         }
                         if let Some(racetime_slug) = sqlx::query_scalar!("SELECT racetime_slug FROM teams WHERE id = $1", team as _).fetch_one(&mut *transaction).await? {
-                            if let Some(Id(team_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(discord_guild), racetime_slug).fetch_optional(&mut *transaction).await? {
-                                roles_to_assign.insert(RoleId::new(team_role));
+                            if let Some(PgSnowflake(team_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(discord_guild), racetime_slug).fetch_optional(&mut *transaction).await? {
+                                roles_to_assign.insert(team_role);
                             } else {
                                 let team_name = sqlx::query_scalar!(r#"SELECT name AS "name!" FROM teams WHERE id = $1"#, team as _).fetch_one(&mut *transaction).await?;
                                 let team_role = discord_guild.create_role(&*discord_ctx, EditRole::new().hoist(false).mentionable(true).name(team_name).permissions(Permissions::empty())).await?.id;
@@ -1333,7 +1333,7 @@ impl<E: Into<ResignError>> From<E> for StatusOrError<ResignError> {
 }
 
 #[rocket::get("/event/<series>/<event>/resign/<team>")]
-pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() {
@@ -1374,7 +1374,7 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
 }
 
 #[rocket::post("/event/<series>/<event>/resign/<team>", data = "<form>")]
-pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, StatusOrError<ResignError>> {
+pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, StatusOrError<ResignError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let team = Team::from_id(&mut transaction, team).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
@@ -1384,11 +1384,11 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFutu
     let keep_record = data.is_started(&mut transaction).await? || sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1) AS "exists!""#, team.id as _).fetch_one(&mut *transaction).await?;
     let members = if keep_record {
         sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, team.id as _).execute(&mut *transaction).await?;
-        sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, team.id as _).fetch(&mut *transaction)
+        sqlx::query!(r#"SELECT member AS "id: Id<Users>", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, team.id as _).fetch(&mut *transaction)
             .map_ok(|row| (row.id, row.status))
             .try_collect::<Vec<_>>().await?
     } else {
-        sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id", status AS "status: SignupStatus""#, team.id as _).fetch(&mut *transaction)
+        sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id<Users>", status AS "status: SignupStatus""#, team.id as _).fetch(&mut *transaction)
             .map_ok(|row| (row.id, row.status))
             .try_collect().await?
     };
@@ -1404,7 +1404,7 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFutu
     if me_in_team {
         for (member_id, status) in members {
             if member_id != me.id && status.is_confirmed() {
-                let notification_id = Id::new(&mut transaction, IdTable::Notifications).await?;
+                let notification_id = Id::<Notifications>::new(&mut transaction).await?;
                 sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", notification_id as _, member_id as _, notification_kind as _, series as _, event, me.id as _).execute(&mut *transaction).await?;
             }
         }
@@ -1452,7 +1452,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, env: &State<Environment>
     let mut form = form.into_inner();
     form.verify(&csrf);
     Ok(if let Some(ref value) = form.value {
-        let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams, team_members WHERE
+        let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams, team_members WHERE
             id = team
             AND series = $1
             AND event = $2
@@ -1523,7 +1523,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
     let mut form = form.into_inner();
     form.verify(&csrf);
     Ok(if let Some(ref value) = form.value {
-        let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams, team_members WHERE
+        let team = sqlx::query_as!(Team, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams, team_members WHERE
             id = team
             AND series = $1
             AND event = $2
@@ -1598,21 +1598,21 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
             sqlx::query!("UPDATE async_teams SET submitted = NOW(), pieces = $1, fpa = $2 WHERE team = $3 AND kind = $4", value.pieces, (!value.fpa.is_empty()).then(|| &value.fpa), team.id as _, async_kind as _).execute(&mut *transaction).await?;
             let mut players = Vec::default();
             for (((role, _), time), vod) in data.team_config().roles().iter().zip(&times).zip(&vods) {
-                let player = sqlx::query_scalar!(r#"SELECT member AS "member: Id" FROM team_members WHERE team = $1 AND role = $2"#, team.id as _, role as _).fetch_one(&mut *transaction).await?;
+                let player = sqlx::query_scalar!(r#"SELECT member AS "member: Id<Users>" FROM team_members WHERE team = $1 AND role = $2"#, team.id as _, role as _).fetch_one(&mut *transaction).await?;
                 sqlx::query!("INSERT INTO async_players (series, event, player, kind, time, vod) VALUES ($1, $2, $3, $4, $5, $6)", series as _, event, player as _, async_kind as _, time as _, (!vod.is_empty()).then_some(vod)).execute(&mut *transaction).await?;
                 players.push(player);
             }
             if let Some(discord_guild) = data.discord_guild {
-                let asyncs_row = sqlx::query!(r#"SELECT discord_role AS "discord_role: Id", discord_channel AS "discord_channel: Id" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, series as _, event, async_kind as _).fetch_one(&mut *transaction).await?;
-                let members = sqlx::query_scalar!(r#"SELECT discord_id AS "discord_id!: Id" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, team.id as _).fetch_all(&mut *transaction).await?;
-                if let Some(Id(discord_role)) = asyncs_row.discord_role {
-                    for &Id(user_id) in &members {
+                let asyncs_row = sqlx::query!(r#"SELECT discord_role AS "discord_role: PgSnowflake<RoleId>", discord_channel AS "discord_channel: PgSnowflake<ChannelId>" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, series as _, event, async_kind as _).fetch_one(&mut *transaction).await?;
+                let members = sqlx::query_scalar!(r#"SELECT discord_id AS "discord_id!: PgSnowflake<UserId>" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, team.id as _).fetch_all(&mut *transaction).await?;
+                if let Some(PgSnowflake(discord_role)) = asyncs_row.discord_role {
+                    for &PgSnowflake(user_id) in &members {
                         if let Ok(mut member) = discord_guild.member(&*discord_ctx.read().await, user_id).await {
                             member.add_role(&*discord_ctx.read().await, discord_role).await?;
                         }
                     }
                 }
-                if let Some(Id(discord_channel)) = asyncs_row.discord_channel {
+                if let Some(PgSnowflake(discord_channel)) = asyncs_row.discord_channel {
                     let mut message = MessageBuilder::default();
                     message.push("Please welcome ");
                     message.mention_team(&mut transaction, Some(discord_guild), &team).await?;
@@ -1650,7 +1650,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
                         message.quote_rest();
                         message.push_safe(&value.fpa);
                     }
-                    ChannelId::new(discord_channel).send_message(&*discord_ctx.read().await, CreateMessage::new()
+                    discord_channel.send_message(&*discord_ctx.read().await, CreateMessage::new()
                         .content(message.build())
                         .flags(MessageFlags::SUPPRESS_EMBEDS)
                     ).await?;
@@ -1672,7 +1672,7 @@ pub(crate) async fn volunteer(pool: &State<PgPool>, env: &State<Environment>, me
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Volunteer, false).await?;
     let content = match data.series {
         Series::League => html! {
-            @let chuckles = User::from_id(&mut *transaction, Id(3480396938053963767)).await?.ok_or(Error::OrganizerUserData)?;
+            @let chuckles = User::from_id(&mut *transaction, Id::from(3480396938053963767_u64)).await?.ok_or(Error::OrganizerUserData)?;
             article {
                 p {
                     : "The primary role of league volunteers is to complete race reviews to ensure runners are following league rules and to conduct initial FPA checks on races where FPA was called. If you are interested in being a volunteer for league, please complete ";
@@ -1694,7 +1694,7 @@ pub(crate) async fn volunteer(pool: &State<PgPool>, env: &State<Environment>, me
             article {
                 p {
                     : "If you are interested in restreaming, commentating, or tracking a race for this tournament, please contact ";
-                    : User::from_id(&mut *transaction, Id(13528320435736334110)).await?.ok_or(Error::OrganizerUserData)?;
+                    : User::from_id(&mut *transaction, Id::from(13528320435736334110_u64)).await?.ok_or(Error::OrganizerUserData)?;
                     : ".";
                 }
                 p : "If a race already has a restream, you can volunteer through that channel's Discord.";

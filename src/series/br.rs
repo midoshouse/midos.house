@@ -39,9 +39,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
     })
 }
 
-pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Option<&CsrfToken>, data: &Data<'_>, team_id: Id, ctx: &mut StatusContext<'_>) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Option<&CsrfToken>, data: &Data<'_>, team_id: Id<Teams>, ctx: &mut StatusContext<'_>) -> Result<RawHtml<String>, Error> {
     Ok(if let Some(async_kind) = data.active_async(&mut *transaction, Some(team_id)).await? {
-        let async_row = sqlx::query!(r#"SELECT discord_channel AS "discord_channel: Id", tfb_uuid, web_id as "web_id: Id", web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut **transaction).await?;
+        let async_row = sqlx::query!(r#"SELECT tfb_uuid, web_id, web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut **transaction).await?;
         if let Some(team_row) = sqlx::query!(r#"SELECT requested AS "requested!", submitted FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL"#, team_id as _, async_kind as _).fetch_optional(&mut **transaction).await? {
             if team_row.submitted.is_some() {
                 html! {
@@ -56,7 +56,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                     },
                     files: Some(match (async_row.tfb_uuid, async_row.web_id, async_row.web_gen_time, async_row.file_stem.as_ref()) {
                         (Some(uuid), _, _, _) => seed::Files::TriforceBlitz { uuid },
-                        (None, Some(Id(id)), Some(gen_time), Some(file_stem)) => seed::Files::OotrWeb {
+                        (None, Some(id), Some(gen_time), Some(file_stem)) => seed::Files::OotrWeb {
                             file_stem: Cow::Owned(file_stem.clone()),
                             id, gen_time,
                         },

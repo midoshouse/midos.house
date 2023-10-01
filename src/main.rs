@@ -30,6 +30,7 @@ mod draft;
 mod event;
 mod favicon;
 #[macro_use] mod http;
+mod id;
 mod lang;
 mod notification;
 mod prelude;

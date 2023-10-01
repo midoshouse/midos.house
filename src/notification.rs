@@ -27,17 +27,17 @@ pub(crate) enum SimpleNotificationKind {
 
 pub(crate) enum Notification {
     /// A notification from the `notifications` table that can only be dismissed
-    Simple(Id),
-    TeamInvite(Id),
+    Simple(Id<Notifications>),
+    TeamInvite(Id<Teams>),
 }
 
 impl Notification {
     pub(crate) async fn get(transaction: &mut Transaction<'_, Postgres>, me: &User) -> Result<Vec<Self>, event::DataError> {
-        let mut notifications = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM notifications WHERE rcpt = $1"#, me.id as _)
+        let mut notifications = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Notifications>" FROM notifications WHERE rcpt = $1"#, me.id as _)
             .fetch(&mut **transaction)
             .map_ok(Self::Simple)
             .try_collect::<Vec<_>>().await?;
-        for team_id in sqlx::query_scalar!(r#"SELECT team AS "team: Id" FROM team_members WHERE member = $1 AND status = 'unconfirmed'"#, me.id as _).fetch_all(&mut **transaction).await? {
+        for team_id in sqlx::query_scalar!(r#"SELECT team AS "team: Id<Teams>" FROM team_members WHERE member = $1 AND status = 'unconfirmed'"#, me.id as _).fetch_all(&mut **transaction).await? {
             let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, team_id as _).fetch_one(&mut **transaction).await?;
             let event = event::Data::new(&mut *transaction, team_row.series, team_row.event).await?.expect("enforced by database constraint");
             if !event.is_started(&mut *transaction).await? {
@@ -52,7 +52,7 @@ impl Notification {
             Self::Simple(id) => {
                 let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await? {
                     SimpleNotificationKind::Accept => {
-                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
+                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id<Users>", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
                         let sender = User::from_id(&mut **transaction, row.sender).await?.ok_or(Error::UnknownUser)?;
                         let event = event::Data::new(&mut *transaction, row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
@@ -63,7 +63,7 @@ impl Notification {
                         }
                     }
                     SimpleNotificationKind::Decline => {
-                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
+                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id<Users>", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
                         let sender = User::from_id(&mut **transaction, row.sender).await?.ok_or(Error::UnknownUser)?;
                         let event = event::Data::new(&mut *transaction, row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
@@ -74,7 +74,7 @@ impl Notification {
                         }
                     }
                     SimpleNotificationKind::Resign => {
-                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
+                        let row = sqlx::query!(r#"SELECT sender AS "sender!: Id<Users>", series AS "series!: Series", event AS "event!" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
                         let sender = User::from_id(&mut **transaction, row.sender).await?.ok_or(Error::UnknownUser)?;
                         let event = event::Data::new(&mut *transaction, row.series, row.event).await?.ok_or(Error::UnknownEvent)?;
                         html! {
@@ -101,7 +101,7 @@ impl Notification {
                 let mut creator = None;
                 let mut my_role = None;
                 let mut teammates = Vec::default();
-                for member in sqlx::query!(r#"SELECT member AS "id: Id", status AS "status: SignupStatus", role AS "role: Role" FROM team_members WHERE team = $1"#, team_id as _).fetch_all(&mut **transaction).await? {
+                for member in sqlx::query!(r#"SELECT member AS "id: Id<Users>", status AS "status: SignupStatus", role AS "role: Role" FROM team_members WHERE team = $1"#, team_id as _).fetch_all(&mut **transaction).await? {
                     if member.id == me.id {
                         my_role = Some(member.role);
                     } else {
@@ -251,7 +251,7 @@ pub(crate) async fn notifications(pool: &State<PgPool>, env: &State<Environment>
 }
 
 #[rocket::post("/notifications/dismiss/<id>", data = "<form>")]
-pub(crate) async fn dismiss(pool: &State<PgPool>, me: User, id: Id, csrf: Option<CsrfToken>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, rocket_util::Error<sqlx::Error>> {
+pub(crate) async fn dismiss(pool: &State<PgPool>, me: User, id: Id<Notifications>, csrf: Option<CsrfToken>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, rocket_util::Error<sqlx::Error>> {
     let mut form = form.into_inner();
     form.verify(&csrf);
     if form.context.errors().next().is_none() {

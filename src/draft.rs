@@ -167,7 +167,7 @@ pub(crate) enum Action {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct Draft {
-    pub(crate) high_seed: Id,
+    pub(crate) high_seed: Id<Teams>,
     pub(crate) went_first: Option<bool>,
     #[serde(default)]
     pub(crate) skipped_bans: u8,
@@ -549,7 +549,7 @@ impl Draft {
     }
 
     /// Assumes that the caller has checked that the team is part of the race in the first place.
-    pub(crate) async fn is_active_team(&self, kind: Kind, team: Id) -> sqlx::Result<bool> {
+    pub(crate) async fn is_active_team(&self, kind: Kind, team: Id<Teams>) -> sqlx::Result<bool> {
         Ok(match self.active_team(kind).await? {
             Some(Team::HighSeed) => team == self.high_seed,
             Some(Team::LowSeed) => team != self.high_seed,

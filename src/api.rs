@@ -50,7 +50,7 @@ impl Scopes {
     async fn validate(&self, transaction: &mut Transaction<'_, Postgres>, api_key: &str) -> sqlx::Result<Option<user::User>> {
         let Some(key_scope) = sqlx::query_as!(Self, "SELECT entrants_read, user_search FROM api_keys WHERE key = $1", api_key).fetch_optional(&mut **transaction).await? else { return Ok(None) };
         if key_scope >= *self {
-            let user_id = sqlx::query_scalar!(r#"SELECT user_id AS "user_id: Id" FROM api_keys WHERE key = $1"#, api_key).fetch_one(&mut **transaction).await?;
+            let user_id = sqlx::query_scalar!(r#"SELECT user_id AS "user_id: Id<Users>" FROM api_keys WHERE key = $1"#, api_key).fetch_one(&mut **transaction).await?;
             user::User::from_id(&mut **transaction, user_id).await
         } else {
             Ok(None)
@@ -379,7 +379,7 @@ impl<'r> FromRequest<'r> for ApiKey {
             Ok(Some(api_key)) => match sqlx::query!(r#"SELECT
                 entrants_read,
                 user_search,
-                user_id AS "user_id: Id"
+                user_id AS "user_id: Id<Users>"
             FROM api_keys WHERE key = $1"#, api_key).fetch_optional(&**db_pool).await {
                 Ok(Some(row)) => request::Outcome::Success(Self {
                     scopes: Scopes {
@@ -473,7 +473,7 @@ pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<re
             for member in team.members(&mut transaction).await? {
                 #[derive(Serialize)]
                 struct Row<'a> {
-                    id: Id,
+                    id: Id<Users>,
                     display_name: &'a str,
                     twitch_display_name: Option<String>,
                     discord_display_name: Option<&'a str>,

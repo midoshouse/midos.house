@@ -440,7 +440,7 @@ pub(crate) enum EnterFormDefaults<'v> { //TODO move to crate::event::enter
     Context(Context<'v>),
     Values {
         my_role: Option<Role>,
-        teammate: Option<Id>,
+        teammate: Option<Id<Users>>,
     },
 }
 
@@ -474,14 +474,14 @@ impl<'v> EnterFormDefaults<'v> {
         }
     }
 
-    pub(crate) fn teammate(&self) -> Option<Id> {
+    pub(crate) fn teammate(&self) -> Option<Id<Users>> {
         self.teammate_text().and_then(|text| text.parse().ok())
     }
 
     fn teammate_text(&self) -> Option<Cow<'_, str>> {
         match self {
             Self::Context(ctx) => ctx.field_value("teammate").map(Cow::Borrowed),
-            &Self::Values { teammate, .. } => teammate.map(|id| Cow::Owned(id.0.to_string())),
+            &Self::Values { teammate, .. } => teammate.map(|id| Cow::Owned(id.to_string())),
         }
     }
 }
@@ -536,7 +536,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, e
     let header = data.header(&mut transaction, env, me.as_ref(), Tab::FindTeam, false).await?;
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
-    for row in sqlx::query!(r#"SELECT user_id AS "user!: Id", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {
+    for row in sqlx::query!(r#"SELECT user_id AS "user!: Id<Users>", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {
         let user = User::from_id(&mut *transaction, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
         if me.as_ref().map_or(false, |me| user.id == me.id) { my_role = Some(row.role) }
         let can_invite = me.as_ref().map_or(true, |me| user.id != me.id) && true /*TODO not already in a team with that user */;

@@ -1271,13 +1271,13 @@ impl OotrApiClient {
         })
     }
 
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, branch: rando::Branch, version: Version, random_settings: bool, spoiler_log: bool, settings: serde_json::Map<String, Json>) -> Result<(u64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
+    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, branch: rando::Branch, version: Version, random_settings: bool, spoiler_log: bool, settings: serde_json::Map<String, Json>) -> Result<(i64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
         #[serde_as]
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct CreateSeedResponse {
             #[serde_as(as = "DisplayFromStr")]
-            id: u64,
+            id: i64,
         }
 
         #[derive(Deserialize)]
@@ -2727,7 +2727,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     }
                                     [ref arg] if arg == "base" => HashMap::default(),
                                     [ref arg] if arg == "random" => Draft {
-                                        high_seed: Id(0), // Draft::complete_randomly doesn't check for active team
+                                        high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
                                         went_first: None,
                                         skipped_bans: 0,
                                         settings: HashMap::default(),
@@ -2735,7 +2735,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     [ref arg] if arg == "draft" => {
                                         *state = RaceState::Draft {
                                             state: Draft {
-                                                high_seed: Id(0), // racetime.gg bot doesn't check for active team
+                                                high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
                                                 went_first: None,
                                                 skipped_bans: 0,
                                                 settings: HashMap::default(),
@@ -3015,7 +3015,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     }
                                     [ref arg] if arg == "base" => HashMap::default(),
                                     [ref arg] if arg == "random" => Draft {
-                                        high_seed: Id(0), // Draft::complete_randomly doesn't check for active team
+                                        high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
                                         went_first: None,
                                         skipped_bans: 0,
                                         settings: collect![as HashMap<_, _>:
@@ -3027,7 +3027,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     [ref arg] if arg == "draft" => {
                                         *state = RaceState::Draft {
                                             state: Draft {
-                                                high_seed: Id(0), // racetime.gg bot doesn't check for active team
+                                                high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
                                                 went_first: None,
                                                 skipped_bans: 0,
                                                 settings: collect![as HashMap<_, _>:

@@ -197,7 +197,7 @@ impl Ord for RaceSchedule {
 
 #[derive(Clone)]
 pub(crate) struct Race {
-    pub(crate) id: Id,
+    pub(crate) id: Id<Races>,
     pub(crate) series: Series,
     pub(crate) event: String,
     pub(crate) startgg_event: Option<String>,
@@ -217,27 +217,27 @@ pub(crate) struct Race {
 }
 
 impl Race {
-    pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, id: Id) -> Result<Self, Error> {
+    pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, id: Id<Races>) -> Result<Self, Error> {
         let row = sqlx::query!(r#"SELECT
             series AS "series: Series",
             event,
             startgg_event,
             startgg_set,
             game,
-            team1 AS "team1: Id",
-            team2 AS "team2: Id",
+            team1 AS "team1: Id<Teams>",
+            team2 AS "team2: Id<Teams>",
             p1,
             p2,
             p3,
-            p1_discord AS "p1_discord: Id",
-            p2_discord AS "p2_discord: Id",
+            p1_discord AS "p1_discord: PgSnowflake<UserId>",
+            p2_discord AS "p2_discord: PgSnowflake<UserId>",
             p1_twitch,
             p2_twitch,
             total,
             finished,
             phase,
             round,
-            scheduling_thread AS "scheduling_thread: Id",
+            scheduling_thread AS "scheduling_thread: PgSnowflake<ChannelId>",
             draft_state AS "draft_state: Json<Draft>",
             start,
             async_start1,
@@ -250,7 +250,7 @@ impl Race {
             async_room2,
             file_stem,
             locked_spoiler_log_path,
-            web_id AS "web_id: Id",
+            web_id,
             web_gen_time,
             tfb_uuid,
             hash1 AS "hash1: HashIcon",
@@ -335,8 +335,8 @@ impl Race {
         let entrants = {
             let p1 = if let Some(team1) = row.team1 {
                 Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?))
-            } else if let Some(Id(p1_discord)) = row.p1_discord {
-                Some(if let Some(p1_twitch) = row.p1_twitch { Entrant::DiscordTwitch(UserId::new(p1_discord), p1_twitch) } else { Entrant::Discord(UserId::new(p1_discord)) })
+            } else if let Some(PgSnowflake(p1_discord)) = row.p1_discord {
+                Some(if let Some(p1_twitch) = row.p1_twitch { Entrant::DiscordTwitch(p1_discord, p1_twitch) } else { Entrant::Discord(p1_discord) })
             } else if let Some(p1) = row.p1 {
                 Some(if let Some(p1_twitch) = row.p1_twitch { Entrant::NamedWithTwitch(p1, p1_twitch) } else { Entrant::Named(p1) })
             } else {
@@ -344,8 +344,8 @@ impl Race {
             };
             let p2 = if let Some(team2) = row.team2 {
                 Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?))
-            } else if let Some(Id(p2_discord)) = row.p2_discord {
-                Some(if let Some(p2_twitch) = row.p2_twitch { Entrant::DiscordTwitch(UserId::new(p2_discord), p2_twitch) } else { Entrant::Discord(UserId::new(p2_discord)) })
+            } else if let Some(PgSnowflake(p2_discord)) = row.p2_discord {
+                Some(if let Some(p2_twitch) = row.p2_twitch { Entrant::DiscordTwitch(p2_discord, p2_twitch) } else { Entrant::Discord(p2_discord) })
             } else if let Some(p2) = row.p2 {
                 Some(if let Some(p2_twitch) = row.p2_twitch { Entrant::NamedWithTwitch(p2, p2_twitch) } else { Entrant::Named(p2) })
             } else {
@@ -410,8 +410,8 @@ impl Race {
         update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE id = $2");
         let seed_files = match (row.file_stem, row.locked_spoiler_log_path, row.web_id, row.web_gen_time, row.tfb_uuid) {
             (_, _, _, _, Some(uuid)) => Some(seed::Files::TriforceBlitz { uuid }),
-            (Some(file_stem), _, Some(Id(id)), Some(gen_time), None) => Some(seed::Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
-            (Some(file_stem), locked_spoiler_log_path, Some(Id(id)), None, None) => Some(match (row.start, row.async_start1, row.async_start2) {
+            (Some(file_stem), _, Some(id), Some(gen_time), None) => Some(seed::Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
+            (Some(file_stem), locked_spoiler_log_path, Some(id), None, None) => Some(match (row.start, row.async_start1, row.async_start2) {
                 (Some(start), None, None) | (None, Some(start), None) | (None, None, Some(start)) => seed::Files::OotrWeb { id, gen_time: start - Duration::days(1), file_stem: Cow::Owned(file_stem) },
                 (None, Some(async_start1), Some(async_start2)) => seed::Files::OotrWeb { id, gen_time: async_start1.min(async_start2) - Duration::days(1), file_stem: Cow::Owned(file_stem) },
                 (_, _, _) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path },
@@ -423,7 +423,7 @@ impl Race {
             series: row.series,
             event: row.event,
             game: row.game,
-            scheduling_thread: row.scheduling_thread.map(|Id(id)| id.into()),
+            scheduling_thread: row.scheduling_thread.map(|PgSnowflake(id)| id),
             schedule: RaceSchedule::new(
                 row.start, row.async_start1, row.async_start2,
                 end_time, async_end1, async_end2,
@@ -505,7 +505,7 @@ impl Race {
 
         let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
         let mut races = Vec::default();
-        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut **transaction).await? {
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut **transaction).await? {
             races.push(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?);
         }
         match event.series {
@@ -521,7 +521,7 @@ impl Race {
                         .detailed_error_for_status().await?
                         .json_with_text_in_error::<league::Schedule>().await?;
                     for race in schedule.matches {
-                        let id = Id::new(&mut *transaction, IdTable::Races).await?;
+                        let id = Id::<Races>::new(&mut *transaction).await?;
                         add_or_update_race(&mut *transaction, &mut races, Self {
                             series: event.series,
                             event: event.event.to_string(),
@@ -571,10 +571,10 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::NineDaysOfSaws | Series::Pictionary => {
-                let id = if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_optional(&mut **transaction).await? {
+                let id = if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_optional(&mut **transaction).await? {
                     id
                 } else {
-                    Id::new(&mut *transaction, IdTable::Races).await?
+                    Id::<Races>::new(&mut *transaction).await?
                 };
                 let schedule = if let Some(start) = event.start(&mut *transaction).await? {
                     RaceSchedule::Live {
@@ -639,9 +639,9 @@ impl Race {
     pub(crate) async fn for_scheduling_channel(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, channel_id: ChannelId, game: Option<i16>) -> Result<Vec<Self>, Error> {
         let mut races = Vec::default();
         let rows = if let Some(game) = game {
-            sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW()) AND game = $2"#, i64::from(channel_id), game).fetch_all(&mut **transaction).await?
+            sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW()) AND game = $2"#, i64::from(channel_id), game).fetch_all(&mut **transaction).await?
         } else {
-            sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW())"#, i64::from(channel_id)).fetch_all(&mut **transaction).await?
+            sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW())"#, i64::from(channel_id)).fetch_all(&mut **transaction).await?
         };
         for id in rows {
             races.push(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?);
@@ -767,7 +767,7 @@ impl Race {
     }
 
     pub(crate) async fn player_video_urls(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<(User, Url)>, Error> {
-        let rows = sqlx::query!(r#"SELECT player AS "player: Id", video FROM race_player_videos WHERE race = $1"#, self.id as _).fetch_all(&mut **transaction).await?;
+        let rows = sqlx::query!(r#"SELECT player AS "player: Id<Users>", video FROM race_player_videos WHERE race = $1"#, self.id as _).fetch_all(&mut **transaction).await?;
         let mut tuples = Vec::with_capacity(rows.len());
         for row in rows {
             tuples.push((User::from_id(&mut **transaction, row.player).await?.expect("foreign key constraint violated"), row.video.parse()?));
@@ -999,19 +999,19 @@ pub(crate) struct Event {
 
 impl Event {
     pub(crate) async fn from_room(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, room: Url) -> Result<Option<Self>, Error> {
-        if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut **transaction).await? {
+        if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut **transaction).await? {
             return Ok(Some(Self {
                 race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Normal,
             }))
         }
-        if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut **transaction).await? {
+        if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut **transaction).await? {
             return Ok(Some(Self {
                 race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Async1,
             }))
         }
-        if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut **transaction).await? {
+        if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut **transaction).await? {
             return Ok(Some(Self {
                 race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Async2,
@@ -1022,13 +1022,13 @@ impl Event {
 
     pub(crate) async fn rooms_to_open(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str) -> Result<Vec<Self>, Error> {
         let mut events = Vec::default();
-        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND (start <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND start <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND (start <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND start <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
             events.push(Self {
                 race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Normal,
             })
         }
-        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE async_room1 IS NULL AND async_start1 IS NOT NULL AND async_start1 > NOW() AND (async_start1 <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND async_start1 <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room1 IS NULL AND async_start1 IS NOT NULL AND async_start1 > NOW() AND (async_start1 <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND async_start1 <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
             let event = Self {
                 race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Async1,
@@ -1037,7 +1037,7 @@ impl Event {
                 events.push(event);
             }
         }
-        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id" FROM races WHERE async_room2 IS NULL AND async_start2 IS NOT NULL AND async_start2 > NOW() AND (async_start2 <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND async_start2 <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room2 IS NULL AND async_start2 IS NOT NULL AND async_start2 > NOW() AND (async_start2 <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND async_start2 <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
             let event = Self {
                 race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
                 kind: EventKind::Async2,
@@ -1364,8 +1364,8 @@ pub(crate) async fn create_race(pool: &State<PgPool>, env: &State<Environment>, 
 pub(crate) struct CreateRaceForm {
     #[field(default = String::new())]
     csrf: String,
-    team1: Id,
-    team2: Id,
+    team1: Id<Teams>,
+    team2: Id<Teams>,
     #[field(default = String::new())]
     phase: String,
     #[field(default = String::new())]
@@ -1450,7 +1450,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
             let mut scheduling_thread = None;
             for game in 1..=value.game_count {
                 let mut race = Race {
-                    id: Id::new(&mut transaction, IdTable::Races).await?,
+                    id: Id::<Races>::new(&mut transaction).await?,
                     series: event.series,
                     event: event.event.to_string(),
                     startgg_event: None,
@@ -1487,7 +1487,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
 
 pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
     let header = event.header(&mut transaction, env, me.as_ref(), Tab::Races, true).await?;
-    let fenhl = User::from_id(&mut *transaction, Id(14571800683221815449)).await?.ok_or(PageError::FenhlUserData)?;
+    let fenhl = User::from_id(&mut *transaction, Id::<Users>::from(14571800683221815449_u64)).await?.ok_or(PageError::FenhlUserData)?;
     let form = if me.is_some() {
         let mut errors = ctx.as_ref().map(|ctx| ctx.errors().collect()).unwrap_or_default();
         full_form(uri!(edit_race_post(event.series, &*event.event, race.id)), csrf, html! {
@@ -1696,7 +1696,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit")]
-pub(crate) async fn edit_race(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn edit_race(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
@@ -1724,7 +1724,7 @@ pub(crate) struct EditRaceForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit", data = "<form>")]
-pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
@@ -1814,7 +1814,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
         for (field_name, room) in valid_room_urls {
             if let Some(row) = sqlx::query!(r#"SELECT
                 file_stem,
-                web_id AS "web_id: Id",
+                web_id,
                 web_gen_time,
                 hash1 AS "hash1: HashIcon",
                 hash2 AS "hash2: HashIcon",
@@ -1823,7 +1823,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                 hash5 AS "hash5: HashIcon"
             FROM rsl_seeds WHERE room = $1"#, room.to_string()).fetch_optional(&mut *transaction).await? {
                 file_hash = Some([row.hash1, row.hash2, row.hash3, row.hash4, row.hash5]);
-                if let Some(Id(new_web_id)) = row.web_id {
+                if let Some(new_web_id) = row.web_id {
                     web_id = Some(new_web_id);
                 }
                 if let Some(new_web_gen_time) = row.web_gen_time {
@@ -2099,7 +2099,7 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit-hash")]
-pub(crate) async fn add_file_hash(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn add_file_hash(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
@@ -2122,7 +2122,7 @@ pub(crate) struct AddFileHashForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit-hash", data = "<form>")]
-pub(crate) async fn add_file_hash_post(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id, form: Form<Contextual<'_, AddFileHashForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn add_file_hash_post(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, AddFileHashForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;

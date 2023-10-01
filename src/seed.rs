@@ -85,7 +85,7 @@ pub(crate) enum Files {
         locked_spoiler_log_path: Option<String>,
     },
     OotrWeb {
-        id: u64,
+        id: i64,
         gen_time: DateTime<Utc>,
         file_stem: Cow<'static, str>,
     },
