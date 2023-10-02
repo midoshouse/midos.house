@@ -346,12 +346,16 @@ pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
     } else {
         html! {
             p : "To sign in or create a new account, please sign in via one of the following services:";
-            ul {
-                li {
-                    a(href = uri!(racetime_login(redirect_to.clone())).to_string()) : "Sign in with racetime.gg";
+            div(class = "button-row large-button-row") {
+                a(class = "button", href = uri!(racetime_login(redirect_to.clone())).to_string()) {
+                    img(src = static_url!("racetimeGG-favicon.svg"));
+                    br;
+                    : "Sign in with racetime.gg";
                 }
-                li {
-                    a(href = uri!(discord_login(redirect_to)).to_string()) : "Sign in with Discord";
+                a(class = "button", href = uri!(discord_login(redirect_to)).to_string()) {
+                    img(src = static_url!("discord-favicon.ico"));
+                    br;
+                    : "Sign in with Discord";
                 }
             }
         }

@@ -16,10 +16,7 @@ use {
         uri,
     },
     rocket_util::OptSuffix,
-    crate::{
-        http::static_url,
-        prelude::*,
-    },
+    crate::prelude::*,
 };
 
 #[cfg(unix)] pub(crate) const DIR: &str = "/var/www/midos.house/seed";

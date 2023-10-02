@@ -176,6 +176,7 @@ pub(crate) use {
             PageKind,
             PageStyle,
             page,
+            static_url,
         },
         id::{
             Id,

@@ -1,7 +1,4 @@
-use crate::{
-    http::static_url,
-    prelude::*,
-};
+use crate::prelude::*;
 pub(crate) use self::{
     form::{
         EmptyForm,
