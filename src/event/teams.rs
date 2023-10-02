@@ -347,49 +347,63 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     let signups = signups_sorted(&mut transaction, http_client, **env, config, me.as_ref(), &data, qualifier_kind).await?;
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config() { "Entrants" } else { "Teams" };
+    let mut column_headers = Vec::default();
+    if !matches!(data.team_config(), TeamConfig::Solo) {
+        column_headers.push(html! {
+            th : "Team Name";
+        });
+    }
+    for &(role, display_name) in roles {
+        column_headers.push(html! {
+            th(class = role.css_class()) : display_name;
+        });
+    }
+    match qualifier_kind {
+        QualifierKind::None => {}
+        QualifierKind::Single { show_times: false } => column_headers.push(html! {
+            th : "Qualified";
+        }),
+        QualifierKind::Single { show_times: true } => if series == Series::TriforceBlitz {
+            column_headers.push(html! {
+                th : "Pieces Found";
+            });
+        }
+        QualifierKind::Multiple => {
+            column_headers.push(html! {
+                th : "# Qualifiers";
+            });
+            column_headers.push(html! {
+                th : "Qualifier Points";
+            });
+        }
+    }
+    if let Some(draft::Kind::TournoiFrancoS3) = data.draft_kind() {
+        column_headers.push(html! {
+            th : "Advanced Settings OK";
+        });
+        column_headers.push(html! {
+            th : "MQ OK";
+        });
+    }
+    if show_restream_consent {
+        column_headers.push(html! {
+            th : "Restream Consent";
+        });
+    }
     let content = html! {
         : header;
         table {
             thead {
                 tr {
-                    @if !matches!(data.team_config(), TeamConfig::Solo) {
-                        th : "Team Name";
-                    }
-                    @for &(role, display_name) in roles {
-                        th(class = role.css_class()) : display_name;
-                    }
-                    @match qualifier_kind {
-                        QualifierKind::None => {}
-                        QualifierKind::Single { show_times: false } => th : "Qualified";
-                        QualifierKind::Single { show_times: true } => @if series == Series::TriforceBlitz {
-                            th : "Pieces Found";
-                        }
-                        QualifierKind::Multiple => {
-                            th : "# Qualifiers";
-                            th : "Qualifier Points";
-                        }
-                    }
-                    @if let Some(draft::Kind::TournoiFrancoS3) = data.draft_kind() {
-                        th : "Advanced Settings OK";
-                        th : "MQ OK";
-                    }
-                    @if show_restream_consent {
-                        th : "Restream Consent";
+                    @for header in &column_headers {
+                        : header;
                     }
                 }
             }
             tbody {
                 @if signups.is_empty() {
                     tr {
-                        td(colspan =
-                            if let TeamConfig::Solo = data.team_config() { 0 } else { 1 } + roles.len()
-                            + match qualifier_kind {
-                                QualifierKind::None => 0,
-                                QualifierKind::Single { show_times: false } => 1,
-                                QualifierKind::Single { show_times: true } => if series == Series::TriforceBlitz { 1 } else { 0 },
-                                QualifierKind::Multiple => 2,
-                            }
-                        ) {
+                        td(colspan = column_headers.len()) {
                             i : "(no signups yet)";
                         }
                     }
