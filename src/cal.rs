@@ -607,6 +607,7 @@ impl Race {
             Series::Rsl => match &*event.event {
                 "1" => {} // no match data available
                 "2" | "3" | "4" | "5" => {} // added to database
+                "6" => {} //TODO get races from schedule (Google sheet?)
                 _ => unimplemented!(),
             },
             Series::Scrubs => match &*event.event {

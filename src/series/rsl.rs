@@ -131,6 +131,17 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
             }
         }),
+        "6" => Some(html! {
+            article {
+                p {
+                    : "This is the 6th season of the Random Settings League tournament, organized by Cubsrule21, ";
+                    : English.join_html(data.organizers(transaction).await?);
+                    : ". See ";
+                    a(href = "https://docs.google.com/document/d/1xpZIVh6znG7mgyEUQk8J2B-_5PfbcERen-P4tDX6VqE/edit") : "the official document";
+                    : " for details.";
+                }
+            }
+        }),
         _ => None,
     })
 }

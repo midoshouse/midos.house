@@ -375,6 +375,7 @@ impl<'a> Data<'a> {
                 //TODO After the event, the version should be randomized based on the total number of races played on each version.
                 from_file!("../../assets/event/rsl/chests-5-05bfcd2.json")
             }
+            (Series::Rsl, "6") => from_file!("../../assets/event/rsl/chests-6-248f8b5.json"),
             (Series::Rsl, _) => unimplemented!(),
             (Series::Scrubs, "5") => from_file!("../../assets/event/scrubs/chests-5-7.1.175.json"),
             (Series::Scrubs, _) => unimplemented!(),
