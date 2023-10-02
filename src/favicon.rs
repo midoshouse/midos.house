@@ -6,10 +6,7 @@ use {
         RgbaImage,
         io::Reader as ImageReader,
     },
-    ootr_utils::{
-        camc::ChestAppearance,
-        spoiler::Item,
-    },
+    ootr_utils::camc::ChestAppearance,
     rocket::{
         fs::NamedFile,
         http::{
@@ -52,13 +49,7 @@ impl ChestAppearances {
 
 impl From<SpoilerLog> for ChestAppearances {
     fn from(spoiler: SpoilerLog) -> Self {
-        let locations = spoiler.locations.choose(&mut thread_rng()).expect("no worlds in location list");
-        Self([
-            ChestAppearance::from_item(&spoiler, ChestAppearance { texture: ChestTexture::Normal, big: false }, locations.get("KF Midos Top Left Chest").or_else(|| locations.get("Mido Chest Top Left")).cloned().unwrap_or_else(|| Item { item: format!("Rupees (5)"), model: None, player: NonZeroU8::new(1).unwrap() })),
-            ChestAppearance::from_item(&spoiler, ChestAppearance { texture: ChestTexture::Normal, big: false }, locations.get("KF Midos Top Right Chest").or_else(|| locations.get("Mido Chest Top Right")).cloned().unwrap_or_else(|| Item { item: format!("Rupees (5)"), model: None, player: NonZeroU8::new(1).unwrap() })),
-            ChestAppearance::from_item(&spoiler, ChestAppearance { texture: ChestTexture::Normal, big: false }, locations.get("KF Midos Bottom Left Chest").or_else(|| locations.get("Mido Chest Bottom Left")).cloned().unwrap_or_else(|| Item { item: format!("Rupee (1)"), model: None, player: NonZeroU8::new(1).unwrap() })),
-            ChestAppearance::from_item(&spoiler, ChestAppearance { texture: ChestTexture::Normal, big: false }, locations.get("KF Midos Bottom Right Chest").or_else(|| locations.get("Mido Chest Bottom Right")).cloned().unwrap_or_else(|| Item { item: format!("Recovery Heart"), model: None, player: NonZeroU8::new(1).unwrap() })),
-        ])
+        Self(spoiler.midos_house_chests().choose(&mut thread_rng()).expect("no worlds in location list"))
     }
 }
 

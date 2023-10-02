@@ -420,6 +420,8 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                 p : "You can no longer enter this event since it has already started.";
             }
         }
+    } else if let (Series::Standard, "7") = (data.series, &*data.event) {
+        s::enter_form()
     } else {
         match data.team_config() {
             TeamConfig::Solo => {

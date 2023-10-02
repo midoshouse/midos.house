@@ -1,0 +1,7016 @@
+[
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    3361
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    531
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    10
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    63
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    453
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    481
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    209
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    25
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    178
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    11
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    65
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    21
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    24
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    21
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    462
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    161
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    28
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    165
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    516
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    173
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    23
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    209
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    197
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    76
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    8
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    66
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    26
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    17
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    8
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    11
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    172
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    87
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    8
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    63
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    14
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    8
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    69
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    20
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    25
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    24
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    25
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    13
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    34
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    7
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    11
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    24
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    13
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    11
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    471
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    171
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    20
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    182
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    195
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    82
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    8
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    75
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    36
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    13
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    11
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    12
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    183
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    77
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    62
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    527
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    211
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    12
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    27
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    164
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    201
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    69
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    14
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    70
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    13
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    12
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    7
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    190
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    65
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    56
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    202
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    61
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    80
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    88
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    31
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    28
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    83
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    29
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    23
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    31
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    7
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    10
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    11
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    7
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    169
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    66
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    69
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    61
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    25
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    30
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    7
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    57
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    22
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    26
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    17
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    51
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    21
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    22
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    24
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    29
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    8
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    29
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    13
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    8
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    25
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    19
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    24
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    8
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    11
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    10
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    12
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    24
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    13
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    7
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    10
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    7
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    20
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    8
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    7
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    10
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    452
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    169
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    21
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    147
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    194
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    74
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    13
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    60
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    13
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    11
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    7
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    179
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    61
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    12
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    54
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    188
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    78
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    63
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    89
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    28
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    23
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    13
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    73
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    21
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    30
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    19
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    9
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    11
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    11
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    14
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    12
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    4
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    3
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    185
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    71
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    69
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    71
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    26
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    19
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    6
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    2
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    5
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "normal",
+        "big": false
+      }
+    ],
+    50
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "major",
+        "big": true
+      }
+    ],
+    20
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "smallKey1751",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "token",
+        "big": false
+      }
+    ],
+    1
+  ],
+  [
+    [
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      },
+      {
+        "texture": "heart",
+        "big": false
+      }
+    ],
+    26
+  ]
+]
