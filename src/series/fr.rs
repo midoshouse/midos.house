@@ -20,6 +20,11 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     a(href = "https://discord.gg/wyhPVmquZC") : "le serveur Discord";
                     : " pour plus de détails.";
                 }
+                ul {
+                    li {
+                        a(href = "https://docs.google.com/document/d/1sQ8HgX1swX0PulCd85195z5eu7hIC73SYNVjUJY8Tw0/edit") : "Règlements";
+                    }
+                }
             }
         }),
         _ => None,
