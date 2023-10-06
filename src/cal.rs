@@ -612,7 +612,7 @@ impl Race {
             Series::Rsl => match &*event.event {
                 "1" => {} // no match data available
                 "2" | "3" | "4" | "5" => {} // added to database
-                "6" => for row in sheet_values(http_client.clone(), "1ZC2PfHKK2uVYRCJSLjdO1M0P2D7Njvohg20T8p4Z0ro", "Form Responses!B2:F").await? {
+                "6" => for row in sheet_values(http_client.clone(), "1ZC2PfHKK2uVYRCJSLjdO1M0P2D7Njvohg20T8p4Z0ro", "Form Responses 1!B2:F").await? {
                     let [p1, p2, round, date_utc, time_utc] = &*row else { continue };
                     let id = Id::new(&mut *transaction).await?;
                     let (phase, round) = if let Some(group) = round.strip_prefix("Group ") {
