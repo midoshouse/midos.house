@@ -1,9 +1,6 @@
 #![allow(unused_qualifications)] // in derive macro
 
-use {
-    std::time::Duration,
-    crate::prelude::*,
-};
+use crate::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Sequence, Deserialize, sqlx::Type, FromFormField)]
 #[sqlx(type_name = "language")]
@@ -31,7 +28,7 @@ impl Language {
         }
     }
 
-    pub(crate) fn format_duration(&self, duration: Duration, running_text: bool) -> String {
+    pub(crate) fn format_duration(&self, duration: UDuration, running_text: bool) -> String {
         let secs = duration.as_secs();
         let hours = secs / 3600;
         let mins = (secs % 3600) / 60;

@@ -43,6 +43,7 @@ serde_plain = "1"
 thiserror = "1"
 typemap_rev = "0.3"
 uuid = "1"
+yup-oauth2 = "8"
 
 [dependencies.chrono]
 version = "0.4"
@@ -103,7 +104,7 @@ version = "3"
 features = ["json"]
 
 [dependencies.serenity]
-#version = "0.11.5" # waiting for https://github.com/serenity-rs/serenity/pull/2470 to be published
+#version = "0.11.5" # waiting for https://github.com/serenity-rs/serenity/pull/2523 to be published
 git = "https://github.com/serenity-rs/serenity"
 branch = "next"
 default-features = false
@@ -111,7 +112,7 @@ features = ["client", "gateway", "model", "rustls_backend", "temp_cache"]
 
 [dependencies.serenity-utils]
 git = "https://github.com/fenhl/serenity-utils"
-#branch = "main" # waiting for https://github.com/serenity-rs/serenity/pull/2470 to be published
+#branch = "main" # waiting for https://github.com/serenity-rs/serenity/pull/2523 to be published
 branch = "next"
 
 [dependencies.sqlx]

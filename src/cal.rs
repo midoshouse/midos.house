@@ -13,6 +13,11 @@ use {
     reqwest::StatusCode,
     rocket_util::Response,
     sqlx::types::Json,
+    wheel::traits::IsNetworkError,
+    yup_oauth2::{
+        ServiceAccountAuthenticator,
+        read_service_account_key,
+    },
     crate::{
         discord_bot,
         event::Tab,
@@ -607,7 +612,41 @@ impl Race {
             Series::Rsl => match &*event.event {
                 "1" => {} // no match data available
                 "2" | "3" | "4" | "5" => {} // added to database
-                "6" => {} //TODO get races from schedule (Google sheet?)
+                "6" => for row in sheet_values(http_client.clone(), "1ZC2PfHKK2uVYRCJSLjdO1M0P2D7Njvohg20T8p4Z0ro", "Form Responses!B2:F").await? {
+                    let [p1, p2, round, date_utc, time_utc] = &*row else { continue };
+                    let id = Id::new(&mut *transaction).await?;
+                    let (phase, round) = if let Some(group) = round.strip_prefix("Group ") {
+                        (format!("Group"), group.to_owned())
+                    } else {
+                        (format!("Top 8"), round.clone())
+                    };
+                    add_or_update_race(&mut *transaction, &mut races, Self {
+                        series: event.series,
+                        event: event.event.to_string(),
+                        startgg_event: None,
+                        startgg_set: None,
+                        entrants: Entrants::Two([
+                            Entrant::Named(p1.clone()),
+                            Entrant::Named(p2.clone()),
+                        ]),
+                        phase: Some(phase),
+                        round: Some(round),
+                        game: None, //TODO top 8
+                        scheduling_thread: None,
+                        schedule: RaceSchedule::Live {
+                            start: NaiveDateTime::parse_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S")?.and_utc(),
+                            end: None,
+                            room: None,
+                        },
+                        draft: None,
+                        seed: seed::Data::default(),
+                        video_urls: HashMap::default(),
+                        restreamers: HashMap::default(),
+                        ignored: false,
+                        schedule_locked: false,
+                        id,
+                    }).await?;
+                },
                 _ => unimplemented!(),
             },
             Series::Scrubs => match &*event.event {
@@ -1118,9 +1157,11 @@ impl Event {
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum Error {
+    #[error(transparent)] ChronoParse(#[from] chrono::format::ParseError),
     #[error(transparent)] Discord(#[from] discord_bot::Error),
     #[error(transparent)] Event(#[from] event::DataError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Sheets(#[from] SheetsError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] Url(#[from] url::ParseError),
@@ -1137,6 +1178,84 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     fn from(e: E) -> Self {
         Self::Err(e.into())
     }
+}
+
+static SHEETS_CACHE: Lazy<Mutex<HashMap<(String, String), (Instant, Vec<Vec<String>>)>>> = Lazy::new(|| Mutex::default());
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum SheetsError {
+    #[error(transparent)] OAuth(#[from] yup_oauth2::Error),
+    #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
+    #[error("empty token is not valid")]
+    EmptyToken,
+    #[error("OAuth token is expired")]
+    TokenExpired,
+}
+
+impl IsNetworkError for SheetsError {
+    fn is_network_error(&self) -> bool {
+        match self {
+            Self::OAuth(_) => false,
+            Self::Reqwest(e) => e.is_network_error(),
+            Self::Wheel(e) => e.is_network_error(),
+            Self::EmptyToken => false,
+            Self::TokenExpired => false,
+        }
+    }
+}
+
+async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str) -> Result<Vec<Vec<String>>, SheetsError> {
+    #[derive(Deserialize)]
+    struct ValueRange {
+        values: Vec<Vec<String>>,
+    }
+
+    async fn sheet_values_uncached(http_client: &reqwest::Client, sheet_id: &str, range: &str) -> Result<Vec<Vec<String>>, SheetsError> {
+        let gsuite_secret = read_service_account_key("assets/google-client-secret.json").await.at("assets/google-client-secret.json")?;
+        let auth = ServiceAccountAuthenticator::builder(gsuite_secret)
+            .build().await.at_unknown()?;
+        let token = auth.token(&["https://www.googleapis.com/auth/spreadsheets"]).await?;
+        if token.is_expired() { return Err(SheetsError::TokenExpired) }
+        let Some(token) = token.token() else { return Err(SheetsError::EmptyToken) };
+        if token.is_empty() { return Err(SheetsError::EmptyToken) }
+        let ValueRange { values } = http_client.get(&format!("https://sheets.googleapis.com/v4/spreadsheets/{sheet_id}/values/{range}"))
+            .bearer_auth(token)
+            .query(&[
+                ("valueRenderOption", "FORMATTED_VALUE"),
+                ("dateTimeRenderOption", "FORMATTED_STRING"),
+                ("majorDimension", "ROWS"),
+            ])
+            .send().await?
+            .detailed_error_for_status().await?
+            .json_with_text_in_error::<ValueRange>().await?;
+        Ok(values)
+    }
+
+    let key = (sheet_id.to_owned(), range.to_owned());
+    let mut cache = lock!(SHEETS_CACHE);
+    Ok(match cache.entry(key) {
+        hash_map::Entry::Occupied(mut entry) => {
+            let (retrieved, values) = entry.get();
+            if retrieved.elapsed() < UDuration::from_secs(5 * 60) {
+                values.clone()
+            } else {
+                match sheet_values_uncached(&http_client, sheet_id, range).await {
+                    Ok(values) => {
+                        entry.insert((Instant::now(), values.clone()));
+                        values
+                    }
+                    Err(e) if e.is_network_error() && retrieved.elapsed() < UDuration::from_secs(60 * 60) => values.clone(),
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+        hash_map::Entry::Vacant(entry) => {
+            let values = sheet_values_uncached(&http_client, sheet_id, range).await?;
+            entry.insert((Instant::now(), values.clone()));
+            values
+        }
+    })
 }
 
 fn ics_datetime<Z: TimeZone>(datetime: DateTime<Z>) -> String {

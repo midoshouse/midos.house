@@ -4,10 +4,7 @@
 #![recursion_limit = "512"]
 
 use {
-    std::{
-        env,
-        time::Duration,
-    },
+    std::env,
     rocket::Rocket,
     sqlx::postgres::PgConnectOptions,
     crate::prelude::*,
@@ -130,7 +127,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
         let config = Config::load().await?;
         let http_client = reqwest::Client::builder()
             .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION")))
-            .timeout(Duration::from_secs(30))
+            .timeout(UDuration::from_secs(30))
             .use_rustls_tls()
             .trust_dns(true)
             .https_only(true)

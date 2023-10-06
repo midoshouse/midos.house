@@ -1,5 +1,4 @@
 use {
-    std::time::Duration,
     graphql_client::GraphQLQuery,
     typemap_rev::TypeMap,
     crate::prelude::*,
@@ -80,7 +79,7 @@ where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Se
                 .json_with_text_in_error::<graphql_client::Response<T::ResponseData>>().await?;
             // from https://dev.start.gg/docs/rate-limits
             // “You may not average more than 80 requests per 60 seconds.”
-            *next_request = Instant::now() + Duration::from_millis(60_000 / 80);
+            *next_request = Instant::now() + UDuration::from_millis(60_000 / 80);
             let data = match (data, errors) {
                 (Some(_), Some(errors)) if !errors.is_empty() => Err(Error::GraphQL(errors)),
                 (Some(data), _) => Ok(data),

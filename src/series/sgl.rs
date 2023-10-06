@@ -1,5 +1,4 @@
 use {
-    std::time::Duration,
     serde_json::Value as Json,
     crate::{
         event::{
@@ -39,7 +38,7 @@ pub(crate) async fn restreams(http_client: &reqwest::Client) -> wheel::Result<Re
             .send().await?
             .detailed_error_for_status().await?
             .json_with_text_in_error().await?;
-        *next_request = Instant::now() + Duration::from_secs(60);
+        *next_request = Instant::now() + UDuration::from_secs(60);
     }
     Ok(cache.clone())
 }

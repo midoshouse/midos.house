@@ -1,8 +1,5 @@
 use {
-    std::{
-        num::NonZeroU64,
-        time::Duration as UDuration,
-    },
+    std::num::NonZeroU64,
     chrono::Duration,
     serenity::all::{
         CacheHttp,
