@@ -183,7 +183,7 @@ pub(crate) struct Query;
 
 #[derive(Debug, thiserror::Error)]
 enum UserFromDiscordError {
-    #[error(transparent)] DiscordUserIdParse(#[from] UserIdParseError),
+    #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
 }
 

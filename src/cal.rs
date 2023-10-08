@@ -674,6 +674,10 @@ impl Race {
                 "2" => {} // added to database
                 _ => unimplemented!(),
             },
+            Series::WeTryToBeBetter => match &*event.event {
+                "1" => {} // added to database
+                _ => unimplemented!(),
+            },
         }
         races.retain(|race| !race.ignored);
         races.sort_unstable();
@@ -1321,7 +1325,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                 cal_event.push(DtStart::new(ics_datetime(start)));
                 cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + match event.series {
                     Series::TriforceBlitz => Duration::hours(2),
-                    Series::MixedPools | Series::Scrubs | Series::SpeedGaming => Duration::hours(3),
+                    Series::MixedPools | Series::Scrubs | Series::SpeedGaming | Series::WeTryToBeBetter => Duration::hours(3),
                     Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::Standard | Series::TournoiFrancophone => Duration::hours(3) + Duration::minutes(30),
                     Series::Multiworld | Series::Pictionary => Duration::hours(4),
                     Series::Rsl => Duration::hours(4) + Duration::minutes(30),

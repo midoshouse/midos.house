@@ -104,6 +104,7 @@ pub(crate) enum Series {
     Standard,
     TournoiFrancophone,
     TriforceBlitz,
+    WeTryToBeBetter,
 }
 
 impl Series {
@@ -121,6 +122,7 @@ impl Series {
             Self::Standard => "s",
             Self::TournoiFrancophone => "fr",
             Self::TriforceBlitz => "tfb",
+            Self::WeTryToBeBetter => "wttbb",
         }
     }
 }
@@ -376,7 +378,7 @@ impl<'a> Data<'a> {
             }
             (Series::Rsl, "6") => from_file!("../../assets/event/rsl/chests-6-248f8b5.json"),
             (Series::Rsl, _) => unimplemented!(),
-            (Series::Scrubs, "5") => from_file!("../../assets/event/scrubs/chests-5-7.1.175.json"),
+            (Series::Scrubs, "5") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
             (Series::Scrubs, _) => unimplemented!(),
             (Series::SpeedGaming, "2023onl" | "2023live") => from_file!("../../assets/event/sgl/chests-2023-42da4aa.json"),
             (Series::SpeedGaming, _) => unimplemented!(),
@@ -387,6 +389,8 @@ impl<'a> Data<'a> {
             (Series::TournoiFrancophone, _) => unimplemented!(),
             (Series::TriforceBlitz, "2") => from_file!("../../assets/event/tfb/chests-2-7.1.3-blitz.42.json"),
             (Series::TriforceBlitz, _) => unimplemented!(),
+            (Series::WeTryToBeBetter, "1") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
+            (Series::WeTryToBeBetter, _) => unimplemented!(),
         }
     }
 
@@ -411,6 +415,7 @@ impl<'a> Data<'a> {
             Series::Standard => false,
             Series::TournoiFrancophone => false,
             Series::TriforceBlitz => false,
+            Series::WeTryToBeBetter => false,
         }
     }
 
@@ -439,6 +444,7 @@ impl<'a> Data<'a> {
             Series::Standard => TeamConfig::Solo,
             Series::TournoiFrancophone => TeamConfig::Solo,
             Series::TriforceBlitz => TeamConfig::Solo,
+            Series::WeTryToBeBetter => TeamConfig::Solo,
         }
     }
 
@@ -730,6 +736,7 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
         Series::Standard => s::info(event),
         Series::TournoiFrancophone => fr::info(&mut transaction, &data).await?,
         Series::TriforceBlitz => tfb::info(&mut transaction, &data).await?,
+        Series::WeTryToBeBetter => wttbb::info(&mut transaction, &data).await?,
     };
     let content = html! {
         : header;
@@ -1053,6 +1060,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                         Series::Standard => @unimplemented // no signups on Mido's House
                         Series::TournoiFrancophone => p : "Planifiez vos matches dans les fils du canal dédié.";
                         Series::TriforceBlitz => : tfb::status(&mut transaction, csrf, &data, Some(row.id), &mut ctx).await?;
+                        Series::WeTryToBeBetter => p : "Planifiez vos matches dans les fils du canal dédié.";
                     }
                     @if !data.is_ended() {
                         h2 : "Options";
