@@ -271,6 +271,7 @@ pub(crate) enum Goal {
     Sgl2023,
     TournoiFrancoS3,
     TriforceBlitz,
+    WeTryToBeBetter,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -295,13 +296,26 @@ impl Goal {
             Self::Sgl2023 => series == Series::SpeedGaming && matches!(event, "2023onl" | "2023live"),
             Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
             Self::TriforceBlitz => series == Series::TriforceBlitz,
+            Self::WeTryToBeBetter => series == Series::WeTryToBeBetter && event == "1",
         }
     }
 
     pub(crate) fn is_custom(&self) -> bool {
         match self {
-            Self::Rsl | Self::TriforceBlitz => false,
-            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::MultiworldS3 | Self::MultiworldS4 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Sgl2023 | Self::TournoiFrancoS3 => true,
+            | Self::Rsl
+            | Self::TriforceBlitz
+                => false,
+            | Self::CopaDoBrasil
+            | Self::MixedPoolsS2
+            | Self::MultiworldS3
+            | Self::MultiworldS4
+            | Self::NineDaysOfSaws
+            | Self::Pic7
+            | Self::PicRs2
+            | Self::Sgl2023
+            | Self::TournoiFrancoS3
+            | Self::WeTryToBeBetter
+                => true,
         }
     }
 
@@ -318,14 +332,27 @@ impl Goal {
             Self::Sgl2023 => "SGL 2023",
             Self::TournoiFrancoS3 => "Tournoi Francophone Saison 3",
             Self::TriforceBlitz => "Triforce Blitz",
+            Self::WeTryToBeBetter => "WeTryToBeBetter",
         }
     }
 
     fn language(&self) -> Language {
         match self {
-            Self::CopaDoBrasil => Portuguese,
-            Self::TournoiFrancoS3 => French,
-            _ => English,
+            | Self::MixedPoolsS2
+            | Self::MultiworldS3
+            | Self::MultiworldS4
+            | Self::NineDaysOfSaws
+            | Self::Pic7
+            | Self::PicRs2
+            | Self::Rsl
+            | Self::Sgl2023
+            | Self::TriforceBlitz
+                => English,
+            | Self::TournoiFrancoS3
+            | Self::WeTryToBeBetter
+                => French,
+            | Self::CopaDoBrasil
+                => Portuguese,
         }
     }
 
@@ -334,14 +361,26 @@ impl Goal {
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
             Self::MultiworldS4 => None, //TODO
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
-            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Rsl | Self::Sgl2023 | Self::TriforceBlitz => None,
+            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Rsl | Self::Sgl2023 | Self::TriforceBlitz | Self::WeTryToBeBetter => None,
         }
     }
 
     fn preroll_seeds(&self) -> bool {
         match self {
-            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::MultiworldS3 | Self::MultiworldS4 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Rsl | Self::TournoiFrancoS3 => true,
-            Self::Sgl2023 | Self::TriforceBlitz => false,
+            | Self::Sgl2023
+            | Self::TriforceBlitz
+                => false,
+            | Self::CopaDoBrasil
+            | Self::MixedPoolsS2
+            | Self::MultiworldS3
+            | Self::MultiworldS4
+            | Self::NineDaysOfSaws
+            | Self::Pic7
+            | Self::PicRs2
+            | Self::Rsl
+            | Self::TournoiFrancoS3
+            | Self::WeTryToBeBetter
+                => true,
         }
     }
 
@@ -356,14 +395,27 @@ impl Goal {
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl),
             Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
+            Self::WeTryToBeBetter => VersionedBranch::Latest(rando::Branch::Dev),
             Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
         }
     }
 
     fn should_create_rooms(&self) -> bool {
         match self {
-            Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::Rsl => false,
-            Self::CopaDoBrasil | Self::MultiworldS3 | Self::MultiworldS4 | Self::Pic7 | Self::PicRs2 | Self::Sgl2023 | Self::TournoiFrancoS3 | Self::TriforceBlitz => true,
+            | Self::MixedPoolsS2
+            | Self::NineDaysOfSaws
+            | Self::Rsl
+                => false,
+            | Self::CopaDoBrasil
+            | Self::MultiworldS3
+            | Self::MultiworldS4
+            | Self::Pic7
+            | Self::PicRs2
+            | Self::Sgl2023
+            | Self::TournoiFrancoS3
+            | Self::TriforceBlitz
+            | Self::WeTryToBeBetter
+                => true,
         }
     }
 
@@ -372,6 +424,7 @@ impl Goal {
             Self::Pic7 => ctx.say("!seed: The settings used for the race").await?,
             Self::PicRs2 => ctx.say("!seed: The weights used for the race").await?,
             Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::Sgl2023 => ctx.say("!seed: The settings used for the tournament").await?,
+            Self::WeTryToBeBetter => ctx.say("!seed : Les settings utilisés pour le tournoi").await?,
             Self::MultiworldS3 => {
                 ctx.say("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
                 ctx.say("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
@@ -2210,6 +2263,18 @@ impl RaceHandler<GlobalState> for Handler {
                                 }),
                             ],
                         ).await?,
+                        Goal::WeTryToBeBetter => ctx.send_message(
+                            "Bienvenue ! Ceci est une practice room pour le tournoi WeTryToBeBetter. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/wttbb/1",
+                            true,
+                            vec![
+                                ("Roll seed", ActionButton::Message {
+                                    message: format!("!seed"),
+                                    help_text: Some(format!("Roll une seed avec les settings utilisés pour le tournoi.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                            ],
+                        ).await?,
                     },
                     RaceState::Rolled(_) => ctx.say("@entrants I just restarted. You may have to reconfigure !breaks and !fpa. Sorry about that.").await?,
                     RaceState::Draft { .. } | RaceState::Rolling | RaceState::SpoilerSent => unreachable!(),
@@ -2307,6 +2372,7 @@ impl RaceHandler<GlobalState> for Handler {
                         }, 1, true, English, "a", format!("random settings Pictionary seed")),
                         Goal::Sgl2023 => this.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), sgl::settings_2023(), false, English, "a", format!("seed")),
                         Goal::TriforceBlitz => this.roll_tfb_seed(ctx, state, "LATEST", false, English, "a", format!("Triforce Blitz S2 seed")).await,
+                        Goal::WeTryToBeBetter => this.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), wttbb::settings(), false, French, "une", format!("seed")),
                     },
                     RaceState::Draft { .. } => {
                         drop(state);
@@ -3127,6 +3193,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     goal.send_presets(ctx).await?;
                                 }
                             },
+                            Goal::WeTryToBeBetter => self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), wttbb::settings(), spoiler_log, French, "une", format!("seed")),
                         }
                     },
                     RaceState::Draft { .. } => ctx.say(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
@@ -3276,7 +3343,7 @@ impl RaceHandler<GlobalState> for Handler {
                             })
                         });
                     }
-                    Goal::CopaDoBrasil | Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::NineDaysOfSaws | Goal::Rsl | Goal::Sgl2023 | Goal::TournoiFrancoS3 => {}
+                    Goal::CopaDoBrasil | Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::NineDaysOfSaws | Goal::Rsl | Goal::Sgl2023 | Goal::TournoiFrancoS3 | Goal::WeTryToBeBetter => {}
                 }
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx).await? {
