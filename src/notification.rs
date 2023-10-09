@@ -47,7 +47,7 @@ impl Notification {
         Ok(notifications)
     }
 
-    async fn into_html(self, transaction: &mut Transaction<'_, Postgres>, env: Environment, me: &User, csrf: &Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
+    async fn into_html(self, transaction: &mut Transaction<'_, Postgres>, env: Environment, me: &User, csrf: Option<&CsrfToken>) -> Result<RawHtml<String>, Error> {
         Ok(match self {
             Self::Simple(id) => {
                 let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await? {
@@ -95,129 +95,135 @@ impl Notification {
                     }
                 }
             }
-            Self::TeamInvite(team_id) => {
-                let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, team_id as _).fetch_one(&mut **transaction).await?;
-                let event = event::Data::new(&mut *transaction, team_row.series, team_row.event).await?.ok_or(Error::UnknownEvent)?;
-                let mut creator = None;
-                let mut my_role = None;
-                let mut teammates = Vec::default();
-                for member in sqlx::query!(r#"SELECT member AS "id: Id<Users>", status AS "status: SignupStatus", role AS "role: Role" FROM team_members WHERE team = $1"#, team_id as _).fetch_all(&mut **transaction).await? {
-                    if member.id == me.id {
-                        my_role = Some(member.role);
-                    } else {
-                        let is_confirmed = match member.status {
-                            SignupStatus::Created => {
-                                creator = Some((User::from_id(&mut **transaction, member.id).await?.ok_or(Error::UnknownUser)?, member.role));
-                                continue
-                            }
-                            SignupStatus::Confirmed => true,
-                            SignupStatus::Unconfirmed => false,
-                        };
-                        let user = User::from_id(&mut **transaction, member.id).await?.ok_or(Error::UnknownUser)?;
-                        teammates.push(html! {
-                            : user;
-                            : " (";
-                            @match event.team_config() {
-                                TeamConfig::Solo => @unreachable // team invite for solo event
-                                TeamConfig::CoOp => {}
-                                TeamConfig::Pictionary => {
-                                    : pic::Role::try_from(member.role).expect("non-Pictionary role in Pictionary team");
-                                    : ", ";
-                                }
-                                TeamConfig::Multiworld => {
-                                    : mw::Role::try_from(member.role).expect("non-multiworld role in multiworld team");
-                                    : ", ";
-                                }
-                            }
-                            @if is_confirmed {
-                                : "confirmed)";
-                            } else {
-                                : "unconfirmed)";
-                            }
-                        });
-                    }
-                }
-                let (creator, creator_role) = creator.ok_or(Error::UnknownUser)?;
-                let my_role = my_role.ok_or(Error::UnknownUser)?;
-                html! {
-                    @match event.team_config() {
-                        TeamConfig::Solo => @unreachable // team invite for solo event
-                        TeamConfig::CoOp => {
-                            : creator;
-                            : " invited you to join ";
-                            : creator.possessive_determiner();
-                            : " team";
-                            @if let Some(team_name) = team_row.name {
-                                : " “";
-                                : team_name;
-                                : "”";
-                            }
-                            : " for ";
-                            : event;
-                            @if let Some(teammates) = English.join_html(teammates) {
-                                : " together with ";
-                                : teammates;
-                            }
-                            : ".";
-                        }
-                        TeamConfig::Pictionary => {
-                            : creator;
-                            : " (";
-                            : pic::Role::try_from(creator_role).expect("non-Pictionary role in Pictionary team");
-                            : ") invited you to join ";
-                            : creator.possessive_determiner();
-                            : " team";
-                            @if let Some(team_name) = team_row.name {
-                                : " “";
-                                : team_name;
-                                : "”";
-                            }
-                            : " for ";
-                            : event;
-                            : " as ";
-                            : pic::Role::try_from(my_role).expect("non-Pictionary role in Pictionary team");
-                            @if let Some(teammates) = English.join_html(teammates) {
-                                : " together with ";
-                                : teammates;
-                            }
-                            : ".";
-                        }
-                        TeamConfig::Multiworld => {
-                            : creator;
-                            : " (";
-                            : mw::Role::try_from(creator_role).expect("non-multiworld role in multiworld team");
-                            : ") invited you to enter ";
-                            : event;
-                            : " as ";
-                            : mw::Role::try_from(my_role).expect("non-multiworld role in multiworld team");
-                            : " for team ";
-                            a(href = format!("https://{}/team/{}", env.racetime_host(), team_row.racetime_slug.expect("multiworld team without racetime slug"))) : team_row.name; //TODO use Team type
-                            @if let Some(teammates) = English.join_html(teammates) {
-                                : " together with ";
-                                : teammates;
-                            }
-                            : ".";
-                        }
-                    }
-                    div(class = "button-row") {
-                        @if matches!(event.team_config(), TeamConfig::Pictionary) && my_role == Role::Sheikah && me.racetime.is_none() {
-                            a(class = "button", href = uri!(crate::auth::racetime_login(Some(uri!(notifications)))).to_string()) : "Connect racetime.gg Account to Accept";
-                        } else {
-                            form(action = uri!(crate::event::confirm_signup(event.series, &*event.event, team_id)).to_string(), method = "post") {
-                                : csrf;
-                                input(type = "submit", value = "Accept");
-                            }
-                        }
-                        form(action = uri!(crate::event::resign_post(event.series, &*event.event, team_id)).to_string(), method = "post") {
-                            : csrf;
-                            input(type = "submit", value = "Decline");
-                        }
-                        //TODO options to block sender or event
-                    }
-                }
-            }
+            Self::TeamInvite(team_id) => team_invite(transaction, env, me, csrf, team_id).await?,
         })
     }
+}
+
+pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, env: Environment, me: &User, csrf: Option<&CsrfToken>, team_id: Id<Teams>) -> Result<RawHtml<String>, Error> {
+    let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, team_id as _).fetch_one(&mut **transaction).await?;
+    let event = event::Data::new(&mut *transaction, team_row.series, team_row.event).await?.ok_or(Error::UnknownEvent)?;
+    let mut creator = None;
+    let mut my_role = None;
+    let mut teammates = Vec::default();
+    for member in sqlx::query!(r#"SELECT member AS "id: Id<Users>", status AS "status: SignupStatus", role AS "role: Role" FROM team_members WHERE team = $1"#, team_id as _).fetch_all(&mut **transaction).await? {
+        if member.id == me.id {
+            my_role = Some(member.role);
+        } else {
+            let is_confirmed = match member.status {
+                SignupStatus::Created => {
+                    creator = Some((User::from_id(&mut **transaction, member.id).await?.ok_or(Error::UnknownUser)?, member.role));
+                    continue
+                }
+                SignupStatus::Confirmed => true,
+                SignupStatus::Unconfirmed => false,
+            };
+            let user = User::from_id(&mut **transaction, member.id).await?.ok_or(Error::UnknownUser)?;
+            teammates.push(html! {
+                : user;
+                : " (";
+                @match event.team_config() {
+                    TeamConfig::Solo => @unreachable // team invite for solo event
+                    TeamConfig::CoOp => {}
+                    TeamConfig::Pictionary => {
+                        : pic::Role::try_from(member.role).expect("non-Pictionary role in Pictionary team");
+                        : ", ";
+                    }
+                    TeamConfig::Multiworld => {
+                        : mw::Role::try_from(member.role).expect("non-multiworld role in multiworld team");
+                        : ", ";
+                    }
+                }
+                @if is_confirmed {
+                    : "confirmed)";
+                } else {
+                    : "unconfirmed)";
+                }
+            });
+        }
+    }
+    let (creator, creator_role) = creator.ok_or(Error::UnknownUser)?;
+    let my_role = my_role.ok_or(Error::UnknownUser)?;
+    Ok(html! {
+        @match event.team_config() {
+            TeamConfig::Solo => {
+                : "You have been invited to enter ";
+                : event;
+                : ".";
+            }
+            TeamConfig::CoOp => {
+                : creator;
+                : " invited you to join ";
+                : creator.possessive_determiner();
+                : " team";
+                @if let Some(team_name) = team_row.name {
+                    : " “";
+                    : team_name;
+                    : "”";
+                }
+                : " for ";
+                : event;
+                @if let Some(teammates) = English.join_html(teammates) {
+                    : " together with ";
+                    : teammates;
+                }
+                : ".";
+            }
+            TeamConfig::Pictionary => {
+                : creator;
+                : " (";
+                : pic::Role::try_from(creator_role).expect("non-Pictionary role in Pictionary team");
+                : ") invited you to join ";
+                : creator.possessive_determiner();
+                : " team";
+                @if let Some(team_name) = team_row.name {
+                    : " “";
+                    : team_name;
+                    : "”";
+                }
+                : " for ";
+                : event;
+                : " as ";
+                : pic::Role::try_from(my_role).expect("non-Pictionary role in Pictionary team");
+                @if let Some(teammates) = English.join_html(teammates) {
+                    : " together with ";
+                    : teammates;
+                }
+                : ".";
+            }
+            TeamConfig::Multiworld => {
+                : creator;
+                : " (";
+                : mw::Role::try_from(creator_role).expect("non-multiworld role in multiworld team");
+                : ") invited you to enter ";
+                : event;
+                : " as ";
+                : mw::Role::try_from(my_role).expect("non-multiworld role in multiworld team");
+                : " for team ";
+                a(href = format!("https://{}/team/{}", env.racetime_host(), team_row.racetime_slug.expect("multiworld team without racetime slug"))) : team_row.name; //TODO use Team type
+                @if let Some(teammates) = English.join_html(teammates) {
+                    : " together with ";
+                    : teammates;
+                }
+                : ".";
+            }
+        }
+        div(class = "button-row") {
+            @if matches!(event.team_config(), TeamConfig::Pictionary) && my_role == Role::Sheikah && me.racetime.is_none() {
+                a(class = "button", href = uri!(crate::auth::racetime_login(Some(uri!(notifications)))).to_string()) : "Connect racetime.gg Account to Accept";
+            } else {
+                form(action = uri!(crate::event::confirm_signup(event.series, &*event.event, team_id)).to_string(), method = "post") {
+                    : csrf;
+                    input(type = "submit", value = "Accept");
+                }
+            }
+            form(action = uri!(crate::event::resign_post(event.series, &*event.event, team_id)).to_string(), method = "post") {
+                : csrf;
+                input(type = "submit", value = "Decline");
+            }
+            //TODO options to block sender or event
+        }
+    })
 }
 
 #[rocket::get("/notifications")]
@@ -226,7 +232,7 @@ pub(crate) async fn notifications(pool: &State<PgPool>, env: &State<Environment>
     Ok(if let Some(me) = me {
         let mut notifications = Vec::default();
         for notification in Notification::get(&mut transaction, &me).await? {
-            notifications.push(notification.into_html(&mut transaction, **env, &me, &csrf).await?);
+            notifications.push(notification.into_html(&mut transaction, **env, &me, csrf.as_ref()).await?);
         }
         page(transaction, &Some(me), &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
             h1 : "Notifications";

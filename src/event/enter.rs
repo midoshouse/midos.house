@@ -380,6 +380,7 @@ pub(crate) enum Error {
     #[error(transparent)] Cal(#[from] crate::cal::Error),
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Event(#[from] crate::event::Error),
+    #[error(transparent)] Notification(#[from] crate::notification::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
@@ -414,6 +415,11 @@ pub(crate) struct EnterForm {
 
 async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, client: &reqwest::Client, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
     //TODO if already entered, redirect to status page
+    let my_invites = if let Some(ref me) = me {
+        sqlx::query_scalar!(r#"SELECT team AS "team: Id<Teams>" FROM teams, team_members WHERE series = $1 AND event = $2 AND member = $3 AND status = 'unconfirmed'"#, data.series as _, &*data.event, me.id as _).fetch_all(&mut *transaction).await?
+    } else {
+        Vec::default()
+    };
     let content = if data.is_started(&mut transaction).await? {
         html! {
             article {
@@ -505,6 +511,26 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                             }
                         }
                     }
+                } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE series = $1 AND event = $2) AS "exists!""#, data.series as _, &*data.event).fetch_one(&mut *transaction).await? {
+                    if me.is_none() {
+                        html! {
+                            article {
+                                p {
+                                    : "This is an invitational event. ";
+                                    a(href = uri!(auth::login(Some(uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
+                                    : " to see if you're invited.";
+                                }
+                            }
+                        }
+                    } else if my_invites.is_empty() {
+                        html! {
+                            article {
+                                p : "This is an invitational event and it looks like you're not invited.";
+                            }
+                        }
+                    } else {
+                        html! {} // invite should be rendered above this content
+                    }
                 } else {
                     html! {
                         article {
@@ -518,8 +544,14 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
         }
     };
     let header = data.header(&mut transaction, env, me.as_ref(), Tab::Enter, false).await?;
+    let invites = html! {
+        @for team_id in my_invites {
+            : crate::notification::team_invite(&mut transaction, env, me.as_ref().expect("got a team invite while not logged in"), csrf, team_id).await?;
+        }
+    };
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
         : header;
+        : invites;
         : content;
     }).await?)
 }
