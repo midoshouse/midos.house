@@ -142,7 +142,6 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, env
             });
         }
     }
-    let (creator, creator_role) = creator.ok_or(Error::UnknownUser)?;
     let my_role = my_role.ok_or(Error::UnknownUser)?;
     Ok(html! {
         @match event.team_config() {
@@ -152,6 +151,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, env
                 : ".";
             }
             TeamConfig::CoOp => {
+                @let (creator, creator_role) = creator.ok_or(Error::UnknownUser)?;
                 : creator;
                 : " invited you to join ";
                 : creator.possessive_determiner();
@@ -170,6 +170,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, env
                 : ".";
             }
             TeamConfig::Pictionary => {
+                @let (creator, creator_role) = creator.ok_or(Error::UnknownUser)?;
                 : creator;
                 : " (";
                 : pic::Role::try_from(creator_role).expect("non-Pictionary role in Pictionary team");
@@ -192,6 +193,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, env
                 : ".";
             }
             TeamConfig::Multiworld => {
+                @let (creator, creator_role) = creator.ok_or(Error::UnknownUser)?;
                 : creator;
                 : " (";
                 : mw::Role::try_from(creator_role).expect("non-multiworld role in multiworld team");
