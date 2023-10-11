@@ -2305,7 +2305,7 @@ impl RaceHandler<GlobalState> for Handler {
                 for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
                     let data = ctx.data().await;
                     if data.monitors.iter().find(|monitor| monitor.id == *restreamer).is_some() { continue }
-                    if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == *restreamer) {
+                    if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == *restreamer) { //TODO keep track of pending changes to the entrant list made in this method and match accordingly, e.g. players who are also monitoring should not be uninvited
                         match entrant.status.value {
                             EntrantStatusValue::Requested => {
                                 ctx.accept_request(restreamer).await?;

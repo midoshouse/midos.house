@@ -21,7 +21,10 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     a(href = "https://discord.gg/YKvbQSBT5") : "le serveur Discord";
                     : " pour plus de détails.";
                 }
-                p : "On utilisera le Standard Rulesets pour ce tournoi. Le KZ skip sera autorisé.";
+                p {
+                    : "Voir le ";
+                    a(href = "https://docs.google.com/document/d/1qXnZTj-2voLKHB0D8Yv9_les7GRInoOwvMW6qMcJkwk/edit") : "règlement du tournoi";
+                }
             }
         }),
         _ => None,
