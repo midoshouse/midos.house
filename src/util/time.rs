@@ -26,6 +26,32 @@ pub(crate) fn decode_pginterval(PgInterval { months, days, microseconds }: PgInt
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum TimeFromLocalError<T> {
+    #[error("invalid timestamp")]
+    None,
+    #[error("ambiguous timestamp")]
+    Ambiguous([T; 2]),
+}
+
+pub(crate) trait LocalResultExt {
+    type Ok;
+
+    fn single_ok(self) -> Result<Self::Ok, TimeFromLocalError<Self::Ok>>;
+}
+
+impl<T> LocalResultExt for chrono::LocalResult<T> {
+    type Ok = T;
+
+    fn single_ok(self) -> Result<T, TimeFromLocalError<T>> {
+        match self {
+            Self::None => Err(TimeFromLocalError::None),
+            Self::Single(value) => Ok(value),
+            Self::Ambiguous(value1, value2) => Err(TimeFromLocalError::Ambiguous([value1, value2])),
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum DurationUnit {
     Hours,

@@ -1,5 +1,9 @@
 use {
     chrono::Duration,
+    chrono_tz::{
+        America,
+        Tz,
+    },
     ics::{
         ICalendar,
         properties::{
@@ -500,6 +504,16 @@ impl Race {
                         }
                     }
                 }
+                if race.video_urls.iter().any(|(language, new_url)| found_race.video_urls.get(language).map_or(true, |old_url| old_url != new_url)) {
+                    if found_race.video_urls.iter().all(|(language, old_url)| race.video_urls.get(language).map_or(true, |new_url| old_url == new_url)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
+                        sqlx::query!("UPDATE races SET video_url = $1, video_url_fr = $2, video_url_pt = $3 WHERE id = $4",
+                            race.video_urls.get(&English).or_else(|| found_race.video_urls.get(&English)).map(|url| url.to_string()),
+                            race.video_urls.get(&French).or_else(|| found_race.video_urls.get(&French)).map(|url| url.to_string()),
+                            race.video_urls.get(&Portuguese).or_else(|| found_race.video_urls.get(&Portuguese)).map(|url| url.to_string()),
+                            found_race.id as _,
+                        ).execute(&mut **transaction).await?;
+                    }
+                }
             } else {
                 // add race to database
                 race.save(transaction).await?;
@@ -650,7 +664,58 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::Scrubs => match &*event.event {
-                "5" => {} //TODO get bracket races from Google sheet
+                "5" => for row in sheet_values(http_client.clone(), "1w1AS87VMB7jE-qiFmSYPlCiLh8pf6F5fdYz_I0I8aE8", "B3:G").await? {
+                    let (time_et, group, round, matchup, restream) = match &*row {
+                        [time_et, _time_utc, group, round, matchup] => (time_et, group, round, matchup, ""),
+                        [time_et, _time_utc, group, round, matchup, restream] => (time_et, group, round, matchup, &**restream),
+                        _ => continue,
+                    };
+                    let id = Id::new(&mut *transaction).await?;
+                    let (phase, round, entrants) = if let "Qualifier" = &**round {
+                        let Some(round) = round.strip_prefix("Scrubs Qualifier ") else { continue };
+                        (format!("Live Qualifier"), round.to_owned(), Entrants::Open)
+                    } else {
+                        let Some((p1, p2)) = matchup.split_once(" vs. ") else { continue };
+                        (format!("Group {group}"), round.clone(), Entrants::Two([
+                            Entrant::Named(p1.to_owned()),
+                            Entrant::Named(p2.to_owned()),
+                        ]))
+                    };
+                    add_or_update_race(&mut *transaction, &mut races, Self {
+                        series: event.series,
+                        event: event.event.to_string(),
+                        startgg_event: None,
+                        startgg_set: None,
+                        phase: Some(phase),
+                        round: Some(round),
+                        game: None,
+                        scheduling_thread: None,
+                        schedule: RaceSchedule::Live {
+                            start: {
+                                // source timestamp is without year, guess the year by assuming all races in the event are between 2023-09-01 and 2024-08-31
+                                let start = NaiveDateTime::parse_from_str(&format!("2023 at {time_et}"), "%Y at %b %d,  %I:%M%p")?.and_local_timezone(America::New_York).single_ok()?;
+                                if start < America::New_York.with_ymd_and_hms(2023, 9, 1, 0, 0, 0).single_ok()? {
+                                    NaiveDateTime::parse_from_str(&format!("2024 at {time_et}"), "%Y at %b %d,  %I:%M%p")?.and_local_timezone(America::New_York).single_ok()?
+                                } else {
+                                    start
+                                }
+                            }.with_timezone(&Utc),
+                            end: None,
+                            room: None,
+                        },
+                        draft: None,
+                        seed: seed::Data::default(),
+                        video_urls: if restream.is_empty() {
+                            HashMap::default()
+                        } else {
+                            collect![English => format!("https://twitch.tv/{restream}").parse()?]
+                        },
+                        restreamers: HashMap::default(),
+                        ignored: false,
+                        schedule_locked: false,
+                        id, entrants,
+                    }).await?;
+                },
                 _ => unimplemented!(),
             },
             Series::SpeedGaming => match &*event.event {
@@ -1168,6 +1233,7 @@ pub(crate) enum Error {
     #[error(transparent)] Sheets(#[from] SheetsError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
+    #[error(transparent)] TimeFromLocal(#[from] TimeFromLocalError<DateTime<Tz>>),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("wrong number of teams in start.gg set {startgg_set}")]
