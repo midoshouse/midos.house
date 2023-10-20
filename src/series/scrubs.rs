@@ -20,6 +20,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 h2 : "See also";
                 ul {
                     li {
+                        a(href = "https://docs.google.com/document/d/10_MYzGsd4pH6aJ_OBH9dniTeUkRSDFQ3YWxMjzTjK5Q/edit") : "Tournament rules";
+                    }
+                    li {
                         a(href = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRtASXFkNaSzqJoFSmjDpU2XfClRdogkRAgTsJ7RSCiZwUwkrXNcjF06fO_I8vMWfchkUKCrACXPmyE/pubhtml?gid=566134238") : "Qualifier scores & offline qualifier times";
                     }
                     li {
