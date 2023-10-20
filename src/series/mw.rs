@@ -16,11 +16,13 @@ use {
     },
 };
 
-#[derive(Debug, Clone, Copy, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type, FromFormField)]
 #[sqlx(type_name = "mw_impl", rename_all = "snake_case")]
 pub(crate) enum Impl {
+    #[field(value = "bizhawk_co_op")]
     #[sqlx(rename = "bizhawk_co_op")]
     BizHawkCoOp,
+    #[field(value = "midos_house")]
     MidosHouse,
 }
 
@@ -752,6 +754,17 @@ impl<'v> EnterFormStep2Defaults<'v> {
     pub(crate) fn startgg_id(&self, racetime_id: &str) -> Option<&str> {
         match self {
             Self::Context(ctx) => ctx.field_value(&*format!("startgg_id[{racetime_id}]")),
+            Self::Values { .. } => None,
+        }
+    }
+
+    pub(crate) fn mw_impl(&self) -> Option<Impl> {
+        match self {
+            Self::Context(ctx) => match ctx.field_value("mw_impl") {
+                Some("bizhawk_co_op") => Some(Impl::BizHawkCoOp),
+                Some("midos_house") => Some(Impl::MidosHouse),
+                _ => None,
+            },
             Self::Values { .. } => None,
         }
     }

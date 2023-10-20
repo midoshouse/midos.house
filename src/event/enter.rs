@@ -408,6 +408,7 @@ pub(crate) struct EnterForm {
     step2: bool,
     roles: HashMap<String, Role>,
     startgg_id: HashMap<String, String>,
+    mw_impl: Option<mw::Impl>,
     restream_consent: bool,
     #[field(default = String::new())]
     text_field: String,
@@ -594,6 +595,15 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                                 a(href = "https://start.gg/") : "start.gg";
                                 : " profile and clicking your name.)";
                             }
+                        });
+                    }
+                    @if let TeamConfig::Multiworld = data.team_config() {
+                        : form_field("mw_impl", &mut errors, html! {
+                            label(for = "mw_impl") : "Multiworld plugin:";
+                            input(id = "mw_impl-bizhawk_co_op", type = "radio", name = "mw_impl", value = "bizhawk_co_op", checked? = defaults.mw_impl() == Some(mw::Impl::BizHawkCoOp));
+                            label(for = "mw_impl-bizhawk_co_op") : "bizhawk-co-op";
+                            input(id = "mw_impl-midos_house", type = "radio", name = "mw_impl", value = "midos_house", checked? = defaults.mw_impl() == Some(mw::Impl::MidosHouse));
+                            label(for = "mw_impl-midos_house") : "Mido's House Multiworld";
                         });
                     }
                     : form_field("restream_consent", &mut errors, html! {
@@ -861,6 +871,9 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                                 form.context.push_error(form::Error::validation(format!("No team member is assigned as {label}.")));
                             }
                         }
+                        if let (TeamConfig::Multiworld, None) = (data.team_config(), value.mw_impl) {
+                            form.context.push_error(form::Error::validation("This field is required.").with_name("mw_impl"));
+                        }
                         (racetime_team.slug.clone(), racetime_team.name.clone(), users, roles, startgg_ids)
                     } else {
                         Default::default()
@@ -871,7 +884,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                 if form.context.errors().next().is_none() {
                     return Ok(if value.step2 {
                         let id = Id::<Teams>::new(&mut transaction).await?;
-                        sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent, text_field) VALUES ($1, $2, $3, $4, $5, $6, $7)", id as _, series as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent, value.text_field).execute(&mut *transaction).await?;
+                        sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent, text_field, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", id as _, series as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent, value.text_field, value.mw_impl as _).execute(&mut *transaction).await?;
                         for ((user, role), startgg_id) in users.into_iter().zip_eq(roles).zip_eq(startgg_ids) {
                             sqlx::query!(
                                 "INSERT INTO team_members (team, member, status, role, startgg_id) VALUES ($1, $2, $3, $4, $5)",
