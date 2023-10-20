@@ -17,7 +17,10 @@ use {
     reqwest::StatusCode,
     rocket_util::Response,
     sqlx::types::Json,
-    wheel::traits::IsNetworkError,
+    wheel::traits::{
+        IsNetworkError,
+        LocalResultExt as _,
+    },
     yup_oauth2::{
         ServiceAccountAuthenticator,
         read_service_account_key,
@@ -1233,7 +1236,7 @@ pub(crate) enum Error {
     #[error(transparent)] Sheets(#[from] SheetsError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
-    #[error(transparent)] TimeFromLocal(#[from] TimeFromLocalError<DateTime<Tz>>),
+    #[error(transparent)] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("wrong number of teams in start.gg set {startgg_set}")]

@@ -9,9 +9,7 @@ pub(crate) use self::{
     time::{
         DateTimeFormat,
         DurationUnit,
-        LocalResultExt as _,
         PgIntervalDecodeError,
-        TimeFromLocalError,
         decode_pginterval,
         format_date_range,
         format_datetime,
