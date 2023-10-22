@@ -872,14 +872,18 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
                                         a(class = "favicon", href = startgg_url.to_string()) : favicon(&startgg_url);
                                     }
                                     @for room in race.rooms() {
-                                        //TODO hide room of 1st async half until 2nd half finished
                                         a(class = "favicon", href = room.to_string()) : favicon(&room);
                                     }
                                 }
                             }
                             @if has_seeds {
-                                //TODO hide seed if unfinished async
-                                : seed::table_cells(now, &race.seed, true, can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
+                                @if race.cal_events().all(|event| event.end().is_some()) || !race.cal_events().any(|event| event.is_first_async_half()) {
+                                    : seed::table_cells(now, &race.seed, true, can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
+                                } else {
+                                    // hide seed if unfinished async
+                                    //TODO show to the team that played the 1st async half
+                                    : seed::table_cells(now, &seed::Data::default(), true, None).await?;
+                                }
                             }
                             @if show_restream_consent {
                                 td {

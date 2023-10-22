@@ -52,7 +52,7 @@ pub(crate) fn parse_duration(mut s: &str, default_unit: DurationUnit) -> Option<
             None => break,
             Some(' ') => s = &s[1..],
             Some('0'..='9') => {
-                let (_, magnitude, rest) = regex_captures!("^([0-9]+)(.*)$", s)?;
+                let (_, magnitude, rest) = regex_captures!("^([0-9]+)(.*)$", s)?; //TODO allow fractional magnitudes? (e.g. 2.5h = 2h30m)
                 if last_magnitude.replace(magnitude.parse().ok()?).is_some() {
                     return None // multiple whitespace-separated numbers
                 }

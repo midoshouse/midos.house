@@ -779,7 +779,7 @@ impl Race {
         })
     }
 
-    fn cal_events(&self) -> impl Iterator<Item = Event> + Send {
+    pub(crate) fn cal_events(&self) -> impl Iterator<Item = Event> + Send {
         match self.schedule {
             RaceSchedule::Unscheduled => Box::new(iter::empty()) as Box<dyn Iterator<Item = Event> + Send>,
             RaceSchedule::Live { .. } => Box::new(iter::once(Event { race: self.clone(), kind: EventKind::Normal })),
@@ -788,7 +788,10 @@ impl Race {
     }
 
     pub(crate) fn rooms(&self) -> impl Iterator<Item = Url> + Send {
-        self.cal_events().filter_map(|event| event.room().cloned())
+        // hide room of 1st async half until 2nd half finished
+        //TODO show to the team that played the 1st async half
+        let all_ended = self.cal_events().all(|event| event.end().is_some());
+        self.cal_events().filter(move |event| all_ended || !event.is_first_async_half()).filter_map(|event| event.room().cloned())
     }
 
     pub(crate) fn teams(&self) -> impl Iterator<Item = &Team> + Send {

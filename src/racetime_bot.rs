@@ -1881,7 +1881,7 @@ impl RaceHandler<GlobalState> for Handler {
                     ctx.say(if let French = goal.language() {
                         "Le FPA est activé pour cette race. Les joueurs pourront utiliser !fpa pendant la race pour signaler d'un problème technique de leur côté. Les race monitors doivent activer les notifications en cliquant sur l'icône de cloche 🔔 sous le chat."
                     } else {
-                        "Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors should enable notifications using the bell 🔔 icon below chat."
+                        "Fair play agreement is active for this official race. Entrants may use the !fpa command during the race to notify of a crash. Race monitors (if any) should enable notifications using the bell 🔔 icon below chat."
                     }).await?; //TODO different message for monitorless FPA?
                     true
                 }
@@ -2461,7 +2461,7 @@ impl RaceHandler<GlobalState> for Handler {
                     ctx.say(&if let French = goal.language() {
                         format!("Désolé {reply_to}, je ne reconnais pas ce format pour les pauses. Exemple pour les activer : !breaks 5m every 2h30.")
                     } else {
-                        format!("Sorry {reply_to}, I don't recognise that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off")
+                        format!("Sorry {reply_to}, I don't recognize that format for breaks. Example commands: !breaks 5m every 2h30, !breaks off")
                     }).await?;
                 },
             },
@@ -2751,7 +2751,7 @@ impl RaceHandler<GlobalState> for Handler {
                             ctx.say(&format!("Sorry {reply_to}, that doesn't seem to be a valid URL or Twitch channel.")).await?;
                         }
                     } else {
-                        ctx.say(&format!("Sorry {reply_to}, I don't recognise that format for adding a restreamer.")).await?; //TODO better help message
+                        ctx.say(&format!("Sorry {reply_to}, I don't recognize that format for adding a restreamer.")).await?; //TODO better help message
                     }
                 } else {
                     ctx.say(&if let French = goal.language() {
