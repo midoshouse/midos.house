@@ -26,7 +26,7 @@ pub(crate) enum Impl {
     MidosHouse,
 }
 
-pub(crate) struct S3Setting {
+pub(crate) struct Setting {
     pub(crate) name: &'static str,
     pub(crate) display: &'static str,
     pub(crate) default: &'static str,
@@ -35,21 +35,51 @@ pub(crate) struct S3Setting {
     pub(crate) description: &'static str,
 }
 
-pub(crate) const S3_SETTINGS: [S3Setting; 8] = [
-    S3Setting { name: "wincon", display: "win conditions", default: "meds", default_display: "default wincons", other: &[("scrubs", "Scrubs wincons"), ("th", "Triforce Hunt")], description: "wincon: meds (default: 6 Medallion Bridge + Keysy BK), scrubs (3 Stone Bridge + LACS BK), or th (Triforce Hunt 25/30)" },
-    S3Setting { name: "dungeons", display: "dungeons", default: "tournament", default_display: "tournament dungeons", other: &[("skulls", "dungeon tokens"), ("keyrings", "keyrings")], description: "dungeons: tournament (default: keys shuffled in own dungeon), skulls (vanilla keys, dungeon tokens), or keyrings (small keyrings anywhere, vanilla boss keys)" },
-    S3Setting { name: "er", display: "entrance rando", default: "off", default_display: "no ER", other: &[("dungeon", "dungeon ER")], description: "er: off (default) or dungeon" },
-    S3Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("2", "2 trials")], description: "trials: 0 (default) or 2" },
-    S3Setting { name: "shops", display: "shops", default: "4", default_display: "shops 4", other: &[("off", "no shops")], description: "shops: 4 (default) or off" },
-    S3Setting { name: "scrubs", display: "scrubs", default: "affordable", default_display: "affordable scrubs", other: &[("off", "no scrubs")], description: "scrubs: affordable (default) or off" },
-    S3Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", "open fountain")], description: "fountain: closed (default) or open" },
-    S3Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
+pub(crate) const S3_SETTINGS: [Setting; 8] = [
+    Setting { name: "wincon", display: "win conditions", default: "meds", default_display: "default wincons", other: &[("scrubs", "Scrubs wincons"), ("th", "Triforce Hunt")], description: "wincon: meds (default: 6 Medallion Bridge + Keysy BK), scrubs (3 Stone Bridge + LACS BK), or th (Triforce Hunt 25/30)" },
+    Setting { name: "dungeons", display: "dungeons", default: "tournament", default_display: "tournament dungeons", other: &[("skulls", "dungeon tokens"), ("keyrings", "keyrings")], description: "dungeons: tournament (default: keys shuffled in own dungeon), skulls (vanilla keys, dungeon tokens), or keyrings (small keyrings anywhere, vanilla boss keys)" },
+    Setting { name: "er", display: "entrance rando", default: "off", default_display: "no ER", other: &[("dungeon", "dungeon ER")], description: "er: off (default) or dungeon" },
+    Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("2", "2 trials")], description: "trials: 0 (default) or 2" },
+    Setting { name: "shops", display: "shops", default: "4", default_display: "shops 4", other: &[("off", "no shops")], description: "shops: 4 (default) or off" },
+    Setting { name: "scrubs", display: "scrubs", default: "affordable", default_display: "affordable scrubs", other: &[("off", "no scrubs")], description: "scrubs: affordable (default) or off" },
+    Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", "open fountain")], description: "fountain: closed (default) or open" },
+    Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
+];
+
+pub(crate) const S4_SETTINGS: [Setting; 20] = [
+    Setting { name: "gbk", display: "Ganon boss key", default: "meds", default_display: "Ganon bk on 6 medallions", other: &[("stones", "Ganon bk on 3 stones"), ("th", "Triforce Hunt")], description: "gbk (Ganon boss key): meds (default: 6 medallions), stones (3 stones), or th (Triforce Hunt 25/30)" },
+    Setting { name: "bridge", display: "rainbow bridge", default: "meds", default_display: "6 medallions bridge", other: &[("dungeons", "7 dungeon rewards bridge"), ("vanilla", "vanilla bridge")], description: "bridge: meds (default: 6 medallions), dungeons (7 rewards), or vanilla" },
+    Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("2", "2 trials")], description: "trials: 0 (default) or 2" },
+    Setting { name: "bosskeys", display: "boss keys", default: "dungeon", default_display: "own dungeon boss keys", other: &[("regional", "regional boss keys"), ("vanilla", "vanilla boss keys")], description: "bosskeys: dungeon (default), regional, or vanilla" },
+    Setting { name: "smallkeys", display: "small keys", default: "dungeon", default_display: "own dungeon small keys", other: &[("regional", "regional keyrings"), ("vanilla", "vanilla small keys")], description: "smallkeys: dungeon (default), regional (with keyrings), or vanilla" },
+    Setting { name: "deku", display: "open Deku", default: "open", default_display: "open Deku", other: &[("closed", "closed Deku")], description: "deku: open (Default) or closed" },
+    Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", "open fountain")], description: "fountain: closed (default) or open" },
+    Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
+    Setting { name: "dungeon-er", display: "dungeon entrance rando", default: "off", default_display: "no dungeon ER", other: &[("on", "dungeon ER")], description: "dungeon-er: off (default) or on" },
+    Setting { name: "warps", display: "warp song entrance rando", default: "off", default_display: "vanilla warp songs", other: &[("on", "shuffled warp songs")], description: "warps: off (default) or on" },
+    Setting { name: "chubags", display: "bombchu drops", default: "off", default_display: "no bombchu drops", other: &[("on", "bombchu drops")], description: "chubags: off (default) or on" },
+    Setting { name: "shops", display: "shops", default: "4", default_display: "shops 4", other: &[("off", "no shops")], description: "shops: 4 (default) or off" },
+    Setting { name: "skulls", display: "tokens", default: "off", default_display: "no tokens", other: &[("dungeons", "dungeon tokens")], description: "skulls: off (default) or dungeons" },
+    Setting { name: "scrubs", display: "scrubs", default: "affordable", default_display: "affordable scrubs", other: &[("off", "no scrubs")], description: "scrubs: affordable (default) or off" },
+    Setting { name: "cows", display: "cows", default: "off", default_display: "no cows", other: &[("on", "cows")], description: "cows: off (default) or on" },
+    Setting { name: "card", display: "Gerudo card", default: "vanilla", default_display: "vanilla Gerudo card", other: &[("shuffle", "shuffled Gerudo card")], description: "card: vanilla (default) or shuffle" },
+    Setting { name: "merchants", display: "merchants", default: "off", default_display: "no merchants", other: &[("shuffle", "shuffled merchants")], description: "merchants: off (defaut) or shuffle" },
+    Setting { name: "frogs", display: "frogs", default: "off", default_display: "no frogs", other: &[("shuffle", "shuffled frogs")], description: "frogs: off (defaut) or shuffle" },
+    Setting { name: "camc", display: "CAMC", default: "texture", default_display: "chest texture matches contents", other: &[("off", "vanilla chest appearances"), ("both", "chest size & texture match contents")], description: "camc (Chest Appearance Matches Contents): texture (default), off, or both (size & texture)" },
+    Setting { name: "hints", display: "hint type", default: "path", default_display: "path hints", other: &[("woth", "Way of the Hero hints")], description: "hints: path (default) or woth" },
 ];
 
 pub(crate) fn display_s3_draft_picks(picks: &draft::Picks) -> String {
     English.join_str(
         S3_SETTINGS.into_iter()
-            .filter_map(|S3Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _)| pick == other)).map(|(_, display)| display)),
+            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _)| pick == other)).map(|(_, display)| display)),
+    ).unwrap_or_else(|| format!("base settings"))
+}
+
+pub(crate) fn display_s4_draft_picks(picks: &draft::Picks) -> String {
+    English.join_str(
+        S4_SETTINGS.into_iter()
+            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _)| pick == other)).map(|(_, display)| display)),
     ).unwrap_or_else(|| format!("base settings"))
 }
 
@@ -177,6 +207,169 @@ pub(crate) fn resolve_s3_draft_settings(picks: &draft::Picks) -> serde_json::Map
             "random" => json!("random"),
             _ => unreachable!(),
         },
+    ]
+}
+
+pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
+    let gbk = picks.get("gbk").map(|gbk| &**gbk).unwrap_or("meds");
+    let bridge = picks.get("bridge").map(|bridge| &**bridge).unwrap_or("meds");
+    let trials = picks.get("trials").map(|trials| &**trials).unwrap_or("0");
+    let bosskeys = picks.get("bosskeys").map(|bosskeys| &**bosskeys).unwrap_or("dungeon");
+    let smallkeys = picks.get("smallkeys").map(|smallkeys| &**smallkeys).unwrap_or("dungeon");
+    let deku = picks.get("deku").map(|deku| &**deku).unwrap_or("open");
+    let fountain = picks.get("fountain").map(|fountain| &**fountain).unwrap_or("closed");
+    let spawn = picks.get("spawn").map(|spawn| &**spawn).unwrap_or("tot");
+    let dungeon_er = picks.get("dungeon-er").map(|dungeon_er| &**dungeon_er).unwrap_or("off");
+    let warps = picks.get("warps").map(|warps| &**warps).unwrap_or("off");
+    let chubags = picks.get("chubags").map(|chubags| &**chubags).unwrap_or("off");
+    let shops = picks.get("shops").map(|shops| &**shops).unwrap_or("4");
+    let skulls = picks.get("skulls").map(|skulls| &**skulls).unwrap_or("off");
+    let scrubs = picks.get("scrubs").map(|scrubs| &**scrubs).unwrap_or("affordable");
+    let cows = picks.get("cows").map(|cows| &**cows).unwrap_or("off");
+    let card = picks.get("card").map(|card| &**card).unwrap_or("vanilla");
+    let merchants = picks.get("merchants").map(|merchants| &**merchants).unwrap_or("off");
+    let frogs = picks.get("frogs").map(|frogs| &**frogs).unwrap_or("off");
+    let camc = picks.get("camc").map(|camc| &**camc).unwrap_or("texture");
+    let hints = picks.get("hints").map(|hints| &**hints).unwrap_or("path");
+    collect![
+        format!("user_message") => json!("4th Multiworld Tournament"),
+        format!("world_count") => json!(3),
+        format!("triforce_hunt") => json!(gbk == "th"),
+        format!("triforce_goal_per_world") => json!(25),
+        format!("bridge") => match bridge {
+            "meds" => json!("medallions"),
+            "dungeons" => json!("dungeons"),
+            "vanilla" => json!("vanilla"),
+            _ => unreachable!(),
+        },
+        format!("bridge_rewards") => json!(7),
+        format!("trials") => match trials {
+            "0" => json!(0),
+            "2" => json!(2),
+            _ => unreachable!(),
+        },
+        format!("shuffle_ganon_bosskey") => if let "stones" = gbk {
+            json!("stones")
+        } else {
+            json!("medallions")
+        },
+        format!("shuffle_bosskeys") => json!(bosskeys),
+        format!("shuffle_smallkeys") => json!(smallkeys),
+        format!("key_rings_choice") => if smallkeys == "regional" {
+            json!("all")
+        } else {
+            json!("off")
+        },
+        format!("shuffle_mapcompass") => json!("startwith"),
+        format!("enhance_map_compass") => json!(true),
+        format!("open_forest") => match deku {
+            "open" => json!("open"),
+            "closed" => json!("closed_deku"),
+            _ => unreachable!(),
+        },
+        format!("open_kakariko") => json!("open"),
+        format!("open_door_of_time") => json!(true),
+        format!("zora_fountain") => json!(fountain),
+        format!("gerudo_fortress") => json!("fast"),
+        format!("starting_age") => match spawn {
+            "tot" => json!("adult"),
+            "random" => json!("random"),
+            _ => unreachable!(),
+        },
+        format!("spawn_positions") => if spawn == "random" {
+            json!(["child", "adult"])
+        } else {
+            json!([])
+        },
+        format!("shuffle_dungeon_entrances") => if dungeon_er == "on" {
+            json!("simple")
+        } else {
+            json!("off")
+        },
+        format!("warp_songs") => json!(warps == "on"),
+        format!("free_bombchu_drops") => json!(chubags == "on"),
+        format!("shopsanity") => json!(shops),
+        format!("tokensanity") => json!(skulls),
+        format!("shuffle_scrubs") => match scrubs {
+            "affordable" => json!("low"),
+            "off" => json!("off"),
+            _ => unreachable!(),
+        },
+        format!("shuffle_cows") => json!(cows == "on"),
+        format!("shuffle_gerudo_card") => json!(card == "shuffle"),
+        format!("shuffle_expensive_merchants") => json!(merchants == "shuffle"),
+        format!("shuffle_frog_song_rupees") => json!(frogs == "shuffle"),
+        format!("disabled_locations") => json!([
+            "Deku Theater Mask of Truth",
+            "Kak 40 Gold Skulltula Reward",
+            "Kak 50 Gold Skulltula Reward",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_fewer_tunic_requirements",
+            "logic_grottos_without_agony",
+            "logic_child_deadhand",
+            "logic_man_on_roof",
+            "logic_dc_jump",
+            "logic_rusted_switches",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_forest_vines",
+            "logic_lens_botw",
+            "logic_lens_castle",
+            "logic_lens_gtg",
+            "logic_lens_shadow",
+            "logic_lens_shadow_platform",
+            "logic_lens_bongo",
+            "logic_lens_spirit",
+            "logic_visible_collisions",
+            "logic_dc_scarecrow_gs",
+            "logic_deku_b1_webs_with_bow",
+        ]),
+        format!("starting_inventory") => json!([
+            "ocarina",
+            "farores_wind",
+            "lens",
+            "zeldas_letter",
+        ]),
+        format!("start_with_consumables") => json!(true),
+        format!("start_with_rupees") => json!(true),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("free_scarecrow") => json!(true),
+        format!("fast_bunny_hood") => json!(true),
+        format!("chicken_count") => json!(3),
+        format!("big_poe_count") => json!(1),
+        format!("ruto_already_f1_jabu") => json!(true),
+        format!("correct_chest_appearances") => match camc {
+            "texture" => json!("textures"),
+            "off" => json!("off"),
+            "both" => json!("both"),
+            _ => unreachable!(),
+        },
+        format!("correct_potcrate_appearances") => json!("textures_content"),
+        format!("key_appearance_match_dungeon") => json!(true),
+        format!("hint_dist") => match hints {
+            "path" => json!("mw_path"),
+            "woth" => json!("mw_woth"),
+            _ => unreachable!(),
+        },
+        format!("misc_hints") => json!([
+            "altar",
+            "ganondorf",
+            "warp_songs_and_owls",
+            "20_skulltulas",
+            "30_skulltulas",
+            "unique_merchants",
+            "frogs2",
+        ]),
+        format!("blue_fire_arrows") => json!(true),
+        format!("junk_ice_traps") => json!("off"),
+        format!("ice_trap_appearance") => json!("junk_only"),
+        format!("adult_trade_start") => json!([
+            "Claim Check",
+        ]),
     ]
 }
 
@@ -542,6 +735,367 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : "), both plugins are legal in this tournament.";
                 }
                 p : "We were hopeful to host this season of the tournament on Multiworld 2.0, but there have been further delays with its release. In the event that it does release during this tournament, the plan is to allow Multiworld 2.0 to be used after being cleared by the tournament staff. However, be aware that by using this your team accepts the risks with using it and must abide by the standard FPA rules.";
+            }
+        }),
+        "4" => Some(html! {
+            article {
+                p {
+                    : "Hello and welcome to the official rules document for the Ocarina of Time Randomizer Multiworld Tournament Season 4, organized by ";
+                    : English.join_html(data.organizers(transaction).await?);
+                    : ".";
+                }
+                h2 : "Ruleset";
+                p {
+                    : "This tournament will take place under the ";
+                    a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "Standard";
+                    : " racing ruleset, with some slight modifications:";
+                }
+                ul {
+                    li : "Fire Arrow Entry is allowed";
+                    li : "Playing Treasure Chest Game without magic and lens is banned";
+                }
+                p : "All teams are expected to record their matches. Failure to do so may result in a game loss or disqualification from the tournament.";
+                h2 : "Fair Play Agreement";
+                p {
+                    : "By joining this tournament, teams must accept the terms of the ";
+                    a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement (FPA)";
+                    : ", a system that can be invoked in the event of technical issues. If playing on BizHawk, it is a strong, strong suggestion to make sure you enable backup saves as documented ";
+                    a(href = "https://wiki.ootrandomizer.com/index.php?title=Bizhawk#Enable_Save_Backup_In_Case_of_Crashes") : "here";
+                    : ".";
+                }
+                h2 : "Tournament Format";
+                p : "All teams are required to play a single asynchronous seed with the default race settings to participate. The results of this seed will be used to seed the settings draft.";
+                p {
+                    : "The tournament itself will begin with a randomly seeded series of best-of-1 ";
+                    a(href = "https://en.wikipedia.org/wiki/Swiss-system_tournament") : "Swiss";
+                    : " rounds. It is expected to require 6 rounds, although this may change depending on the number of teams in the tournament. Each round will last two weeks, with the exception of 3 weeks for rounds 4 and 5 to accommodate the holidays and AGDQ.";
+                }
+                p : "After all Swiss rounds are done, there will be an additional async as a tiebreaker. The top 8 teams will advance to a single elimination, best-of-3 bracket to crown the champions.";
+                p : "In the event that teams do not schedule in time, tournament organizers will use their discretion to determine the correct outcome based on the failures to schedule. In unusual circumstances, the schedule may be adjusted on short notice at the discretion of tournament organizers.";
+                h2 : "Match Format";
+                p : "Each match will consist of a 3v3 Multiworld where both sides compete to see which team will have all three of its members beat the game with the lowest average time of finish:";
+                ul {
+                    li : "In a Triforce Hunt seed, timing for an individual player ends on the first completely black frame after that player has obtained the last required piece. (Due to how Triforce Hunt works in multiworld, all players on a team will normally have the same finish time, but if a player savescums a Triforce piece they found, they can have a lower Triforce count than their teammates.)";
+                    li : "In all other seeds, timing for an individual player ends on the first frame of the cutscene that plays upon killing Ganon. Players are allowed to kill Ganon to stop their timer and then reset their game, allowing them to continue collecting items for their team if necessary.";
+                }
+                h2 : "Seed Settings";
+                p {
+                    : "All tournament matches will be played on ";
+                    a(href = "https://ootrandomizer.com/generatorDev?version=dev_7.1.199") : "version 7.1.199";
+                    : " of the randomizer.";
+                }
+                p : "The default settings for each race have the following differences to the S7 tournament preset:";
+                ul {
+                    li : "Maps and Compasses Give Information: On";
+                    li : "Forest: Open";
+                    li : "Starting Age: Adult";
+                    li : "Shopsanity: 4 Items per Shop";
+                    li : "Scrub Shuffle: On (Affordable)";
+                    li : "Excluded Locations: Kak 40/50 Gold Skulltula Reward";
+                    li {
+                        : "Logic Tricks:";
+                        ul {
+                            li : "Enabled Dodongo's Cavern Scarecrow GS with Armos Statue";
+                            li : "Enabled Deku Tree Basement Web to Gohma with Bow";
+                        }
+                    }
+                    li {
+                        : "Starting Inventory:";
+                        ul {
+                            li : "Removed Deku Shield";
+                            li : "Added Farores Wind";
+                            li : "Added Lens of Truth";
+                            li : "Added Rupees";
+                        }
+                    }
+                    li : "Free Scarecrow's Song: On";
+                    li : "Chicken Count: 3";
+                    li : "Ruto Already at F1: On";
+                    li : "Chest Appearance Matches Contents: Texture";
+                    li : "Key Appearance Matches Dungeon: On";
+                    li {
+                        : "Misc. Hints:";
+                        ul {
+                            li : "Replaced 40/50 GS with 20/30 GS instead";
+                            li : "Added Frogs Ocarina Game";
+                        }
+                    }
+                    li : "Blue Fire Arrows: On";
+                    li : "Adult Trade Quest: Claim Check Only";
+                }
+                p : "You can use the “Practice” link at the top of this page to load these settings.";
+                p : "However, in every race several of the settings may be modified by the teams. During Swiss, the team that placed higher in the qualifier async gets to pick who starts the procedure. For the first game of a top 8 match, this choice is made by the team with the higher seed in the bracket, and for subsequent games of a match, by the team that lost the previous game. Ties are broken by coin flip. The draft itself follows this pattern:";
+                ul {
+                    li(class = "sheikah") : "Ban";
+                    li(class = "gerudo") : "Ban";
+                    li(class = "sheikah") : "Pick";
+                    li(class = "gerudo") : "2x Pick";
+                    li(class = "sheikah") : "Pick";
+                    li(class = "gerudo") : "Ban";
+                    li(class = "sheikah") : "Ban";
+                    li(class = "gerudo") : "Pick";
+                    li(class = "sheikah") : "Pick";
+                }
+                p {
+                    : "A ";
+                    em : "ban";
+                    : " allows a team to lock in a setting of their choice to the default. A ";
+                    em : "pick";
+                    : " will function just like last season, allowing a team to change a setting or lock it to the default as well. This drafting procedure takes place in the scheduling thread for the match and must be completed at least 30 minutes before the scheduled starting time so the seed can be rolled.";
+                }
+                p {
+                    : "The settings that can be modified and their respective options (";
+                    strong : "first";
+                    : " being the default) are:";
+                }
+                ul {
+                    li {
+                        : "Ganon BK:";
+                        ul {
+                            li {
+                                strong : "6 Meds";
+                            }
+                            li : "3 Stones";
+                            li : "25/30 Triforce Hunt";
+                        }
+                    }
+                    li {
+                        : "Rainbow Bridge:";
+                        ul {
+                            li {
+                                strong : "6 Meds";
+                            }
+                            li : "7 Rewards";
+                            li : "Vanilla";
+                        }
+                    }
+                    li {
+                        : "Ganon's Trials:";
+                        ul {
+                            li {
+                                strong : "0";
+                            }
+                            li : "2";
+                        }
+                    }
+                    li {
+                        : "Boss Keys:";
+                        ul {
+                            li {
+                                strong : "All keys shuffled inside their own dungeons (standard)";
+                            }
+                            li : "Regional";
+                            li : "Vanilla";
+                        }
+                    }
+                    li {
+                        : "Small Keys:";
+                        ul {
+                            li {
+                                strong : "All keys shuffled inside their own dungeons (standard)";
+                            }
+                            li : "Regional with small keyrings";
+                            li : "Vanilla";
+                        }
+                    }
+                    li {
+                        : "Deku Tree:";
+                        ul {
+                            li {
+                                strong : "Open";
+                            }
+                            li : "Closed";
+                        }
+                    }
+                    li {
+                        : "Zora's Fountain:";
+                        ul {
+                            li {
+                                strong : "Default behavior (Closed)";
+                            }
+                            li : "Always open";
+                        }
+                    }
+                    li {
+                        : "Starting Age/Randomize Overworld Spawns:";
+                        ul {
+                            li {
+                                strong : "Adult/Off";
+                            }
+                            li : "Random/On";
+                        }
+                    }
+                    li {
+                        : "Shuffle Dungeon Entrances:";
+                        ul {
+                            li {
+                                strong : "Off";
+                            }
+                            li : "On (not including Ganon's Castle)";
+                        }
+                    }
+                    li {
+                        : "Warp Song Destinations:";
+                        ul {
+                            li {
+                                strong : "Vanilla";
+                            }
+                            li : "Shuffled";
+                        }
+                    }
+                    li {
+                        : "Chu bag and drops:";
+                        ul {
+                            li {
+                                strong : "Off";
+                            }
+                            li : "On";
+                        }
+                    }
+                    li {
+                        : "Shopsanity:";
+                        ul {
+                            li {
+                                strong : "4 Items per Shop + Random Prices";
+                            }
+                            li : "Off";
+                        }
+                    }
+                    li {
+                        : "Tokensanity:";
+                        ul {
+                            li {
+                                strong : "Off";
+                            }
+                            li : "Dungeons only";
+                        }
+                    }
+                    li {
+                        : "Scrub Shuffle:";
+                        ul {
+                            li {
+                                strong : "On (Affordable)";
+                            }
+                            li : "Off";
+                        }
+                    }
+                    li {
+                        : "Cow Shuffle:";
+                        ul {
+                            li {
+                                strong : "Off";
+                            }
+                            li : "On";
+                        }
+                    }
+                    li {
+                        : "Gerudo Card shuffled:";
+                        ul {
+                            li {
+                                strong : "Off";
+                            }
+                            li : "On";
+                        }
+                    }
+                    li {
+                        : "Expensive Merchants:";
+                        ul {
+                            li {
+                                strong : "Off";
+                            }
+                            li : "On";
+                        }
+                    }
+                    li {
+                        : "Frog shuffle:";
+                        ul {
+                            li {
+                                strong : "Off";
+                            }
+                            li : "On";
+                        }
+                    }
+                    li {
+                        : "Chest Appearance Matches Contents:";
+                        ul {
+                            li {
+                                strong : "Texture only";
+                            }
+                            li : "Both Size and Texture";
+                            li : "Off";
+                        }
+                    }
+                    li {
+                        : "Hint type:";
+                        ul {
+                            li {
+                                strong : "Path";
+                            }
+                            li : "WOTH";
+                        }
+                    }
+                }
+                h2 : "Hint Distribution";
+                p : "Because of the somewhat unique settings of multiworld, there will be a custom hint distribution for this tournament. With 40 hint stones, the hint distribution will be as follows, with each hint having one duplicated hint:";
+                ul {
+                    li {
+                        : "7 Path/WOTH hints:";
+                        ul {
+                            li : "No dungeon limit";
+                            li : "Zelda's Lullaby is never directly hinted";
+                        }
+                    }
+                    li : "0 Foolish hints";
+                    li {
+                        : "3–7 “Always” Hints (Settings Dependent):";
+                        ul {
+                            li : "2 active Trials (if enabled)";
+                            li : "Song from Ocarina of Time";
+                            li : "Sheik in Kakariko";
+                            li : "Deku Theater Skull Mask";
+                            li : "DMC Deku Scrub (if Scrubsanity enabled)";
+                            li : "Link's house cow (if Cowsanity enabled)";
+                        }
+                    }
+                }
+                p : "The remainder of the hints will be filled out with selections from the “Sometimes” hint pool for a total of 20 paired hints. Always and Sometimes hint are upgraded to Dual hints where available.";
+                p : "The following locations are added to the Sometimes hint pool (if dungeon Tokensanity is enabled):";
+                ul {
+                    li : "Deku Tree GS Basement Back Room";
+                    li : "Water Temple GS River";
+                    li : "Spirit Temple GS Hall After Sun Block Room";
+                }
+                p : "The following Sometimes hints have been removed:";
+                ul {
+                    li : "Sheik in Crater";
+                    li : "Song from Royal Familys Tomb";
+                    li : "Sheik in Forest";
+                    li : "Sheik at Temple";
+                    li : "Sheik at Colossus";
+                    li : "Graveyard Royal Familys Tomb Chest";
+                    li : "Ganons Castle Shadow Trial Golden Gauntlets Chest";
+                }
+                h2 : "Multiworld Plugins";
+                p {
+                    : "There are two plugins that can be used for the item sharing: ";
+                    a(href = "https://github.com/TestRunnerSRL/bizhawk-co-op#readme") : "bizhawk-co-op";
+                    : " (also known as Multiworld 1.0) and ";
+                    a(href = uri!(http::mw).to_string()) : "Mido's House Multiworld";
+                    : ". While we recommend using the Mido's House plugin since it supports Project64 in addition to BizHawk and is easier to use (see ";
+                    a(href = "https://wiki.ootrandomizer.com/index.php?title=Multiworld#Feature_comparison") : "feature comparison";
+                    : "), both plugins are legal in this tournament. For teams using MH MW, official multiworld rooms will be automatically created once the seed is rolled.";
+                }
+                p : "In the event that more ways to play multiworld become available during this tournament, such as a release of “Multiworld 2.0” or support for more platforms, the tournament organizers will decide whether to allow them on a case-by-case basis. Until an announcement is made, these are not allowed.";
+                h2 : "Tournament Conduct Rules";
+                p : "All players are expected to adhere to standards of good conduct and sportsmanship. Players or teams that are found violating this standard may be removed from the tournament. If a player is removed from a team for misconduct, that team may find a replacement player for the remainder of the tournament, although this is subject to approval by administrators.";
+                p : "Prohibited actions include, but are not limited to:";
+                ul {
+                    li : "Threatening to pick specific settings unless the other team adheres to specific demands, including specific race dates/times or settings";
+                    li : "Threatening to drop from the race or tournament";
+                }
+                p : "Forfeits are considered final. If a team forfeits because the opposing team finishes but the results are found to be non-binding (e.g., without video recordings), the forfeit holds and a rematch is not owed to the team that forfeited.";
+                p : "The tournament admins reserve the right to use their best judgment when dealing with anything that comes up. This could include overturning match results, expulsion from the tournament, or other rulings.";
+                p : "The tournament admins reserve the right to make any minor changes to these rules that are deemed in the best interest of the tournament.";
             }
         }),
         _ => None,

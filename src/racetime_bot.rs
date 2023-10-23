@@ -359,7 +359,7 @@ impl Goal {
     fn draft_kind(&self) -> Option<draft::Kind> {
         match self {
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
-            Self::MultiworldS4 => None, //TODO
+            Self::MultiworldS4 => Some(draft::Kind::MultiworldS4),
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
             Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Rsl | Self::Sgl2023 | Self::TriforceBlitz | Self::WeTryToBeBetter => None,
         }
@@ -389,7 +389,7 @@ impl Goal {
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
-            Self::MultiworldS4 => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 191)), //TODO update after settings are finalized
+            Self::MultiworldS4 => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 199)),
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
             Self::Pic7 => VersionedBranch::Custom { github_username: "fenhl", branch: "frogs2-melody" },
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl),
@@ -1538,7 +1538,8 @@ impl Handler {
                 None
             };
             let available_settings = available_settings.unwrap_or_else(|| match draft_kind {
-                draft::Kind::MultiworldS3 => mw::S3_SETTINGS.into_iter().map(|mw::S3Setting { description, .. }| description).collect(),
+                draft::Kind::MultiworldS3 => mw::S3_SETTINGS.into_iter().map(|mw::Setting { description, .. }| description).collect(),
+                draft::Kind::MultiworldS4 => mw::S4_SETTINGS.into_iter().map(|mw::Setting { description, .. }| description).collect(),
                 draft::Kind::TournoiFrancoS3 => fr::S3_SETTINGS.into_iter().map(|fr::S3Setting { description, .. }| description).collect(),
             });
             if available_settings.is_empty() {
@@ -1585,7 +1586,7 @@ impl Handler {
             if let Some(draft_kind) = goal.draft_kind() {
                 match *state {
                     RaceState::Init => match draft_kind {
-                        draft::Kind::MultiworldS3 => ctx.say(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
+                        draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => ctx.say(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         draft::Kind::TournoiFrancoS3 => ctx.say(&format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
                     },
                     RaceState::Draft { state: ref mut draft, .. } => match draft.apply(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }, action).await.to_racetime()? {
@@ -1999,31 +2000,42 @@ impl RaceHandler<GlobalState> for Handler {
                             ],
                         ).await?,
                         Goal::MultiworldS4 => ctx.send_message(
-                            //TODO update text after settings testing concludes
-                            "Welcome! This is a settings testing room for the 4th Multiworld Tournament.", //TODO event link
+                            "Welcome! This is a practice room for the 4th Multiworld Tournament. Learn more about the tournament at https://midos.house/event/mw/4",
                             true,
                             vec![
-                                ("Roll seed", ActionButton::Message {
-                                    message: format!("!seed ${{preset}}"),
-                                    help_text: Some(format!("Pick a setting to test and create a seed.")),
-                                    survey: Some(vec![
-                                        SurveyQuestion {
-                                            name: format!("preset"),
-                                            label: format!("Preset"),
-                                            default: None,
-                                            help_text: Some(format!("All presets use the preliminary base settings plus one setting to be tested.")),
-                                            kind: SurveyQuestionKind::Select,
-                                            placeholder: None,
-                                            options: vec![
-                                                (format!("warps"), format!("Randomize Warp Song Destinations")),
-                                                (format!("cows"), format!("Shuffle Cows")),
-                                                (format!("bees"), format!("Shuffle Beehives")),
-                                                (format!("merchants"), format!("Shuffle Expensive Merchants (Medigoron, Carpet Salesman, Granny)")),
-                                                (format!("frogs"), format!("Shuffle Frog Song Rupees")),
-                                            ],
-                                        },
-                                    ]),
+                                ("Roll seed (base settings)", ActionButton::Message {
+                                    message: format!("!seed base"),
+                                    help_text: Some(format!("Create a seed with the settings used for the qualifier and tiebreaker asyncs.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                                ("Roll seed (random settings)", ActionButton::Message {
+                                    message: format!("!seed random"),
+                                    help_text: Some(format!("Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                                ("Roll seed (custom settings)", ActionButton::Message {
+                                    message: format!("!seed {}", mw::S4_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
+                                    help_text: Some(format!("Pick a set of draftable settings without doing a full draft.")),
+                                    survey: Some(mw::S4_SETTINGS.into_iter().map(|setting| SurveyQuestion {
+                                        name: setting.name.to_owned(),
+                                        label: setting.display.to_owned(),
+                                        default: Some(setting.default.to_owned()),
+                                        help_text: None,
+                                        kind: SurveyQuestionKind::Radio,
+                                        placeholder: None,
+                                        options: iter::once((setting.default.to_owned(), setting.default_display.to_owned()))
+                                            .chain(setting.other.iter().map(|(name, display)| (name.to_string(), display.to_string())))
+                                            .collect(),
+                                    }).collect()),
                                     submit: Some(format!("Roll")),
+                                }),
+                                ("Roll seed (settings draft)", ActionButton::Message {
+                                    message: format!("!seed draft"),
+                                    help_text: Some(format!("Pick the settings here in the chat.")),
+                                    survey: None,
+                                    submit: None,
                                 }),
                             ],
                         ).await?,
@@ -2810,7 +2822,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         self.advance_draft(ctx).await?;
                                         return Ok(())
                                     }
-                                    [ref arg] if mw::S3_SETTINGS.into_iter().any(|mw::S3Setting { name, .. }| name == arg) => {
+                                    [ref arg] if mw::S3_SETTINGS.into_iter().any(|mw::Setting { name, .. }| name == arg) => {
                                         drop(state);
                                         self.send_settings(ctx, &format!("Sorry {reply_to}, you need to pair each setting with a value."), reply_to).await?;
                                         return Ok(())
@@ -2825,7 +2837,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         let mut settings = HashMap::default();
                                         let mut tuples = args.into_iter().tuples();
                                         for (setting, value) in &mut tuples {
-                                            if let Some(mw::S3Setting { default, other, .. }) = mw::S3_SETTINGS.into_iter().find(|mw::S3Setting { name, .. }| **name == setting) {
+                                            if let Some(mw::Setting { default, other, .. }) = mw::S3_SETTINGS.into_iter().find(|mw::Setting { name, .. }| **name == setting) {
                                                 if value == default || other.iter().any(|(other, _)| value == **other) {
                                                     settings.insert(Cow::Owned(setting), Cow::Owned(value));
                                                 } else {

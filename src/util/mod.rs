@@ -1,4 +1,7 @@
-use crate::prelude::*;
+use {
+    serenity::utils::EmbedMessageBuilding as _,
+    crate::prelude::*,
+};
 pub(crate) use self::{
     form::{
         EmptyForm,
@@ -65,11 +68,17 @@ impl MessageBuilderExt for MessageBuilder {
             if let Some(PgSnowflake(team_role)) = team_role {
                 self.role(team_role);
             } else if let Some(team_name) = team.name(transaction).await? {
-                //TODO pothole if racetime slug exists?
-                self.push_italic_safe(team_name);
+                if let Some(ref racetime_slug) = team.racetime_slug {
+                    self.push_named_link_safe(team_name, format!("https://racetime.gg/team/{racetime_slug}"));
+                } else {
+                    self.push_italic_safe(team_name);
+                }
             } else {
-                //TODO pothole if racetime slug exists?
-                self.push("an unnamed team");
+                if let Some(ref racetime_slug) = team.racetime_slug {
+                    self.push_named_link_safe("an unnamed team", format!("https://racetime.gg/team/{racetime_slug}"));
+                } else {
+                    self.push("an unnamed team");
+                }
             }
         }
         Ok(self)
