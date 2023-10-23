@@ -112,7 +112,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
                 u8::read(&mut sock).await?;
                 println!("preparing to stop Mido's House: done");
             }
-            #[cfg(unix)] Subcommand::Roll { .. } | Subcommand::RollRsl { .. } => while let Some(update) = Option::<SeedRollUpdate>::read(&mut sock).await? {
+            #[cfg(unix)] Subcommand::Roll { .. } | Subcommand::RollRsl { .. } | Subcommand::Seed { .. } => while let Some(update) = Option::<SeedRollUpdate>::read(&mut sock).await? {
                 println!("{update:#?}");
             },
         }

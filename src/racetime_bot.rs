@@ -54,6 +54,7 @@ use {
         prelude::*,
     },
 };
+#[cfg(unix)] use async_proto::Protocol;
 #[cfg(windows)] use directories::UserDirs;
 
 #[cfg(unix)] const PYTHON: &str = "python3";
@@ -260,6 +261,7 @@ impl VersionedRslPreset {
 }
 
 #[derive(Clone, Copy, Sequence)]
+#[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum Goal {
     CopaDoBrasil,
     MixedPoolsS2,
@@ -366,7 +368,7 @@ impl Goal {
         }
     }
 
-    fn preroll_seeds(&self) -> bool {
+    pub(crate) fn preroll_seeds(&self) -> bool {
         match self {
             | Self::Sgl2023
             | Self::TriforceBlitz
@@ -385,7 +387,7 @@ impl Goal {
         }
     }
 
-    fn rando_version(&self) -> VersionedBranch {
+    pub(crate) fn rando_version(&self) -> VersionedBranch {
         match self {
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
@@ -481,6 +483,413 @@ impl Goal {
         }
         Ok(())
     }
+
+    pub(crate) async fn parse_seed_command(&self, http_client: &reqwest::Client, spoiler_log: bool, args: &[String]) -> Result<SeedCommandParseResult, Error> {
+        Ok(match self {
+            Self::CopaDoBrasil => SeedCommandParseResult::Regular { settings: br::s1_settings(), spoiler_log, language: English, article: "a", description: format!("seed") },
+            Self::MixedPoolsS2 => SeedCommandParseResult::Regular { settings: mp::s2_settings(), spoiler_log, language: English, article: "a", description: format!("mixed pools seed") },
+            Self::MultiworldS3 => {
+                let settings = match args {
+                    [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
+                    [arg] if arg == "base" => HashMap::default(),
+                    [arg] if arg == "random" => Draft {
+                        high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
+                        went_first: None,
+                        skipped_bans: 0,
+                        settings: HashMap::default(),
+                    }.complete_randomly(draft::Kind::MultiworldS3).await.to_racetime()?,
+                    [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
+                        new_state: Draft {
+                            high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
+                            went_first: None,
+                            skipped_bans: 0,
+                            settings: HashMap::default(),
+                        },
+                        spoiler_log,
+                    }),
+                    [arg] if mw::S3_SETTINGS.into_iter().any(|mw::Setting { name, .. }| name == arg) => {
+                        return Ok(SeedCommandParseResult::SendSettings { language: English, msg: "you need to pair each setting with a value.".into() })
+                    }
+                    [_] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" }),
+                    args => {
+                        let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
+                        let mut settings = HashMap::default();
+                        let mut tuples = args.into_iter().tuples();
+                        for (setting, value) in &mut tuples {
+                            if let Some(mw::Setting { default, other, .. }) = mw::S3_SETTINGS.into_iter().find(|mw::Setting { name, .. }| **name == setting) {
+                                if value == default || other.iter().any(|(other, _)| value == **other) {
+                                    settings.insert(Cow::Owned(setting), Cow::Owned(value));
+                                } else {
+                                    return Ok(SeedCommandParseResult::Error { language: English, msg: format!("I don't recognize that value for the {setting} setting. Use {}", iter::once(default).chain(other.iter().map(|&(other, _)| other)).join(" or ")).into() })
+                                }
+                            } else {
+                                return Ok(SeedCommandParseResult::Error { language: English, msg: format!(
+                                    "I don't recognize {}. Use one of the following:",
+                                    if setting.chars().all(|c| c.is_ascii_alphanumeric()) { Cow::Owned(format!("the setting “{setting}”")) } else { Cow::Borrowed("one of those settings") },
+                                ).into() })
+                            }
+                        }
+                        if tuples.into_buffer().next().is_some() {
+                            return Ok(SeedCommandParseResult::SendSettings { language: English, msg: "you need to pair each setting with a value.".into() })
+                        } else {
+                            settings
+                        }
+                    }
+                };
+                SeedCommandParseResult::Regular { settings: mw::resolve_s3_draft_settings(&settings), spoiler_log, language: English, article: "a", description: format!("seed with {}", mw::display_s3_draft_picks(&settings)) }
+            }
+            Self::MultiworldS4 => {
+                let settings = match args {
+                    [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
+                    [arg] if arg == "base" => HashMap::default(),
+                    [arg] if arg == "random" => Draft {
+                        high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
+                        went_first: None,
+                        skipped_bans: 0,
+                        settings: HashMap::default(),
+                    }.complete_randomly(draft::Kind::MultiworldS4).await.to_racetime()?,
+                    [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
+                        new_state: Draft {
+                            high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
+                            went_first: None,
+                            skipped_bans: 0,
+                            settings: HashMap::default(),
+                        },
+                        spoiler_log,
+                    }),
+                    [arg] if mw::S4_SETTINGS.into_iter().any(|mw::Setting { name, .. }| name == arg) => {
+                        return Ok(SeedCommandParseResult::SendSettings { language: English, msg: "you need to pair each setting with a value.".into() })
+                    }
+                    [_] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" }),
+                    args => {
+                        let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
+                        let mut settings = HashMap::default();
+                        let mut tuples = args.into_iter().tuples();
+                        for (setting, value) in &mut tuples {
+                            if let Some(mw::Setting { default, other, .. }) = mw::S4_SETTINGS.into_iter().find(|mw::Setting { name, .. }| **name == setting) {
+                                if value == default || other.iter().any(|(other, _)| value == **other) {
+                                    settings.insert(Cow::Owned(setting), Cow::Owned(value));
+                                } else {
+                                    return Ok(SeedCommandParseResult::Error { language: English, msg: format!("I don't recognize that value for the {setting} setting. Use {}", iter::once(default).chain(other.iter().map(|&(other, _)| other)).join(" or ")).into() })
+                                }
+                            } else {
+                                return Ok(SeedCommandParseResult::SendSettings { language: English, msg: format!(
+                                    "I don't recognize {}. Use one of the following:",
+                                    if setting.chars().all(|c| c.is_ascii_alphanumeric()) { Cow::Owned(format!("the setting “{setting}”")) } else { Cow::Borrowed("one of those settings") },
+                                ).into() })
+                            }
+                        }
+                        if tuples.into_buffer().next().is_some() {
+                            return Ok(SeedCommandParseResult::SendSettings { language: English, msg: "you need to pair each setting with a value.".into() })
+                        } else {
+                            settings
+                        }
+                    }
+                };
+                SeedCommandParseResult::Regular { settings: mw::resolve_s4_draft_settings(&settings), spoiler_log, language: English, article: "a", description: format!("seed with {}", mw::display_s4_draft_picks(&settings)) }
+            }
+            Self::NineDaysOfSaws => match args {
+                [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
+                [arg] => if let Some((description, mut settings)) = match &**arg {
+                    "day1" | "day9" => Some(("SAWS (S6)", ndos::s6_preset())),
+                    "day2" | "day7" => Some(("SAWS (Beginner)", ndos::beginner_preset())),
+                    "day3" => Some(("SAWS (Advanced)", ndos::advanced_preset())),
+                    "day4" => Some(("SAWS (S5) + one bonk KO", {
+                        let mut settings = ndos::s6_preset();
+                        settings.insert(format!("dungeon_shortcuts_choice"), json!("off"));
+                        settings.insert(format!("shuffle_child_spawn"), json!("balanced"));
+                        settings.insert(format!("fix_broken_drops"), json!(false));
+                        settings.insert(format!("item_pool_value"), json!("minimal"));
+                        settings.insert(format!("blue_fire_arrows"), json!(false));
+                        settings.insert(format!("junk_ice_traps"), json!("off"));
+                        settings.insert(format!("deadly_bonks"), json!("ohko"));
+                        settings.insert(format!("hint_dist_user"), json!({
+                            "name":                  "tournament",
+                            "gui_name":              "Tournament",
+                            "description":           "Hint Distribution for the S5 Tournament. 5 Goal Hints, 3 Barren Hints, 5 Sometimes hints, 7 Always hints (including skull mask).",
+                            "add_locations":         [
+                                { "location": "Deku Theater Skull Mask", "types": ["always"] },
+                            ],
+                            "remove_locations":      [
+                                {"location": "Ganons Castle Shadow Trial Golden Gauntlets Chest", "types": ["sometimes"] },
+                            ],
+                            "add_items":             [],
+                            "remove_items":          [
+                                { "item": "Zeldas Lullaby", "types": ["goal"] },
+                            ],
+                            "dungeons_woth_limit":   2,
+                            "dungeons_barren_limit": 1,
+                            "named_items_required":  true,
+                            "vague_named_items":     false,
+                            "use_default_goals":     true,
+                            "distribution":          {
+                                "trial":           {"order": 1, "weight": 0.0, "fixed":   0, "copies": 2},
+                                "entrance_always": {"order": 2, "weight": 0.0, "fixed":   0, "copies": 2},
+                                "always":          {"order": 3, "weight": 0.0, "fixed":   0, "copies": 2},
+                                "goal":            {"order": 4, "weight": 0.0, "fixed":   5, "copies": 2},
+                                "barren":          {"order": 5, "weight": 0.0, "fixed":   3, "copies": 2},
+                                "entrance":        {"order": 6, "weight": 0.0, "fixed":   4, "copies": 2},
+                                "sometimes":       {"order": 7, "weight": 0.0, "fixed": 100, "copies": 2},
+                                "random":          {"order": 8, "weight": 9.0, "fixed":   0, "copies": 2},
+                                "named-item":      {"order": 9, "weight": 0.0, "fixed":   0, "copies": 2},
+                                "item":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
+                                "song":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
+                                "overworld":       {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
+                                "dungeon":         {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
+                                "junk":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
+                                "woth":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
+                                "dual_always":     {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                                "dual":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
+                            },
+                        }));
+                        settings
+                    })),
+                    "day5" => Some(("SAWS (Beginner) + mixed pools", {
+                        let mut settings = ndos::beginner_preset();
+                        settings.insert(format!("shuffle_interior_entrances"), json!("all"));
+                        settings.insert(format!("shuffle_grotto_entrances"), json!(true));
+                        settings.insert(format!("shuffle_dungeon_entrances"), json!("all"));
+                        settings.insert(format!("shuffle_overworld_entrances"), json!(true));
+                        settings.insert(format!("mix_entrance_pools"), json!([
+                            "Interior",
+                            "GrottoGrave",
+                            "Dungeon",
+                            "Overworld",
+                        ]));
+                        settings.insert(format!("shuffle_child_spawn"), json!("full"));
+                        settings.insert(format!("shuffle_adult_spawn"), json!("full"));
+                        settings.insert(format!("shuffle_gerudo_valley_river_exit"), json!("full"));
+                        settings.insert(format!("owl_drops"), json!("full"));
+                        settings.insert(format!("warp_songs"), json!("full"));
+                        settings.insert(format!("blue_warps"), json!("dungeon"));
+                        settings
+                    })),
+                    "day6" => Some(("SAWS (Beginner) 3-player multiworld", {
+                        let mut settings = ndos::beginner_preset();
+                        settings.insert(format!("world_count"), json!(3));
+                        settings
+                    })),
+                    "day8" => Some(("SAWS (S6) + dungeon ER", {
+                        let mut settings = ndos::s6_preset();
+                        settings.insert(format!("shuffle_dungeon_entrances"), json!("simple"));
+                        settings.insert(format!("blue_warps"), json!("dungeon"));
+                        settings
+                    })),
+                    _ => None,
+                } {
+                    settings.insert(format!("user_message"), json!(format!("9 Days of SAWS: day {}", &arg[3..])));
+                    SeedCommandParseResult::Regular { settings, spoiler_log, language: English, article: "a", description: format!("{description} seed") }
+                } else {
+                    SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" }
+                },
+                [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
+            }
+            Self::Pic7 => SeedCommandParseResult::Regular { settings: pic::race7_settings(), spoiler_log: true, language: English, article: "a", description: format!("seed") },
+            Self::PicRs2 => SeedCommandParseResult::Rsl { preset: VersionedRslPreset::Fenhl {
+                version: Some((Version::new(2, 3, 8), 10)),
+                preset: RslDevFenhlPreset::Pictionary,
+            }, world_count: 1, spoiler_log: true, language: English, article: "a", description: format!("random settings Pictionary seed") },
+            Self::Rsl => {
+                let (preset, world_count) = match args {
+                    [] => (rsl::Preset::League, 1),
+                    [preset] => if let Ok(preset) = preset.parse() {
+                        if let rsl::Preset::Multiworld = preset {
+                            return Ok(SeedCommandParseResult::Error { language: English, msg: "Missing world count (e.g. “!seed multiworld 2” for 2 worlds)".into() })
+                        } else {
+                            (preset, 1)
+                        }
+                    } else {
+                        return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" })
+                    },
+                    [preset, world_count] => if let Ok(preset) = preset.parse() {
+                        if let rsl::Preset::Multiworld = preset {
+                            if let Ok(world_count) = world_count.parse() {
+                                if world_count < 2 {
+                                    return Ok(SeedCommandParseResult::Error { language: English, msg: "the world count must be a number between 2 and 15.".into() })
+                                } else if world_count > 15 {
+                                    return Ok(SeedCommandParseResult::Error { language: English, msg: "I can currently only roll seeds with up to 15 worlds. Please download the RSL script from https://github.com/matthewkirby/plando-random-settings to roll seeds for more than 15 players.".into() })
+                                } else {
+                                    (preset, world_count)
+                                }
+                            } else {
+                                return Ok(SeedCommandParseResult::Error { language: English, msg: "the world count must be a number between 2 and 255.".into() })
+                            }
+                        } else {
+                            return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" })
+                        }
+                    } else {
+                        return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" })
+                    },
+                    [..] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" }),
+                };
+                let (article, description) = match preset {
+                    rsl::Preset::League => ("a", format!("Random Settings League seed")),
+                    rsl::Preset::Beginner => ("a", format!("random settings Beginner seed")),
+                    rsl::Preset::Intermediate => ("a", format!("random settings Intermediate seed")),
+                    rsl::Preset::Ddr => ("a", format!("random settings DDR seed")),
+                    rsl::Preset::CoOp => ("a", format!("random settings co-op seed")),
+                    rsl::Preset::Multiworld => ("a", format!("random settings multiworld seed for {world_count} players")),
+                };
+                SeedCommandParseResult::Rsl { preset: VersionedRslPreset::Xopar { version: None, preset }, world_count, spoiler_log, language: English, article, description }
+            }
+            Self::Sgl2023 => SeedCommandParseResult::Regular { settings: sgl::settings_2023(), spoiler_log, language: English, article: "a", description: format!("seed") },
+            Self::TournoiFrancoS3 => {
+                let mut args = args.to_owned();
+                let mut mq_dungeons_count = None::<u8>;
+                let mut hard_settings_ok = false;
+                args.retain(|arg| if arg == "advanced" && !hard_settings_ok {
+                    hard_settings_ok = true;
+                    false
+                } else if let (None, Some(mq)) = (mq_dungeons_count, regex_captures!("^([0-9]+)mq$"i, arg).and_then(|(_, mq)| mq.parse().ok())) {
+                    mq_dungeons_count = Some(mq);
+                    false
+                } else {
+                    true
+                });
+                let settings = match &*args {
+                    [] => return Ok(SeedCommandParseResult::SendPresets { language: French, msg: "un preset doit être défini" }),
+                    [arg] if arg == "base" => HashMap::default(),
+                    [arg] if arg == "random" => Draft {
+                        high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
+                        went_first: None,
+                        skipped_bans: 0,
+                        settings: collect![as HashMap<_, _>:
+                            Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
+                            Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_dungeons_count.is_some() { "ok" } else { "no" }),
+                            Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
+                        ],
+                    }.complete_randomly(draft::Kind::TournoiFrancoS3).await.to_racetime()?,
+                    [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
+                        new_state: Draft {
+                            high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
+                            went_first: None,
+                            skipped_bans: 0,
+                            settings: collect![as HashMap<_, _>:
+                                Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
+                                Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_dungeons_count.is_some() { "ok" } else { "no" }),
+                                Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
+                            ],
+                        },
+                        spoiler_log,
+                    }),
+                    [arg] if fr::S3_SETTINGS.into_iter().any(|fr::S3Setting { name, .. }| name == arg) => return Ok(SeedCommandParseResult::SendSettings { language: French, msg: "vous devez associer un setting avec une configuration.".into() }),
+                    [_] => return Ok(SeedCommandParseResult::SendPresets { language: French, msg: "je ne reconnais pas ce preset" }),
+                    args => {
+                        let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
+                        let mut settings = HashMap::default();
+                        let mut tuples = args.into_iter().tuples();
+                        for (setting, value) in &mut tuples {
+                            if let Some(fr::S3Setting { default, other, .. }) = fr::S3_SETTINGS.into_iter().find(|fr::S3Setting { name, .. }| **name == setting) {
+                                if setting == "dungeon-er" && value == "mixed" {
+                                    settings.insert(Cow::Borrowed("dungeon-er"), Cow::Borrowed("on"));
+                                    settings.insert(Cow::Borrowed("mixed-dungeons"), Cow::Borrowed("mixed"));
+                                } else if value == default || other.iter().any(|(other, _, _)| value == **other) {
+                                    settings.insert(Cow::Owned(setting), Cow::Owned(value));
+                                } else {
+                                    return Ok(SeedCommandParseResult::Error { language: French, msg: format!("je ne reconnais pas cette configuration pour {setting}. Utilisez {}", iter::once(default).chain(other.iter().map(|&(other, _, _)| other)).join(" ou ")).into() })
+                                }
+                            } else {
+                                return Ok(SeedCommandParseResult::SendSettings { language: French, msg: format!("je ne reconnais pas {}. Utilisez cette liste :",
+                                    if setting.chars().all(|c| c.is_ascii_alphanumeric()) { Cow::Owned(format!("le setting « {setting} »")) } else { Cow::Borrowed("un des settings") },
+                                ).into() })
+                            }
+                        }
+                        if tuples.into_buffer().next().is_some() {
+                            return Ok(SeedCommandParseResult::SendSettings { language: French, msg: "vous devez associer un setting avec une configuration.".into() })
+                        } else {
+                            settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()));
+                            settings
+                        }
+                    }
+                };
+                SeedCommandParseResult::Regular { settings: fr::resolve_draft_settings(&settings), spoiler_log, language: French, article: "une", description: format!("seed avec {}", fr::display_draft_picks(&settings)) }
+            }
+            Self::TriforceBlitz => match args {
+                [] => SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" },
+                [arg] if arg == "daily" => {
+                    let (date, ordinal, file_hash) = {
+                        let response = http_client
+                            .get("https://www.triforceblitz.com/seed/daily/all")
+                            .send().await?
+                            .detailed_error_for_status().await.to_racetime()?;
+                        let response_body = response.text().await?;
+                        let latest = kuchiki::parse_html().one(response_body)
+                            .select_first("main > section > div > div").map_err(|()| RollError::TfbHtml).to_racetime()?;
+                        let latest = latest.as_node();
+                        let a = latest.select_first("a").map_err(|()| RollError::TfbHtml).to_racetime()?;
+                        let a_attrs = a.attributes.borrow();
+                        let href = a_attrs.get("href").ok_or(RollError::TfbHtml).to_racetime()?;
+                        let (_, ordinal) = regex_captures!("^/seed/daily/([0-9]+)$", href).ok_or(RollError::TfbHtml).to_racetime()?;
+                        let ordinal = ordinal.parse().to_racetime()?;
+                        let date = NaiveDate::parse_from_str(&a.text_contents(), "%-d %B %Y").to_racetime()?;
+                        let file_hash = latest.select_first(".hash-icons").map_err(|()| RollError::TfbHtml).to_racetime()?
+                            .as_node()
+                            .children()
+                            .filter_map(NodeRef::into_element_ref)
+                            .filter_map(|elt| elt.attributes.borrow().get("title").and_then(|title| title.parse().ok()))
+                            .collect_vec()
+                            .try_into().map_err(|_| RollError::TfbHtml).to_racetime()?;
+                        (date, ordinal, file_hash)
+                    };
+                    SeedCommandParseResult::QueueExisting { data: seed::Data {
+                        file_hash: Some(file_hash),
+                        files: Some(seed::Files::TfbSotd { date, ordinal }),
+                    }, language: English, article: "the", description: format!("Triforce Blitz seed of the day") }
+                }
+                [arg] if arg == "jr" => SeedCommandParseResult::Tfb { version: "LATEST", spoiler_log, language: English, article: "a", description: format!("Triforce Blitz: Jabu's Revenge seed") },
+                [arg] if arg == "s2" => SeedCommandParseResult::Tfb { version: "v7.1.3-blitz-0.42", spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S2 seed") },
+                [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
+            },
+            Self::WeTryToBeBetter => SeedCommandParseResult::Regular { settings: wttbb::settings(), spoiler_log, language: French, article: "une", description: format!("seed") },
+        })
+    }
+}
+
+pub(crate) enum SeedCommandParseResult {
+    Regular {
+        settings: serde_json::Map<String, Json>,
+        spoiler_log: bool,
+        language: Language,
+        article: &'static str,
+        description: String,
+    },
+    Rsl {
+        preset: VersionedRslPreset,
+        world_count: u8,
+        spoiler_log: bool,
+        language: Language,
+        article: &'static str,
+        description: String,
+    },
+    Tfb {
+        version: &'static str,
+        spoiler_log: bool,
+        language: Language,
+        article: &'static str,
+        description: String,
+    },
+    QueueExisting {
+        data: seed::Data,
+        language: Language,
+        article: &'static str,
+        description: String,
+    },
+    SendPresets {
+        language: Language,
+        msg: &'static str,
+    },
+    SendSettings {
+        language: Language,
+        msg: Cow<'static, str>,
+    },
+    StartDraft {
+        new_state: Draft,
+        spoiler_log: bool,
+    },
+    Error {
+        language: Language,
+        msg: Cow<'static, str>,
+    },
 }
 
 impl FromStr for Goal {
@@ -513,7 +922,7 @@ pub(crate) struct GlobalState {
     racetime_config: ConfigRaceTime,
     extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>,
     db_pool: PgPool,
-    http_client: reqwest::Client,
+    pub(crate) http_client: reqwest::Client,
     startgg_token: String,
     ootr_api_client: OotrApiClient,
     discord_ctx: RwFuture<DiscordCtx>,
@@ -801,7 +1210,7 @@ impl GlobalState {
         update_rx
     }
 
-    pub(crate) fn roll_tfb_seed(self: Arc<Self>, delay_until: Option<DateTime<Utc>>, version: &'static str, room: String, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_tfb_seed(self: Arc<Self>, delay_until: Option<DateTime<Utc>>, version: &'static str, room: Option<String>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
@@ -818,10 +1227,15 @@ impl GlobalState {
                     ("unlockSetting", "ALWAYS"),
                     ("version", version),
                 ]
-            } else {
+            } else if let Some(ref room) = room {
                 vec![
                     ("unlockSetting", "RACETIME"),
-                    ("racetimeRoom", &room),
+                    ("racetimeRoom", room),
+                    ("version", version),
+                ]
+            } else {
+                vec![
+                    ("unlockSetting", "NEVER"),
                     ("version", version),
                 ]
             };
@@ -938,6 +1352,7 @@ pub(crate) enum RollError {
     #[error(transparent)] Git(#[from] git2::Error),
     #[error(transparent)] Header(#[from] reqwest::header::ToStrError),
     #[error(transparent)] Json(#[from] serde_json::Error),
+    #[error(transparent)] RaceTime(#[from] Error),
     #[error(transparent)] RandoVersion(#[from] rando::VersionParseError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
@@ -1678,7 +2093,7 @@ impl Handler {
     async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: &'static str, spoiler_log: bool, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
-        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(delay_until, version, format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url), spoiler_log), language, article, description);
+        self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(delay_until, version, Some(format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url)), spoiler_log), language, article, description);
     }
 
     async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
@@ -2398,7 +2813,7 @@ impl RaceHandler<GlobalState> for Handler {
         Ok(this)
     }
 
-    async fn command(&mut self, ctx: &RaceContext<GlobalState>, cmd_name: String, mut args: Vec<String>, _is_moderator: bool, is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
+    async fn command(&mut self, ctx: &RaceContext<GlobalState>, cmd_name: String, args: Vec<String>, _is_moderator: bool, is_monitor: bool, msg: &ChatMessage) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
         let reply_to = msg.user.as_ref().map_or("friend", |user| &user.name);
         match &*cmd_name.to_ascii_lowercase() {
@@ -2782,7 +3197,6 @@ impl RaceHandler<GlobalState> for Handler {
             },
             "second" => self.draft_action(ctx, reply_to, draft::Action::GoFirst(false)).await?,
             "seed" | "spoilerseed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
-                let spoiler_log = cmd_name.to_ascii_lowercase() == "spoilerseed";
                 let mut state = lock!(@write @owned self.race_state.clone());
                 match *state {
                     RaceState::Init => if self.locked && !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
@@ -2792,421 +3206,46 @@ impl RaceHandler<GlobalState> for Handler {
                             format!("Sorry {reply_to}, seed rolling is locked. Only {} may roll a seed for this race.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })
                         }).await?;
                     } else {
-                        match goal {
-                            Goal::CopaDoBrasil => self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), br::s1_settings(), false, English, "a", format!("seed")),
-                            Goal::MixedPoolsS2 => self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), mp::s2_settings(), spoiler_log, English, "a", format!("mixed pools seed")),
-                            Goal::MultiworldS3 => {
-                                let settings = match args[..] {
-                                    [] => {
-                                        ctx.say(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
-                                        goal.send_presets(ctx).await?;
-                                        return Ok(())
-                                    }
-                                    [ref arg] if arg == "base" => HashMap::default(),
-                                    [ref arg] if arg == "random" => Draft {
-                                        high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
-                                        went_first: None,
-                                        skipped_bans: 0,
-                                        settings: HashMap::default(),
-                                    }.complete_randomly(draft::Kind::MultiworldS3).await.to_racetime()?,
-                                    [ref arg] if arg == "draft" => {
-                                        *state = RaceState::Draft {
-                                            state: Draft {
-                                                high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
-                                                went_first: None,
-                                                skipped_bans: 0,
-                                                settings: HashMap::default(),
-                                            },
-                                            spoiler_log,
-                                        };
-                                        drop(state);
-                                        self.advance_draft(ctx).await?;
-                                        return Ok(())
-                                    }
-                                    [ref arg] if mw::S3_SETTINGS.into_iter().any(|mw::Setting { name, .. }| name == arg) => {
-                                        drop(state);
-                                        self.send_settings(ctx, &format!("Sorry {reply_to}, you need to pair each setting with a value."), reply_to).await?;
-                                        return Ok(())
-                                    }
-                                    [_] => {
-                                        ctx.say(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
-                                        goal.send_presets(ctx).await?;
-                                        return Ok(())
-                                    }
-                                    ref args => {
-                                        let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
-                                        let mut settings = HashMap::default();
-                                        let mut tuples = args.into_iter().tuples();
-                                        for (setting, value) in &mut tuples {
-                                            if let Some(mw::Setting { default, other, .. }) = mw::S3_SETTINGS.into_iter().find(|mw::Setting { name, .. }| **name == setting) {
-                                                if value == default || other.iter().any(|(other, _)| value == **other) {
-                                                    settings.insert(Cow::Owned(setting), Cow::Owned(value));
-                                                } else {
-                                                    ctx.say(&format!("Sorry {reply_to}, I don't recognize that value for the {setting} setting. Use {}", iter::once(default).chain(other.iter().map(|&(other, _)| other)).join(" or "))).await?;
-                                                    return Ok(())
-                                                }
-                                            } else {
-                                                drop(state);
-                                                self.send_settings(ctx, &format!("Sorry {reply_to}, I don't recognize {}. Use one of the following:",
-                                                    if setting.chars().all(|c| c.is_ascii_alphanumeric()) { Cow::Owned(format!("the setting “{setting}”")) } else { Cow::Borrowed("one of those settings") },
-                                                ), reply_to).await?;
-                                                return Ok(())
-                                            }
-                                        }
-                                        if tuples.into_buffer().next().is_some() {
-                                            drop(state);
-                                            self.send_settings(ctx, &format!("Sorry {reply_to}, you need to pair each setting with a value."), reply_to).await?;
-                                            return Ok(())
-                                        } else {
-                                            settings
-                                        }
-                                    }
-                                };
-                                self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), mw::resolve_s3_draft_settings(&settings), spoiler_log, English, "a", format!("seed with {}", mw::display_s3_draft_picks(&settings)));
-                            }
-                            Goal::MultiworldS4 => match args[..] {
-                                [] => {
-                                    ctx.say(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
-                                    goal.send_presets(ctx).await?;
-                                }
-                                [ref arg] => {
-                                    let mut settings = mw::s4_test_base_settings();
-                                    let description = match &**arg {
-                                        "warps" => {
-                                            settings.insert(format!("warp_songs"), json!(true));
-                                            "randomized warp song destinations"
-                                        }
-                                        "cows" => {
-                                            settings.insert(format!("shuffle_cows"), json!(true));
-                                            "shuffled cows"
-                                        }
-                                        "bees" => {
-                                            settings.insert(format!("shuffle_beehives"), json!(true));
-                                            "shuffled beehives"
-                                        }
-                                        "merchants" => {
-                                            settings.insert(format!("shuffle_expensive_merchants"), json!(true));
-                                            "shuffled expensive merchants"
-                                        }
-                                        "frogs" => {
-                                            settings.insert(format!("shuffle_frog_song_rupees"), json!(true));
-                                            "shuffled frog song rupees"
-                                        }
-                                        _ => {
-                                            ctx.say(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
-                                            goal.send_presets(ctx).await?;
-                                            return Ok(())
-                                        }
-                                    };
-                                    self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), settings, spoiler_log, goal.language(), "a", format!("seed with {description}"));
-                                }
-                                [..] => {
-                                    ctx.say(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
-                                    goal.send_presets(ctx).await?;
-                                }
-                            },
-                            Goal::NineDaysOfSaws => match args[..] {
-                                [] => {
-                                    ctx.say(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
-                                    goal.send_presets(ctx).await?;
-                                }
-                                [ref arg] => if let Some((description, mut settings)) = match &**arg {
-                                    "day1" | "day9" => Some(("SAWS (S6)", ndos::s6_preset())),
-                                    "day2" | "day7" => Some(("SAWS (Beginner)", ndos::beginner_preset())),
-                                    "day3" => Some(("SAWS (Advanced)", ndos::advanced_preset())),
-                                    "day4" => Some(("SAWS (S5) + one bonk KO", {
-                                        let mut settings = ndos::s6_preset();
-                                        settings.insert(format!("dungeon_shortcuts_choice"), json!("off"));
-                                        settings.insert(format!("shuffle_child_spawn"), json!("balanced"));
-                                        settings.insert(format!("fix_broken_drops"), json!(false));
-                                        settings.insert(format!("item_pool_value"), json!("minimal"));
-                                        settings.insert(format!("blue_fire_arrows"), json!(false));
-                                        settings.insert(format!("junk_ice_traps"), json!("off"));
-                                        settings.insert(format!("deadly_bonks"), json!("ohko"));
-                                        settings.insert(format!("hint_dist_user"), json!({
-                                            "name":                  "tournament",
-                                            "gui_name":              "Tournament",
-                                            "description":           "Hint Distribution for the S5 Tournament. 5 Goal Hints, 3 Barren Hints, 5 Sometimes hints, 7 Always hints (including skull mask).",
-                                            "add_locations":         [
-                                                { "location": "Deku Theater Skull Mask", "types": ["always"] },
-                                            ],
-                                            "remove_locations":      [
-                                                {"location": "Ganons Castle Shadow Trial Golden Gauntlets Chest", "types": ["sometimes"] },
-                                            ],
-                                            "add_items":             [],
-                                            "remove_items":          [
-                                                { "item": "Zeldas Lullaby", "types": ["goal"] },
-                                            ],
-                                            "dungeons_woth_limit":   2,
-                                            "dungeons_barren_limit": 1,
-                                            "named_items_required":  true,
-                                            "vague_named_items":     false,
-                                            "use_default_goals":     true,
-                                            "distribution":          {
-                                                "trial":           {"order": 1, "weight": 0.0, "fixed":   0, "copies": 2},
-                                                "entrance_always": {"order": 2, "weight": 0.0, "fixed":   0, "copies": 2},
-                                                "always":          {"order": 3, "weight": 0.0, "fixed":   0, "copies": 2},
-                                                "goal":            {"order": 4, "weight": 0.0, "fixed":   5, "copies": 2},
-                                                "barren":          {"order": 5, "weight": 0.0, "fixed":   3, "copies": 2},
-                                                "entrance":        {"order": 6, "weight": 0.0, "fixed":   4, "copies": 2},
-                                                "sometimes":       {"order": 7, "weight": 0.0, "fixed": 100, "copies": 2},
-                                                "random":          {"order": 8, "weight": 9.0, "fixed":   0, "copies": 2},
-                                                "named-item":      {"order": 9, "weight": 0.0, "fixed":   0, "copies": 2},
-                                                "item":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                                "song":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                                "overworld":       {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                                "dungeon":         {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                                "junk":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                                "woth":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 2},
-                                                "dual_always":     {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                                                "dual":            {"order": 0, "weight": 0.0, "fixed":   0, "copies": 0},
-                                            },
-                                        }));
-                                        settings
-                                    })),
-                                    "day5" => Some(("SAWS (Beginner) + mixed pools", {
-                                        let mut settings = ndos::beginner_preset();
-                                        settings.insert(format!("shuffle_interior_entrances"), json!("all"));
-                                        settings.insert(format!("shuffle_grotto_entrances"), json!(true));
-                                        settings.insert(format!("shuffle_dungeon_entrances"), json!("all"));
-                                        settings.insert(format!("shuffle_overworld_entrances"), json!(true));
-                                        settings.insert(format!("mix_entrance_pools"), json!([
-                                            "Interior",
-                                            "GrottoGrave",
-                                            "Dungeon",
-                                            "Overworld",
-                                        ]));
-                                        settings.insert(format!("shuffle_child_spawn"), json!("full"));
-                                        settings.insert(format!("shuffle_adult_spawn"), json!("full"));
-                                        settings.insert(format!("shuffle_gerudo_valley_river_exit"), json!("full"));
-                                        settings.insert(format!("owl_drops"), json!("full"));
-                                        settings.insert(format!("warp_songs"), json!("full"));
-                                        settings.insert(format!("blue_warps"), json!("dungeon"));
-                                        settings
-                                    })),
-                                    "day6" => Some(("SAWS (Beginner) 3-player multiworld", {
-                                        let mut settings = ndos::beginner_preset();
-                                        settings.insert(format!("world_count"), json!(3));
-                                        settings
-                                    })),
-                                    "day8" => Some(("SAWS (S6) + dungeon ER", {
-                                        let mut settings = ndos::s6_preset();
-                                        settings.insert(format!("shuffle_dungeon_entrances"), json!("simple"));
-                                        settings.insert(format!("blue_warps"), json!("dungeon"));
-                                        settings
-                                    })),
-                                    _ => None,
-                                } {
-                                    settings.insert(format!("user_message"), json!(format!("9 Days of SAWS: day {}", &arg[3..])));
-                                    self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), settings, spoiler_log, goal.language(), "a", format!("{description} seed"));
+                        match goal.parse_seed_command(&ctx.global_state.http_client, cmd_name.to_ascii_lowercase() == "spoilerseed", &args).await.to_racetime()? {
+                            SeedCommandParseResult::Regular { settings, spoiler_log, language, article, description } => self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), settings, spoiler_log, language, article, description),
+                            SeedCommandParseResult::Rsl { preset, world_count, spoiler_log, language, article, description } => self.roll_rsl_seed(ctx, state, preset, world_count, spoiler_log, language, article, description),
+                            SeedCommandParseResult::Tfb { version, spoiler_log, language, article, description } => self.roll_tfb_seed(ctx, state, version, spoiler_log, language, article, description).await,
+                            SeedCommandParseResult::QueueExisting { data, language, article, description } => self.queue_existing_seed(ctx, state, data, language, article, description).await,
+                            SeedCommandParseResult::SendPresets { language, msg } => {
+                                ctx.say(&if let French = language {
+                                    format!("Désolé {reply_to}, {msg}. Veuillez utiliser un des suivants :")
                                 } else {
-                                    ctx.say(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
-                                    goal.send_presets(ctx).await?;
-                                },
-                                [..] => {
-                                    ctx.say(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
-                                    goal.send_presets(ctx).await?;
-                                }
+                                    format!("Sorry {reply_to}, {msg}. Use one of the following:")
+                                }).await?;
+                                goal.send_presets(ctx).await?;
+                                return Ok(())
                             }
-                            Goal::Pic7 => self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), pic::race7_settings(), true, English, "a", format!("seed")),
-                            Goal::PicRs2 => self.roll_rsl_seed(ctx, state, VersionedRslPreset::Fenhl {
-                                version: Some((Version::new(2, 3, 8), 10)),
-                                preset: RslDevFenhlPreset::Pictionary,
-                            }, 1, true, English, "a", format!("random settings Pictionary seed")),
-                            Goal::Rsl => {
-                                let (preset, world_count) = match args[..] {
-                                    [] => (rsl::Preset::League, 1),
-                                    [ref preset] => if let Ok(preset) = preset.parse() {
-                                        if let rsl::Preset::Multiworld = preset {
-                                            ctx.say("Missing world count (e.g. “!seed multiworld 2” for 2 worlds)").await?;
-                                            return Ok(())
-                                        } else {
-                                            (preset, 1)
-                                        }
-                                    } else {
-                                        ctx.say(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
-                                        goal.send_presets(ctx).await?;
-                                        return Ok(())
-                                    },
-                                    [ref preset, ref world_count] => if let Ok(preset) = preset.parse() {
-                                        if let rsl::Preset::Multiworld = preset {
-                                            if let Ok(world_count) = world_count.parse() {
-                                                if world_count < 2 {
-                                                    ctx.say(&format!("Sorry {reply_to}, the world count must be a number between 2 and 15.")).await?;
-                                                    return Ok(())
-                                                } else if world_count > 15 {
-                                                    ctx.say(&format!("Sorry {reply_to}, I can currently only roll seeds with up to 15 worlds. Please download the RSL script from https://github.com/matthewkirby/plando-random-settings to roll seeds for more than 15 players.")).await?;
-                                                    return Ok(())
-                                                } else {
-                                                    (preset, world_count)
-                                                }
-                                            } else {
-                                                ctx.say(&format!("Sorry {reply_to}, the world count must be a number between 2 and 255.")).await?;
-                                                return Ok(())
-                                            }
-                                        } else {
-                                            ctx.say(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
-                                            goal.send_presets(ctx).await?;
-                                            return Ok(())
-                                        }
-                                    } else {
-                                        ctx.say(&format!("Sorry {reply_to}, I don't recognize that preset. Use one of the following:")).await?;
-                                        goal.send_presets(ctx).await?;
-                                        return Ok(())
-                                    },
-                                    [..] => {
-                                        ctx.say(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
-                                        goal.send_presets(ctx).await?;
-                                        return Ok(())
-                                    }
-                                };
-                                let (article, description) = match preset {
-                                    rsl::Preset::League => ("a", format!("Random Settings League seed")),
-                                    rsl::Preset::Beginner => ("a", format!("random settings Beginner seed")),
-                                    rsl::Preset::Intermediate => ("a", format!("random settings Intermediate seed")),
-                                    rsl::Preset::Ddr => ("a", format!("random settings DDR seed")),
-                                    rsl::Preset::CoOp => ("a", format!("random settings co-op seed")),
-                                    rsl::Preset::Multiworld => ("a", format!("random settings multiworld seed for {world_count} players")),
-                                };
-                                self.roll_rsl_seed(ctx, state, VersionedRslPreset::Xopar { version: None, preset }, world_count, spoiler_log, English, article, description);
-                            }
-                            Goal::Sgl2023 => self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), sgl::settings_2023(), false, English, "a", format!("seed")),
-                            Goal::TournoiFrancoS3 => {
-                                let mut mq_dungeons_count = None::<u8>;
-                                let mut hard_settings_ok = false;
-                                args.retain(|arg| if arg == "advanced" && !hard_settings_ok {
-                                    hard_settings_ok = true;
-                                    false
-                                } else if let (None, Some(mq)) = (mq_dungeons_count, regex_captures!("^([0-9]+)mq$"i, arg).and_then(|(_, mq)| mq.parse().ok())) {
-                                    mq_dungeons_count = Some(mq);
-                                    false
+                            SeedCommandParseResult::SendSettings { language, msg } => {
+                                drop(state);
+                                self.send_settings(ctx, &if let French = language {
+                                    format!("Désolé {reply_to}, {msg}")
                                 } else {
-                                    true
-                                });
-                                let settings = match args[..] {
-                                    [] => {
-                                        ctx.say(&format!("Désolé {reply_to}, un preset doit être défini. Veuillez utiliser un des suivants :")).await?;
-                                        goal.send_presets(ctx).await?;
-                                        return Ok(())
-                                    }
-                                    [ref arg] if arg == "base" => HashMap::default(),
-                                    [ref arg] if arg == "random" => Draft {
-                                        high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
-                                        went_first: None,
-                                        skipped_bans: 0,
-                                        settings: collect![as HashMap<_, _>:
-                                            Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
-                                            Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_dungeons_count.is_some() { "ok" } else { "no" }),
-                                            Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
-                                        ],
-                                    }.complete_randomly(draft::Kind::TournoiFrancoS3).await.to_racetime()?,
-                                    [ref arg] if arg == "draft" => {
-                                        *state = RaceState::Draft {
-                                            state: Draft {
-                                                high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
-                                                went_first: None,
-                                                skipped_bans: 0,
-                                                settings: collect![as HashMap<_, _>:
-                                                    Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
-                                                    Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_dungeons_count.is_some() { "ok" } else { "no" }),
-                                                    Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
-                                                ],
-                                            },
-                                            spoiler_log,
-                                        };
-                                        drop(state);
-                                        self.advance_draft(ctx).await?;
-                                        return Ok(())
-                                    }
-                                    [ref arg] if fr::S3_SETTINGS.into_iter().any(|fr::S3Setting { name, .. }| name == arg) => {
-                                        drop(state);
-                                        self.send_settings(ctx, &format!("Désolé {reply_to}, vous devez associer un setting avec une configuration."), reply_to).await?;
-                                        return Ok(())
-                                    }
-                                    [_] => {
-                                        ctx.say(&format!("Désolé {reply_to}, je ne reconnais pas ce preset. Veuillez utiliser un des suivants :")).await?;
-                                        goal.send_presets(ctx).await?;
-                                        return Ok(())
-                                    }
-                                    ref args => {
-                                        let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
-                                        let mut settings = HashMap::default();
-                                        let mut tuples = args.into_iter().tuples();
-                                        for (setting, value) in &mut tuples {
-                                            if let Some(fr::S3Setting { default, other, .. }) = fr::S3_SETTINGS.into_iter().find(|fr::S3Setting { name, .. }| **name == setting) {
-                                                if setting == "dungeon-er" && value == "mixed" {
-                                                    settings.insert(Cow::Borrowed("dungeon-er"), Cow::Borrowed("on"));
-                                                    settings.insert(Cow::Borrowed("mixed-dungeons"), Cow::Borrowed("mixed"));
-                                                } else if value == default || other.iter().any(|(other, _, _)| value == **other) {
-                                                    settings.insert(Cow::Owned(setting), Cow::Owned(value));
-                                                } else {
-                                                    ctx.say(&format!("Désolé {reply_to}, je ne reconnais pas cette configuration pour {setting}. Utilisez {}", iter::once(default).chain(other.iter().map(|&(other, _, _)| other)).join(" ou "))).await?;
-                                                    return Ok(())
-                                                }
-                                            } else {
-                                                drop(state);
-                                                self.send_settings(ctx, &format!("Désolé {reply_to}, je ne reconnais pas {}. Utilisez cette liste :",
-                                                    if setting.chars().all(|c| c.is_ascii_alphanumeric()) { Cow::Owned(format!("le setting « {setting} »")) } else { Cow::Borrowed("un des settings") },
-                                                ), reply_to).await?;
-                                                return Ok(())
-                                            }
-                                        }
-                                        if tuples.into_buffer().next().is_some() {
-                                            drop(state);
-                                            self.send_settings(ctx, &format!("Désolé {reply_to}, vous devez associer un setting avec une configuration."), reply_to).await?;
-                                            return Ok(())
-                                        } else {
-                                            settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()));
-                                            settings
-                                        }
-                                    }
-                                };
-                                self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), fr::resolve_draft_settings(&settings), spoiler_log, French, "une", format!("seed avec {}", fr::display_draft_picks(&settings)));
+                                    format!("Sorry {reply_to}, {msg}")
+                                }, reply_to).await?;
+                                return Ok(())
                             }
-                            Goal::TriforceBlitz => match args[..] {
-                                [] => {
-                                    ctx.say(&format!("Sorry {reply_to}, the preset is required. Use one of the following:")).await?;
-                                    goal.send_presets(ctx).await?;
-                                    return Ok(())
-                                }
-                                [ref arg] if arg == "daily" => {
-                                    let (date, ordinal, file_hash) = {
-                                        let response = ctx.global_state.http_client
-                                            .get("https://www.triforceblitz.com/seed/daily/all")
-                                            .send().await?
-                                            .detailed_error_for_status().await.to_racetime()?;
-                                        let response_body = response.text().await?;
-                                        let latest = kuchiki::parse_html().one(response_body)
-                                            .select_first("main > section > div > div").map_err(|()| RollError::TfbHtml).to_racetime()?;
-                                        let latest = latest.as_node();
-                                        let a = latest.select_first("a").map_err(|()| RollError::TfbHtml).to_racetime()?;
-                                        let a_attrs = a.attributes.borrow();
-                                        let href = a_attrs.get("href").ok_or(RollError::TfbHtml).to_racetime()?;
-                                        let (_, ordinal) = regex_captures!("^/seed/daily/([0-9]+)$", href).ok_or(RollError::TfbHtml).to_racetime()?;
-                                        let ordinal = ordinal.parse().to_racetime()?;
-                                        let date = NaiveDate::parse_from_str(&a.text_contents(), "%-d %B %Y").to_racetime()?;
-                                        let file_hash = latest.select_first(".hash-icons").map_err(|()| RollError::TfbHtml).to_racetime()?
-                                            .as_node()
-                                            .children()
-                                            .filter_map(NodeRef::into_element_ref)
-                                            .filter_map(|elt| elt.attributes.borrow().get("title").and_then(|title| title.parse().ok()))
-                                            .collect_vec()
-                                            .try_into().map_err(|_| RollError::TfbHtml).to_racetime()?;
-                                        (date, ordinal, file_hash)
-                                    };
-                                    self.queue_existing_seed(ctx, state, seed::Data {
-                                        file_hash: Some(file_hash),
-                                        files: Some(seed::Files::TfbSotd { date, ordinal }),
-                                    }, English, "the", format!("Triforce Blitz seed of the day")).await;
-                                }
-                                [ref arg] if arg == "jr" => self.roll_tfb_seed(ctx, state, "LATEST", spoiler_log, English, "a", format!("Triforce Blitz: Jabu's Revenge seed")).await,
-                                [ref arg] if arg == "s2" => self.roll_tfb_seed(ctx, state, "v7.1.3-blitz-0.42", spoiler_log, English, "a", format!("Triforce Blitz S2 seed")).await,
-                                [..] => {
-                                    ctx.say(&format!("Sorry {reply_to}, I didn't quite understand that. Use one of the following:")).await?;
-                                    goal.send_presets(ctx).await?;
-                                }
-                            },
-                            Goal::WeTryToBeBetter => self.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), wttbb::settings(), spoiler_log, French, "une", format!("seed")),
+                            SeedCommandParseResult::StartDraft { new_state, spoiler_log } => {
+                                *state = RaceState::Draft {
+                                    state: new_state,
+                                    spoiler_log,
+                                };
+                                drop(state);
+                                self.advance_draft(ctx).await?;
+                                return Ok(())
+                            }
+                            SeedCommandParseResult::Error { language, msg } => {
+                                ctx.say(&if let French = language {
+                                    format!("Désolé {reply_to}, {msg}")
+                                } else {
+                                    format!("Sorry {reply_to}, {msg}")
+                                }).await?;
+                                return Ok(())
+                            }
                         }
                     },
                     RaceState::Draft { .. } => ctx.say(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
