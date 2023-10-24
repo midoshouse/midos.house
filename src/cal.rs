@@ -238,6 +238,7 @@ impl Race {
             game,
             team1 AS "team1: Id<Teams>",
             team2 AS "team2: Id<Teams>",
+            team3 AS "team3: Id<Teams>",
             p1,
             p2,
             p3,
@@ -363,7 +364,9 @@ impl Race {
             } else {
                 None
             };
-            let p3 = if let Some(p3) = row.p3 {
+            let p3 = if let Some(team3) = row.team3 {
+                Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team3).await?.ok_or(Error::UnknownTeam)?))
+            } else if let Some(p3) = row.p3 {
                 Some(Entrant::Named(p3))
             } else {
                 None
@@ -921,10 +924,10 @@ impl Race {
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE id = $1) AS "exists!""#, self.id as _).fetch_one(&mut **transaction).await? {
             unimplemented!("updating existing races not yet implemented") //TODO
         } else {
-            let ([team1, team2], [p1, p2, p3], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [total, finished]) = match self.entrants {
-                Entrants::Open => ([None; 2], [None; 3], [None; 2], [None; 2], [None; 2]),
-                Entrants::Count { total, finished } => ([None; 2], [None; 3], [None; 2], [None; 2], [Some(total), Some(finished)]),
-                Entrants::Named(ref entrants) => ([None; 2], [Some(entrants), None, None], [None; 2], [None; 2], [None; 2]),
+            let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [total, finished]) = match self.entrants {
+                Entrants::Open => ([None; 3], [None; 3], [None; 2], [None; 2], [None; 2]),
+                Entrants::Count { total, finished } => ([None; 3], [None; 3], [None; 2], [None; 2], [Some(total), Some(finished)]),
+                Entrants::Named(ref entrants) => ([None; 3], [Some(entrants), None, None], [None; 2], [None; 2], [None; 2]),
                 Entrants::Two([ref p1, ref p2]) => {
                     let (team1, p1, p1_discord, p1_twitch) = match p1 {
                         Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None),
@@ -940,27 +943,25 @@ impl Race {
                         Entrant::Named(name) => (None, Some(name), None, None),
                         Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), None, Some(twitch)),
                     };
-                    ([team1, team2], [p1, p2, None], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [None; 2])
+                    ([team1, team2, None], [p1, p2, None], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [None; 2])
                 }
                 Entrants::Three([ref p1, ref p2, ref p3]) => {
-                    (
-                        [None; 2],
-                        [Some(match p1 {
-                            Entrant::Named(name) => name,
-                            _ => unimplemented!(), //TODO
-                        }),
-                        Some(match p2 {
-                            Entrant::Named(name) => name,
-                            _ => unimplemented!(), //TODO
-                        }),
-                        Some(match p3 {
-                            Entrant::Named(name) => name,
-                            _ => unimplemented!(), //TODO
-                        })],
-                        [None; 2],
-                        [None; 2],
-                        [None; 2],
-                    )
+                    let (team1, p1) = match p1 {
+                        Entrant::MidosHouseTeam(team) => (Some(team.id), None),
+                        Entrant::Named(name) => (None, Some(name)),
+                        _ => unimplemented!(), //TODO
+                    };
+                    let (team2, p2) = match p2 {
+                        Entrant::MidosHouseTeam(team) => (Some(team.id), None),
+                        Entrant::Named(name) => (None, Some(name)),
+                        _ => unimplemented!(), //TODO
+                    };
+                    let (team3, p3) = match p3 {
+                        Entrant::MidosHouseTeam(team) => (Some(team.id), None),
+                        Entrant::Named(name) => (None, Some(name)),
+                        _ => unimplemented!(), //TODO
+                    };
+                    ([team1, team2, team3], [p1, p2, p3], [None; 2], [None; 2], [None; 2])
                 }
             };
             let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match self.schedule {
@@ -1021,9 +1022,10 @@ impl Race {
                 p1_twitch,
                 p2_twitch,
                 p1_discord,
-                p2_discord
+                p2_discord,
+                team3
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46)",
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47)",
                 self.startgg_set,
                 start,
                 self.series as _,
@@ -1070,6 +1072,7 @@ impl Race {
                 p2_twitch,
                 p1_discord.map(|id| i64::from(id)),
                 p2_discord.map(|id| i64::from(id)),
+                team3.map(|id| i64::from(id)),
             ).execute(&mut **transaction).await?;
         }
         Ok(())
