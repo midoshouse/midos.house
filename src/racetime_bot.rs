@@ -1446,6 +1446,9 @@ pub(crate) enum SeedRollUpdate {
     },
     /// Seed rolling failed.
     Error(RollError),
+    #[cfg(unix)]
+    /// A custom message.
+    Message(String),
 }
 
 impl SeedRollUpdate {
@@ -1641,6 +1644,7 @@ impl SeedRollUpdate {
                 }
                 ctx.say("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl.").await?;
             }
+            #[cfg(unix)] Self::Message(msg) => ctx.say(&msg).await?,
         }
         Ok(())
     }

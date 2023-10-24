@@ -94,6 +94,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                 }
                             } else {
                                 Some(SeedRollUpdate::Error(RollError::NonObjectSettings)).write(&mut sock).await.expect("error writing to UNIX socket");
+                                None::<SeedRollUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
                                 break
                             },
                             Ok(ClientMessage::RollRsl { preset, branch, rsl_version, worlds, spoiler_log }) => {
@@ -111,29 +112,44 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                     }
                                 } else {
                                     Some(SeedRollUpdate::Error(RollError::RslVersion)).write(&mut sock).await.expect("error writing to UNIX socket");
+                                    None::<SeedRollUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
                                     break
                                 }
                             }
                             Ok(ClientMessage::Seed { goal, spoiler_log, args }) => {
                                 let mut rx = match goal.parse_seed_command(&global_state.http_client, spoiler_log, &args).await {
-                                    Ok(SeedCommandParseResult::Regular { settings, spoiler_log, .. }) => global_state.clone().roll_seed(goal.preroll_seeds(), None, goal.rando_version(), settings, spoiler_log),
-                                    Ok(SeedCommandParseResult::Rsl { preset, world_count, spoiler_log, .. }) => global_state.clone().roll_rsl_seed(None, preset, world_count, spoiler_log),
-                                    Ok(SeedCommandParseResult::Tfb { version, spoiler_log, .. }) => global_state.clone().roll_tfb_seed(None, version, None, spoiler_log),
-                                    Ok(SeedCommandParseResult::QueueExisting { data, .. }) => {
+                                    Ok(SeedCommandParseResult::Regular { settings, spoiler_log, description, .. }) => {
+                                        Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
+                                        global_state.clone().roll_seed(goal.preroll_seeds(), None, goal.rando_version(), settings, spoiler_log)
+                                    }
+                                    Ok(SeedCommandParseResult::Rsl { preset, world_count, spoiler_log, description, .. }) => {
+                                        Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
+                                        global_state.clone().roll_rsl_seed(None, preset, world_count, spoiler_log)
+                                    }
+                                    Ok(SeedCommandParseResult::Tfb { version, spoiler_log, description, .. }) => {
+                                        Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
+                                        global_state.clone().roll_tfb_seed(None, version, None, spoiler_log)
+                                    }
+                                    Ok(SeedCommandParseResult::QueueExisting { data, description, .. }) => {
+                                        Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
                                         Some(SeedRollUpdate::Done { rsl_preset: None, send_spoiler_log: false, seed: data }).write(&mut sock).await.expect("error writing to UNIX socket");
+                                        None::<SeedRollUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
                                         break
                                     }
                                     Ok(SeedCommandParseResult::SendPresets { msg, .. }) => {
                                         Some(SeedRollUpdate::Error(RollError::Cloned { debug: String::default(), display: msg.to_owned() })).write(&mut sock).await.expect("error writing to UNIX socket");
+                                        None::<SeedRollUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
                                         break
                                     }
                                     Ok(SeedCommandParseResult::SendSettings { msg, .. } | SeedCommandParseResult::Error { msg, .. }) => {
                                         Some(SeedRollUpdate::Error(RollError::Cloned { debug: String::default(), display: msg.into_owned() })).write(&mut sock).await.expect("error writing to UNIX socket");
+                                        None::<SeedRollUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
                                         break
                                     }
                                     Ok(SeedCommandParseResult::StartDraft { .. }) => unimplemented!(), //TODO
                                     Err(e) => {
                                         Some(SeedRollUpdate::Error(e.into())).write(&mut sock).await.expect("error writing to UNIX socket");
+                                        None::<SeedRollUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
                                         break
                                     }
                                 };
