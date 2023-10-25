@@ -677,7 +677,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 p {
                     : "The tournament itself will begin with a randomly seeded series of best-of-1 ";
                     a(href = "https://en.wikipedia.org/wiki/Swiss-system_tournament") : "Swiss";
-                    : " rounds. It is expected to require 6 rounds, although this may change depending on the number of teams in the tournament. Each round will last two weeks, with the exception of 3 weeks for rounds 4 and 5 to accommodate the holidays and AGDQ.";
+                    : " rounds. It is expected to require 6 rounds, although this may change depending on the number of teams in the tournament. Each round will last two weeks, with the exception of 3 weeks for rounds 3 and 4 to accommodate the holidays and AGDQ.";
                 }
                 p : "After all Swiss rounds are done, there will be an additional async as a tiebreaker. The top 8 teams will advance to a single elimination, best-of-3 bracket to crown the champions.";
                 p : "In the event that teams do not schedule in time, tournament organizers will use their discretion to determine the correct outcome based on the failures to schedule. In unusual circumstances, the schedule may be adjusted on short notice at the discretion of tournament organizers.";
