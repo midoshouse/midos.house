@@ -15,9 +15,12 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "1" => Some(html! {
             article {
                 p {
-                    : "Voici la 1ère saison du tournoi organisé par ";
-                    : French.join_html(data.organizers(transaction).await?);
-                    : ". Rejoignez ";
+                    : "This is a friendly invitational tournament organised by ";
+                    : English.join_html(data.organizers(transaction).await?);
+                    : ". The tournament is mainly aimed at players with an intermediate level. It allows players to play against each other in a friendly and fun environment and get their first taste of restreaming.";
+                }
+                p {
+                    : "Voici la 1ère saison du tournoi. Rejoignez ";
                     a(href = "https://discord.gg/YKvbQSBT5") : "le serveur Discord";
                     : " pour plus de détails.";
                 }

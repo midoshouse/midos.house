@@ -1417,6 +1417,7 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFutu
             }
         }
         if let Some(organizer_channel) = data.discord_organizer_channel {
+            //TODO don't post this message for unconfirmed (or unqualified?) teams
             organizer_channel.say(&*discord_ctx.read().await, MessageBuilder::default()
                 .mention_team(&mut transaction, data.discord_guild, &team).await?
                 .push(if team.name_is_plural() { " have resigned from " } else { " has resigned from " })
