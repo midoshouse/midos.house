@@ -3421,14 +3421,18 @@ impl RaceHandler<GlobalState> for Handler {
                         }
                     } else if fpa_invoked {
                         if let Some(organizer_channel) = event.discord_organizer_channel {
-                            organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
-                                //TODO mention organizer role
-                                .push("race finished with FPA call: <https://")
-                                .push(ctx.global_state.env.racetime_host())
-                                .push(&ctx.data().await.url)
-                                .push('>')
-                                .build()
-                            ).await.to_racetime()?;
+                            let mut msg = MessageBuilder::default();
+                            //TODO mention organizer role
+                            msg.push("race finished with FPA call: <https://");
+                            msg.push(ctx.global_state.env.racetime_host());
+                            msg.push(&ctx.data().await.url);
+                            msg.push('>');
+                            if let Some(results_channel) = event.discord_race_results_channel {
+                                msg.push(" — please post the announcement in ");
+                                msg.mention(&results_channel);
+                                msg.push(" manually after adjusting the times");
+                            }
+                            organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
                         }
                     } else {
                         if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
