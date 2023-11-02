@@ -1132,7 +1132,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             transaction.rollback().await?;
                                         } else {
                                             sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
-                                            if start - Utc::now() < Duration::minutes(30) {
+                                            let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
+                                            if cal_event.should_create_room(&mut transaction, &event).await? && start - Utc::now() < Duration::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
                                                     let data = ctx.data.read().await;
                                                     (
@@ -1143,7 +1144,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
                                                     )
                                                 };
-                                                let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
                                                 let new_room_lock = lock!(new_room_lock);
                                                 if let Some(msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, &cal_event, &event).await? {
                                                     if let Some(channel) = event.discord_race_room_channel {
@@ -1171,7 +1171,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 transaction.commit().await?;
                                                 let response_content = if_chain! {
                                                     if let French = event.language;
-                                                    if race.game.is_none();
+                                                    if cal_event.race.game.is_none();
                                                     then {
                                                         MessageBuilder::default()
                                                             .push("Votre race a été planifiée pour le ")
@@ -1180,7 +1180,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .build()
                                                     } else {
                                                         MessageBuilder::default()
-                                                            .push(if let Some(game) = race.game { format!("Game {game}") } else { format!("This race") })
+                                                            .push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") })
                                                             .push(" is now scheduled for ")
                                                             .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
                                                             .push('.')
@@ -1278,7 +1278,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 }
                                                 _ => panic!("tried to schedule race with not two MH teams as async"),
                                             };
-                                            if event.team_config().is_racetime_team_format() && start - Utc::now() < Duration::minutes(30) {
+                                            let cal_event = cal::Event { race, kind };
+                                            if cal_event.should_create_room(&mut transaction, &event).await? && event.team_config().is_racetime_team_format() && start - Utc::now() < Duration::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
                                                     let data = ctx.data.read().await;
                                                     (
@@ -1289,7 +1290,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
                                                     )
                                                 };
-                                                let cal_event = cal::Event { race, kind };
                                                 let new_room_lock = lock!(new_room_lock);
                                                 if let Some(msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, &cal_event, &event).await? {
                                                     if cal_event.is_first_async_half() {
@@ -1324,7 +1324,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 transaction.commit().await?;
                                                 let response_content = if_chain! {
                                                     if let French = event.language;
-                                                    if race.game.is_none();
+                                                    if cal_event.race.game.is_none();
                                                     then {
                                                         MessageBuilder::default()
                                                             .push("La partie de votre async a été planifiée pour le ")
@@ -1334,7 +1334,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     } else {
                                                         MessageBuilder::default()
                                                             .push("Your half of ")
-                                                            .push(if let Some(game) = race.game { format!("game {game}") } else { format!("this race") })
+                                                            .push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") })
                                                             .push(" is now scheduled for ")
                                                             .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
                                                             .push('.')

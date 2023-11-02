@@ -1231,6 +1231,15 @@ impl Event {
             },
         }
     }
+
+    pub(crate) async fn should_create_room(&self, transaction: &mut Transaction<'_, Postgres>, event: &event::Data<'_>) -> Result<bool, event::DataError> {
+        Ok(racetime_bot::Goal::for_event(self.race.series, &self.race.event).map_or(false, |goal| goal.should_create_rooms()) && (
+            // don't create racetime.gg rooms for in-person races
+            self.race.series != Series::SpeedGaming
+            || self.race.event != "2023live"
+            || !event.is_started(transaction).await?
+        ))
+    }
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]

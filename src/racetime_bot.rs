@@ -403,7 +403,7 @@ impl Goal {
         }
     }
 
-    fn should_create_rooms(&self) -> bool {
+    pub(crate) fn should_create_rooms(&self) -> bool {
         match self {
             | Self::MixedPoolsS2
             | Self::NineDaysOfSaws
@@ -3870,9 +3870,8 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                 let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
                 let rooms_to_open = cal::Event::rooms_to_open(&mut transaction, &global_state.http_client, &global_state.startgg_token).await.to_racetime()?;
                 for cal_event in rooms_to_open {
-                    let Some(goal) = Goal::for_event(cal_event.race.series, &cal_event.race.event) else { continue };
-                    if !goal.should_create_rooms() { continue }
                     let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
+                    if !cal_event.should_create_room(&mut transaction, &event).await.to_racetime()? { continue }
                     if let Some(msg) = create_room(&mut transaction, &*global_state.discord_ctx.read().await, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.extra_room_tx, &global_state.http_client, &cal_event, &event).await? {
                         let ctx = global_state.discord_ctx.read().await;
                         if cal_event.is_first_async_half() {
