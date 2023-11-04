@@ -3533,9 +3533,23 @@ impl RaceHandler<GlobalState> for Handler {
                                             let loser = User::from_racetime(&mut *transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                             let msg = if_chain! {
                                                 if let French = event.language;
+                                                if let Some(phase_round) = match (&cal_event.race.phase, &cal_event.race.round) {
+                                                    (Some(phase), Some(round)) => if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()? {
+                                                        Some(Some(phase_round))
+                                                    } else {
+                                                        None // no translation
+                                                    },
+                                                    (Some(_), None) | (None, Some(_)) => None, // no translation
+                                                    (None, None) => Some(None), // no phase/round
+                                                };
                                                 if cal_event.race.game.is_none();
                                                 then {
-                                                    MessageBuilder::default()
+                                                    let mut builder = MessageBuilder::default();
+                                                    if let Some(phase_round) = phase_round {
+                                                        builder.push_safe(phase_round);
+                                                        builder.push(" : ");
+                                                    }
+                                                    builder
                                                         .mention_user(&winner)
                                                         .push(" (")
                                                         .push(winning_time.map_or(Cow::Borrowed("forfait"), |time| Cow::Owned(French.format_duration(time, false))))
