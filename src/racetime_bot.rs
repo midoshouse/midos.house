@@ -2275,7 +2275,7 @@ impl RaceHandler<GlobalState> for Handler {
                 restreamer_racetime_id: cal_event.race.restreamers.get(&language).cloned(),
                 ready: false,
             })).collect();
-            if event.series == Series::SpeedGaming && event.event == "2023onl" {
+            if let Series::SpeedGaming = event.series {
                 let delay_until = cal_event.start().expect("handling room for official race without start time") - chrono::Duration::minutes(20);
                 if let Ok(delay) = (delay_until - Utc::now()).to_std() {
                     let ctx = ctx.clone();
@@ -3404,7 +3404,7 @@ impl RaceHandler<GlobalState> for Handler {
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx).await? {
                 if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, .. }) = self.official_data {
-                    if event.series == Series::SpeedGaming && event.event == "2023onl" {
+                    if let Series::SpeedGaming = event.series {
                         sleep(UDuration::from_secs(15 * 60)).await;
                     }
                     let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
