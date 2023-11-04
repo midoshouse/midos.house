@@ -3449,9 +3449,22 @@ impl RaceHandler<GlobalState> for Handler {
                                             let entrant2 = User::from_racetime(&mut *transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                             let msg = if_chain! {
                                                 if let French = event.language;
+                                                if let Some(phase_round) = match (&cal_event.race.phase, &cal_event.race.round) {
+                                                    (Some(phase), Some(round)) => if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()? {
+                                                        Some(Some(phase_round))
+                                                    } else {
+                                                        None // no translation
+                                                    },
+                                                    (Some(_), None) | (None, Some(_)) => None, // no translation
+                                                    (None, None) => Some(None), // no phase/round
+                                                };
                                                 if cal_event.race.game.is_none();
                                                 then {
                                                     let mut builder = MessageBuilder::default();
+                                                    if let Some(phase_round) = phase_round {
+                                                        builder.push_safe(phase_round);
+                                                        builder.push(" : ");
+                                                    }
                                                     if let Some(finish_time) = winning_time {
                                                         builder.mention_user(&entrant1);
                                                         builder.push(" et ");
@@ -3473,10 +3486,29 @@ impl RaceHandler<GlobalState> for Handler {
                                                         .build()
                                                 } else {
                                                     let mut builder = MessageBuilder::default();
-                                                    if let Some(game) = cal_event.race.game {
-                                                        builder.push("game ");
-                                                        builder.push(game.to_string());
-                                                        builder.push(": ");
+                                                    let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
+                                                        (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                                                        (Some(phase), None) => Some(phase.clone()),
+                                                        (None, Some(round)) => Some(round.clone()),
+                                                        (None, None) => None,
+                                                    };
+                                                    match (info_prefix, cal_event.race.game) {
+                                                        (Some(prefix), Some(game)) => {
+                                                            builder.push_safe(prefix);
+                                                            builder.push(", game ");
+                                                            builder.push(game.to_string());
+                                                            builder.push(": ");
+                                                        }
+                                                        (Some(prefix), None) => {
+                                                            builder.push_safe(prefix);
+                                                            builder.push(": ");
+                                                        }
+                                                        (None, Some(game)) => {
+                                                            builder.push("game ");
+                                                            builder.push(game.to_string());
+                                                            builder.push(": ");
+                                                        }
+                                                        (None, None) => {}
                                                     }
                                                     builder.mention_user(&entrant1);
                                                     builder.push(" and ");
@@ -3518,10 +3550,29 @@ impl RaceHandler<GlobalState> for Handler {
                                                         .build()
                                                 } else {
                                                     let mut builder = MessageBuilder::default();
-                                                    if let Some(game) = cal_event.race.game {
-                                                        builder.push("game ");
-                                                        builder.push(game.to_string());
-                                                        builder.push(": ");
+                                                    let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
+                                                        (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                                                        (Some(phase), None) => Some(phase.clone()),
+                                                        (None, Some(round)) => Some(round.clone()),
+                                                        (None, None) => None,
+                                                    };
+                                                    match (info_prefix, cal_event.race.game) {
+                                                        (Some(prefix), Some(game)) => {
+                                                            builder.push_safe(prefix);
+                                                            builder.push(", game ");
+                                                            builder.push(game.to_string());
+                                                            builder.push(": ");
+                                                        }
+                                                        (Some(prefix), None) => {
+                                                            builder.push_safe(prefix);
+                                                            builder.push(": ");
+                                                        }
+                                                        (None, Some(game)) => {
+                                                            builder.push("game ");
+                                                            builder.push(game.to_string());
+                                                            builder.push(": ");
+                                                        }
+                                                        (None, None) => {}
                                                     }
                                                     builder
                                                         .mention_user(&winner)
@@ -3560,10 +3611,29 @@ impl RaceHandler<GlobalState> for Handler {
                                 team_averages.sort_unstable_by_key(|(_, average)| (average.is_none(), *average)); // sort DNF last
                                 if let [(winner, winning_time), (loser, losing_time)] = *team_averages {
                                     let mut builder = MessageBuilder::default();
-                                    if let Some(game) = cal_event.race.game {
-                                        builder.push("game ");
-                                        builder.push(game.to_string());
-                                        builder.push(": ");
+                                    let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
+                                        (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                                        (Some(phase), None) => Some(phase.clone()),
+                                        (None, Some(round)) => Some(round.clone()),
+                                        (None, None) => None,
+                                    };
+                                    match (info_prefix, cal_event.race.game) {
+                                        (Some(prefix), Some(game)) => {
+                                            builder.push_safe(prefix);
+                                            builder.push(", game ");
+                                            builder.push(game.to_string());
+                                            builder.push(": ");
+                                        }
+                                        (Some(prefix), None) => {
+                                            builder.push_safe(prefix);
+                                            builder.push(": ");
+                                        }
+                                        (None, Some(game)) => {
+                                            builder.push("game ");
+                                            builder.push(game.to_string());
+                                            builder.push(": ");
+                                        }
+                                        (None, None) => {}
                                     }
                                     if winning_time == losing_time {
                                         let team1 = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
