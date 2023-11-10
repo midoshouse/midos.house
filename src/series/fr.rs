@@ -13,7 +13,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
     Ok(match &*data.event {
         "3" => Some(html! {
             article {
-                p {
+                p(lang = "fr") {
                     : "Voici la 3e saison du tournoi francophone, organisée par ";
                     : French.join_html(data.organizers(transaction).await?);
                     : ". Rejoignez ";

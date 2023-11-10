@@ -254,6 +254,7 @@ pub(crate) struct Data<'a> {
     enter_url: Option<Url>,
     pub(crate) video_url: Option<Url>,
     pub(crate) discord_guild: Option<GuildId>,
+    discord_invite_url: Option<Url>,
     pub(crate) discord_race_room_channel: Option<ChannelId>,
     pub(crate) discord_race_results_channel: Option<ChannelId>,
     pub(crate) discord_organizer_channel: Option<ChannelId>,
@@ -291,6 +292,7 @@ impl<'a> Data<'a> {
             enter_url,
             video_url,
             discord_guild AS "discord_guild: PgSnowflake<GuildId>",
+            discord_invite_url,
             discord_race_room_channel AS "discord_race_room_channel: PgSnowflake<ChannelId>",
             discord_race_results_channel AS "discord_race_results_channel: PgSnowflake<ChannelId>",
             discord_organizer_channel AS "discord_organizer_channel: PgSnowflake<ChannelId>",
@@ -313,6 +315,7 @@ impl<'a> Data<'a> {
                 enter_url: row.enter_url.map(|url| url.parse()).transpose()?,
                 video_url: row.video_url.map(|url| url.parse()).transpose()?,
                 discord_guild: row.discord_guild.map(|PgSnowflake(id)| id),
+                discord_invite_url: row.discord_invite_url.map(|url| url.parse()).transpose()?,
                 discord_race_room_channel: row.discord_race_room_channel.map(|PgSnowflake(id)| id),
                 discord_race_results_channel: row.discord_race_results_channel.map(|PgSnowflake(id)| id),
                 discord_organizer_channel: row.discord_organizer_channel.map(|PgSnowflake(id)| id),
@@ -643,11 +646,16 @@ impl<'a> Data<'a> {
                     a(class = "button", href = url.to_string()) {
                         : favicon(url);
                         @match url.host_str() {
-                            Some("discord.gg") => : "Discord Server";
                             Some("racetime.gg") => : "Race Room";
                             Some("challonge.com" | "www.challonge.com" | "start.gg" | "www.start.gg") => : "Brackets";
                             _ => : "Website";
                         }
+                    }
+                }
+                @if let Some(ref discord_invite_url) = self.discord_invite_url {
+                    a(class = "button", href = discord_invite_url.to_string()) {
+                        : favicon(discord_invite_url);
+                        : "Discord Server";
                     }
                 }
             }

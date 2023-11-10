@@ -185,12 +185,21 @@ impl Requirement {
             Self::DiscordGuild { name } => {
                 let name = name.clone();
                 let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
+                let invite_url = data.discord_invite_url.as_ref().map(|url| url.to_string());
                 RequirementStatus {
                     blocks_submit: !is_checked,
                     html_content: Box::new(move |_| html! {
-                        : "Join the ";
-                        : name; //TODO invite link if not joined
-                        : " Discord server";
+                        @if let Some(invite_url) = invite_url {
+                            a(href = invite_url) {
+                                : "Join the ";
+                                : name;
+                                : " Discord server";
+                            }
+                        } else {
+                            : "Join the ";
+                            : name;
+                            : " Discord server";
+                        }
                     }),
                 }
             }
