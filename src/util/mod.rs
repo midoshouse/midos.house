@@ -129,7 +129,7 @@ pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
             img(class = "favicon", alt = "external link (drive.google.com)", src = "https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png");
         },
         Some("ootrandomizer.com" | "league.ootrandomizer.com") => html! {
-            img(class = "favicon", alt = "external link (ootrandomizer.com)", src = "https://ootrandomizer.com/img/favicon.ico");
+            img(class = "favicon", alt = "external link (ootrandomizer.com)", srcset = "https://ootrandomizer.com/img/favicon-16x16.png 16w, https://ootrandomizer.com/img/favicon-32x32.png 32w");
         },
         Some("youtube.com" | "www.youtube.com") => html! {
             img(class = "favicon", alt = "external link (youtube.com)", srcset = "https://www.youtube.com/s/desktop/435d54f2/img/favicon.ico 16w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_32x32.png 32w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_48x48.png 48w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_96x96.png 96w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_144x144.png 144w");

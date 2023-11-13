@@ -1010,7 +1010,7 @@ impl GlobalState {
                         rsl_preset: None,
                         send_spoiler_log: spoiler_log,
                     }).await?,
-                    Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
+                    Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?, //TODO fall back to rolling locally for network errors
                 }
                 drop(mw_permit);
             } else {
@@ -1153,7 +1153,7 @@ impl GlobalState {
                     let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), None /* always limit to 3 tries per settings */, version.branch(), web_version, true, spoiler_log, settings).await {
                         Ok(data) => data,
                         Err(RollError::Retries { .. }) => continue,
-                        Err(e) => return Err(e),
+                        Err(e) => return Err(e), //TODO fall back to rolling locally for network errors
                     };
                     drop(mw_permit);
                     let _ = update_tx.send(SeedRollUpdate::Done {
