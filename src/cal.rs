@@ -1596,10 +1596,13 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
     if !event.organizers(&mut transaction).await?.contains(&me) {
         form.context.push_error(form::Error::validation("You must be an organizer of this event to add a race."));
     }
+    let fenhl = User::from_id(&mut *transaction, Id::<Users>::from(14571800683221815449_u64)).await?.ok_or(PageError::FenhlUserData)?;
     match event.match_source() {
         MatchSource::Manual => {}
         MatchSource::League => form.context.push_error(form::Error::validation("This event's races are generated automatically from league.ootrandomizer.com and cannot be edited manually. Please contact Fenhl if a race needs to be added that's not listed at league.ootrandomizer.com.")),
-        MatchSource::StartGG => form.context.push_error(form::Error::validation("This event's races are generated automatically from start.gg and cannot be edited manually. Please contact Fenhl if a race needs to be added that's not represented by a start.gg match.")),
+        MatchSource::StartGG => if me != fenhl { //TODO (temporarily allowing myself to add these races until automation is fully implemented)
+            form.context.push_error(form::Error::validation("This event's races are generated automatically from start.gg and cannot be edited manually. Please contact Fenhl if a race needs to be added that's not represented by a start.gg match."));
+        },
     }
     Ok(if let Some(ref value) = form.value {
         let team1 = Team::from_id(&mut transaction, value.team1).await?;
