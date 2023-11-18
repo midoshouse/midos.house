@@ -1744,6 +1744,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                             br;
                             small(style = "font-weight: normal;") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
                         }
+                            //TODO hide restreamers column if the race room exists
                         th {
                             : "Restreamer";
                             br;
@@ -1763,6 +1764,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                                     race.video_urls.get(&language).map(|video_url| video_url.to_string())
                                 });
                             });
+                            //TODO hide restreamers column if the race room exists
                             @let field_name = format!("restreamers.{}", language.short_code());
                             : form_table_cell(&field_name, &mut errors, html! {
                                 input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {

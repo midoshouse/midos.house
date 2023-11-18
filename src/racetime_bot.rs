@@ -3812,7 +3812,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             let race_slug = racetime::StartRace {
                 goal: goal.as_str().to_owned(),
                 goal_is_custom: goal.is_custom(),
-                team_race: event.team_config().is_racetime_team_format(),
+                team_race: event.team_config().is_racetime_team_format() && matches!(cal_event.kind, cal::EventKind::Normal),
                 invitational: !matches!(cal_event.race.entrants, Entrants::Open),
                 unlisted: cal_event.is_first_async_half(),
                 info_bot: String::default(),
