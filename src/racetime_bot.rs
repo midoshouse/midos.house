@@ -3413,6 +3413,7 @@ impl RaceHandler<GlobalState> for Handler {
                     }
                     let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
                     if cal_event.is_first_async_half() {
+                        ctx.say("@entrants Please remember to send the videos of your run to a tournament organizer.").await?;
                         if let Some(organizer_channel) = event.discord_organizer_channel {
                             organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
                                 //TODO mention organizer role
