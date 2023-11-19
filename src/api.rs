@@ -372,8 +372,8 @@ impl<'r> FromRequest<'r> for ApiKey {
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
         let db_pool = match <&State<PgPool>>::from_request(req).await {
             request::Outcome::Success(db_pool) => db_pool,
-            request::Outcome::Forward(()) => return request::Outcome::Forward(()),
-            request::Outcome::Failure((status, ())) => return request::Outcome::Failure((status, ApiKeyFromRequestError::DbPool)),
+            request::Outcome::Forward(status) => return request::Outcome::Forward(status),
+            request::Outcome::Error((status, ())) => return request::Outcome::Error((status, ApiKeyFromRequestError::DbPool)),
         };
         match req.headers().get("X-API-Key").at_most_one() {
             Ok(Some(api_key)) => match sqlx::query!(r#"SELECT
@@ -388,14 +388,14 @@ impl<'r> FromRequest<'r> for ApiKey {
                     },
                     user: match user::User::from_id(&**db_pool, row.user_id).await {
                         Ok(user) => user.expect("database constraint validated: API keys belong to existing users"),
-                        Err(e) => return request::Outcome::Failure((Status::InternalServerError, ApiKeyFromRequestError::Sql(e))),
+                        Err(e) => return request::Outcome::Error((Status::InternalServerError, ApiKeyFromRequestError::Sql(e))),
                     },
                 }),
-                Ok(None) => request::Outcome::Failure((Status::Unauthorized, ApiKeyFromRequestError::NoSuchApiKey)),
-                Err(e) => request::Outcome::Failure((Status::InternalServerError, ApiKeyFromRequestError::Sql(e))),
+                Ok(None) => request::Outcome::Error((Status::Unauthorized, ApiKeyFromRequestError::NoSuchApiKey)),
+                Err(e) => request::Outcome::Error((Status::InternalServerError, ApiKeyFromRequestError::Sql(e))),
             },
-            Ok(None) => request::Outcome::Failure((Status::Unauthorized, ApiKeyFromRequestError::MissingHeader)),
-            Err(_) => request::Outcome::Failure((Status::Unauthorized, ApiKeyFromRequestError::MultipleHeaders)),
+            Ok(None) => request::Outcome::Error((Status::Unauthorized, ApiKeyFromRequestError::MissingHeader)),
+            Err(_) => request::Outcome::Error((Status::Unauthorized, ApiKeyFromRequestError::MultipleHeaders)),
         }
     }
 }

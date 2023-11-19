@@ -1553,9 +1553,8 @@ impl SeedRollUpdate {
                     if let Some(preset) = rsl_preset { format!("{}\n", preset.race_info()) } else { String::default() },
                     extra.file_hash.map(|file_hash| format!("{}\n", format_hash(file_hash))).unwrap_or_default(),
                 )).await?;
-                if let Some(official_data) = official_data {
+                if let Some(OfficialRaceData { cal_event, event, .. }) = official_data {
                     // send multiworld rooms
-                    let OfficialRaceData { cal_event, event, .. } = official_data;
                     let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
                     for team in cal_event.active_teams() {
                         if let Some(mw::Impl::MidosHouse) = team.mw_impl {
@@ -3959,6 +3958,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                     if let Some(msg) = create_room(&mut transaction, &*global_state.discord_ctx.read().await, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.extra_room_tx, &global_state.http_client, &cal_event, &event).await? {
                         let ctx = global_state.discord_ctx.read().await;
                         if cal_event.is_first_async_half() {
+                            let msg = format!("unlisted room for first async half: {msg}");
                             if let Some(channel) = event.discord_organizer_channel {
                                 channel.say(&*ctx, &msg).await.to_racetime()?;
                             } else {
@@ -3968,15 +3968,18 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                             for team in cal_event.active_teams() {
                                 for member in team.members(&mut transaction).await.to_racetime()? {
                                     if let Some(discord) = member.discord {
-                                        discord.id.create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, &msg).await.to_racetime()?; //TODO different message? (e.g. “your race room is open”)
+                                        discord.id.create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, &msg).await.to_racetime()?;
                                     }
                                 }
                             }
                         } else {
                             if let Some(channel) = event.discord_race_room_channel {
-                                channel.say(&*ctx, msg).await.to_racetime()?;
+                                channel.say(&*ctx, &msg).await.to_racetime()?;
+                                if let Some(thread) = cal_event.race.scheduling_thread {
+                                    thread.say(&*ctx, msg).await.to_racetime()?; //TODO only ping once?
+                                }
                             } else if let Some(thread) = cal_event.race.scheduling_thread {
-                                thread.say(&*ctx, msg).await.to_racetime()?; //TODO different message? (e.g. “your race room is open”)
+                                thread.say(&*ctx, msg).await.to_racetime()?;
                             } else if let Some(channel) = event.discord_organizer_channel {
                                 channel.say(&*ctx, msg).await.to_racetime()?;
                             } else {

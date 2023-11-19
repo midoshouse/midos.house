@@ -750,7 +750,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     em : "ban";
                     : " allows a team to lock in a setting of their choice to the default. A ";
                     em : "pick";
-                    : " will function just like last season, allowing a team to change a setting or lock it to the default as well. This drafting procedure takes place in the scheduling thread for the match and must be completed at least 30 minutes before the scheduled starting time so the seed can be rolled.";
+                    : " allows a team to change a setting or lock it to the default as well. This drafting procedure takes place in the scheduling thread for the match and must be completed at least 30 minutes before the scheduled starting time so the seed can be rolled.";
                 }
                 p {
                     : "The settings that can be modified and their respective options (";
@@ -1380,7 +1380,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                                     : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
                                     @if let Some(PgSnowflake(discord_channel)) = async_row.discord_channel {
                                         : "post it in ";
-                                        @if let Some(discord_channel) = discord_channel.to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                        @if let Some(discord_channel) = discord_channel.to_channel_cached(&discord_ctx.cache).and_then(|c| c.guild(discord_ctx)) {
                                             : "#";
                                             : discord_channel.name;
                                         } else {
@@ -1405,7 +1405,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                                     : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
                                     @if let Some(PgSnowflake(discord_channel)) = async_row.discord_channel {
                                         : "post it in ";
-                                        @if let Some(discord_channel) = discord_channel.to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                        @if let Some(discord_channel) = discord_channel.to_channel_cached(&discord_ctx.cache).and_then(|c| c.guild(discord_ctx)) {
                                             : "#";
                                             : discord_channel.name;
                                         } else {
@@ -1430,7 +1430,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                                     : "(If you plan on uploading the VoD to YouTube later, leave this field blank and ";
                                     @if let Some(PgSnowflake(discord_channel)) = async_row.discord_channel {
                                         : "post it in ";
-                                        @if let Some(discord_channel) = discord_channel.to_channel_cached(discord_ctx).and_then(|c| c.guild()) {
+                                        @if let Some(discord_channel) = discord_channel.to_channel_cached(&discord_ctx.cache).and_then(|c| c.guild(discord_ctx)) {
                                             : "#";
                                             : discord_channel.name;
                                         } else {

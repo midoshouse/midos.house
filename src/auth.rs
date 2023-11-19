@@ -26,7 +26,7 @@ macro_rules! guard_try {
     ($res:expr) => {
         match $res {
             Ok(x) => x,
-            Err(e) => return Outcome::Failure((Status::InternalServerError, e.into())),
+            Err(e) => return Outcome::Error((Status::InternalServerError, e.into())),
         }
     };
 }
@@ -56,17 +56,16 @@ pub(crate) enum UserFromRequestError {
 }
 
 async fn handle_racetime_token_response(env: &State<Environment>, client: &reqwest::Client, cookies: &CookieJar<'_>, token: &TokenResponse<RaceTime>) -> Result<RaceTimeUser, UserFromRequestError> {
-    let mut cookie = Cookie::build("racetime_token", token.access_token().to_owned())
+    let mut cookie = Cookie::build(("racetime_token", token.access_token().to_owned()))
         .same_site(SameSite::Lax);
     if let Some(expires_in) = token.expires_in() {
         cookie = cookie.max_age(UDuration::from_secs(u64::try_from(expires_in)?.saturating_sub(60)).try_into()?);
     }
-    cookies.add_private(cookie.finish());
+    cookies.add_private(cookie);
     if let Some(refresh_token) = token.refresh_token() {
-        cookies.add_private(Cookie::build("racetime_refresh_token", refresh_token.to_owned())
+        cookies.add_private(Cookie::build(("racetime_refresh_token", refresh_token.to_owned()))
             .same_site(SameSite::Lax)
-            .permanent()
-            .finish());
+            .permanent());
     }
     Ok(client.get(format!("https://{}/o/userinfo", env.racetime_host()))
         .bearer_auth(token.access_token())
@@ -76,17 +75,16 @@ async fn handle_racetime_token_response(env: &State<Environment>, client: &reqwe
 }
 
 async fn handle_discord_token_response(client: &reqwest::Client, cookies: &CookieJar<'_>, token: &TokenResponse<Discord>) -> Result<DiscordUser, UserFromRequestError> {
-    let mut cookie = Cookie::build("discord_token", token.access_token().to_owned())
+    let mut cookie = Cookie::build(("discord_token", token.access_token().to_owned()))
         .same_site(SameSite::Lax);
     if let Some(expires_in) = token.expires_in() {
         cookie = cookie.max_age(UDuration::from_secs(u64::try_from(expires_in)?.saturating_sub(60)).try_into()?);
     }
-    cookies.add_private(cookie.finish());
+    cookies.add_private(cookie);
     if let Some(refresh_token) = token.refresh_token() {
-        cookies.add_private(Cookie::build("discord_refresh_token", refresh_token.to_owned())
+        cookies.add_private(Cookie::build(("discord_refresh_token", refresh_token.to_owned()))
             .same_site(SameSite::Lax)
-            .permanent()
-            .finish());
+            .permanent());
     }
     Ok(client.get("https://discord.com/api/v10/users/@me")
         .bearer_auth(token.access_token())
@@ -210,25 +208,25 @@ impl<'r> FromRequest<'r> for RaceTimeUser {
                             .await
                         {
                             Ok(response) => Outcome::Success(guard_try!(response.json_with_text_in_error().await)),
-                            Err(e) => Outcome::Failure((Status::BadGateway, e.into())),
+                            Err(e) => Outcome::Error((Status::BadGateway, e.into())),
                         }
                     } else if let Some(token) = cookies.get_private("racetime_refresh_token") {
                         match req.guard::<OAuth2<RaceTime>>().await {
                             Outcome::Success(oauth) => Outcome::Success(guard_try!(handle_racetime_token_response(env, client, cookies, &guard_try!(oauth.refresh(token.value()).await)).await)),
-                            Outcome::Failure((status, ())) => Outcome::Failure((status, UserFromRequestError::Cookie)),
-                            Outcome::Forward(()) => Outcome::Forward(()),
+                            Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::Cookie)),
+                            Outcome::Forward(status) => Outcome::Forward(status),
                         }
                     } else {
-                        Outcome::Failure((Status::Unauthorized, UserFromRequestError::Cookie))
+                        Outcome::Error((Status::Unauthorized, UserFromRequestError::Cookie))
                     },
-                    Outcome::Failure((status, ())) => Outcome::Failure((status, UserFromRequestError::RaceTimeHost)),
-                    Outcome::Forward(()) => Outcome::Forward(()),
+                    Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::RaceTimeHost)),
+                    Outcome::Forward(status) => Outcome::Forward(status),
                 },
-                Outcome::Failure((status, ())) => Outcome::Failure((status, UserFromRequestError::HttpClient)),
-                Outcome::Forward(()) => Outcome::Forward(()),
+                Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::HttpClient)),
+                Outcome::Forward(status) => Outcome::Forward(status),
             },
-            Outcome::Failure((_, never)) => match never {},
-            Outcome::Forward(()) => Outcome::Forward(()),
+            Outcome::Error((_, never)) => match never {},
+            Outcome::Forward(status) => Outcome::Forward(status),
         }
     }
 }
@@ -249,22 +247,22 @@ impl<'r> FromRequest<'r> for DiscordUser {
                         .await
                     {
                         Ok(response) => Outcome::Success(guard_try!(response.json_with_text_in_error().await)),
-                        Err(e) => Outcome::Failure((Status::BadGateway, e.into())),
+                        Err(e) => Outcome::Error((Status::BadGateway, e.into())),
                     }
                 } else if let Some(token) = cookies.get_private("discord_refresh_token") {
                     match req.guard::<OAuth2<Discord>>().await {
                         Outcome::Success(oauth) => Outcome::Success(guard_try!(handle_discord_token_response(client, cookies, &guard_try!(oauth.refresh(token.value()).await)).await)),
-                        Outcome::Failure((status, ())) => Outcome::Failure((status, UserFromRequestError::Cookie)),
-                        Outcome::Forward(()) => Outcome::Forward(()),
+                        Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::Cookie)),
+                        Outcome::Forward(status) => Outcome::Forward(status),
                     }
                 } else {
-                    Outcome::Failure((Status::Unauthorized, UserFromRequestError::Cookie))
+                    Outcome::Error((Status::Unauthorized, UserFromRequestError::Cookie))
                 },
-                Outcome::Failure((status, ())) => Outcome::Failure((status, UserFromRequestError::HttpClient)),
-                Outcome::Forward(()) => Outcome::Forward(()),
+                Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::HttpClient)),
+                Outcome::Forward(status) => Outcome::Forward(status),
             },
-            Outcome::Failure((_, never)) => match never {},
-            Outcome::Forward(()) => Outcome::Forward(()),
+            Outcome::Error((_, never)) => match never {},
+            Outcome::Forward(status) => Outcome::Forward(status),
         }
     }
 }
@@ -282,8 +280,8 @@ impl<'r> FromRequest<'r> for User {
                         guard_try!(sqlx::query!("UPDATE users SET racetime_display_name = $1, racetime_discriminator = $2, racetime_pronouns = $3 WHERE id = $4", racetime_user.name, racetime_user.discriminator as _, racetime_user.pronouns as _, user.id as _).execute(&**pool).await);
                         found_user = found_user.or(Ok(user));
                     },
-                    Outcome::Forward(()) => {}
-                    Outcome::Failure(e) => found_user = found_user.or(Err(e)),
+                    Outcome::Forward(_) => {}
+                    Outcome::Error(e) => found_user = found_user.or(Err(e)),
                 }
                 match req.guard::<DiscordUser>().await {
                     Outcome::Success(discord_user) => if let Some(user) = guard_try!(User::from_discord(&**pool, discord_user.id).await) {
@@ -295,24 +293,24 @@ impl<'r> FromRequest<'r> for User {
                         guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1, discord_discriminator = $2, discord_username = $3 WHERE id = $4", display_name, discord_user.discriminator as _, username, user.id as _).execute(&**pool).await);
                         found_user = found_user.or(Ok(user));
                     },
-                    Outcome::Forward(()) => {},
-                    Outcome::Failure(e) => found_user = found_user.or(Err(e)),
+                    Outcome::Forward(_) => {},
+                    Outcome::Error(e) => found_user = found_user.or(Err(e)),
                 };
                 match found_user {
                     Ok(user) => if let Some(user_id) = guard_try!(sqlx::query_scalar!(r#"SELECT view_as AS "view_as: Id<Users>" FROM view_as WHERE viewer = $1"#, user.id as _).fetch_optional(&**pool).await) {
                         if let Some(user) = guard_try!(User::from_id(&**pool, user_id).await) {
                             Outcome::Success(user)
                         } else {
-                            Outcome::Failure((Status::InternalServerError, UserFromRequestError::ViewAsNoSuchUser))
+                            Outcome::Error((Status::InternalServerError, UserFromRequestError::ViewAsNoSuchUser))
                         }
                     } else {
                         Outcome::Success(user)
                     },
-                    Err(e) => Outcome::Failure(e),
+                    Err(e) => Outcome::Error(e),
                 }
             }
-            Outcome::Failure((status, ())) => Outcome::Failure((status, UserFromRequestError::Database)),
-            Outcome::Forward(()) => Outcome::Forward(()),
+            Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::Database)),
+            Outcome::Forward(status) => Outcome::Forward(status),
         }
     }
 }
@@ -365,7 +363,7 @@ pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 pub(crate) fn racetime_login(oauth: OAuth2<RaceTime>, cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Result<Redirect, Error<rocket_oauth2::Error>> {
     if let Some(redirect_to) = redirect_to {
         if redirect_to.0.path() != uri!(racetime_callback).path() && redirect_to.0.path() != uri!(discord_callback).path() { // prevent showing login error page on login success
-            cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
+            cookies.add(Cookie::build(("redirect_to", redirect_to)).same_site(SameSite::Lax));
         }
     }
     oauth.get_redirect(cookies, &["read"]).map_err(Error)
@@ -375,7 +373,7 @@ pub(crate) fn racetime_login(oauth: OAuth2<RaceTime>, cookies: &CookieJar<'_>, r
 pub(crate) fn discord_login(oauth: OAuth2<Discord>, cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Result<Redirect, Error<rocket_oauth2::Error>> {
     if let Some(redirect_to) = redirect_to {
         if redirect_to.0.path() != uri!(racetime_callback).path() && redirect_to.0.path() != uri!(discord_callback).path() { // prevent showing login error page on login success
-            cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
+            cookies.add(Cookie::build(("redirect_to", redirect_to)).same_site(SameSite::Lax));
         }
     }
     oauth.get_redirect(cookies, &["identify"]).map_err(Error)
@@ -386,7 +384,7 @@ pub(crate) fn challonge_login(me: User, oauth: OAuth2<Challonge>, cookies: &Cook
     let _ = me; // we require already being signed into Mido's House to use Challonge OAuth, since it is so heavily rate limited
     if let Some(redirect_to) = redirect_to {
         if redirect_to.0.path() != uri!(racetime_callback).path() && redirect_to.0.path() != uri!(discord_callback).path() { // prevent showing login error page on login success
-            cookies.add(Cookie::build("redirect_to", redirect_to).same_site(SameSite::Lax).finish());
+            cookies.add(Cookie::build(("redirect_to", redirect_to)).same_site(SameSite::Lax));
         }
     }
     oauth.get_redirect(cookies, &["me"]).map_err(Error)
@@ -562,9 +560,9 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, racetime_user
 
 #[rocket::get("/logout?<redirect_to>")]
 pub(crate) fn logout(cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Redirect {
-    cookies.remove_private(Cookie::named("racetime_token"));
-    cookies.remove_private(Cookie::named("discord_token"));
-    cookies.remove_private(Cookie::named("racetime_refresh_token"));
-    cookies.remove_private(Cookie::named("discord_refresh_token"));
+    cookies.remove_private(Cookie::from("racetime_token"));
+    cookies.remove_private(Cookie::from("discord_token"));
+    cookies.remove_private(Cookie::from("racetime_refresh_token"));
+    cookies.remove_private(Cookie::from("discord_refresh_token"));
     Redirect::to(redirect_to.map_or_else(|| uri!(crate::http::index), |uri| uri.0.into_owned()))
 }

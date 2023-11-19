@@ -3,6 +3,15 @@ name = "midos-house"
 version = "0.1.0"
 edition = "2021"
 
+[lints.rust]
+rust_2018_idioms = "deny"
+unsafe_code = "forbid"
+unused = "deny"
+unused_crate_dependencies = "deny"
+unused_import_braces = "deny"
+unused_qualifications = "deny"
+warnings = "deny"
+
 [profile.release]
 lto = true
 strip = true
@@ -36,8 +45,8 @@ noisy_float = "0.2"
 once_cell = "1"
 racetime = "0.21"
 rand = "0.8"
-rocket = "0.5.0-rc.3"
-rocket_oauth2 = "0.5.0-rc.1"
+rocket = "0.5"
+rocket_oauth2 = "0.5.0-rc.3"
 serde_json = "1"
 serde_plain = "1"
 thiserror = "1"
@@ -84,7 +93,7 @@ features = ["rustls-tls", "trust-dns"]
 
 [dependencies.rocket_csrf]
 git = "https://github.com/fenhl/rocket_csrf"
-branch = "impl-error"
+branch = "rocket05"
 
 [dependencies.rocket-util]
 git = "https://github.com/fenhl/rocket-util"
@@ -135,7 +144,7 @@ features = ["serde"]
 [dependencies.wheel]
 git = "https://github.com/fenhl/wheel"
 branch = "main"
-features = ["chrono", "reqwest", "rocket-beta", "serde", "serde_json"]
+features = ["chrono", "reqwest", "rocket", "serde", "serde_json"]
 
 [target.'cfg(unix)'.dependencies]
 xdg = "2"
