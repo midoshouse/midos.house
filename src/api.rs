@@ -297,12 +297,11 @@ struct Team {
     /// Members are guaranteed to be listed in a consistent order depending on the team configuration of the event, e.g. pictionary events will always list the runner first and the pilot second.
     async fn members(&self, ctx: &Context<'_>) -> sqlx::Result<Vec<TeamMember>> {
         let team_config = self.event.team_config();
+        let members = self.inner.members(db!(ctx)).await?;
         let roles = team_config.roles();
-        let mut members = self.inner.members_roles(db!(ctx)).await?;
-        members.sort_unstable_by_key(|(_, role)| roles.iter().position(|(iter_role, _)| iter_role == role));
         Ok(
             members.into_iter().zip_eq(roles)
-                .map(|((user, _), (_, display_name))| TeamMember {
+                .map(|(user, (_, display_name))| TeamMember {
                     role: (!matches!(team_config, TeamConfig::Solo)).then(|| (*display_name).to_owned()),
                     user: User(user),
                 })

@@ -1556,6 +1556,7 @@ impl SeedRollUpdate {
                 if let Some(OfficialRaceData { cal_event, event, .. }) = official_data {
                     // send multiworld rooms
                     let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
+                    let mut any_rooms_created = false;
                     for team in cal_event.active_teams() {
                         if let Some(mw::Impl::MidosHouse) = team.mw_impl {
                             let members = team.members_roles(&mut transaction).await.to_racetime()?;
@@ -1573,7 +1574,7 @@ impl SeedRollUpdate {
                                     }
                                 }
                             }
-                            let mut mw_room_name = if let Ok(other_team) = cal_event.active_teams().filter(|iter_team| iter_team.id != team.id).exactly_one() {
+                            let mut mw_room_name = if let Ok(other_team) = cal_event.active_teams().filter(|iter_team| iter_team.id != team.id).exactly_one() { //TODO also use this naming convention for asynced races?
                                 format!(
                                     "{}vs. {}",
                                     if let Some(game) = cal_event.race.game { format!("game {game} ") } else { String::default() },
@@ -1613,11 +1614,15 @@ impl SeedRollUpdate {
                                     }
                                 }
                                 cmd.check("ootrmwd create-tournament-room").await.to_racetime()?;
-                                ctx.say(&format!("{reply_to}, your Mido's House Multiworld room named “{mw_room_name}” is now open. You can find it at the top of the room list.")).await?;
+                                ctx.say(&format!("{reply_to}, your Mido's House Multiworld room named “{mw_room_name}” is now open.")).await?;
+                                any_rooms_created = true;
                             } else {
                                 ctx.say(&format!("Sorry {reply_to}, there was an error creating your Mido's House Multiworld room. Please create one manually.")).await?;
                             }
                         }
+                    }
+                    if any_rooms_created {
+                        ctx.say("You can find your rooms at the top of the room list after signing in with racetime.gg or Discord from the multiworld app's settings screen.").await?;
                     }
                     transaction.commit().await.to_racetime()?;
                 }

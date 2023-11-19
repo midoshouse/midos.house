@@ -17,6 +17,12 @@ if (-not $?)
     throw 'Native Failure'
 }
 
+wsl mkdir -p /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/target/wsl/release
+if (-not $?)
+{
+    throw 'Native Failure'
+}
+
 wsl cp /home/fenhl/wslgit/github.com/midoshouse/midos.house/target/x86_64-unknown-linux-musl/release/midos-house /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/target/wsl/release/midos-house
 if (-not $?)
 {

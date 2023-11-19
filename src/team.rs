@@ -97,12 +97,12 @@ impl Team {
     }
 
     async fn member_ids(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<Id<Users>>> {
-        sqlx::query_scalar!(r#"SELECT member AS "member: Id<Users>" FROM team_members WHERE team = $1"#, self.id as _).fetch_all(&mut **transaction).await
+        sqlx::query_scalar!(r#"SELECT member AS "member: Id<Users>" FROM team_members WHERE team = $1 ORDER BY role ASC"#, self.id as _).fetch_all(&mut **transaction).await
     }
 
     async fn member_ids_roles(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<(Id<Users>, Role)>> {
         Ok(
-            sqlx::query!(r#"SELECT member AS "member: Id<Users>", role AS "role: Role" FROM team_members WHERE team = $1"#, self.id as _).fetch_all(&mut **transaction).await?
+            sqlx::query!(r#"SELECT member AS "member: Id<Users>", role AS "role: Role" FROM team_members WHERE team = $1 ORDER BY role ASC"#, self.id as _).fetch_all(&mut **transaction).await?
                 .into_iter()
                 .map(|row| (row.member, row.role))
                 .collect()
