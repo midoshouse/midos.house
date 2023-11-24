@@ -79,7 +79,13 @@ pub(crate) fn display_s3_draft_picks(picks: &draft::Picks) -> String {
 pub(crate) fn display_s4_draft_picks(picks: &draft::Picks) -> String {
     English.join_str(
         S4_SETTINGS.into_iter()
-            .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _)| pick == other)).map(|(_, display)| display)),
+            .filter_map(|Setting { name, other, .. }|
+                picks.get(name)
+                    .cloned()
+                    .or_else(|| (name == "camc" && picks.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes").then_some(Cow::Borrowed("both")))
+                    .and_then(|pick| other.iter().find(|&(other, _)| pick == *other))
+                    .map(|(_, display)| display)
+            ),
     ).unwrap_or_else(|| format!("base settings"))
 }
 
@@ -229,7 +235,7 @@ pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map
     let card = picks.get("card").map(|card| &**card).unwrap_or("vanilla");
     let merchants = picks.get("merchants").map(|merchants| &**merchants).unwrap_or("off");
     let frogs = picks.get("frogs").map(|frogs| &**frogs).unwrap_or("off");
-    let camc = picks.get("camc").map(|camc| &**camc).unwrap_or("texture");
+    let camc = picks.get("camc").map(|camc| &**camc).unwrap_or(if picks.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" { "both" } else { "texture" });
     let hints = picks.get("hints").map(|hints| &**hints).unwrap_or("path");
     collect![
         format!("user_message") => json!("4th Multiworld Tournament"),

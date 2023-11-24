@@ -1641,7 +1641,11 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                     high_seed: team1.id,
                     went_first: None,
                     skipped_bans: 0,
-                    settings: HashMap::default(),
+                    // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
+                    settings: HashMap::from_iter(
+                        (team1.id == Id::from(17814073240662869290_u64) || team2.id == Id::from(17814073240662869290_u64))
+                            .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
+                    ),
                 }),
                 Some(draft::Kind::TournoiFrancoS3) => {
                     let high_seed = *[team1.id, team2.id].choose(&mut thread_rng()).unwrap();

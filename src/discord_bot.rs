@@ -1890,6 +1890,10 @@ pub(crate) async fn create_scheduling_thread(ctx: &DiscordCtx, transaction: &mut
                         content.push(" or ");
                         content.mention_command(second, "second");
                         content.push(" in the settings draft.");
+                        if draft.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
+                            content.push_line("");
+                            content.push("Please note that for accessibility reasons, the Chest Appearance Matches Contents setting will default to Both Size and Texture for this match. It can be locked to Both Size and Texture using a ban or pick, or set to Off using a pick. Texture Only is not available in this match.");
+                        }
                     }
                 },
                 Some(draft::Kind::TournoiFrancoS3) => if let Some(ref draft) = race.draft {

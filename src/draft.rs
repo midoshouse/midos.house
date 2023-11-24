@@ -179,7 +179,8 @@ pub(crate) struct Draft {
 impl Draft {
     fn pick_count(&self, kind: Kind) -> u8 {
         match kind {
-            Kind::MultiworldS3 | Kind::MultiworldS4 => self.skipped_bans + u8::try_from(self.settings.len()).unwrap(),
+            Kind::MultiworldS3 => self.skipped_bans + u8::try_from(mw::S3_SETTINGS.into_iter().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
+            Kind::MultiworldS4 => self.skipped_bans + u8::try_from(mw::S4_SETTINGS.into_iter().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS3 => self.skipped_bans + u8::try_from(fr::S3_SETTINGS.into_iter().filter(|&fr::S3Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
         }
     }
@@ -344,9 +345,20 @@ impl Draft {
                                     available_settings: BanSettings(vec![
                                         ("All Settings", mw::S4_SETTINGS.into_iter()
                                             .filter(|&mw::Setting { name, .. }| !self.settings.contains_key(name))
-                                            .map(|mw::Setting { name, display, default, default_display, description, .. }| BanSetting {
-                                                name, display, default, default_display, description,
-                                            })
+                                            .map(|mw::Setting { name, display, default, default_display, description, .. }|
+                                                if name == "camc" && self.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
+                                                    BanSetting {
+                                                        default: "both",
+                                                        default_display: "chest size & texture match contents",
+                                                        description: "camc (Chest Appearance Matches Contents): both (default: size & texture) or off",
+                                                        name, display,
+                                                    }
+                                                } else {
+                                                    BanSetting {
+                                                        name, display, default, default_display, description,
+                                                    }
+                                                }
+                                            )
                                             .collect()),
                                     ]),
                                     skippable: true,
@@ -386,12 +398,25 @@ impl Draft {
                                     available_choices: DraftSettings(vec![
                                         ("All Settings", mw::S4_SETTINGS.into_iter()
                                             .filter(|&mw::Setting { name, .. }| !self.settings.contains_key(name))
-                                            .map(|mw::Setting { name, display, default, default_display, other, description }| DraftSetting {
-                                                options: iter::once(DraftSettingChoice { name: default, display: default_display })
-                                                    .chain(other.iter().map(|&(name, display)| DraftSettingChoice { name, display }))
-                                                    .collect(),
-                                                name, display, description,
-                                            })
+                                            .map(|mw::Setting { name, display, default, default_display, other, description }|
+                                                if name == "camc" && self.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
+                                                    DraftSetting {
+                                                        options: vec![
+                                                            DraftSettingChoice { name: "both", display: "chest size & texture match contents" },
+                                                            DraftSettingChoice { name: "off", display: "vanilla chest appearances" },
+                                                        ],
+                                                        description: "camc (Chest Appearance Matches Contents): both (default: size & texture) or off",
+                                                        name, display,
+                                                    }
+                                                } else {
+                                                    DraftSetting {
+                                                        options: iter::once(DraftSettingChoice { name: default, display: default_display })
+                                                            .chain(other.iter().map(|&(name, display)| DraftSettingChoice { name, display }))
+                                                            .collect(),
+                                                        name, display, description,
+                                                    }
+                                                }
+                                            )
                                             .collect()),
                                     ]),
                                     skippable: true,
@@ -956,7 +981,14 @@ impl Draft {
             Kind::MultiworldS4 => {
                 let resolved_action = match action {
                     Action::Ban { setting } => if let Some(setting) = mw::S4_SETTINGS.into_iter().find(|&mw::Setting { name, .. }| *name == setting) {
-                        Action::Pick { setting: setting.name.to_owned(), value: setting.default.to_owned() }
+                        Action::Pick {
+                            setting: setting.name.to_owned(),
+                            value: if setting.name == "camc" && self.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
+                                format!("both")
+                            } else {
+                                setting.default.to_owned()
+                            },
+                        }
                     } else {
                         return Ok(Err(match msg_ctx {
                             MessageContext::None => String::default(),
