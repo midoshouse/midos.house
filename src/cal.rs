@@ -1185,7 +1185,7 @@ impl Event {
         }
     }
 
-    fn room(&self) -> Option<&Url> {
+    pub(crate) fn room(&self) -> Option<&Url> {
         match self.race.schedule {
             RaceSchedule::Unscheduled => unreachable!(),
             RaceSchedule::Live { ref room, .. } => room.as_ref(),
@@ -1226,8 +1226,19 @@ impl Event {
             RaceSchedule::Unscheduled | RaceSchedule::Live { .. } => false,
             RaceSchedule::Async { start1, start2, .. } => match self.kind {
                 EventKind::Normal => unreachable!(),
-                EventKind::Async1 => start1.map_or(false, |start1| start2.map_or(true, |start2| start1 < start2)),
+                EventKind::Async1 => start1.map_or(false, |start1| start2.map_or(true, |start2| start1 <= start2)),
                 EventKind::Async2 => start2.map_or(false, |start2| start1.map_or(true, |start1| start2 < start1)),
+            },
+        }
+    }
+
+    pub(crate) fn is_last_async_half(&self) -> bool {
+        match self.race.schedule {
+            RaceSchedule::Unscheduled | RaceSchedule::Live { .. } => false,
+            RaceSchedule::Async { start1, start2, .. } => match self.kind {
+                EventKind::Normal => unreachable!(),
+                EventKind::Async1 => start1.map_or(false, |start1| start2.map_or(true, |start2| start1 > start2)),
+                EventKind::Async2 => start2.map_or(false, |start2| start1.map_or(true, |start1| start2 >= start1)),
             },
         }
     }

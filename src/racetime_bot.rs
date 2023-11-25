@@ -3617,18 +3617,42 @@ impl RaceHandler<GlobalState> for Handler {
                             TeamConfig::Pictionary => unimplemented!(), //TODO calculate like solo but report as teams
                             _ => {
                                 let mut team_times = HashMap::<_, Vec<_>>::default();
-                                for entrant in &data.entrants {
-                                    if let Some(ref team) = entrant.team {
-                                        team_times.entry(&team.slug).or_default().push(entrant.finish_time);
-                                    } else {
-                                        unimplemented!("solo runner in team race")
+                                let (first_async_half_room, active_team) = if cal_event.is_last_async_half() {
+                                    #[derive(Debug, thiserror::Error)]
+                                    #[error("ExactlyOneError while formatting result of last async half")]
+                                    struct ExactlyOneError;
+
+                                    let first_async_half = cal_event.race.cal_events().filter(|cal_event| cal_event.is_first_async_half()).exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
+                                    if let Some(ref room) = first_async_half.room() {
+                                        let nonactive_team = first_async_half.active_teams().exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
+                                        let data = ctx.global_state.http_client.get(format!("{}/data", room.to_string()))
+                                            .send().await?
+                                            .detailed_error_for_status().await.to_racetime()?
+                                            .json_with_text_in_error::<RaceData>().await.to_racetime()?;
+                                        for entrant in &data.entrants {
+                                            team_times.entry(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(entrant.finish_time);
+                                        }
                                     }
-                                }
+                                    let active_team = cal_event.active_teams().exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
+                                    for entrant in &data.entrants {
+                                        team_times.entry(active_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(entrant.finish_time);
+                                    }
+                                    (first_async_half.room().cloned(), Some(active_team.clone()))
+                                } else {
+                                    for entrant in &data.entrants {
+                                        if let Some(ref team) = entrant.team {
+                                            team_times.entry(team.slug.clone()).or_default().push(entrant.finish_time);
+                                        } else {
+                                            unimplemented!("solo runner in team race") //TODO report error in organizer channel
+                                        }
+                                    }
+                                    (None, None)
+                                };
                                 let mut team_averages = team_times.into_iter()
                                     .map(|(team_slug, times)| (team_slug, times.iter().try_fold(UDuration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many teams"))))
                                     .collect_vec();
                                 team_averages.sort_unstable_by_key(|(_, average)| (average.is_none(), *average)); // sort DNF last
-                                if let [(winner, winning_time), (loser, losing_time)] = *team_averages {
+                                if let [(ref winner, winning_time), (ref loser, losing_time)] = *team_averages {
                                     let mut builder = MessageBuilder::default();
                                     let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
                                         (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
@@ -3658,38 +3682,88 @@ impl RaceHandler<GlobalState> for Handler {
                                         let team1 = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                         let team2 = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                         builder.mention_team(&mut transaction, event.discord_guild, &team1).await.to_racetime()?;
+                                        if let Some(ref active_team) = active_team {
+                                            if *active_team == team1 {
+                                                builder.push(" [<https://");
+                                                builder.push(ctx.global_state.env.racetime_host());
+                                                builder.push(&ctx.data().await.url);
+                                                builder.push(">]");
+                                            } else if let Some(ref room) = first_async_half_room {
+                                                builder.push(" [<");
+                                                builder.push(room.as_str());
+                                                builder.push(">]");
+                                            }
+                                        }
                                         builder.push(" and ");
                                         builder.mention_team(&mut transaction, event.discord_guild, &team2).await.to_racetime()?;
+                                        if let Some(ref active_team) = active_team {
+                                            if *active_team == team2 {
+                                                builder.push(" [<https://");
+                                                builder.push(ctx.global_state.env.racetime_host());
+                                                builder.push(&ctx.data().await.url);
+                                                builder.push(">]");
+                                            } else if let Some(ref room) = first_async_half_room {
+                                                builder.push(" [<");
+                                                builder.push(room.as_str());
+                                                builder.push(">]");
+                                            }
+                                        }
                                         if let Some(finish_time) = winning_time {
                                             builder.push(" tie their race with a time of ");
                                             builder.push(English.format_duration(finish_time, true));
                                         } else {
                                             builder.push(" both did not finish");
                                         }
-                                        results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder
-                                            .push(" <https://")
-                                            .push(ctx.global_state.env.racetime_host())
-                                            .push(&ctx.data().await.url)
-                                            .push('>')
-                                            .build()
-                                        ).await.to_racetime()?;
+                                        if active_team.is_none() {
+                                            builder.push(" <https://");
+                                            builder.push(ctx.global_state.env.racetime_host());
+                                            builder.push(&ctx.data().await.url);
+                                            builder.push('>');
+                                        }
+                                        results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder.build()).await.to_racetime()?;
                                     } else {
                                         let winner = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
                                         let loser = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                        results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder
-                                            .mention_team(&mut transaction, event.discord_guild, &winner).await.to_racetime()?
-                                            .push(" (")
-                                            .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
-                                            .push(if winner.name_is_plural() { ") defeat " } else { ") defeats " })
-                                            .mention_team(&mut transaction, event.discord_guild, &loser).await.to_racetime()?
-                                            .push(" (")
-                                            .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
-                                            .push(") <https://")
-                                            .push(ctx.global_state.env.racetime_host())
-                                            .push(&ctx.data().await.url)
-                                            .push('>')
-                                            .build()
-                                        ).await.to_racetime()?;
+                                        builder.mention_team(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
+                                        builder.push(" (");
+                                        builder.push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))));
+                                        builder.push(')');
+                                        if let Some(ref active_team) = active_team {
+                                            if *active_team == winner {
+                                                builder.push(" [<https://");
+                                                builder.push(ctx.global_state.env.racetime_host());
+                                                builder.push(&ctx.data().await.url);
+                                                builder.push(">]");
+                                            } else if let Some(ref room) = first_async_half_room {
+                                                builder.push(" [<");
+                                                builder.push(room.as_str());
+                                                builder.push(">]");
+                                            }
+                                        }
+                                        builder.push(if winner.name_is_plural() { " defeat " } else { " defeats " });
+                                        builder.mention_team(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
+                                        builder.push(" (");
+                                        builder.push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))));
+                                        builder.push(')');
+                                        if let Some(ref active_team) = active_team {
+                                            if *active_team == loser {
+                                                builder.push(" [<https://");
+                                                builder.push(ctx.global_state.env.racetime_host());
+                                                builder.push(&ctx.data().await.url);
+                                                builder.push(">]");
+                                            } else if let Some(ref room) = first_async_half_room {
+                                                builder.push(" [<");
+                                                builder.push(room.as_str());
+                                                builder.push(">]");
+                                            }
+                                        }
+                                        if active_team.is_none() {
+                                            builder.push(" <https://");
+                                            builder.push(ctx.global_state.env.racetime_host());
+                                            builder.push(&ctx.data().await.url);
+                                            builder.push('>');
+                                        }
+                                        results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder.build()).await.to_racetime()?;
                                     }
                                 } else {
                                     unimplemented!() //TODO handle races with more than 2 teams
