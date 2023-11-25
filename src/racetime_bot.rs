@@ -1434,8 +1434,6 @@ pub(crate) enum SeedRollUpdate {
     Queued(u64),
     /// A seed in front of us is done and we've moved to a new position in the queue.
     MovedForward(u64),
-    /// We've cleared the queue but have to wait for the rate limit to expire.
-    WaitRateLimit(UDuration),
     /// We've cleared the queue and are now being rolled.
     Started,
     /// The seed has been rolled successfully.
@@ -1460,7 +1458,6 @@ impl SeedRollUpdate {
             Self::MovedForward(0) => ctx.say("The queue has moved and your seed is now at the front so it will be rolled next.").await?,
             Self::MovedForward(1) => ctx.say("The queue has moved and there is only 1 more seed in front of yours.").await?,
             Self::MovedForward(pos) => ctx.say(&format!("The queue has moved and there are now {pos} seeds in front of yours.")).await?,
-            Self::WaitRateLimit(duration) => ctx.say(&format!("Your seed will be rolled in {}.", English.format_duration(duration, true))).await?,
             Self::Started => ctx.say(&if let French = language {
                 format!("Génération d'{article} {description}…")
             } else {
@@ -1646,7 +1643,7 @@ impl SeedRollUpdate {
                 if let Environment::Production = ctx.global_state.env {
                     let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
                 }
-                ctx.say("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl.").await?;
+                ctx.say("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl and if necessary roll the seed manually.").await?;
             }
             #[cfg(unix)] Self::Message(msg) => ctx.say(&msg).await?,
         }
@@ -1658,7 +1655,6 @@ struct OotrApiClient {
     http_client: reqwest::Client,
     api_key: String,
     next_request: Mutex<Instant>,
-    next_mw_seed: Mutex<Instant>,
     mw_seed_rollers: Semaphore,
     waiting: Mutex<Vec<mpsc::UnboundedSender<()>>>,
 }
@@ -1666,8 +1662,7 @@ struct OotrApiClient {
 impl OotrApiClient {
     pub fn new(http_client: reqwest::Client, api_key: String) -> Self {
         Self {
-            next_request: Mutex::new(Instant::now() + UDuration::from_millis(500)),
-            next_mw_seed: Mutex::new(Instant::now() + MULTIWORLD_RATE_LIMIT),
+            next_request: Mutex::new(Instant::now() + MULTIWORLD_RATE_LIMIT),
             mw_seed_rollers: Semaphore::new(2), // we're allowed to roll a maximum of 2 multiworld seeds at the same time
             waiting: Mutex::default(),
             http_client, api_key,
@@ -1687,7 +1682,7 @@ impl OotrApiClient {
         res
     }
 
-    async fn post(&self, uri: impl IntoUrl + Clone, query: Option<&(impl Serialize + ?Sized)>, json: Option<&(impl Serialize + ?Sized)>) -> reqwest::Result<reqwest::Response> {
+    async fn post(&self, uri: impl IntoUrl + Clone, query: Option<&(impl Serialize + ?Sized)>, json: Option<&(impl Serialize + ?Sized)>, rate_limit: Option<UDuration>) -> reqwest::Result<reqwest::Response> {
         let mut next_request = lock!(self.next_request);
         sleep_until(*next_request).await;
         let mut builder = self.http_client.post(uri.clone());
@@ -1699,7 +1694,7 @@ impl OotrApiClient {
         }
         println!("OotrApiClient: POST {}", uri.into_url()?);
         let res = builder.send().await;
-        *next_request = Instant::now() + UDuration::from_millis(500);
+        *next_request = Instant::now() + rate_limit.unwrap_or_else(|| UDuration::from_millis(500));
         res
     }
 
@@ -1783,16 +1778,6 @@ impl OotrApiClient {
                     last_error: last_id.map(|id| format!("https://ootrandomizer.com/seed/get?id={id}")),
                 })
             }
-            let next_seed = if is_mw {
-                let next_seed = lock!(self.next_mw_seed);
-                if let Some(duration) = next_seed.checked_duration_since(Instant::now()) {
-                    update_tx.send(SeedRollUpdate::WaitRateLimit(duration)).await?;
-                    sleep(duration).await;
-                }
-                Some(next_seed)
-            } else {
-                None
-            };
             if attempt == 0 && !random_settings {
                 update_tx.send(SeedRollUpdate::Started).await?;
             }
@@ -1800,16 +1785,10 @@ impl OotrApiClient {
                 ("key", &*self.api_key),
                 ("version", &*format!("{}_{}", branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?, version)),
                 ("locked", if spoiler_log { "0" } else { "1" }),
-            ]), Some(&settings)).await?
+            ]), Some(&settings), is_mw.then_some(MULTIWORLD_RATE_LIMIT)).await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error().await?;
             last_id = Some(id);
-            if let Some(mut next_seed) = next_seed {
-                *next_seed = Instant::now() + MULTIWORLD_RATE_LIMIT;
-            }
-            if is_mw {
-                sleep(MULTIWORLD_RATE_LIMIT).await; // extra rate limiting rule
-            }
             loop {
                 sleep(UDuration::from_secs(1)).await;
                 let resp = self.get(
@@ -2128,7 +2107,7 @@ impl Handler {
                         fs::rename(locked_spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await.to_racetime()?;
                     },
                     seed::Files::OotrWeb { id, file_stem, .. } => {
-                        ctx.global_state.ootr_api_client.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &id.to_string())]), None::<&()>).await?
+                        ctx.global_state.ootr_api_client.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &id.to_string())]), None::<&()>, None).await?
                             .detailed_error_for_status().await.to_racetime()?;
                         let spoiler_log = ctx.global_state.ootr_api_client.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &id.to_string())])).await?
                             .detailed_error_for_status().await.to_racetime()?
