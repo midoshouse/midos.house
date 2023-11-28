@@ -52,7 +52,18 @@ impl From<ID> for String {
     }
 }
 
+type Int = i64;
 type String = std::string::String;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "assets/graphql/startgg-schema.json",
+    query_path = "assets/graphql/startgg-event-sets-query.graphql",
+    skip_default_scalars, // workaround for https://github.com/smashgg/developer-portal/issues/171
+    variables_derives = "Clone, PartialEq, Eq, Hash",
+    response_derives = "Debug, Clone",
+)]
+pub(crate) struct EventSetsQuery;
 
 #[derive(GraphQLQuery)]
 #[graphql(

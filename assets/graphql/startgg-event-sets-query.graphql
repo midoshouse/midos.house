@@ -1,0 +1,26 @@
+query EventSetsQuery($event_slug: String!, $page: Int!) {
+  event(slug: $event_slug) {
+    sets(page: $page) {
+      pageInfo {
+        totalPages
+      }
+      nodes {
+        id
+        phaseGroup {
+          phase {
+            name
+          }
+        }
+        fullRoundText
+        slots {
+          entrant {
+            team {
+              __typename
+              id
+            }
+          }
+        }
+      }
+    }
+  }
+}

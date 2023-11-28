@@ -80,7 +80,7 @@ pub(crate) struct SignupsMember {
     role: Role,
     pub(crate) user: MemberUser,
     is_confirmed: bool,
-    qualifier_time: Option<UDuration>,
+    pub(crate) qualifier_time: Option<UDuration>,
     qualifier_vod: Option<String>,
 }
 

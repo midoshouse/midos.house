@@ -112,7 +112,6 @@ impl TypeMapKey for ExtraRoomTx {
 
 #[derive(Clone, Copy)]
 pub(crate) struct CommandIds {
-    assign: Option<CommandId>,
     pub(crate) ban: Option<CommandId>,
     delete_after: Option<CommandId>,
     pub(crate) draft: Option<CommandId>,
@@ -439,43 +438,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft_kind = Some(new_kind);
                 }
             }
-            let match_source = all().find(|match_source| guild_events.iter().all(|event| event.match_source() == *match_source));
-            let assign = match match_source {
-                Some(MatchSource::Manual | MatchSource::League) => None,
-                Some(MatchSource::StartGG) => { //TODO automatically create threads, then remove this command
-                    let mut c = CreateCommand::new("assign")
-                        .kind(CommandType::ChatInput)
-                        .dm_permission(false)
-                        .description("Marks this thread as the scheduling thread for the given start.gg set.")
-                        .add_option(CreateCommandOption::new(
-                            CommandOptionType::String,
-                            "startgg-set", //TODO Challonge support?
-                            "The start.gg set (match) ID",
-                        ).required(true));
-                    match draft_kind {
-                        Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => c = c.add_option(CreateCommandOption::new(
-                            CommandOptionType::Role,
-                            "high-seed",
-                            "The team that decides which team starts the settings draft. If the teams are tied, flip a coin.",
-                        ).required(true)),
-                        Some(draft::Kind::TournoiFrancoS3) => unreachable!(), // this event uses MatchSource::Manual
-                        None => {}
-                    }
-                    c = c.add_option(CreateCommandOption::new(
-                        CommandOptionType::Integer,
-                        "game",
-                        "The game number within the match, if this is a best-of-n-races match.",
-                    )
-                        .min_int_value(1)
-                        .max_int_value(255)
-                        .required(false)
-                    );
-                    let idx = commands.len();
-                    commands.push(c);
-                    Some(idx)
-                },
-                None => unimplemented!("Discord guilds with mixed match sources not yet supported (guild ID: {}, events: {})", guild.id, guild_events.iter().map(|event| format!("{}/{}", event.series, event.event)).format(", ")),
-            };
+            let match_source = guild_events.iter().map(|event| event.match_source()).all_equal_value();
             let ban = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
@@ -493,7 +456,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 idx
             });
             let delete_after = match match_source {
-                Some(MatchSource::Manual) => {
+                Ok(MatchSource::Manual) => {
                     let idx = commands.len();
                     commands.push(CreateCommand::new("delete-after")
                         .kind(CommandType::ChatInput)
@@ -511,8 +474,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     );
                     Some(idx)
                 }
-                Some(MatchSource::League | MatchSource::StartGG) => None,
-                None => unimplemented!("Discord guilds with mixed match sources not yet supported (guild ID: {}, events: {})", guild.id, guild_events.iter().map(|event| format!("{}/{}", event.series, event.event)).format(", ")),
+                Ok(MatchSource::League | MatchSource::StartGG(_)) => None,
+                Err(Some((_, _))) => unimplemented!("Discord guilds with mixed match sources not yet supported (guild ID: {}, events: {})", guild.id, guild_events.iter().map(|event| format!("{}/{}", event.series, event.event)).format(", ")),
+                Err(None) => None,
             };
             let draft = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
@@ -778,7 +742,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             });
             let commands = guild.set_commands(ctx, commands).await?;
             ctx.data.write().await.entry::<CommandIds>().or_default().insert(guild.id, CommandIds {
-                assign: assign.map(|idx| commands[idx].id),
                 ban: ban.map(|idx| commands[idx].id),
                 delete_after: delete_after.map(|idx| commands[idx].id),
                 draft: draft.map(|idx| commands[idx].id),
@@ -804,108 +767,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 Interaction::Command(interaction) => {
                     let guild_id = interaction.guild_id.expect("Discord slash command called outside of a guild");
                     if let Some(&command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)) {
-                        if Some(interaction.data.id) == command_ids.assign {
-                            let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
-                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut *transaction).await? {
-                                let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
-                                if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content("Sorry, only event organizers can use this command.")
-                                    )).await?;
-                                    return Ok(())
-                                }
-                                match event.match_source() {
-                                    MatchSource::Manual | MatchSource::League => unreachable!(), // no /assign command registered
-                                    MatchSource::StartGG => {
-                                        let startgg_set = match interaction.data.options[0].value {
-                                            CommandDataOptionValue::String(ref startgg_set) => startgg_set.clone(),
-                                            _ => panic!("unexpected slash command option type"),
-                                        };
-                                        let high_seed = match event.draft_kind() {
-                                            Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => Some(match interaction.data.options[1].value {
-                                                CommandDataOptionValue::Role(discord_role) => discord_role,
-                                                _ => panic!("unexpected slash command option type"),
-                                            }),
-                                            Some(draft::Kind::TournoiFrancoS3) => unreachable!(), // this event does not use start.gg
-                                            None => None,
-                                        };
-                                        let game = interaction.data.options.get(2).map(|option| match option.value {
-                                            CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
-                                            _ => panic!("unexpected slash command option type"),
-                                        });
-                                        let high_seed = if let Some(high_seed) = high_seed {
-                                            if let Some(high_seed) = Team::from_discord(&mut transaction, high_seed).await? {
-                                                Some(high_seed)
-                                            } else {
-                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                    .ephemeral(true)
-                                                    .content("Sorry, that doesn't seem to be a team role.")
-                                                )).await?;
-                                                return Ok(())
-                                            }
-                                        } else {
-                                            None
-                                        };
-                                        let id = Id::<Races>::new(&mut transaction).await?;
-                                        match event.draft_kind() {
-                                            Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => sqlx::query!("INSERT INTO races
-                                                (id, startgg_set, game, series, event, scheduling_thread, draft_state) VALUES ($1, $2, $3, $4, $5, $6, $7)
-                                                ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread, draft_state = EXCLUDED.draft_state
-                                            ", id as _, &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id), Json(Draft {
-                                                high_seed: high_seed.as_ref().unwrap().id,
-                                                went_first: None,
-                                                skipped_bans: 0,
-                                                settings: HashMap::default(),
-                                            }) as _).execute(&mut *transaction).await?,
-                                            Some(draft::Kind::TournoiFrancoS3) => unreachable!(), // this event does not use start.gg
-                                            None => sqlx::query!("INSERT INTO races
-                                                (id, startgg_set, game, series, event, scheduling_thread) VALUES ($1, $2, $3, $4, $5, $6)
-                                                ON CONFLICT (startgg_set, game) DO UPDATE SET scheduling_thread = EXCLUDED.scheduling_thread
-                                            ", id as _, &startgg_set, game, event.series as _, &event.event, i64::from(interaction.channel_id)).execute(&mut *transaction).await?,
-                                        };
-                                        let mut response_content = MessageBuilder::default();
-                                        response_content.push("This thread is now assigned to ");
-                                        if let Some(game) = game {
-                                            response_content.push("game ");
-                                            response_content.push(game.to_string());
-                                            response_content.push(" of ");
-                                        }
-                                        response_content.push("set ");
-                                        response_content.push_safe(startgg_set); //TODO linkify set page, use phase/round/identifier
-                                        response_content.push(". Use ");
-                                        response_content.mention_command(command_ids.schedule, "schedule");
-                                        if event.asyncs_allowed() {
-                                            response_content.push(" to schedule as a live race or ");
-                                            response_content.mention_command(command_ids.schedule_async, "schedule-async");
-                                            response_content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate at <https://hammertime.cyou/>");
-                                        } else {
-                                            response_content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate at <https://hammertime.cyou/>");
-                                        }
-                                        if let (Some(high_seed), Some(first), Some(second)) = (high_seed, command_ids.first, command_ids.second) {
-                                            response_content.push_line("");
-                                            response_content.mention_team(&mut transaction, Some(guild_id), &high_seed).await?;
-                                            response_content.push(": you have the higher seed. Choose whether you want to go ");
-                                            response_content.mention_command(first, "first");
-                                            response_content.push(" or ");
-                                            response_content.mention_command(second, "second");
-                                            response_content.push(" in the settings draft.");
-                                        }
-                                        let response_content = response_content.build();
-                                        transaction.commit().await?;
-                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                            .ephemeral(false)
-                                            .content(response_content)
-                                        )).await?;
-                                    }
-                                }
-                            } else {
-                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                    .ephemeral(true)
-                                    .content("Sorry, this Discord server is not associated with an ongoing Mido's House event.")
-                                )).await?;
-                            }
-                        } else if Some(interaction.data.id) == command_ids.ban {
+                        if Some(interaction.data.id) == command_ids.ban {
                             send_draft_settings_page(ctx, interaction, "ban", 0).await?;
                         } else if Some(interaction.data.id) == command_ids.delete_after {
                             let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
@@ -937,7 +799,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         )).await?;
                                     }
                                     MatchSource::League => unreachable!(), // races are managed via league.ootrandomizer.com
-                                    MatchSource::StartGG => unreachable!(), // races are managed via the start.gg tournament
+                                    MatchSource::StartGG(_) => unreachable!(), // races are managed via the start.gg tournament
                                 }
                             } else {
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1892,7 +1754,7 @@ pub(crate) async fn create_scheduling_thread(ctx: &DiscordCtx, transaction: &mut
                         content.push(" in the settings draft.");
                         if draft.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
                             content.push_line("");
-                            content.push("Please note that for accessibility reasons, the Chest Appearance Matches Contents setting will default to Both Size and Texture for this match. It can be locked to Both Size and Texture using a ban or pick, or set to Off using a pick. Texture Only is not available in this match.");
+                            content.push("Please note that for accessibility reasons, the Chest Appearance Matches Contents setting will default to Both Size and Texture for this match. It can be locked to Both Size and Texture using a ban or pick, or changed to Off using a pick. Texture Only is not available in this match.");
                         }
                     }
                 },

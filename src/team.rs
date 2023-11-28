@@ -18,10 +18,6 @@ impl Team {
         sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams WHERE id = $1"#, id as _).fetch_optional(&mut **transaction).await
     }
 
-    pub(crate) async fn from_discord(transaction: &mut Transaction<'_, Postgres>, discord_role: RoleId) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT teams.id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams, discord_roles WHERE discord_roles.id = $1 AND racetime_slug = racetime_team"#, i64::from(discord_role)).fetch_optional(&mut **transaction).await
-    }
-
     pub(crate) async fn from_racetime(transaction: &mut Transaction<'_, Postgres>, series: Series, event: &str, racetime_slug: &str) -> sqlx::Result<Option<Self>> {
         sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams WHERE series = $1 AND event = $2 AND racetime_slug = $3"#, series as _, event, racetime_slug).fetch_optional(&mut **transaction).await
     }

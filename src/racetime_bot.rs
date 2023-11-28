@@ -1553,7 +1553,7 @@ impl SeedRollUpdate {
                 if let Some(OfficialRaceData { cal_event, event, .. }) = official_data {
                     // send multiworld rooms
                     let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                    let mut any_rooms_created = false;
+                    let mut mw_rooms_created = 0;
                     for team in cal_event.active_teams() {
                         if let Some(mw::Impl::MidosHouse) = team.mw_impl {
                             let members = team.members_roles(&mut transaction).await.to_racetime()?;
@@ -1612,14 +1612,14 @@ impl SeedRollUpdate {
                                 }
                                 cmd.check("ootrmwd create-tournament-room").await.to_racetime()?;
                                 ctx.say(&format!("{reply_to}, your Mido's House Multiworld room named “{mw_room_name}” is now open.")).await?;
-                                any_rooms_created = true;
+                                mw_rooms_created += 1;
                             } else {
                                 ctx.say(&format!("Sorry {reply_to}, there was an error creating your Mido's House Multiworld room. Please create one manually.")).await?;
                             }
                         }
                     }
-                    if any_rooms_created {
-                        ctx.say("You can find your rooms at the top of the room list after signing in with racetime.gg or Discord from the multiworld app's settings screen.").await?;
+                    if mw_rooms_created > 0 {
+                        ctx.say(&format!("You can find your room{} at the top of the room list after signing in with racetime.gg or Discord from the multiworld app's settings screen.", if mw_rooms_created > 1 { "s" } else { "" })).await?;
                     }
                     transaction.commit().await.to_racetime()?;
                 }
@@ -2908,17 +2908,29 @@ impl RaceHandler<GlobalState> for Handler {
                             "FPA cannot be invoked before the race starts."
                         }).await?;
                     } else {
-                        if let Some(OfficialRaceData { ref restreams, ref mut fpa_invoked, ref event, .. }) = self.official_data {
+                        if let Some(OfficialRaceData { ref cal_event, ref restreams, ref mut fpa_invoked, ref event, .. }) = self.official_data {
                             *fpa_invoked = true;
                             if restreams.is_empty() {
                                 ctx.say(&if_chain! {
                                     if let French = goal.language();
                                     if let TeamConfig::Solo = event.team_config();
                                     then {
-                                        format!("@everyone Le FPA a été appelé par {reply_to}. Le joueur qui ne l'a pas demandé peut continuer à jouer. La race sera re-timée après le fin de celle-ci.")
+                                        format!(
+                                            "@everyone Le FPA a été appelé par {reply_to}.{} La race sera re-timée après le fin de celle-ci.",
+                                            if let RaceSchedule::Async { .. } = cal_event.race.schedule { "" } else { " Le joueur qui ne l'a pas demandé peut continuer à jouer." },
+                                        )
                                     } else {
-                                        let player_team = if let TeamConfig::Solo = event.team_config() { "player" } else { "team" };
-                                        format!("@everyone FPA has been invoked by {reply_to}. The {player_team} that did not call FPA can continue playing; the race will be retimed once completed.")
+                                        format!(
+                                            "@everyone FPA has been invoked by {reply_to}. T{}he race will be retimed once completed.",
+                                            if let RaceSchedule::Async { .. } = cal_event.race.schedule {
+                                                String::default()
+                                            } else {
+                                                format!(
+                                                    "he {player_team} that did not call FPA can continue playing; t",
+                                                    player_team = if let TeamConfig::Solo = event.team_config() { "player" } else { "team" },
+                                                )
+                                            },
+                                        )
                                     }
                                 }).await?;
                             } else {
@@ -3628,7 +3640,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     (None, None)
                                 };
                                 let mut team_averages = team_times.into_iter()
-                                    .map(|(team_slug, times)| (team_slug, times.iter().try_fold(UDuration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many teams"))))
+                                    .map(|(team_slug, times)| (team_slug, times.iter().try_fold(UDuration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many team members"))))
                                     .collect_vec();
                                 team_averages.sort_unstable_by_key(|(_, average)| (average.is_none(), *average)); // sort DNF last
                                 if let [(ref winner, winning_time), (ref loser, losing_time)] = *team_averages {

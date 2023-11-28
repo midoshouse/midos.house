@@ -192,11 +192,11 @@ impl UriDisplay<Path> for Series {
 
 impl_from_uri_param_identity!([Path] Series);
 
-#[derive(PartialEq, Eq, Sequence)]
-pub(crate) enum MatchSource {
+#[derive(PartialEq, Eq)]
+pub(crate) enum MatchSource<'a> {
     Manual,
     League, //TODO automatically scan for new matches and create scheduling threads
-    StartGG, //TODO automatically scan for new matches and create scheduling threads
+    StartGG(&'a str), //TODO automatically scan for new matches and create scheduling threads
 }
 
 pub(crate) enum TeamConfig {
@@ -446,12 +446,16 @@ impl<'a> Data<'a> {
         }
     }
 
-    pub(crate) fn match_source(&self) -> MatchSource {
-        match self.url.as_ref().and_then(Url::host_str) {
-            //TODO challonge.com support? (waiting for reply from support regarding API errors)
-            Some("league.ootrandomizer.com") => MatchSource::League,
-            Some("start.gg" | "www.start.gg") => MatchSource::StartGG,
-            _ => MatchSource::Manual,
+    pub(crate) fn match_source(&self) -> MatchSource<'_> {
+        if let Some(ref url) = self.url {
+            match url.host_str() {
+                //TODO challonge.com support? (waiting for reply from support regarding API errors)
+                Some("league.ootrandomizer.com") => MatchSource::League,
+                Some("start.gg" | "www.start.gg") => MatchSource::StartGG(&url.path()[1..]),
+                _ => MatchSource::Manual,
+            }
+        } else {
+            MatchSource::Manual
         }
     }
 
@@ -770,145 +774,6 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
 
 #[rocket::get("/event/<series>/<event>/races")]
 pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
-    async fn race_table(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, env: Environment, http_client: &reqwest::Client, data: &Data<'_>, show_multistreams: bool, can_create: bool, can_edit: bool, show_restream_consent: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
-        let has_games = races.iter().any(|race| race.game.is_some());
-        let has_seeds = races.iter().any(|race| race.seed.file_hash.is_some() || race.seed.files.is_some());
-        let has_buttons = can_create || can_edit;
-        let now = Utc::now();
-        Ok(html! {
-            table {
-                thead {
-                    tr {
-                        th : "Start";
-                        th : "Round";
-                        @if has_games {
-                            th : "Game";
-                        }
-                        th(colspan = "6") : "Entrants";
-                        th : "Links";
-                        @if has_seeds {
-                            : seed::table_header_cells(true);
-                        }
-                        @if show_restream_consent {
-                            th : "Restream Consent";
-                        }
-                        @if has_buttons {
-                            th {
-                                @if can_create {
-                                    a(class = "button", href = uri!(crate::cal::create_race(races[0].series, &*races[0].event)).to_string()) : "New Race";
-                                }
-                            }
-                        }
-                    }
-                }
-                tbody {
-                    @for race in races {
-                        tr {
-                            td {
-                                @match race.schedule {
-                                    RaceSchedule::Unscheduled => {}
-                                    RaceSchedule::Live { start, .. } => : format_datetime(start, DateTimeFormat { long: false, running_text: false });
-                                    RaceSchedule::Async { .. } => : "(async)";
-                                }
-                            }
-                            td {
-                                : race.phase;
-                                : " ";
-                                : race.round;
-                            }
-                            @if has_games {
-                                td {
-                                    @if let Some(game) = race.game {
-                                        : game;
-                                    }
-                                }
-                            }
-                            @match race.entrants {
-                                Entrants::Open => td(colspan = "6") : "(open)";
-                                Entrants::Count { total, finished } => td(colspan = "6") {
-                                    : total;
-                                    : " (";
-                                    : finished;
-                                    : " finishers)";
-                                }
-                                Entrants::Named(ref entrants) => td(colspan = "6") : entrants;
-                                Entrants::Two([ref team1, ref team2]) => {
-                                    td(class = "vs1", colspan = "3") {
-                                        : team1.to_html(&mut *transaction, env, discord_ctx, false).await?;
-                                        @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {
-                                            br;
-                                            small {
-                                                : format_datetime(start, DateTimeFormat { long: false, running_text: false });
-                                            }
-                                        }
-                                    }
-                                    td(class = "vs2", colspan = "3") {
-                                        : team2.to_html(&mut *transaction, env, discord_ctx, false).await?;
-                                        @if let RaceSchedule::Async { start2: Some(start), .. } = race.schedule {
-                                            br;
-                                            small {
-                                                : format_datetime(start, DateTimeFormat { long: false, running_text: false });
-                                            }
-                                        }
-                                    }
-                                }
-                                Entrants::Three([ref team1, ref team2, ref team3]) => {
-                                    td(colspan = "2") : team1.to_html(&mut *transaction, env, discord_ctx, false).await?;
-                                    td(colspan = "2") : team2.to_html(&mut *transaction, env, discord_ctx, false).await?;
-                                    td(colspan = "2") : team3.to_html(&mut *transaction, env, discord_ctx, false).await?;
-                                }
-                            }
-                            td {
-                                div(class = "favicon-container") {
-                                    @for video_url in race.video_urls.values() {
-                                        a(class = "favicon", href = video_url.to_string()) : favicon(video_url);
-                                    }
-                                    @if show_multistreams && race.video_urls.is_empty() {
-                                        @if let Some(multistream_url) = race.multistream_url(&mut *transaction, env, http_client, data).await? {
-                                            a(class = "favicon", href = multistream_url.to_string()) : favicon(&multistream_url);
-                                        }
-                                    }
-                                    @for (_, video_url) in race.player_video_urls(&mut *transaction).await? {
-                                        a(class = "favicon", href = video_url.to_string()) : favicon(&video_url);
-                                    }
-                                    @if let Some(startgg_url) = race.startgg_set_url()? {
-                                        a(class = "favicon", href = startgg_url.to_string()) : favicon(&startgg_url);
-                                    }
-                                    @for room in race.rooms() {
-                                        a(class = "favicon", href = room.to_string()) : favicon(&room);
-                                    }
-                                }
-                            }
-                            @if has_seeds {
-                                @if race.cal_events().all(|event| event.end().is_some()) || !race.cal_events().any(|event| event.is_first_async_half()) {
-                                    : seed::table_cells(now, &race.seed, true, can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
-                                } else {
-                                    // hide seed if unfinished async
-                                    //TODO show to the team that played the 1st async half
-                                    : seed::table_cells(now, &seed::Data::default(), true, None).await?;
-                                }
-                            }
-                            @if show_restream_consent {
-                                td {
-                                    @if race.teams().all(|team| team.restream_consent) {
-                                        : "✓";
-                                    }
-                                }
-                            }
-                            @if has_buttons {
-                                td {
-                                    @if can_edit {
-                                        a(class = "button", href = uri!(crate::cal::edit_race(race.series, &race.event, race.id)).to_string()) : "Edit";
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        })
-    }
-
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Races, false).await?;
@@ -918,8 +783,12 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
     past_races.reverse();
     let any_races_ongoing_or_upcoming = !ongoing_and_upcoming_races.is_empty();
     let (can_create, show_restream_consent, can_edit) = if let Some(ref me) = me {
-        let can_create = data.organizers(&mut transaction).await?.contains(me);
-        let show_restream_consent = can_create || data.restreamers(&mut transaction).await?.contains(me);
+        let is_organizer = data.organizers(&mut transaction).await?.contains(me);
+        let can_create = is_organizer && match data.match_source() {
+            MatchSource::League => false,
+            MatchSource::Manual | MatchSource::StartGG(_) => true,
+        };
+        let show_restream_consent = is_organizer || data.restreamers(&mut transaction).await?.contains(me);
         let can_edit = show_restream_consent || me.is_archivist;
         (can_create, show_restream_consent, can_edit)
     } else {
@@ -930,16 +799,20 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
             //TODO split into ongoing and upcoming, show headers for both
-            : race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, &data, true, can_create, can_edit, show_restream_consent, &ongoing_and_upcoming_races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, &data, true, can_create, can_edit, show_restream_consent, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, &data, false, can_create && !any_races_ongoing_or_upcoming, can_edit, false, &past_races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, &data, false, can_create && !any_races_ongoing_or_upcoming, can_edit, false, &past_races).await?;
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
-                a(class = "button", href = uri!(crate::cal::create_race(series, &event)).to_string()) : "New Race";
+                @match data.match_source() {
+                    MatchSource::Manual => a(class = "button", href = uri!(crate::cal::create_race(series, event)).to_string()) : "New Race";
+                    MatchSource::League => {}
+                    MatchSource::StartGG(_) => a(class = "button", href = uri!(crate::cal::import_races(series, event)).to_string()) : "Import";
+                }
             }
         }
     };
