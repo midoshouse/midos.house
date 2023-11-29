@@ -1497,7 +1497,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
                 let members = sqlx::query_scalar!(r#"SELECT discord_id AS "discord_id!: PgSnowflake<UserId>" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, team.id as _).fetch_all(&mut *transaction).await?;
                 if let Some(PgSnowflake(discord_role)) = asyncs_row.discord_role {
                     for &PgSnowflake(user_id) in &members {
-                        if let Ok(mut member) = discord_guild.member(&*discord_ctx.read().await, user_id).await {
+                        if let Ok(member) = discord_guild.member(&*discord_ctx.read().await, user_id).await {
                             member.add_role(&*discord_ctx.read().await, discord_role).await?;
                         }
                     }

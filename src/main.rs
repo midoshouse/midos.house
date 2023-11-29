@@ -3,7 +3,10 @@
 use {
     std::env,
     rocket::Rocket,
-    sqlx::postgres::PgConnectOptions,
+    sqlx::{
+        ConnectOptions as _,
+        postgres::PgConnectOptions,
+    },
     crate::prelude::*,
 };
 #[cfg(unix)] use {
@@ -131,7 +134,12 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
             .build()?;
         let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
         let discord_builder = serenity_utils::builder(discord_config.bot_token.clone()).await?;
-        let db_pool = PgPool::connect_with(PgConnectOptions::default().username("mido").database(if env.is_dev() { "fados_house" } else { "midos_house" }).application_name("midos-house")).await?;
+        let db_pool = PgPool::connect_with(PgConnectOptions::default()
+            .username("mido")
+            .database(if env.is_dev() { "fados_house" } else { "midos_house" })
+            .application_name("midos-house")
+            .log_slow_statements(log::LevelFilter::Warn, UDuration::from_secs(10))
+        ).await?;
         let rocket = http::rocket(db_pool.clone(), discord_builder.ctx_fut.clone(), http_client.clone(), config.clone(), env, port.unwrap_or_else(|| if env.is_dev() { 24814 } else { 24812 })).await?;
         let new_room_lock = Arc::default();
         let extra_room_tx = Arc::new(RwLock::new(mpsc::channel(1).0));

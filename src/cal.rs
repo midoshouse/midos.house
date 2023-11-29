@@ -2006,7 +2006,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                                 thead {
                                     tr {
                                         th : "start.gg match ID";
-                                        td : "Reason";
+                                        th : "Reason";
                                     }
                                 }
                                 tbody {

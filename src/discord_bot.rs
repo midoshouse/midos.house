@@ -1430,7 +1430,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 }
                 Interaction::Component(interaction) => match &*interaction.data.custom_id {
                     "pronouns_he" => {
-                        let mut member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
+                        let member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
                         let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "he/him").expect("missing “he/him” role");
                         if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
                             member.remove_role(ctx, role).await?;
@@ -1447,7 +1447,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         }
                     }
                     "pronouns_she" => {
-                        let mut member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
+                        let member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
                         let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "she/her").expect("missing “she/her” role");
                         if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
                             member.remove_role(ctx, role).await?;
@@ -1464,7 +1464,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         }
                     }
                     "pronouns_they" => {
-                        let mut member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
+                        let member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
                         let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "they/them").expect("missing “they/them” role");
                         if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
                             member.remove_role(ctx, role).await?;
@@ -1481,7 +1481,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         }
                     }
                     "pronouns_other" => {
-                        let mut member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
+                        let member = interaction.member.clone().expect("/pronoun-roles called outside of a guild");
                         let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "other pronouns").expect("missing “other pronouns” role");
                         if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
                             member.remove_role(ctx, role).await?;
@@ -1498,7 +1498,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         }
                     }
                     "racingrole" => {
-                        let mut member = interaction.member.clone().expect("/racing-role called outside of a guild");
+                        let member = interaction.member.clone().expect("/racing-role called outside of a guild");
                         let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "racing").expect("missing “racing” role");
                         if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
                             member.remove_role(ctx, role).await?;
@@ -1515,7 +1515,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         }
                     }
                     "watchrole_restream" => {
-                        let mut member = interaction.member.clone().expect("/watch-roles called outside of a guild");
+                        let member = interaction.member.clone().expect("/watch-roles called outside of a guild");
                         let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "restream watcher").expect("missing “restream watcher” role");
                         if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
                             member.remove_role(ctx, role).await?;
@@ -1532,7 +1532,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         }
                     }
                     "watchrole_party" => {
-                        let mut member = interaction.member.clone().expect("/watch-roles called outside of a guild");
+                        let member = interaction.member.clone().expect("/watch-roles called outside of a guild");
                         let role = member.guild_id.roles(ctx).await?.into_values().find(|role| role.name == "watch party watcher").expect("missing “watch party watcher” role");
                         if member.roles(ctx).expect("failed to look up member roles").contains(&role) {
                             member.remove_role(ctx, role).await?;
