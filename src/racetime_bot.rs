@@ -1571,7 +1571,7 @@ impl SeedRollUpdate {
                                     }
                                 }
                             }
-                            let mut mw_room_name = if let Ok(other_team) = cal_event.active_teams().filter(|iter_team| iter_team.id != team.id).exactly_one() { //TODO also use this naming convention for asynced races?
+                            let mut mw_room_name = if let Ok(other_team) = cal_event.race.teams().filter(|iter_team| iter_team.id != team.id).exactly_one() {
                                 format!(
                                     "{}vs. {}",
                                     if let Some(game) = cal_event.race.game { format!("game {game} ") } else { String::default() },
