@@ -1737,7 +1737,10 @@ impl fmt::Display for ImportSkipReason {
 
 pub(crate) async fn race_table(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, env: Environment, http_client: &reqwest::Client, event: &event::Data<'_>, show_multistreams: bool, can_create: bool, can_edit: bool, show_restream_consent: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
     let has_games = races.iter().any(|race| race.game.is_some());
-    let has_seeds = races.iter().any(|race| race.seed.file_hash.is_some() || race.seed.files.is_some());
+    let has_seeds = races.iter().any(|race|
+        (race.seed.file_hash.is_some() || race.seed.files.is_some())
+        && (race.cal_events().all(|event| event.end().is_some()) || !race.cal_events().any(|event| event.is_first_async_half()))
+    );
     let has_buttons = can_create || can_edit;
     let now = Utc::now();
     Ok(html! {
