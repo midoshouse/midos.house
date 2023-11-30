@@ -1676,7 +1676,6 @@ impl OotrApiClient {
         if let Some(query) = query {
             builder = builder.query(query);
         }
-        println!("OotrApiClient: GET {}", uri.into_url()?);
         let res = builder.send().await;
         *next_request = Instant::now() + UDuration::from_millis(500);
         res
@@ -1692,7 +1691,6 @@ impl OotrApiClient {
         if let Some(json) = json {
             builder = builder.json(json);
         }
-        println!("OotrApiClient: POST {}", uri.into_url()?);
         let res = builder.send().await;
         *next_request = Instant::now() + rate_limit.unwrap_or_else(|| UDuration::from_millis(500));
         res
