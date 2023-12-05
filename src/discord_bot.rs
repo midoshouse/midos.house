@@ -372,20 +372,17 @@ async fn draft_action(ctx: &DiscordCtx, interaction: &impl GenericInteraction, a
     let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
     match race.draft.as_mut().unwrap().apply(draft_kind, &mut msg_ctx, action).await? {
         Ok(apply_response) => {
-            let mut response_content = MessageBuilder::default();
-            response_content.push(apply_response);
+            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                .ephemeral(false)
+                .content(apply_response)
+            )).await?;
             if let Some(draft_kind) = event.draft_kind() {
-                response_content.push_line("");
-                response_content.push(race.draft.as_ref().unwrap().next_step(draft_kind, &mut msg_ctx).await?.message);
+                interaction.channel_id()
+                    .say(ctx, race.draft.as_ref().unwrap().next_step(draft_kind, &mut msg_ctx).await?.message).await?;
             }
-            let response_content = response_content.build();
             let mut transaction = msg_ctx.into_transaction();
             sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
             transaction.commit().await?;
-            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                .ephemeral(false)
-                .content(response_content)
-            )).await?;
         }
         Err(error_msg) => {
             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -861,13 +858,16 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 team: team.unwrap_or_else(Team::dummy),
                                                 transaction, guild_id, command_ids,
                                             };
-                                            let response_content = MessageBuilder::default()
+                                            let message_content = MessageBuilder::default()
                                                 //TODO include scheduling status, both for regular races and for asyncs
                                                 .push(draft.next_step(draft_kind, &mut msg_ctx).await?.message)
                                                 .build();
+                                            interaction.channel.as_ref().expect("received draft action outside channel")
+                                                .id
+                                                .say(ctx, message_content).await?;
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(false)
-                                                .content(response_content)
+                                                .ephemeral(true)
+                                                .content("done")
                                             )).await?;
                                             msg_ctx.into_transaction().commit().await?;
                                         } else {
