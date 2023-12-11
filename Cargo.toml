@@ -38,7 +38,7 @@ git2 = "0.18"
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
 if_chain = "1"
 ics = "0.5"
-itertools = "0.11"
+itertools = "0.12"
 kuchiki = "0.8"
 lazy-regex = "3"
 log = "0.4"
@@ -84,7 +84,8 @@ branch = "main"
 
 [dependencies.ootr-utils]
 git = "https://github.com/midoshouse/rust-ootr-utils"
-branch = "main"
+#branch = "main"
+rev = "c33c9503824a51dc9c8c187f6b618b9af94638b3" #TODO update to latest once async-proto 0.14 is published
 features = ["sqlx"]
 
 [dependencies.reqwest]
