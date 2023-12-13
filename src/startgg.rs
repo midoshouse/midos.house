@@ -12,7 +12,7 @@ struct QueryCache<T: GraphQLQuery> {
 
 impl<T: GraphQLQuery + 'static> TypeMapKey for QueryCache<T>
 where T::Variables: Send + Sync, T::ResponseData: Send + Sync {
-    type Value = HashMap<T::Variables, T::ResponseData>;
+    type Value = HashMap<T::Variables, (Instant, T::ResponseData)>;
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -79,7 +79,29 @@ pub(crate) async fn query<T: GraphQLQuery + 'static>(client: &reqwest::Client, a
 where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Send + Sync {
     let (ref mut next_request, ref mut cache) = *lock!(CACHE);
     Ok(match cache.entry::<QueryCache<T>>().or_default().entry(variables.clone()) {
-        hash_map::Entry::Occupied(entry) => entry.get().clone(), //TODO expire cache after some amount of time?
+        hash_map::Entry::Occupied(mut entry) => {
+            let (retrieved, entry) = entry.get_mut();
+            if retrieved.elapsed() >= UDuration::from_secs(5 * 60) {
+                sleep_until(*next_request).await;
+                let graphql_client::Response { data, errors, extensions: _ } = client.post("https://api.start.gg/gql/alpha")
+                    .bearer_auth(auth_token)
+                    .json(&T::build_query(variables))
+                    .send().await?
+                    .detailed_error_for_status().await?
+                    .json_with_text_in_error::<graphql_client::Response<T::ResponseData>>().await?;
+                // from https://dev.start.gg/docs/rate-limits
+                // “You may not average more than 80 requests per 60 seconds.”
+                *next_request = Instant::now() + UDuration::from_millis(60_000 / 80);
+                *retrieved = Instant::now();
+                *entry = match (data, errors) {
+                    (Some(_), Some(errors)) if !errors.is_empty() => Err(Error::GraphQL(errors)),
+                    (Some(data), _) => Ok(data),
+                    (None, Some(errors)) => Err(Error::GraphQL(errors)),
+                    (None, None) => Err(Error::NoDataNoErrors),
+                }?;
+            }
+            entry.clone()
+        }
         hash_map::Entry::Vacant(entry) => {
             sleep_until(*next_request).await;
             let graphql_client::Response { data, errors, extensions: _ } = client.post("https://api.start.gg/gql/alpha")
@@ -97,7 +119,7 @@ where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Se
                 (None, Some(errors)) => Err(Error::GraphQL(errors)),
                 (None, None) => Err(Error::NoDataNoErrors),
             }?;
-            entry.insert(data.clone());
+            entry.insert((Instant::now(), data.clone()));
             data
         }
     })
