@@ -1,5 +1,8 @@
 use {
-    async_proto::ReadError,
+    async_proto::{
+        ReadError,
+        ReadErrorKind,
+    },
     serde_json::Value as Json,
     tokio::net::UnixListener,
     crate::{
@@ -159,7 +162,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                     if update.is_none() { break }
                                 }
                             }
-                            Err(ReadError::Io(e)) if e.kind() == io::ErrorKind::UnexpectedEof => break,
+                            Err(ReadError { kind: ReadErrorKind::Io(e), .. }) if e.kind() == io::ErrorKind::UnexpectedEof => break,
                             Err(e) => panic!("error reading from UNIX socket: {e} ({e:?})"),
                         }
                     }

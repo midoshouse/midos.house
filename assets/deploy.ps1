@@ -11,7 +11,7 @@ if (-not $?)
     throw 'Native Failure'
 }
 
-wsl env -C /home/fenhl/wslgit/github.com/midoshouse/midos.house cargo build --release --target=x86_64-unknown-linux-musl
+wsl env -C /home/fenhl/wslgit/github.com/midoshouse/midos.house @args cargo build --release --target=x86_64-unknown-linux-musl
 if (-not $?)
 {
     throw 'Native Failure'

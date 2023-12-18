@@ -269,9 +269,9 @@ dependencies = [
 
 [[package]]
 name = "async-proto"
-version = "0.16.10"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f949f615d269819f2536ec17d4791ec17727bbbbd5ad0c4cc56afd3e20c3655c"
+checksum = "9ca08e1751c977c69617dba87ca458813aba22457f34db0136f34f69d962fbee"
 dependencies = [
  "async-proto-derive",
  "byteorder",
@@ -285,11 +285,11 @@ dependencies = [
 
 [[package]]
 name = "async-proto-derive"
-version = "0.16.10"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38d29a34913072adf34c7e77d43a90d6b8d607015b242dcecad0f4a78c46191d"
+checksum = "fc2ea48ab3e3c7545a7f8ed3ac55c6f59ed3530066c6a75f74ea8fc15966a499"
 dependencies = [
- "itertools 0.11.0",
+ "itertools 0.12.0",
  "proc-macro2",
  "quote",
  "syn 2.0.41",
@@ -754,9 +754,9 @@ dependencies = [
 
 [[package]]
 name = "const-oid"
-version = "0.9.5"
+version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28c122c3980598d243d63d9a704629a2d748d101f278052ff068be5a4423ab6f"
+checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
 name = "convert_case"
@@ -1677,11 +1677,11 @@ dependencies = [
 
 [[package]]
 name = "home"
-version = "0.5.5"
+version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5444c27eef6923071f7ebcc33e3444508466a76f7a2b93da00ed6e19f30c1ddb"
+checksum = "e3d1354bf6b7235cb4a0576c2619fd4ed18183f689b12b006a0ee7329eeff9a5"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2534,14 +2534,14 @@ checksum = "3fdb12b2476b595f9358c5161aa467c2438859caa136dec86c26fdd2efe17b92"
 
 [[package]]
 name = "ootr-utils"
-version = "0.2.4"
-source = "git+https://github.com/midoshouse/rust-ootr-utils?rev=c33c9503824a51dc9c8c187f6b618b9af94638b3#c33c9503824a51dc9c8c187f6b618b9af94638b3"
+version = "0.2.5"
+source = "git+https://github.com/midoshouse/rust-ootr-utils?branch=main#e0ca206b69db76156a4a63205ca4687fbe56c475"
 dependencies = [
  "async-proto",
  "directories",
  "enum-iterator",
  "git2",
- "itertools 0.11.0",
+ "itertools 0.12.0",
  "lazy-regex",
  "semver",
  "serde",
@@ -3184,18 +3184,18 @@ dependencies = [
 
 [[package]]
 name = "ref-cast"
-version = "1.0.20"
+version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acde58d073e9c79da00f2b5b84eed919c8326832648a5b109b3fce1bb1175280"
+checksum = "53313ec9f12686aeeffb43462c3ac77aa25f590a5f630eb2cde0de59417b29c7"
 dependencies = [
  "ref-cast-impl",
 ]
 
 [[package]]
 name = "ref-cast-impl"
-version = "1.0.20"
+version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f7473c2cfcf90008193dd0e3e16599455cb601a9fce322b5bb55de799664925"
+checksum = "2566c4bf6845f2c2e83b27043c3f5dfcd5ba8f2937d6c00dc009bfb51a079dc4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3354,7 +3354,7 @@ dependencies = [
 [[package]]
 name = "rocket-util"
 version = "0.2.14"
-source = "git+https://github.com/fenhl/rocket-util?branch=main#859255ab3f25c46b3c6e01ef15c860918d5d5384"
+source = "git+https://github.com/fenhl/rocket-util?branch=main#c52c6d41691bb3b73bae4243173a467c93bcf389"
 dependencies = [
  "ics",
  "image",
@@ -3367,7 +3367,7 @@ dependencies = [
 [[package]]
 name = "rocket-util-derive"
 version = "0.2.14"
-source = "git+https://github.com/fenhl/rocket-util?branch=main#859255ab3f25c46b3c6e01ef15c860918d5d5384"
+source = "git+https://github.com/fenhl/rocket-util?branch=main#c52c6d41691bb3b73bae4243173a467c93bcf389"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3788,7 +3788,7 @@ dependencies = [
 [[package]]
 name = "serenity-utils"
 version = "0.11.0"
-source = "git+https://github.com/fenhl/serenity-utils?branch=main#a919e2e8db1bde5cf9ccc1bd59e25ef446bb3a62"
+source = "git+https://github.com/fenhl/serenity-utils?branch=main#c79b9b761e66065233e883cb63e2ce806bb6c895"
 dependencies = [
  "chrono",
  "derive_more",
@@ -3805,7 +3805,7 @@ dependencies = [
 [[package]]
 name = "serenity-utils-derive"
 version = "0.11.0"
-source = "git+https://github.com/fenhl/serenity-utils?branch=main#a919e2e8db1bde5cf9ccc1bd59e25ef446bb3a62"
+source = "git+https://github.com/fenhl/serenity-utils?branch=main#c79b9b761e66065233e883cb63e2ce806bb6c895"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4372,18 +4372,18 @@ checksum = "8eaa81235c7058867fa8c0e7314f33dcce9c215f535d1913822a2b3f5e289f3c"
 
 [[package]]
 name = "thiserror"
-version = "1.0.50"
+version = "1.0.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9a7210f5c9a7156bb50aa36aed4c95afb51df0df00713949448cf9e97d382d2"
+checksum = "f11c217e1416d6f036b870f14e0413d480dbf28edbee1f877abaf0206af43bb7"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.50"
+version = "1.0.51"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "266b2e40bc00e5a6c09c3584011e08b06f123c00362c92b975ba9843aaaa14b8"
+checksum = "01742297787513b79cf8e29d1056ede1313e2420b7b3b15d0a768b4921f549df"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5405,18 +5405,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.7.30"
+version = "0.7.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "306dca4455518f1f31635ec308b6b3e4eb1b11758cefafc782827d0aa7acb5c7"
+checksum = "1c4061bedbb353041c12f413700357bec76df2c7e2ca8e4df8bac24c6bf68e3d"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.7.30"
+version = "0.7.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be912bf68235a88fbefd1b73415cb218405958d1655b2ece9035a19920bdf6ba"
+checksum = "b3c129550b3e6de3fd0ba67ba5c81818f9805e58b8d7fee80a3a59d2c9fc601a"
 dependencies = [
  "proc-macro2",
  "quote",

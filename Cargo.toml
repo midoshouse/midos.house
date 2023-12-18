@@ -84,8 +84,7 @@ branch = "main"
 
 [dependencies.ootr-utils]
 git = "https://github.com/midoshouse/rust-ootr-utils"
-#branch = "main"
-rev = "c33c9503824a51dc9c8c187f6b618b9af94638b3" #TODO update to latest once async-proto 0.14 is published
+branch = "main"
 features = ["sqlx"]
 
 [dependencies.reqwest]
@@ -149,7 +148,7 @@ features = ["chrono", "reqwest", "rocket", "serde", "serde_json"]
 xdg = "2"
 
 [target.'cfg(unix)'.dependencies.async-proto]
-version = "0.16.5"
+version = "0.17"
 features = ["chrono", "serde_json", "uuid"]
 
 [target.'cfg(unix)'.dependencies.openssl]

@@ -381,7 +381,7 @@ impl<'a> Data<'a> {
             (Series::SpeedGaming, "2023onl" | "2023live") => from_file!("../../assets/event/sgl/chests-2023-42da4aa.json"),
             (Series::SpeedGaming, _) => unimplemented!(),
             (Series::Standard, "6") => from_file!("../../assets/event/s/chests-6-6.9.10.json"),
-            (Series::Standard, "7") => from_file!("../../assets/event/s/chests-7-7.1.198.json"),
+            (Series::Standard, "7" | "7cc") => from_file!("../../assets/event/s/chests-7-7.1.198.json"),
             (Series::Standard, _) => unimplemented!(),
             (Series::TournoiFrancophone, "3") => from_file!("../../assets/event/fr/chests-3-7.1.83-r.1.json"),
             (Series::TournoiFrancophone, _) => unimplemented!(),

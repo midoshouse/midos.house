@@ -737,10 +737,8 @@ impl Race {
             },
             Series::Standard => match &*event.event {
                 "6" => {} // added to database
-                "7" => {
-                    //TODO get races from ZSR schedule sheet (see code deleted in https://github.com/midoshouse/midos.house/commit/9afb7a28e446ecf877bf047ed4905121f5ecf10b)
-                    //TODO challenge cup races (see code deleted in https://github.com/midoshouse/midos.house/commit/9afb7a28e446ecf877bf047ed4905121f5ecf10b)
-                }
+                "7" => {} //TODO get races from ZSR schedule sheet (see code deleted in https://github.com/midoshouse/midos.house/commit/9afb7a28e446ecf877bf047ed4905121f5ecf10b)
+                "7cc" => {} //TODO get from start.gg?
                 _ => unimplemented!(),
             },
             Series::TournoiFrancophone => match &*event.event {
