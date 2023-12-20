@@ -484,6 +484,17 @@ impl<'v> EnterFormDefaults<'v> {
             &Self::Values { teammate, .. } => teammate.map(|id| Cow::Owned(id.to_string())),
         }
     }
+
+    /// # Panics
+    ///
+    /// If used for fields that are present in `Self::Values`. Use the dedicated methods for those.
+    pub(crate) fn field_value(&self, name: &str) -> Option<&str> {
+        assert!(!matches!(name, "my_role" | "teammate"));
+        match self {
+            Self::Context(ctx) => ctx.field_value(name),
+            Self::Values { .. } => None,
+        }
+    }
 }
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths

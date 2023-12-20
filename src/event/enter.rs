@@ -176,29 +176,27 @@ impl Requirement {
         })
     }
 
-    async fn check_get(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>, redirect_uri: rocket::http::uri::Origin<'_>) -> Result<RequirementStatus, Error> {
+    fn check_get(&self, data: &Data<'_>, is_checked: Option<bool>, redirect_uri: rocket::http::uri::Origin<'_>, defaults: &pic::EnterFormDefaults<'_>) -> Result<RequirementStatus, Error> {
         Ok(match self {
             Self::RaceTime => {
-                let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
                 let mut html_content = html! {
                     : "Connect a racetime.gg account to your Mido's House account";
                 };
-                if !is_checked {
+                if !is_checked.unwrap() {
                     //TODO offer to merge accounts like on profile
                     html_content = html! {
                         a(href = uri!(crate::auth::racetime_login(Some(redirect_uri))).to_string()) : html_content;
                     };
                 }
                 RequirementStatus {
-                    blocks_submit: !is_checked,
+                    blocks_submit: !is_checked.unwrap(),
                     html_content: Box::new(move |_| html_content),
                 }
             }
             Self::RaceTimeInvite { text, .. } => {
-                let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
                 let text = text.clone();
                 RequirementStatus {
-                    blocks_submit: !is_checked,
+                    blocks_submit: !is_checked.unwrap(),
                     html_content: Box::new(move |_| html! {
                         @if let Some(text) = text {
                             : text;
@@ -209,27 +207,25 @@ impl Requirement {
                 }
             }
             Self::Discord => {
-                let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
                 let mut html_content = html! {
                     : "Connect a Discord account to your Mido's House account";
                 };
-                if !is_checked {
+                if !is_checked.unwrap() {
                     //TODO offer to merge accounts like on profile
                     html_content = html! {
                         a(href = uri!(crate::auth::discord_login(Some(redirect_uri))).to_string()) : html_content;
                     };
                 }
                 RequirementStatus {
-                    blocks_submit: !is_checked,
+                    blocks_submit: !is_checked.unwrap(),
                     html_content: Box::new(move |_| html_content),
                 }
             }
             Self::DiscordGuild { name } => {
                 let name = name.clone();
-                let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
                 let invite_url = data.discord_invite_url.as_ref().map(|url| url.to_string());
                 RequirementStatus {
-                    blocks_submit: !is_checked,
+                    blocks_submit: !is_checked.unwrap(),
                     html_content: Box::new(move |_| html! {
                         @if let Some(invite_url) = invite_url {
                             a(href = invite_url) {
@@ -246,45 +242,47 @@ impl Requirement {
                 }
             }
             Self::Challonge => {
-                let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
                 let mut html_content = html! {
                     : "Connect a Challonge account to your Mido's House account";
                 };
-                if !is_checked {
+                if !is_checked.unwrap() {
                     html_content = html! {
                         a(href = uri!(crate::auth::challonge_login(Some(redirect_uri))).to_string()) : html_content;
                     };
                 }
                 RequirementStatus {
-                    blocks_submit: !is_checked,
+                    blocks_submit: !is_checked.unwrap(),
                     html_content: Box::new(move |_| html_content),
                 }
             }
             Self::TextField { label, .. } => {
                 let label = label.clone();
+                let value = defaults.field_value("text_field").map(|value| value.to_owned());
                 RequirementStatus {
                     blocks_submit: false,
                     html_content: Box::new(move |errors| html! {
                         : label;
                         : form_field("text_field", errors, html! {
-                            input(type = "text", name = "text_field"); //TODO remember entered value
+                            input(type = "text", name = "text_field", value? = value);
                         });
                     }),
                 }
             }
             Self::TextField2 { label, .. } => {
                 let label = label.clone();
+                let value = defaults.field_value("text_field").map(|value| value.to_owned());
                 RequirementStatus {
                     blocks_submit: false,
                     html_content: Box::new(move |errors| html! {
                         : label;
                         : form_field("text_field2", errors, html! {
-                            input(type = "text", name = "text_field2"); //TODO remember entered value
+                            input(type = "text", name = "text_field2", value? = value);
                         });
                     }),
                 }
             }
             Self::Rules { document } => {
+                let checked = defaults.field_value("confirm").is_some_and(|value| value == "on");
                 let team_config = data.team_config();
                 let rules_url = if let Some(document) = document {
                     document.to_string()
@@ -295,7 +293,7 @@ impl Requirement {
                     blocks_submit: false,
                     html_content: Box::new(move |errors| html! {
                         : form_field("confirm", errors, html! {
-                            input(type = "checkbox", id = "confirm", name = "confirm"); //TODO remember checked state
+                            input(type = "checkbox", id = "confirm", name = "confirm", checked? = checked);
                             label(for = "confirm") {
                                 @if let TeamConfig::Solo = team_config {
                                     : "I have read and agree to ";
@@ -310,13 +308,14 @@ impl Requirement {
                 }
             }
             Self::RestreamConsent { optional: false, note } => {
+                let checked = defaults.field_value("restream_consent").is_some_and(|value| value == "on");
                 let team_config = data.team_config();
                 let note = note.clone();
                 RequirementStatus {
                     blocks_submit: false,
                     html_content: Box::new(move |errors| html! {
                         : form_field("restream_consent", errors, html! {
-                            input(type = "checkbox", id = "restream_consent", name = "restream_consent"); //TODO remember checked state
+                            input(type = "checkbox", id = "restream_consent", name = "restream_consent", checked? = checked);
                             label(for = "restream_consent") {
                                 @if let TeamConfig::Solo = team_config {
                                     : "I am okay with being restreamed.";
@@ -333,6 +332,8 @@ impl Requirement {
                 }
             }
             Self::RestreamConsent { optional: true, note } => {
+                let yes_checked = defaults.field_value("confirm").is_some_and(|value| value == "yes");
+                let no_checked = defaults.field_value("confirm").is_some_and(|value| value == "no");
                 let note = note.clone();
                 RequirementStatus {
                     blocks_submit: false,
@@ -342,9 +343,9 @@ impl Requirement {
                                 : "Let us know whether you are okay with being restreamed:";
                             }
                             br;
-                            input(id = "restream_consent_radio-yes", type = "radio", name = "restream_consent_radio", value = "yes"); //TODO remember checked state
+                            input(id = "restream_consent_radio-yes", type = "radio", name = "restream_consent_radio", value = "yes", checked? = yes_checked);
                             label(for = "restream_consent_radio-yes") : "Yes";
-                            input(id = "restream_consent_radio-no", type = "radio", name = "restream_consent_radio", value = "no"); //TODO remember checked state
+                            input(id = "restream_consent_radio-no", type = "radio", name = "restream_consent_radio", value = "no", checked? = no_checked);
                             label(for = "restream_consent_radio-no") : "No";
                             @if let Some(note) = note {
                                 br;
@@ -358,6 +359,7 @@ impl Requirement {
                 let now = Utc::now();
                 let async_available = now >= async_start && now < async_end;
                 let series = data.series;
+                let checked = defaults.field_value("confirm").is_some_and(|value| value == "on");
                 RequirementStatus {
                     blocks_submit: !async_available,
                     html_content: Box::new(move |errors| html! {
@@ -372,7 +374,7 @@ impl Requirement {
                                 _ => @unimplemented
                             }
                             : form_field("confirm", errors, html! {
-                                input(type = "checkbox", id = "confirm", name = "confirm"); //TODO remember checked state
+                                input(type = "checkbox", id = "confirm", name = "confirm", checked? = checked);
                                 label(for = "confirm") : "I have read the above and am ready to play the seed";
                             });
                         } else {
@@ -390,9 +392,8 @@ impl Requirement {
                 }
             }
             &Self::QualifierPlacement { num_players, min_races } => {
-                let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
                 RequirementStatus {
-                    blocks_submit: !is_checked,
+                    blocks_submit: !is_checked.unwrap(),
                     html_content: Box::new(move |_| html! {
                         @if min_races == 0 {
                             : "Place";
@@ -586,7 +587,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                         let mut can_submit = true;
                         let mut requirements_display = Vec::with_capacity(requirements.len());
                         for requirement in requirements {
-                            let status = requirement.check_get(&mut transaction, http_client, env, config, discord_ctx, me.as_ref(), &data, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))).await?;
+                            let status = requirement.check_get(&data, requirement.is_checked(&mut transaction, http_client, env, config, discord_ctx, me.as_ref(), &data).await?, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults)?;
                             if status.blocks_submit { can_submit = false }
                             requirements_display.push((requirement.is_checked(&mut transaction, http_client, env, config, discord_ctx, me.as_ref(), &data).await?, status.html_content));
                         }
