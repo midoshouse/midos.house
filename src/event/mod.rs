@@ -260,6 +260,7 @@ pub(crate) struct Data<'a> {
     pub(crate) discord_organizer_channel: Option<ChannelId>,
     pub(crate) discord_scheduling_channel: Option<ChannelId>,
     enter_flow: Option<enter::Flow>,
+    show_opt_out: bool,
     pub(crate) show_qualifier_times: bool,
     pub(crate) default_game_count: i16,
     pub(crate) min_schedule_notice: UDuration,
@@ -298,6 +299,7 @@ impl<'a> Data<'a> {
             discord_organizer_channel AS "discord_organizer_channel: PgSnowflake<ChannelId>",
             discord_scheduling_channel AS "discord_scheduling_channel: PgSnowflake<ChannelId>",
             enter_flow AS "enter_flow: Json<enter::Flow>",
+            show_opt_out,
             show_qualifier_times,
             default_game_count,
             min_schedule_notice,
@@ -321,6 +323,7 @@ impl<'a> Data<'a> {
                 discord_organizer_channel: row.discord_organizer_channel.map(|PgSnowflake(id)| id),
                 discord_scheduling_channel: row.discord_scheduling_channel.map(|PgSnowflake(id)| id),
                 enter_flow: row.enter_flow.map(|Json(flow)| flow),
+                show_opt_out: row.show_opt_out,
                 show_qualifier_times: row.show_qualifier_times,
                 default_game_count: row.default_game_count,
                 min_schedule_notice: decode_pginterval(row.min_schedule_notice)?,
@@ -1209,10 +1212,16 @@ pub(crate) enum ResignError {
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Discord(#[from] serenity::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("you have already resigned from this event")]
+    DoubleResign,
     #[error("you can no longer resign from this event since it has already ended")]
     EventEnded,
     #[error("can't delete teams you're not part of")]
     NotInTeam,
+    #[error("you can no longer opt out since you have already entered this event")]
+    OptedIn,
+    #[error("connect a racetime.gg account to your Mido's House account to opt out")]
+    RaceTime,
 }
 
 impl<E: Into<ResignError>> From<E> for StatusOrError<ResignError> {
@@ -1315,6 +1324,90 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFutu
     } else {
         transaction.rollback().await?;
         Err(ResignError::NotInTeam.into())
+    }
+}
+
+#[rocket::get("/event/<series>/<event>/opt-out")]
+pub(crate) async fn opt_out(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    if data.is_ended() || me.as_ref().map_or(true, |me| me.racetime.is_none()) {
+        return Err(StatusOrError::Status(Status::Forbidden))
+    }
+    let opted_out = if let Some(racetime) = me.as_ref().and_then(|me| me.racetime.as_ref()) {
+        sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM opt_outs WHERE series = $1 AND event = $2 AND racetime_id = $3) AS "exists!""#, data.series as _, &data.event, racetime.id).fetch_one(&mut *transaction).await?
+    } else {
+        false
+    };
+    let entered = if let Some(ref me) = me {
+        sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+            id = team
+            AND series = $1
+            AND event = $2
+            AND member = $3
+            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+        ) AS "exists!""#, data.series as _, &data.event, me.id as _).fetch_one(&mut *transaction).await?
+    } else {
+        false
+    };
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
+        @if opted_out {
+            p : "You have already opted out.";
+        } else if entered {
+            p : "You can no longer opt out since you have already entered this event. You can resign from your status page."; //TODO direct link or redirect to resign page
+        } else {
+            p {
+                : "Are you sure you want to opt out of participating in ";
+                : data;
+                : "?";
+            }
+            div(class = "button-row") {
+                form(action = uri!(crate::event::opt_out_post(series, event)).to_string(), method = "post") {
+                    : csrf;
+                    input(type = "submit", value = "Yes, opt out");
+                }
+            }
+        }
+    }).await?)
+}
+
+#[rocket::post("/event/<series>/<event>/opt-out", data = "<form>")]
+pub(crate) async fn opt_out_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, StatusOrError<ResignError>> {
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut form = form.into_inner();
+    form.verify(&csrf); //TODO option to resubmit on error page (with some “are you sure?” wording)
+    if data.is_ended() { return Err(ResignError::EventEnded.into()) }
+    if let Some(racetime) = me.racetime.as_ref() {
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM opt_outs WHERE series = $1 AND event = $2 AND racetime_id = $3) AS "exists!""#, data.series as _, &data.event, racetime.id).fetch_one(&mut *transaction).await? {
+            return Err(ResignError::DoubleResign.into())
+        }
+    }
+    if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+        id = team
+        AND series = $1
+        AND event = $2
+        AND member = $3
+        AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+    ) AS "exists!""#, data.series as _, &data.event, me.id as _).fetch_one(&mut *transaction).await? {
+        return Err(ResignError::OptedIn.into())
+    }
+    if let Some(ref racetime) = me.racetime {
+        sqlx::query!(r#"INSERT INTO opt_outs (series, event, racetime_id) VALUES ($1, $2, $3)"#, series as _, event, racetime.id).execute(&mut *transaction).await?;
+        if let Some(organizer_channel) = data.discord_organizer_channel {
+            organizer_channel.say(&*discord_ctx.read().await, MessageBuilder::default()
+                .mention_user(&me)
+                .push(" has opted out from ")
+                .push_safe(data.display_name)
+                .push(".")
+                .build(),
+            ).await?;
+        }
+        transaction.commit().await?;
+        Ok(Redirect::to(uri!(crate::http::index)))
+    } else {
+        transaction.rollback().await?;
+        Err(ResignError::RaceTime.into())
     }
 }
 

@@ -148,7 +148,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             }
             Either::Left(entrant_scores.into_iter())
         } else {
-            let opt_outs = sqlx::query_scalar!("SELECT racetime_id FROM multi_qualifier_opt_outs WHERE series = $1 AND event = $2", data.series as _, &data.event).fetch_all(&mut **transaction).await?;
+            let opt_outs = sqlx::query_scalar!("SELECT racetime_id FROM opt_outs WHERE series = $1 AND event = $2", data.series as _, &data.event).fetch_all(&mut **transaction).await?;
             Either::Right(
                 scores.into_iter()
                     .filter(move |(user, _)| match user {

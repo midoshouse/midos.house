@@ -604,7 +604,18 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
         match data.team_config() {
             TeamConfig::Solo => {
                 if let Some(Flow { ref requirements }) = data.enter_flow {
-                    if requirements.is_empty() {
+                    let opted_out = if let Some(racetime) = me.as_ref().and_then(|me| me.racetime.as_ref()) {
+                        sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM opt_outs WHERE series = $1 AND event = $2 AND racetime_id = $3) AS "exists!""#, data.series as _, &data.event, racetime.id).fetch_one(&mut *transaction).await?
+                    } else {
+                        false
+                    };
+                    if opted_out {
+                        html! {
+                            article {
+                                p : "You can no longer enter this event since you have already opted out.";
+                            }
+                        }
+                    } else if requirements.is_empty() {
                         if data.is_single_race() {
                             html! {
                                 article {
@@ -646,10 +657,21 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                             if status.blocks_submit { can_submit = false }
                             requirements_display.push((requirement.is_checked(&mut transaction, http_client, env, config, discord_ctx, me.as_ref(), &data).await?, status.html_content));
                         }
+                        let preface = html! {
+                            @if data.show_opt_out {
+                                p {
+                                    : "If you would like to enter this event, please fill out the form below. If not, please ";
+                                    a(href = uri!(super::opt_out(data.series, &*data.event)).to_string()) : "opt out";
+                                    : ".";
+                                }
+                            } else {
+                                p : "To enter this event:";
+                            }
+                        };
                         if can_submit {
                             let mut errors = defaults.errors();
                             full_form(uri!(post(data.series, &*data.event)), csrf, html! {
-                                p : "To enter this event:";
+                                : preface;
                                 @for (is_checked, html_content) in requirements_display {
                                     div(class = "check-item") {
                                         div(class = "checkmark") {
@@ -666,7 +688,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                         } else {
                             html! {
                                 article {
-                                    p : "To enter this event:";
+                                    : preface;
                                     @for (is_checked, html_content) in requirements_display {
                                         div(class = "check-item") {
                                             div(class = "checkmark") {
