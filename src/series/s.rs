@@ -20,9 +20,30 @@ pub(crate) fn info(event: &str) -> Option<RawHtml<String>> {
         "7" => Some(html! {
             article {
                 p {
-                    : "This is the 7th season of the main Ocarina of Time randomizer tournament. See ";
+                    : "This is the main portion of the 7th season of the main Ocarina of Time randomizer tournament. See ";
                     a(href = "https://docs.google.com/document/d/1iN1q3NArRoQhean5W0qfoTSM2xLlj9QjuWkzDO0xME0/edit") : "the official document";
                     : " for details.";
+                }
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = uri!(event::info(Series::Standard, "7cc")).to_string()) : "Challenge Cup";
+                    }
+                }
+            }
+        }),
+        "7cc" => Some(html! {
+            article {
+                p {
+                    : "This is the Challenge Cup portion of the 7th season of the main Ocarina of Time randomizer tournament. See ";
+                    a(href = "https://docs.google.com/document/d/1zMbko0OG0UKQ6Mvc48if9hJEU5svC-aM9xv3J_Lkzn0/edit") : "the official document";
+                    : " for details.";
+                }
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = uri!(event::info(Series::Standard, "7")).to_string()) : "main bracket";
+                    }
                 }
             }
         }),
