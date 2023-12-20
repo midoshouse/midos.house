@@ -58,6 +58,11 @@ enum Requirement {
     },
     /// Must have a Challonge account connected to their Mido's House account
     Challonge,
+    /// Must have a start.gg account connected to their Mido's House account
+    StartGG {
+        #[serde(default)]
+        optional: bool,
+    },
     /// Must fill a custom text field
     #[serde(rename_all = "camelCase")]
     TextField {
@@ -125,6 +130,7 @@ impl Requirement {
             Self::Discord => true,
             Self::DiscordGuild { .. } => true,
             Self::Challonge => true,
+            Self::StartGG { .. } => true,
             Self::TextField { .. } => true,
             Self::TextField2 { .. } => true,
             Self::Rules { .. } => true,
@@ -149,6 +155,7 @@ impl Requirement {
                 }
             }),
             Self::Challonge => Some(me.map_or(false, |me| me.challonge_id.is_some())),
+            Self::StartGG { .. } => Some(me.map_or(false, |me| me.startgg_id.is_some())),
             Self::TextField { .. } => Some(false),
             Self::TextField2 { .. } => Some(false),
             Self::Rules { .. } => Some(false),
@@ -255,6 +262,42 @@ impl Requirement {
                     html_content: Box::new(move |_| html_content),
                 }
             }
+            Self::StartGG { optional: false } => {
+                let mut html_content = html! {
+                    : "Connect a start.gg account to your Mido's House account";
+                };
+                if !is_checked.unwrap() {
+                    html_content = html! {
+                        a(href = uri!(crate::auth::startgg_login(Some(redirect_uri))).to_string()) : html_content;
+                    };
+                }
+                RequirementStatus {
+                    blocks_submit: !is_checked.unwrap(),
+                    html_content: Box::new(move |_| html_content),
+                }
+            }
+            Self::StartGG { optional: true } => {
+                let yes_checked = defaults.field_value("startgg_radio").map_or(true, |value| value == "yes");
+                let html_content = html! {
+                    @if is_checked.unwrap() {
+                        : "Enter with your connected start.gg account"; //TODO show name and link to profile
+                    } else {
+                        a(href = uri!(crate::auth::startgg_login(Some(redirect_uri))).to_string()) : "Connect a start.gg account to your Mido's House account";
+                    }
+                };
+                let no_checked = defaults.field_value("startgg_radio").map_or(false, |value| value == "no");
+                RequirementStatus {
+                    blocks_submit: false,
+                    html_content: Box::new(move |errors| html! {
+                        : form_field("startgg_radio", errors, html! {
+                            input(id = "startgg_radio-yes", type = "radio", name = "startgg_radio", value = "yes", checked? = yes_checked);
+                            label(for = "startgg_radio-yes") : html_content;
+                            input(id = "startgg_radio-no", type = "radio", name = "startgg_radio", value = "no", checked? = no_checked);
+                            label(for = "startgg_radio-no") : "Enter without connecting a start.gg account";
+                        });
+                    }),
+                }
+            }
             Self::TextField { label, .. } => {
                 let label = label.clone();
                 let value = defaults.field_value("text_field").map(|value| value.to_owned());
@@ -332,8 +375,8 @@ impl Requirement {
                 }
             }
             Self::RestreamConsent { optional: true, note } => {
-                let yes_checked = defaults.field_value("confirm").is_some_and(|value| value == "yes");
-                let no_checked = defaults.field_value("confirm").is_some_and(|value| value == "no");
+                let yes_checked = defaults.field_value("restream_consent_radio").is_some_and(|value| value == "yes");
+                let no_checked = defaults.field_value("restream_consent_radio").is_some_and(|value| value == "no");
                 let note = note.clone();
                 RequirementStatus {
                     blocks_submit: false,
@@ -426,6 +469,16 @@ impl Requirement {
 
     async fn check_form(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
         match self {
+            Self::StartGG { optional: false } => if !self.is_checked(transaction, http_client, env, config, discord_ctx, Some(me), data).await?.unwrap_or(false) {
+                form_ctx.push_error(form::Error::validation("A start.gg account is required to enter this event.")); //TODO link to /login/startgg
+            },
+            Self::StartGG { optional: true } => match value.startgg_radio {
+                Some(BoolRadio::Yes) => if !self.is_checked(transaction, http_client, env, config, discord_ctx, Some(me), data).await?.unwrap_or(false) {
+                    form_ctx.push_error(form::Error::validation("Sign in with start.gg or opt out of start.gg integration.").with_name("startgg_radio")); //TODO link to /login/startgg
+                },
+                Some(BoolRadio::No) => {}
+                None => form_ctx.push_error(form::Error::validation("Please select one of the options.").with_name("startgg_radio")),
+            },
             Self::TextField { regex, regex_error_messages, fallback_error_message, .. } => if !regex.is_match(&value.text_field) {
                 let error_message = if let Some((_, error_message)) = regex_error_messages.iter().find(|(regex, _)| regex.is_match(&value.text_field)) {
                     error_message.clone()
@@ -474,7 +527,7 @@ impl Requirement {
                     Self::DiscordGuild { .. } => "You must join the event's Discord server to enter.", //TODO invite link?
                     Self::Challonge => "A Challonge account is required to enter this event.", //TODO link to /login/challonge
                     Self::QualifierPlacement { .. } => "You have not secured a qualifying placement.",
-                    Self::TextField { .. } | Self::TextField2 { .. } | Self::Rules { .. } | Self::RestreamConsent { .. } | Self::Qualifier { .. } | Self::External { .. } => unreachable!(),
+                    Self::StartGG { .. } | Self::TextField { .. } | Self::TextField2 { .. } | Self::Rules { .. } | Self::RestreamConsent { .. } | Self::Qualifier { .. } | Self::External { .. } => unreachable!(),
                 }));
             }
         }
@@ -522,6 +575,7 @@ pub(crate) struct EnterForm {
     roles: HashMap<String, Role>,
     startgg_id: HashMap<String, String>,
     mw_impl: Option<mw::Impl>,
+    startgg_radio: Option<BoolRadio>,
     restream_consent: bool,
     restream_consent_radio: Option<BoolRadio>,
     #[field(default = String::new())]

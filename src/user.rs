@@ -61,6 +61,7 @@ pub(crate) struct User {
     pub(crate) racetime: Option<UserRaceTime>,
     pub(crate) discord: Option<UserDiscord>,
     pub(crate) challonge_id: Option<String>,
+    pub(crate) startgg_id: Option<startgg::ID>,
     pub(crate) is_archivist: bool,
 }
 
@@ -77,6 +78,7 @@ impl User {
         discord_discriminator: Option<Discriminator>,
         discord_username: Option<String>,
         challonge_id: Option<String>,
+        startgg_id: Option<String>,
         is_archivist: bool,
     ) -> Self {
         Self {
@@ -101,6 +103,7 @@ impl User {
                 (None, None) => None,
                 (_, _) => unreachable!("database constraint"),
             },
+            startgg_id: startgg_id.map(startgg::ID),
             id, display_source, challonge_id, is_archivist,
         }
     }
@@ -118,6 +121,7 @@ impl User {
                 discord_discriminator AS "discord_discriminator: Discriminator",
                 discord_username,
                 challonge_id,
+                startgg_id,
                 is_archivist
             FROM users WHERE id = $1"#, id as _).fetch_optional(pool).await?
             .map(|row| Self::from_row(
@@ -132,6 +136,7 @@ impl User {
                 row.discord_discriminator,
                 row.discord_username,
                 row.challonge_id,
+                row.startgg_id,
                 row.is_archivist,
             ))
         )
@@ -150,6 +155,7 @@ impl User {
                 discord_discriminator AS "discord_discriminator: Discriminator",
                 discord_username,
                 challonge_id,
+                startgg_id,
                 is_archivist
             FROM users WHERE racetime_id = $1"#, racetime_id).fetch_optional(pool).await?
             .map(|row| Self::from_row(
@@ -164,6 +170,7 @@ impl User {
                 row.discord_discriminator,
                 row.discord_username,
                 row.challonge_id,
+                row.startgg_id,
                 row.is_archivist,
             ))
         )
@@ -182,6 +189,7 @@ impl User {
                 discord_discriminator AS "discord_discriminator: Discriminator",
                 discord_username,
                 challonge_id,
+                startgg_id,
                 is_archivist
             FROM users WHERE discord_id = $1"#, i64::from(discord_id)).fetch_optional(pool).await?
             .map(|row| Self::from_row(
@@ -196,6 +204,7 @@ impl User {
                 row.discord_discriminator,
                 row.discord_username,
                 row.challonge_id,
+                row.startgg_id,
                 row.is_archivist,
             ))
         )
@@ -208,7 +217,7 @@ impl User {
         }
     }
 
-    pub(crate) fn subjective_pronoun(&self) -> &'static str {
+    pub(crate) fn subjective_pronoun(&self) -> &'static str { //TODO also check start.gg genderPronoun field
         match self.racetime.as_ref().and_then(|racetime| racetime.pronouns) {
             Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => "he",
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "she",
@@ -216,7 +225,7 @@ impl User {
         }
     }
 
-    pub(crate) fn subjective_pronoun_uses_plural_form(&self) -> bool {
+    pub(crate) fn subjective_pronoun_uses_plural_form(&self) -> bool { //TODO also check start.gg genderPronoun field
         match self.racetime.as_ref().and_then(|racetime| racetime.pronouns) {
             Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => false,
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => false,
@@ -224,7 +233,7 @@ impl User {
         }
     }
 
-    pub(crate) fn objective_pronoun(&self) -> &'static str {
+    pub(crate) fn objective_pronoun(&self) -> &'static str { //TODO also check start.gg genderPronoun field
         match self.racetime.as_ref().and_then(|racetime| racetime.pronouns) {
             Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => "him",
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "her",
@@ -232,7 +241,7 @@ impl User {
         }
     }
 
-    pub(crate) fn possessive_determiner(&self) -> &'static str {
+    pub(crate) fn possessive_determiner(&self) -> &'static str { //TODO also check start.gg genderPronoun field
         match self.racetime.as_ref().and_then(|racetime| racetime.pronouns) {
             Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => "his",
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "her",

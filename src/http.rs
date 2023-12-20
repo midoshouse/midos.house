@@ -466,11 +466,13 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         auth::racetime_callback,
         auth::discord_callback,
         auth::challonge_callback,
+        auth::startgg_callback,
         auth::login,
         auth::logout,
         auth::racetime_login,
         auth::discord_login,
         auth::challonge_login,
+        auth::startgg_login,
         auth::register_racetime,
         auth::register_discord,
         auth::merge_accounts,
@@ -549,6 +551,19 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
             Environment::Local => uri!("http://localhost:24814", auth::challonge_callback),
             Environment::Dev => uri!("https://dev.midos.house", auth::challonge_callback),
             Environment::Production => uri!("https://midos.house", auth::challonge_callback),
+        }.to_string()),
+    )))
+    .attach(OAuth2::<auth::StartGG>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
+        rocket_oauth2::StaticProvider {
+            auth_uri: "https://start.gg/oauth/authorize".into(),
+            token_uri: "https://api.start.gg/oauth/access_token".into(),
+        },
+        config.startgg_oauth.client_id.to_string(),
+        config.startgg_oauth.client_secret.to_string(),
+        Some(match env {
+            Environment::Local => uri!("http://localhost:24814", auth::startgg_callback),
+            Environment::Dev => uri!("https://dev.midos.house", auth::startgg_callback),
+            Environment::Production => uri!("https://midos.house", auth::startgg_callback),
         }.to_string()),
     )))
     .manage(config)

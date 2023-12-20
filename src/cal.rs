@@ -35,7 +35,6 @@ use {
             },
         },
         prelude::*,
-        startgg,
     },
 };
 
@@ -302,7 +301,7 @@ impl Race {
                     }),
                     slots: Some(slots),
                 }),
-            } = startgg::query::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) }).await? {
+            } = startgg::query_cached::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) }).await? {
                 sqlx::query!("UPDATE races SET
                     startgg_event = $1,
                     phase = $2,
@@ -1895,7 +1894,7 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                     nodes: Some(sets),
                 }),
             }),
-        } = startgg::query::<startgg::EventSetsQuery>(http_client, startgg_token, startgg::event_sets_query::Variables { event_slug: event_slug.to_owned(), page }).await? else { panic!("no match on query") };
+        } = startgg::query_cached::<startgg::EventSetsQuery>(http_client, startgg_token, startgg::event_sets_query::Variables { event_slug: event_slug.to_owned(), page }).await? else { panic!("no match on query") };
         for set in sets.into_iter().filter_map(identity) {
             let startgg::event_sets_query::EventSetsQueryEventSetsNodes { id: Some(startgg::ID(id)), phase_group, full_round_text, slots: Some(slots) } = set else { panic!("unexpected set format") };
             if id.starts_with("preview") {

@@ -7,7 +7,7 @@
           "args": [
             {
               "defaultValue": null,
-              "description": "Optional override for the query-level cacheAge value.",
+              "description": "Optional override for the query-level cacheAge value, in seconds.",
               "name": "cacheAge",
               "type": {
                 "kind": "SCALAR",
@@ -16,19 +16,11 @@
               }
             }
           ],
-          "description": "Specify a query to be read from gql-public. Will use the configured cacheAge on\nthe query resolve configuration, or the override value passed through the\ndirective as publicCache(cacheAge: INT) argument.",
+          "description": "[DEPRECATED - Has no effect on public API queries] Specify a query to be read\nfrom gql-public. Will use the configured cacheAge on the query resolve\nconfiguration, or the override value passed through the directive as\npublicCache(cacheAge: INT) argument.",
           "locations": [
             "FIELD"
           ],
           "name": "publicCache"
-        },
-        {
-          "args": [],
-          "description": "Specify a field to only be included in the response if the user is logged in.",
-          "locations": [
-            "FIELD"
-          ],
-          "name": "userData"
         },
         {
           "args": [
@@ -1194,6 +1186,12 @@
               "description": "",
               "isDeprecated": false,
               "name": "MIXER"
+            },
+            {
+              "deprecationReason": null,
+              "description": "",
+              "isDeprecated": false,
+              "name": "YOUTUBE"
             }
           ],
           "fields": null,
@@ -1235,6 +1233,18 @@
               "description": "",
               "isDeprecated": false,
               "name": "XBOX"
+            },
+            {
+              "deprecationReason": null,
+              "description": "",
+              "isDeprecated": false,
+              "name": "EPIC"
+            },
+            {
+              "deprecationReason": null,
+              "description": "",
+              "isDeprecated": false,
+              "name": "BATTLENET"
             },
             {
               "deprecationReason": null,
@@ -3228,6 +3238,18 @@
             {
               "args": [],
               "deprecationReason": null,
+              "description": "The sets that are affected from resetting this set",
+              "isDeprecated": false,
+              "name": "resetAffectedData",
+              "type": {
+                "kind": "OBJECT",
+                "name": "ResetAffectedData",
+                "ofType": null
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
               "description": "The round number of the set. Negative numbers are losers bracket",
               "isDeprecated": false,
               "name": "round",
@@ -3404,6 +3426,30 @@
               "type": {
                 "kind": "SCALAR",
                 "name": "ID",
+                "ofType": null
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": "Score of entrant 1. For smash, this is equivalent to stocks remaining.",
+              "isDeprecated": false,
+              "name": "entrant1Score",
+              "type": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": "Score of entrant 2. For smash, this is equivalent to stocks remaining.",
+              "isDeprecated": false,
+              "name": "entrant2Score",
+              "type": {
+                "kind": "SCALAR",
+                "name": "Int",
                 "ofType": null
               }
             },
@@ -3595,6 +3641,18 @@
             {
               "args": [],
               "deprecationReason": null,
+              "description": "If this is a character selection, returns the selected character.",
+              "isDeprecated": false,
+              "name": "character",
+              "type": {
+                "kind": "OBJECT",
+                "name": "Character",
+                "ofType": null
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
               "description": null,
               "isDeprecated": false,
               "name": "id",
@@ -3672,6 +3730,68 @@
           "possibleTypes": null
         },
         {
+          "description": "A character in a videogame",
+          "enumValues": null,
+          "fields": [
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "id",
+              "type": {
+                "kind": "SCALAR",
+                "name": "ID",
+                "ofType": null
+              }
+            },
+            {
+              "args": [
+                {
+                  "defaultValue": null,
+                  "description": null,
+                  "name": "type",
+                  "type": {
+                    "kind": "SCALAR",
+                    "name": "String",
+                    "ofType": null
+                  }
+                }
+              ],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "images",
+              "type": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "kind": "OBJECT",
+                  "name": "Image",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": "Name of Character",
+              "isDeprecated": false,
+              "name": "name",
+              "type": {
+                "kind": "SCALAR",
+                "name": "String",
+                "ofType": null
+              }
+            }
+          ],
+          "inputFields": null,
+          "interfaces": [],
+          "kind": "OBJECT",
+          "name": "Character",
+          "possibleTypes": null
+        },
+        {
           "description": "A participant of a tournament; either a spectator or competitor",
           "enumValues": null,
           "fields": [
@@ -3726,7 +3846,7 @@
             {
               "args": [],
               "deprecationReason": null,
-              "description": "Contact Info selected during registration. Falls back to User.location and/or\nUser.name if necessary. These fields are for admin use only and do not respect\nuser privacy settings. DO NOT display this information publicly.",
+              "description": "Contact Info selected during registration. Falls back to User.location and/or\nUser.name if necessary. These fields are for admin use only. If you are not a\ntournament admin or the participant being queried, these fields will be null.\nDo not display this information publicly.",
               "isDeprecated": false,
               "name": "contactInfo",
               "type": {
@@ -3738,7 +3858,7 @@
             {
               "args": [],
               "deprecationReason": null,
-              "description": "Email of the user, only available to admins within 18 months of tournament",
+              "description": "Email of the user, only available to admins within 18 months of tournament completion for tournament administrators.",
               "isDeprecated": false,
               "name": "email",
               "type": {
@@ -3750,7 +3870,7 @@
             {
               "args": [],
               "deprecationReason": null,
-              "description": null,
+              "description": "Entrants associated with this Participant, if applicable",
               "isDeprecated": false,
               "name": "entrants",
               "type": {
@@ -3766,7 +3886,7 @@
             {
               "args": [],
               "deprecationReason": null,
-              "description": "The events this participant registered for.",
+              "description": "The events this participant registered for within a Tournament.",
               "isDeprecated": false,
               "name": "events",
               "type": {
@@ -3782,7 +3902,7 @@
             {
               "args": [],
               "deprecationReason": null,
-              "description": "The tag that was used in registration e.g. Mang0",
+              "description": "The tag that was used when the participant registered, e.g. Mang0",
               "isDeprecated": false,
               "name": "gamerTag",
               "type": {
@@ -3833,7 +3953,7 @@
             {
               "args": [],
               "deprecationReason": null,
-              "description": "The prefix that was used in registration e.g. C9",
+              "description": "The prefix that the user set for this Tournament, e.g. C9",
               "isDeprecated": false,
               "name": "prefix",
               "type": {
@@ -3845,7 +3965,7 @@
             {
               "args": [],
               "deprecationReason": null,
-              "description": "Admin only field for required social connections",
+              "description": "Tournament Admin viewable field. Shows details for required social connections",
               "isDeprecated": false,
               "name": "requiredConnections",
               "type": {
@@ -4133,6 +4253,16 @@
                   "type": {
                     "kind": "SCALAR",
                     "name": "ID",
+                    "ofType": null
+                  }
+                },
+                {
+                  "defaultValue": null,
+                  "description": "Number of recent standings to fetch. Default value is 3. Maximum value is 20.",
+                  "name": "limit",
+                  "type": {
+                    "kind": "SCALAR",
+                    "name": "Int",
                     "ofType": null
                   }
                 }
@@ -5194,6 +5324,20 @@
             {
               "defaultValue": null,
               "description": null,
+              "name": "ids",
+              "type": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "ID",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "defaultValue": null,
+              "description": null,
               "name": "slug",
               "type": {
                 "kind": "SCALAR",
@@ -5933,6 +6077,12 @@
               "description": "Stream is on a mixer.com channel",
               "isDeprecated": false,
               "name": "MIXER"
+            },
+            {
+              "deprecationReason": null,
+              "description": "Stream is on a youtube.com channel",
+              "isDeprecated": false,
+              "name": "YOUTUBE"
             }
           ],
           "fields": null,
@@ -8262,6 +8412,57 @@
           "possibleTypes": null
         },
         {
+          "description": null,
+          "enumValues": null,
+          "fields": [
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "affectedSetCount",
+              "type": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "affectedSets",
+              "type": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "kind": "OBJECT",
+                  "name": "Set",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": null,
+              "isDeprecated": false,
+              "name": "affectedPhaseGroupCount",
+              "type": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            }
+          ],
+          "inputFields": null,
+          "interfaces": [],
+          "kind": "OBJECT",
+          "name": "ResetAffectedData",
+          "possibleTypes": null
+        },
+        {
           "description": "A slot in a set where a seed currently or will eventually exist in order to participate in the set.",
           "enumValues": null,
           "fields": [
@@ -9394,74 +9595,28 @@
                 "name": "String",
                 "ofType": null
               }
+            },
+            {
+              "args": [],
+              "deprecationReason": null,
+              "description": "All stages for this videogame",
+              "isDeprecated": false,
+              "name": "stages",
+              "type": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "kind": "OBJECT",
+                  "name": "Stage",
+                  "ofType": null
+                }
+              }
             }
           ],
           "inputFields": null,
           "interfaces": [],
           "kind": "OBJECT",
           "name": "Videogame",
-          "possibleTypes": null
-        },
-        {
-          "description": "A character in a videogame",
-          "enumValues": null,
-          "fields": [
-            {
-              "args": [],
-              "deprecationReason": null,
-              "description": null,
-              "isDeprecated": false,
-              "name": "id",
-              "type": {
-                "kind": "SCALAR",
-                "name": "ID",
-                "ofType": null
-              }
-            },
-            {
-              "args": [
-                {
-                  "defaultValue": null,
-                  "description": null,
-                  "name": "type",
-                  "type": {
-                    "kind": "SCALAR",
-                    "name": "String",
-                    "ofType": null
-                  }
-                }
-              ],
-              "deprecationReason": null,
-              "description": null,
-              "isDeprecated": false,
-              "name": "images",
-              "type": {
-                "kind": "LIST",
-                "name": null,
-                "ofType": {
-                  "kind": "OBJECT",
-                  "name": "Image",
-                  "ofType": null
-                }
-              }
-            },
-            {
-              "args": [],
-              "deprecationReason": null,
-              "description": "Name of Character",
-              "isDeprecated": false,
-              "name": "name",
-              "type": {
-                "kind": "SCALAR",
-                "name": "String",
-                "ofType": null
-              }
-            }
-          ],
-          "inputFields": null,
-          "interfaces": [],
-          "kind": "OBJECT",
-          "name": "Character",
           "possibleTypes": null
         },
         {
@@ -11379,6 +11534,152 @@
                 {
                   "defaultValue": null,
                   "description": null,
+                  "name": "setId",
+                  "type": {
+                    "kind": "NON_NULL",
+                    "name": null,
+                    "ofType": {
+                      "kind": "SCALAR",
+                      "name": "ID",
+                      "ofType": null
+                    }
+                  }
+                }
+              ],
+              "deprecationReason": null,
+              "description": "Update a set to called state",
+              "isDeprecated": false,
+              "name": "markSetCalled",
+              "type": {
+                "kind": "OBJECT",
+                "name": "Set",
+                "ofType": null
+              }
+            },
+            {
+              "args": [
+                {
+                  "defaultValue": null,
+                  "description": null,
+                  "name": "setId",
+                  "type": {
+                    "kind": "NON_NULL",
+                    "name": null,
+                    "ofType": {
+                      "kind": "SCALAR",
+                      "name": "ID",
+                      "ofType": null
+                    }
+                  }
+                }
+              ],
+              "deprecationReason": null,
+              "description": "Update a set to called state",
+              "isDeprecated": false,
+              "name": "markSetInProgress",
+              "type": {
+                "kind": "OBJECT",
+                "name": "Set",
+                "ofType": null
+              }
+            },
+            {
+              "args": [
+                {
+                  "defaultValue": null,
+                  "description": null,
+                  "name": "setId",
+                  "type": {
+                    "kind": "NON_NULL",
+                    "name": null,
+                    "ofType": {
+                      "kind": "SCALAR",
+                      "name": "ID",
+                      "ofType": null
+                    }
+                  }
+                },
+                {
+                  "defaultValue": null,
+                  "description": null,
+                  "name": "winnerId",
+                  "type": {
+                    "kind": "SCALAR",
+                    "name": "ID",
+                    "ofType": null
+                  }
+                },
+                {
+                  "defaultValue": null,
+                  "description": null,
+                  "name": "gameData",
+                  "type": {
+                    "kind": "LIST",
+                    "name": null,
+                    "ofType": {
+                      "kind": "INPUT_OBJECT",
+                      "name": "BracketSetGameDataInput",
+                      "ofType": null
+                    }
+                  }
+                }
+              ],
+              "deprecationReason": null,
+              "description": "Report set winner or game stats for a H2H bracket set. If winnerId is\nsupplied, mark set as complete. gameData parameter will overwrite any existing\nreported game data.",
+              "isDeprecated": false,
+              "name": "reportBracketSet",
+              "type": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "kind": "OBJECT",
+                  "name": "Set",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "args": [
+                {
+                  "defaultValue": null,
+                  "description": null,
+                  "name": "setId",
+                  "type": {
+                    "kind": "NON_NULL",
+                    "name": null,
+                    "ofType": {
+                      "kind": "SCALAR",
+                      "name": "ID",
+                      "ofType": null
+                    }
+                  }
+                },
+                {
+                  "defaultValue": null,
+                  "description": null,
+                  "name": "resetDependentSets",
+                  "type": {
+                    "kind": "SCALAR",
+                    "name": "Boolean",
+                    "ofType": null
+                  }
+                }
+              ],
+              "deprecationReason": null,
+              "description": "Resets set to initial state, can affect other sets and phase groups",
+              "isDeprecated": false,
+              "name": "resetSet",
+              "type": {
+                "kind": "OBJECT",
+                "name": "Set",
+                "ofType": null
+              }
+            },
+            {
+              "args": [
+                {
+                  "defaultValue": null,
+                  "description": null,
                   "name": "tournamentId",
                   "type": {
                     "kind": "NON_NULL",
@@ -11710,6 +12011,120 @@
           "interfaces": [],
           "kind": "OBJECT",
           "name": "Mutation",
+          "possibleTypes": null
+        },
+        {
+          "description": "Game specific H2H set data such as character, stage, and stock info",
+          "enumValues": null,
+          "fields": null,
+          "inputFields": [
+            {
+              "defaultValue": null,
+              "description": "Entrant ID of game winner",
+              "name": "winnerId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "ID",
+                "ofType": null
+              }
+            },
+            {
+              "defaultValue": null,
+              "description": "Game number",
+              "name": "gameNum",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "Int",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "defaultValue": null,
+              "description": "Score for entrant 1 (if applicable). For smash, this is stocks remaining.",
+              "name": "entrant1Score",
+              "type": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            },
+            {
+              "defaultValue": null,
+              "description": "Score for entrant 2 (if applicable). For smash, this is stocks remaining.",
+              "name": "entrant2Score",
+              "type": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            },
+            {
+              "defaultValue": null,
+              "description": "ID of the stage that was played for this game (if applicable)",
+              "name": "stageId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "ID",
+                "ofType": null
+              }
+            },
+            {
+              "defaultValue": null,
+              "description": "List of selections for the game, typically character selections.",
+              "name": "selections",
+              "type": {
+                "kind": "LIST",
+                "name": null,
+                "ofType": {
+                  "kind": "INPUT_OBJECT",
+                  "name": "BracketSetGameSelectionInput",
+                  "ofType": null
+                }
+              }
+            }
+          ],
+          "interfaces": null,
+          "kind": "INPUT_OBJECT",
+          "name": "BracketSetGameDataInput",
+          "possibleTypes": null
+        },
+        {
+          "description": "Game specific H2H selections made by the entrants, such as character info",
+          "enumValues": null,
+          "fields": null,
+          "inputFields": [
+            {
+              "defaultValue": null,
+              "description": "Entrant ID that made selection",
+              "name": "entrantId",
+              "type": {
+                "kind": "NON_NULL",
+                "name": null,
+                "ofType": {
+                  "kind": "SCALAR",
+                  "name": "ID",
+                  "ofType": null
+                }
+              }
+            },
+            {
+              "defaultValue": null,
+              "description": "Character selected by this entrant for this game.",
+              "name": "characterId",
+              "type": {
+                "kind": "SCALAR",
+                "name": "Int",
+                "ofType": null
+              }
+            }
+          ],
+          "interfaces": null,
+          "kind": "INPUT_OBJECT",
+          "name": "BracketSetGameSelectionInput",
           "possibleTypes": null
         },
         {

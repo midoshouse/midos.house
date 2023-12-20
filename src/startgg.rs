@@ -58,6 +58,16 @@ type String = std::string::String;
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "assets/graphql/startgg-schema.json",
+    query_path = "assets/graphql/startgg-current-user-query.graphql",
+    skip_default_scalars, // workaround for https://github.com/smashgg/developer-portal/issues/171
+    variables_derives = "Clone, PartialEq, Eq, Hash",
+    response_derives = "Debug, Clone",
+)]
+pub(crate) struct CurrentUserQuery;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "assets/graphql/startgg-schema.json",
     query_path = "assets/graphql/startgg-event-sets-query.graphql",
     skip_default_scalars, // workaround for https://github.com/smashgg/developer-portal/issues/171
     variables_derives = "Clone, PartialEq, Eq, Hash",
@@ -75,50 +85,46 @@ pub(crate) struct EventSetsQuery;
 )]
 pub(crate) struct SetQuery;
 
-pub(crate) async fn query<T: GraphQLQuery + 'static>(client: &reqwest::Client, auth_token: &str, variables: T::Variables) -> Result<T::ResponseData, Error>
+async fn query_inner<T: GraphQLQuery + 'static>(client: &reqwest::Client, auth_token: &str, variables: T::Variables, next_request: &mut Instant) -> Result<T::ResponseData, Error>
+where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Send + Sync {
+    sleep_until(*next_request).await;
+    let graphql_client::Response { data, errors, extensions: _ } = client.post("https://api.start.gg/gql/alpha")
+        .bearer_auth(auth_token)
+        .json(&T::build_query(variables))
+        .send().await?
+        .detailed_error_for_status().await?
+        .json_with_text_in_error::<graphql_client::Response<T::ResponseData>>().await?;
+    // from https://dev.start.gg/docs/rate-limits
+    // “You may not average more than 80 requests per 60 seconds.”
+    *next_request = Instant::now() + UDuration::from_millis(60_000 / 80);
+    match (data, errors) {
+        (Some(_), Some(errors)) if !errors.is_empty() => Err(Error::GraphQL(errors)),
+        (Some(data), _) => Ok(data),
+        (None, Some(errors)) => Err(Error::GraphQL(errors)),
+        (None, None) => Err(Error::NoDataNoErrors),
+    }
+}
+
+pub(crate) async fn query_uncached<T: GraphQLQuery + 'static>(client: &reqwest::Client, auth_token: &str, variables: T::Variables) -> Result<T::ResponseData, Error>
+where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Send + Sync {
+    let (ref mut next_request, _) = *lock!(CACHE);
+    query_inner::<T>(client, auth_token, variables, next_request).await
+}
+
+pub(crate) async fn query_cached<T: GraphQLQuery + 'static>(client: &reqwest::Client, auth_token: &str, variables: T::Variables) -> Result<T::ResponseData, Error>
 where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Send + Sync {
     let (ref mut next_request, ref mut cache) = *lock!(CACHE);
     Ok(match cache.entry::<QueryCache<T>>().or_default().entry(variables.clone()) {
         hash_map::Entry::Occupied(mut entry) => {
             let (retrieved, entry) = entry.get_mut();
             if retrieved.elapsed() >= UDuration::from_secs(5 * 60) {
-                sleep_until(*next_request).await;
-                let graphql_client::Response { data, errors, extensions: _ } = client.post("https://api.start.gg/gql/alpha")
-                    .bearer_auth(auth_token)
-                    .json(&T::build_query(variables))
-                    .send().await?
-                    .detailed_error_for_status().await?
-                    .json_with_text_in_error::<graphql_client::Response<T::ResponseData>>().await?;
-                // from https://dev.start.gg/docs/rate-limits
-                // “You may not average more than 80 requests per 60 seconds.”
-                *next_request = Instant::now() + UDuration::from_millis(60_000 / 80);
+                *entry = query_inner::<T>(client, auth_token, variables, next_request).await?;
                 *retrieved = Instant::now();
-                *entry = match (data, errors) {
-                    (Some(_), Some(errors)) if !errors.is_empty() => Err(Error::GraphQL(errors)),
-                    (Some(data), _) => Ok(data),
-                    (None, Some(errors)) => Err(Error::GraphQL(errors)),
-                    (None, None) => Err(Error::NoDataNoErrors),
-                }?;
             }
             entry.clone()
         }
         hash_map::Entry::Vacant(entry) => {
-            sleep_until(*next_request).await;
-            let graphql_client::Response { data, errors, extensions: _ } = client.post("https://api.start.gg/gql/alpha")
-                .bearer_auth(auth_token)
-                .json(&T::build_query(variables))
-                .send().await?
-                .detailed_error_for_status().await?
-                .json_with_text_in_error::<graphql_client::Response<T::ResponseData>>().await?;
-            // from https://dev.start.gg/docs/rate-limits
-            // “You may not average more than 80 requests per 60 seconds.”
-            *next_request = Instant::now() + UDuration::from_millis(60_000 / 80);
-            let data = match (data, errors) {
-                (Some(_), Some(errors)) if !errors.is_empty() => Err(Error::GraphQL(errors)),
-                (Some(data), _) => Ok(data),
-                (None, Some(errors)) => Err(Error::GraphQL(errors)),
-                (None, None) => Err(Error::NoDataNoErrors),
-            }?;
+            let data = query_inner::<T>(client, auth_token, variables, next_request).await?;
             entry.insert((Instant::now(), data.clone()));
             data
         }

@@ -10,7 +10,7 @@ use {
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Config {
-    pub(crate) challonge: ConfigChallonge,
+    pub(crate) challonge: ConfigOAuth,
     pub(crate) discord_production: ConfigDiscord,
     pub(crate) discord_dev: ConfigDiscord,
     pub(crate) ootr_api_key: String,
@@ -22,6 +22,8 @@ pub(crate) struct Config {
     pub(crate) racetime_oauth_dev: ConfigRaceTime,
     pub(crate) startgg_production: String,
     pub(crate) startgg_dev: String,
+    #[serde(rename = "startggOAuth")]
+    pub(crate) startgg_oauth: ConfigOAuth,
     pub(crate) secret_key: String,
 }
 
@@ -64,7 +66,7 @@ pub(crate) struct ConfigDiscord {
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct ConfigChallonge {
+pub(crate) struct ConfigOAuth {
     #[serde(rename = "clientID")]
     pub(crate) client_id: String,
     pub(crate) client_secret: String,

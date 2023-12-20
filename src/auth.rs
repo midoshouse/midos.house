@@ -34,12 +34,14 @@ macro_rules! guard_try {
 pub(crate) enum RaceTime {}
 pub(crate) enum Discord {}
 pub(crate) enum Challonge {}
+pub(crate) enum StartGG {}
 
 #[derive(Debug, thiserror::Error, Error)]
 pub(crate) enum UserFromRequestError {
     #[error(transparent)] OAuth(#[from] rocket_oauth2::Error),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] Time(#[from] rocket::time::error::ConversionRange),
     #[error(transparent)] TryFromInt(#[from] std::num::TryFromIntError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
@@ -47,6 +49,8 @@ pub(crate) enum UserFromRequestError {
     Cookie,
     #[error("missing database connection")]
     Database,
+    #[error("missing field in GraphQL query response")]
+    GraphQLQueryResponse,
     #[error("missing HTTP client")]
     HttpClient,
     #[error("failed to get racetime.gg host from environment")]
@@ -102,6 +106,15 @@ async fn handle_challonge_token_response(client: &reqwest::Client, token: &Token
         .send().await?
         .detailed_error_for_status().await?
         .json_with_text_in_error::<ChallongeResponse<_>>().await?.data)
+}
+
+async fn handle_startgg_token_response(client: &reqwest::Client, token: &TokenResponse<StartGG>) -> Result<startgg::ID, UserFromRequestError> {
+    let startgg::current_user_query::ResponseData {
+        current_user: Some(startgg::current_user_query::CurrentUserQueryCurrentUser { id: Some(id) }),
+    } = startgg::query_uncached::<startgg::CurrentUserQuery>(client, token.access_token(), startgg::current_user_query::Variables).await? else {
+        return Err(UserFromRequestError::GraphQLQueryResponse)
+    };
+    Ok(id)
 }
 
 #[derive(Deserialize)]
@@ -390,6 +403,16 @@ pub(crate) fn challonge_login(me: User, oauth: OAuth2<Challonge>, cookies: &Cook
     oauth.get_redirect(cookies, &["me"]).map_err(Error)
 }
 
+#[rocket::get("/login/startgg?<redirect_to>")]
+pub(crate) fn startgg_login(oauth: OAuth2<StartGG>, cookies: &CookieJar<'_>, redirect_to: Option<Origin<'_>>) -> Result<Redirect, Error<rocket_oauth2::Error>> {
+    if let Some(redirect_to) = redirect_to {
+        if redirect_to.0.path() != uri!(racetime_callback).path() && redirect_to.0.path() != uri!(discord_callback).path() { // prevent showing login error page on login success
+            cookies.add(Cookie::build(("redirect_to", redirect_to)).same_site(SameSite::Lax));
+        }
+    }
+    oauth.get_redirect(cookies, &["user.identity"]).map_err(Error)
+}
+
 #[derive(Debug, thiserror::Error, Error)]
 pub(crate) enum RaceTimeCallbackError {
     #[error(transparent)] Page(#[from] PageError),
@@ -444,6 +467,22 @@ pub(crate) async fn challonge_callback(pool: &State<PgPool>, me: User, client: &
     let mut transaction = pool.begin().await?;
     let challonge_user = handle_challonge_token_response(client, &token).await?;
     sqlx::query!("UPDATE users SET challonge_id = $1 WHERE id = $2", challonge_user.id, me.id as _).execute(&mut *transaction).await?;
+    transaction.commit().await?;
+    let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
+    Ok(Redirect::to(redirect_uri))
+}
+
+#[derive(Debug, thiserror::Error, Error)]
+pub(crate) enum StartGGCallbackError {
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] UserFromRequest(#[from] UserFromRequestError),
+}
+
+#[rocket::get("/auth/startgg")]
+pub(crate) async fn startgg_callback(pool: &State<PgPool>, me: User, client: &State<reqwest::Client>, token: TokenResponse<StartGG>, cookies: &CookieJar<'_>) -> Result<Redirect, StartGGCallbackError> {
+    let mut transaction = pool.begin().await?;
+    let startgg_id = handle_startgg_token_response(client, &token).await?;
+    sqlx::query!("UPDATE users SET startgg_id = $1 WHERE id = $2", startgg_id.0, me.id as _).execute(&mut *transaction).await?;
     transaction.commit().await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(Redirect::to(redirect_uri))
