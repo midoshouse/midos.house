@@ -292,6 +292,7 @@ impl Requirement {
                         : form_field("startgg_radio", errors, html! {
                             input(id = "startgg_radio-yes", type = "radio", name = "startgg_radio", value = "yes", checked? = yes_checked);
                             label(for = "startgg_radio-yes") : html_content;
+                            br;
                             input(id = "startgg_radio-no", type = "radio", name = "startgg_radio", value = "no", checked? = no_checked);
                             label(for = "startgg_radio-no") : "Enter without connecting a start.gg account";
                         });
