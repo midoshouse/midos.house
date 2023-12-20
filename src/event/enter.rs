@@ -341,11 +341,13 @@ impl Requirement {
                             label(for = "restream_consent_radio") {
                                 : "Let us know whether you are okay with being restreamed:";
                             }
+                            br;
                             input(id = "restream_consent_radio-yes", type = "radio", name = "restream_consent_radio", value = "yes"); //TODO remember checked state
                             label(for = "restream_consent_radio-yes") : "Yes";
                             input(id = "restream_consent_radio-no", type = "radio", name = "restream_consent_radio", value = "no"); //TODO remember checked state
                             label(for = "restream_consent_radio-no") : "No";
                             @if let Some(note) = note {
+                                br;
                                 label(for = "restream_consent_radio") : note;
                             }
                         });
