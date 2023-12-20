@@ -68,6 +68,8 @@ enum Requirement {
     TextField {
         #[serde_as(as = "DeserializeRawHtml")]
         label: RawHtml<String>,
+        #[serde(default)]
+        long: bool,
         #[serde_as(as = "DeserializeRegex")]
         regex: Regex,
         #[serde_as(as = "serde_with::Map<DeserializeRegex, _>")]
@@ -79,6 +81,8 @@ enum Requirement {
     TextField2 {
         #[serde_as(as = "DeserializeRawHtml")]
         label: RawHtml<String>,
+        #[serde(default)]
+        long: bool,
         #[serde_as(as = "DeserializeRegex")]
         regex: Regex,
         #[serde_as(as = "serde_with::Map<DeserializeRegex, _>")]
@@ -299,7 +303,7 @@ impl Requirement {
                     }),
                 }
             }
-            Self::TextField { label, .. } => {
+            &Self::TextField { ref label, long, .. } => {
                 let label = label.clone();
                 let value = defaults.field_value("text_field").map(|value| value.to_owned());
                 RequirementStatus {
@@ -307,12 +311,16 @@ impl Requirement {
                     html_content: Box::new(move |errors| html! {
                         : label;
                         : form_field("text_field", errors, html! {
-                            input(type = "text", name = "text_field", value? = value);
+                            @if long {
+                                textarea(name = "text_field") : value;
+                            } else {
+                                input(type = "text", name = "text_field", value? = value);
+                            }
                         });
                     }),
                 }
             }
-            Self::TextField2 { label, .. } => {
+            &Self::TextField2 { ref label, long, .. } => {
                 let label = label.clone();
                 let value = defaults.field_value("text_field").map(|value| value.to_owned());
                 RequirementStatus {
@@ -320,7 +328,11 @@ impl Requirement {
                     html_content: Box::new(move |errors| html! {
                         : label;
                         : form_field("text_field2", errors, html! {
-                            input(type = "text", name = "text_field2", value? = value);
+                            @if long {
+                                textarea(name = "text_field2") : value;
+                            } else {
+                                input(type = "text", name = "text_field2", value? = value);
+                            }
                         });
                     }),
                 }

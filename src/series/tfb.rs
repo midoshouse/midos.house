@@ -129,7 +129,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                                     a(href = "https://docs.google.com/document/d/1BbvHJF8vtyrte76jpoCVQBTy9MYStpN3vr2PLdiCIMk/edit") : "Fair Play Agreement";
                                     : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
                                 }
-                                textarea(name = "fpa"); //TODO fill from form context
+                                textarea(name = "fpa") : ctx.field_value("fpa");
                             });
                         }, errors, "Submit");
                     }

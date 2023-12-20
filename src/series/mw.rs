@@ -1455,7 +1455,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                                     a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
                                     : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
                                 }
-                                textarea(name = "fpa"); //TODO fill from form context
+                                textarea(name = "fpa") : ctx.field_value("fpa");
                             });
                         }, errors, "Submit");
                     }
