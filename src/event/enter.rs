@@ -43,6 +43,13 @@ impl<'de> DeserializeAs<'de, Regex> for DeserializeRegex {
 enum Requirement {
     /// Must have a racetime.gg account connected to their Mido's House account
     RaceTime,
+    /// Must be on a list of invited racetime.gg users
+    RaceTimeInvite {
+        invites: HashSet<String>,
+        #[serde(default)]
+        #[serde_as(as = "Option<DeserializeRawHtml>")]
+        text: Option<RawHtml<String>>,
+    },
     /// Must have a Discord account connected to their Mido's House account
     Discord,
     /// Must be in the event's Discord guild
@@ -62,12 +69,29 @@ enum Requirement {
         regex_error_messages: Vec<(Regex, String)>,
         fallback_error_message: String,
     },
+    /// Must fill a custom text field
+    #[serde(rename_all = "camelCase")]
+    TextField2 {
+        #[serde_as(as = "DeserializeRawHtml")]
+        label: RawHtml<String>,
+        #[serde_as(as = "DeserializeRegex")]
+        regex: Regex,
+        #[serde_as(as = "serde_with::Map<DeserializeRegex, _>")]
+        regex_error_messages: Vec<(Regex, String)>,
+        fallback_error_message: String,
+    },
     /// Must agree to the event rules
     Rules {
         document: Option<Url>,
     },
     /// Must agree to be restreamed
-    RestreamConsent,
+    RestreamConsent {
+        #[serde(default)]
+        optional: bool,
+        #[serde(default)]
+        #[serde_as(as = "Option<DeserializeRawHtml>")]
+        note: Option<RawHtml<String>>,
+    },
     /// Must either request and submit the qualifier seed as an async, or participate in the live qualifier
     #[serde(rename_all = "camelCase")]
     Qualifier {
@@ -97,12 +121,14 @@ impl Requirement {
     fn requires_sign_in(&self) -> bool {
         match self {
             Self::RaceTime => true,
+            Self::RaceTimeInvite { .. } => true,
             Self::Discord => true,
             Self::DiscordGuild { .. } => true,
             Self::Challonge => true,
             Self::TextField { .. } => true,
+            Self::TextField2 { .. } => true,
             Self::Rules { .. } => true,
-            Self::RestreamConsent => true,
+            Self::RestreamConsent { .. } => true,
             Self::Qualifier { .. } => true,
             Self::QualifierPlacement { .. } => false,
             Self::External { .. } => false,
@@ -112,6 +138,7 @@ impl Requirement {
     async fn is_checked(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>) -> Result<Option<bool>, Error> {
         Ok(match self {
             Self::RaceTime => Some(me.map_or(false, |me| me.racetime.is_some())),
+            Self::RaceTimeInvite { invites, .. } => Some(me.and_then(|me| me.racetime.as_ref()).map_or(false, |racetime| invites.contains(&racetime.id))),
             Self::Discord => Some(me.map_or(false, |me| me.discord.is_some())),
             Self::DiscordGuild { .. } => Some({
                 let discord_guild = data.discord_guild.ok_or(Error::DiscordGuild)?;
@@ -123,8 +150,9 @@ impl Requirement {
             }),
             Self::Challonge => Some(me.map_or(false, |me| me.challonge_id.is_some())),
             Self::TextField { .. } => Some(false),
+            Self::TextField2 { .. } => Some(false),
             Self::Rules { .. } => Some(false),
-            Self::RestreamConsent => Some(false),
+            Self::RestreamConsent { .. } => Some(false),
             Self::Qualifier { .. } => Some(false),
             Self::QualifierPlacement { num_players, min_races } => Some(if_chain! {
                 // All qualifiers must be completed to ensure the qualifier placements are final.
@@ -164,6 +192,20 @@ impl Requirement {
                 RequirementStatus {
                     blocks_submit: !is_checked,
                     html_content: Box::new(move |_| html_content),
+                }
+            }
+            Self::RaceTimeInvite { text, .. } => {
+                let is_checked = self.is_checked(transaction, http_client, env, config, discord_ctx, me, data).await?.unwrap();
+                let text = text.clone();
+                RequirementStatus {
+                    blocks_submit: !is_checked,
+                    html_content: Box::new(move |_| html! {
+                        @if let Some(text) = text {
+                            : text;
+                        } else {
+                            : "You must be on a list of invited racetime.gg users";
+                        }
+                    }),
                 }
             }
             Self::Discord => {
@@ -230,6 +272,18 @@ impl Requirement {
                     }),
                 }
             }
+            Self::TextField2 { label, .. } => {
+                let label = label.clone();
+                RequirementStatus {
+                    blocks_submit: false,
+                    html_content: Box::new(move |errors| html! {
+                        : label;
+                        : form_field("text_field2", errors, html! {
+                            input(type = "text", name = "text_field2"); //TODO remember entered value
+                        });
+                    }),
+                }
+            }
             Self::Rules { document } => {
                 let team_config = data.team_config();
                 let rules_url = if let Some(document) = document {
@@ -255,8 +309,9 @@ impl Requirement {
                     }),
                 }
             }
-            Self::RestreamConsent => {
+            Self::RestreamConsent { optional: false, note } => {
                 let team_config = data.team_config();
+                let note = note.clone();
                 RequirementStatus {
                     blocks_submit: false,
                     html_content: Box::new(move |errors| html! {
@@ -268,6 +323,30 @@ impl Requirement {
                                 } else {
                                     : "We are okay with being restreamed.";
                                 }
+                                @if let Some(note) = note {
+                                    br;
+                                    : note;
+                                }
+                            }
+                        });
+                    }),
+                }
+            }
+            Self::RestreamConsent { optional: true, note } => {
+                let note = note.clone();
+                RequirementStatus {
+                    blocks_submit: false,
+                    html_content: Box::new(move |errors| html! {
+                        : form_field("restream_consent_radio", errors, html! {
+                            label(for = "restream_consent_radio") {
+                                : "Let us know whether you are okay with being restreamed:";
+                            }
+                            input(id = "restream_consent_radio-yes", type = "radio", name = "restream_consent_radio", value = "yes"); //TODO remember checked state
+                            label(for = "restream_consent_radio-yes") : "Yes";
+                            input(id = "restream_consent_radio-no", type = "radio", name = "restream_consent_radio", value = "no"); //TODO remember checked state
+                            label(for = "restream_consent_radio-no") : "No";
+                            @if let Some(note) = note {
+                                label(for = "restream_consent_radio") : note;
                             }
                         });
                     }),
@@ -352,11 +431,22 @@ impl Requirement {
                 };
                 form_ctx.push_error(form::Error::validation(error_message).with_name("text_field"));
             },
+            Self::TextField2 { regex, regex_error_messages, fallback_error_message, .. } => if !regex.is_match(&value.text_field2) {
+                let error_message = if let Some((_, error_message)) = regex_error_messages.iter().find(|(regex, _)| regex.is_match(&value.text_field2)) {
+                    error_message.clone()
+                } else {
+                    fallback_error_message.clone()
+                };
+                form_ctx.push_error(form::Error::validation(error_message).with_name("text_field2"));
+            },
             Self::Rules { .. } => if !value.confirm {
                 form_ctx.push_error(form::Error::validation("This field is required.").with_name("confirm"));
             },
-            Self::RestreamConsent => if !value.restream_consent {
+            Self::RestreamConsent { optional: false, .. } => if !value.restream_consent {
                 form_ctx.push_error(form::Error::validation("Restream consent is required to enter this event.").with_name("restream_consent"));
+            },
+            Self::RestreamConsent { optional: true, .. } => if value.restream_consent_radio.is_none() {
+                form_ctx.push_error(form::Error::validation("Please select one of the options.").with_name("restream_consent_radio"));
             },
             Self::Qualifier { async_start, async_end, .. } => {
                 let now = Utc::now();
@@ -371,12 +461,17 @@ impl Requirement {
             Self::External { .. } => form_ctx.push_error(form::Error::validation("Please complete event entry via the external method.")),
             _ => if !self.is_checked(transaction, http_client, env, config, discord_ctx, Some(me), data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation(match self {
-                    Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your profile and select “Connect a racetime.gg account”.", //TODO direct link?
-                    Self::Discord => "A Discord account is required to enter this event. Go to your profile and select “Connect a Discord account”.", //TODO direct link?
+                    Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your Mido's House profile and select “Connect a racetime.gg account”.", //TODO direct link?
+                    Self::RaceTimeInvite { .. } => if me.racetime.is_some() {
+                        "This is an invitational event and it looks like you're not invited."
+                    } else {
+                        "This event uses an invite list of racetime.gg users. Go to your Mido's House profile and select “Connect a racetime.gg account” to check whether you're invited." //TODO direct link?
+                    },
+                    Self::Discord => "A Discord account is required to enter this event. Go to your Mido's House profile and select “Connect a Discord account”.", //TODO direct link?
                     Self::DiscordGuild { .. } => "You must join the event's Discord server to enter.", //TODO invite link?
                     Self::Challonge => "A Challonge account is required to enter this event.", //TODO link to /login/challonge
                     Self::QualifierPlacement { .. } => "You have not secured a qualifying placement.",
-                    Self::TextField { .. } | Self::Rules { .. } | Self::RestreamConsent | Self::Qualifier { .. } | Self::External { .. } => unreachable!(),
+                    Self::TextField { .. } | Self::TextField2 { .. } | Self::Rules { .. } | Self::RestreamConsent { .. } | Self::Qualifier { .. } | Self::External { .. } => unreachable!(),
                 }));
             }
         }
@@ -404,6 +499,12 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, FromFormField)]
+enum BoolRadio {
+    Yes,
+    No,
+}
+
 #[derive(FromForm, CsrfForm)]
 pub(crate) struct EnterForm {
     #[field(default = String::new())]
@@ -419,8 +520,11 @@ pub(crate) struct EnterForm {
     startgg_id: HashMap<String, String>,
     mw_impl: Option<mw::Impl>,
     restream_consent: bool,
+    restream_consent_radio: Option<BoolRadio>,
     #[field(default = String::new())]
     text_field: String,
+    #[field(default = String::new())]
+    text_field2: String,
 }
 
 async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, client: &reqwest::Client, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
@@ -893,7 +997,18 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                 if form.context.errors().next().is_none() {
                     return Ok(if value.step2 {
                         let id = Id::<Teams>::new(&mut transaction).await?;
-                        sqlx::query!("INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent, text_field, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)", id as _, series as _, event, (!team_name.is_empty()).then(|| team_name), team_slug, value.restream_consent, value.text_field, value.mw_impl as _).execute(&mut *transaction).await?;
+                        sqlx::query!(
+                            "INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent, text_field, text_field2, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                            id as _,
+                            series as _,
+                            event,
+                            (!team_name.is_empty()).then(|| team_name),
+                            team_slug,
+                            value.restream_consent || value.restream_consent_radio == Some(BoolRadio::Yes),
+                            value.text_field,
+                            value.text_field2,
+                            value.mw_impl as _,
+                        ).execute(&mut *transaction).await?;
                         for ((user, role), startgg_id) in users.into_iter().zip_eq(roles).zip_eq(startgg_ids) {
                             sqlx::query!(
                                 "INSERT INTO team_members (team, member, status, role, startgg_id) VALUES ($1, $2, $3, $4, $5)",
