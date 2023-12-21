@@ -940,7 +940,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                             a(href = uri!(races(data.series, &*data.event)).to_string()) : "the race schedule";
                             : " for upcoming qualifiers.";
                         }
-                        Series::Standard => @unimplemented // no signups on Mido's House
+                        Series::Standard => p : "Please schedule your matches using Discord threads in the scheduling channel.";
                         Series::TournoiFrancophone => p : "Planifiez vos matches dans les fils du canal dédié.";
                         Series::TriforceBlitz => : tfb::status(&mut transaction, csrf, &data, Some(row.id), &mut ctx).await?;
                         Series::WeTryToBeBetter => p : "Planifiez vos matches dans les fils du canal dédié.";
