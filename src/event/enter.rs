@@ -556,6 +556,7 @@ pub(crate) enum Error {
     #[error(transparent)] Notification(#[from] crate::notification::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Serenity(#[from] serenity::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("event has a discordGuild entry requirement but no Discord guild")]
@@ -890,6 +891,14 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', 'none')", id as _, me.id as _).execute(&mut *transaction).await?;
                     if request_qualifier {
                         sqlx::query!("INSERT INTO async_teams (team, kind, requested) VALUES ($1, 'qualifier', NOW())", id as _).execute(&mut *transaction).await?;
+                    }
+                    if let (Some(discord_user), Some(discord_guild)) = (me.discord.as_ref(), data.discord_guild) {
+                        let discord_ctx = discord_ctx.read().await;
+                        if let Some(PgSnowflake(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, i64::from(discord_guild), series as _, event).fetch_optional(&mut *transaction).await? {
+                            if let Ok(member) = discord_guild.member(&*discord_ctx, discord_user.id).await {
+                                member.add_role(&*discord_ctx, participant_role).await?;
+                            }
+                        }
                     }
                     transaction.commit().await?;
                     return Ok(RedirectOrContent::Redirect(Redirect::to(uri!(super::status(series, event)))))
