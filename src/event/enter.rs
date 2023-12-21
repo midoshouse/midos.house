@@ -356,7 +356,7 @@ impl Requirement {
                                 } else {
                                     : "We have read and agree to ";
                                 }
-                                a(href = rules_url) : "the event rules";
+                                a(href = rules_url, target = "_blank") : "the event rules";
                                 : ".";
                             }
                         });
