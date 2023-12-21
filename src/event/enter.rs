@@ -877,7 +877,16 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                 }
                 if form.context.errors().next().is_none() {
                     let id = Id::<Teams>::new(&mut transaction).await?;
-                    sqlx::query!("INSERT INTO teams (id, series, event, plural_name) VALUES ($1, $2, $3, FALSE)", id as _, series as _, event).execute(&mut *transaction).await?;
+                    sqlx::query!(
+                        "INSERT INTO teams (id, series, event, plural_name, restream_consent, text_field, text_field2, mw_impl) VALUES ($1, $2, $3, FALSE, $4, $5, $6, $7)",
+                        id as _,
+                        series as _,
+                        event,
+                        value.restream_consent || value.restream_consent_radio == Some(BoolRadio::Yes),
+                        value.text_field,
+                        value.text_field2,
+                        value.mw_impl as _,
+                    ).execute(&mut *transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', 'none')", id as _, me.id as _).execute(&mut *transaction).await?;
                     if request_qualifier {
                         sqlx::query!("INSERT INTO async_teams (team, kind, requested) VALUES ($1, 'qualifier', NOW())", id as _).execute(&mut *transaction).await?;
@@ -952,7 +961,17 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                 };
                 if form.context.errors().next().is_none() {
                     let id = Id::<Teams>::new(&mut transaction).await?;
-                    sqlx::query!("INSERT INTO teams (id, series, event, name) VALUES ($1, $2, $3, $4)", id as _, series as _, event, (!value.team_name.is_empty()).then(|| &value.team_name)).execute(&mut *transaction).await?;
+                    sqlx::query!(
+                        "INSERT INTO teams (id, series, event, name, restream_consent, text_field, text_field2, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                        id as _,
+                        series as _,
+                        event,
+                        (!value.team_name.is_empty()).then(|| &value.team_name),
+                        value.restream_consent || value.restream_consent_radio == Some(BoolRadio::Yes),
+                        value.text_field,
+                        value.text_field2,
+                        value.mw_impl as _,
+                    ).execute(&mut *transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, Role::from(my_role.expect("validated")) as _).execute(&mut *transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'unconfirmed', $3)", id as _, teammate.expect("validated") as _, match my_role.expect("validated") { pic::Role::Sheikah => Role::Gerudo, pic::Role::Gerudo => Role::Sheikah } as _).execute(&mut *transaction).await?;
                     transaction.commit().await?;
