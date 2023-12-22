@@ -17,6 +17,7 @@ use {
 #[derive(Clone, Copy)]
 pub(crate) enum QualifierKind {
     None,
+    Rank,
     Single {
         show_times: bool,
     },
@@ -61,18 +62,18 @@ impl Hash for MemberUser {
 
 impl PartialOrd for MemberUser {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(match (self, other) {
-            (Self::MidosHouse(user1), Self::MidosHouse(user2)) => user1.id.cmp(&user2.id),
-            (Self::MidosHouse(_), Self::RaceTime { .. }) => Less,
-            (Self::RaceTime { .. }, Self::MidosHouse(_)) => Greater,
-            (Self::RaceTime { id: id1, .. }, Self::RaceTime { id: id2, .. }) => id1.cmp(id2),
-        })
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for MemberUser {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+        match (self, other) {
+            (Self::MidosHouse(user1), Self::MidosHouse(user2)) => user1.id.cmp(&user2.id),
+            (Self::MidosHouse(_), Self::RaceTime { .. }) => Less,
+            (Self::RaceTime { .. }, Self::MidosHouse(_)) => Greater,
+            (Self::RaceTime { id: id1, .. }, Self::RaceTime { id: id2, .. }) => id1.cmp(id2),
+        }
     }
 }
 
@@ -252,6 +253,11 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 qualified2.cmp(&qualified1) // reversed to list qualified teams first
                 .then_with(|| team1.cmp(&team2))
             }
+            QualifierKind::Rank => {
+                team1.as_ref().map_or(true, |team1| team1.qualifier_rank.is_none()).cmp(&team2.as_ref().map_or(true, |team2| team2.qualifier_rank.is_none())) // list qualified teams first
+                .then_with(|| team1.as_ref().and_then(|team1| team1.qualifier_rank).cmp(&team2.as_ref().and_then(|team2| team2.qualifier_rank)))
+                .then_with(|| team1.cmp(&team2))
+            }
             QualifierKind::Single { show_times: true } => {
                 #[derive(PartialEq, Eq, PartialOrd, Ord)]
                 enum QualificationOrder {
@@ -326,6 +332,8 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Teams, false).await?;
     let qualifier_kind = if data.series == Series::SpeedGaming && data.event == "2023onl" {
         QualifierKind::Multiple
+    } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE series = $1 AND event = $2 AND qualifier_rank IS NOT NULL) AS "exists!""#, series as _, event).fetch_one(&mut *transaction).await? {
+        QualifierKind::Rank
     } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier') AS "exists!""#, series as _, event).fetch_one(&mut *transaction).await? {
         QualifierKind::Single {
             show_times: data.show_qualifier_times && (
@@ -346,6 +354,11 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config() { "Entrants" } else { "Teams" };
     let mut column_headers = Vec::default();
+    if let QualifierKind::Rank = qualifier_kind {
+        column_headers.push(html! {
+            th : "Qualifier Rank";
+        });
+    }
     if !matches!(data.team_config(), TeamConfig::Solo) {
         column_headers.push(html! {
             th : "Team Name";
@@ -357,7 +370,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
         });
     }
     match qualifier_kind {
-        QualifierKind::None => {}
+        QualifierKind::None | QualifierKind::Rank => {}
         QualifierKind::Single { show_times: false } => column_headers.push(html! {
             th : "Qualified";
         }),
@@ -408,6 +421,9 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                 } else {
                     @for SignupsTeam { team, members, qualification, hard_settings_ok, mq_ok } in signups {
                         tr {
+                            @if let QualifierKind::Rank = qualifier_kind {
+                                td : team.as_ref().and_then(|team| team.qualifier_rank);
+                            }
                             @if !matches!(data.team_config(), TeamConfig::Solo) {
                                 td {
                                     @if let Some(ref team) = team {
@@ -489,7 +505,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                 }
                             }
                             @match (qualifier_kind, qualification) {
-                                (QualifierKind::None, _) | (QualifierKind::Single { show_times: true }, Qualification::Single { .. }) => {}
+                                (QualifierKind::None, _) | (QualifierKind::Rank, _) | (QualifierKind::Single { show_times: true }, Qualification::Single { .. }) => {}
                                 (QualifierKind::Single { show_times: false }, Qualification::Single { qualified } | Qualification::TriforceBlitz { qualified, .. }) => td {
                                     @if qualified {
                                         : "✓";
