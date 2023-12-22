@@ -439,7 +439,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let ban = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("ban")
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Locks a setting for this race to its default value."),
@@ -478,7 +478,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let draft = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("draft")
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Chooses a setting for this race."),
@@ -494,7 +494,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let first = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("first")
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Go first in the settings draft."),
@@ -521,7 +521,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let no = draft_kind.and_then(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => return None,
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => return None,
                     draft::Kind::TournoiFrancoS3 => CreateCommand::new("no")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
@@ -644,7 +644,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let second = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("second")
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Go second in the settings draft."),
@@ -671,11 +671,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let skip = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::MultiworldS3 => CreateCommand::new("skip")
-                        .kind(CommandType::ChatInput)
-                        .dm_permission(false)
-                        .description("Skips your ban or the final pick of the settings draft."),
-                    draft::Kind::MultiworldS4 => CreateCommand::new("skip")
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Skips your current turn of the settings draft."),
@@ -727,7 +723,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let yes = draft_kind.and_then(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => return None,
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => return None,
                     draft::Kind::TournoiFrancoS3 => CreateCommand::new("yes")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
@@ -1695,7 +1691,7 @@ pub(crate) async fn create_scheduling_thread(ctx: &DiscordCtx, transaction: &mut
             content.mention_command(command_ids.schedule_async, "schedule-async");
             content.push(" pour schedule votre async. Vous devez insérer un timestamp Discord que vous pouvez créer sur <https://hammertime.cyou/>");
             match event.draft_kind() {
-                Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => unreachable!("these events are held in English"),
+                Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => unreachable!("these events are held in English"),
                 Some(draft::Kind::TournoiFrancoS3) => if let Some(ref draft) = race.draft {
                     if let (Some(first), Some(second), Some(high_seed)) = (command_ids.first, command_ids.second, Team::from_id(&mut *transaction, draft.high_seed).await?) {
                         content.push_line("");
@@ -1743,7 +1739,7 @@ pub(crate) async fn create_scheduling_thread(ctx: &DiscordCtx, transaction: &mut
                 content.push(" parameter with these commands to schedule subsequent games ahead of time.");
             }
             match event.draft_kind() {
-                Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => if let Some(ref draft) = race.draft {
+                Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => if let Some(ref draft) = race.draft {
                     if let (Some(first), Some(second), Some(high_seed)) = (command_ids.first, command_ids.second, Team::from_id(&mut *transaction, draft.high_seed).await?) {
                         content.push_line("");
                         content.mention_team(&mut *transaction, Some(guild_id), &high_seed).await?;

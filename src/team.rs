@@ -11,23 +11,24 @@ pub(crate) struct Team {
     pub(crate) plural_name: Option<bool>,
     pub(crate) restream_consent: bool,
     pub(crate) mw_impl: Option<mw::Impl>,
+    pub(crate) qualifier_rank: Option<i16>,
 }
 
 impl Team {
     pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, id: Id<Teams>) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams WHERE id = $1"#, id as _).fetch_optional(&mut **transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE id = $1"#, id as _).fetch_optional(&mut **transaction).await
     }
 
     pub(crate) async fn from_racetime(transaction: &mut Transaction<'_, Postgres>, series: Series, event: &str, racetime_slug: &str) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams WHERE series = $1 AND event = $2 AND racetime_slug = $3"#, series as _, event, racetime_slug).fetch_optional(&mut **transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE series = $1 AND event = $2 AND racetime_slug = $3"#, series as _, event, racetime_slug).fetch_optional(&mut **transaction).await
     }
 
     pub(crate) async fn from_startgg(transaction: &mut Transaction<'_, Postgres>, startgg_id: &str) -> sqlx::Result<Option<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams WHERE startgg_id = $1"#, startgg_id).fetch_optional(&mut **transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE startgg_id = $1"#, startgg_id).fetch_optional(&mut **transaction).await
     }
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, series: Series, event: &str) -> sqlx::Result<Vec<Self>> {
-        sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl" FROM teams WHERE series = $1 AND event = $2 AND NOT resigned"#, series as _, event).fetch_all(&mut **transaction).await
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE series = $1 AND event = $2 AND NOT resigned"#, series as _, event).fetch_all(&mut **transaction).await
     }
 
     pub(crate) fn dummy() -> Self {
@@ -38,6 +39,7 @@ impl Team {
             plural_name: None,
             restream_consent: false,
             mw_impl: None,
+            qualifier_rank: None,
         }
     }
 

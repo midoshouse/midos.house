@@ -115,6 +115,13 @@ impl Language {
 
     pub(crate) fn join_str<T: fmt::Display>(&self, elts: impl IntoIterator<Item = T>) -> Option<String> {
         match self {
+            French => French.join_str_with("et", elts),
+            _ => English.join_str_with("and", elts),
+        }
+    }
+
+    pub(crate) fn join_str_with<T: fmt::Display>(&self, conjunction: &str, elts: impl IntoIterator<Item = T>) -> Option<String> {
+        match self {
             French => {
                 let mut elts = elts.into_iter().fuse();
                 match (elts.next(), elts.next()) {
@@ -123,7 +130,7 @@ impl Language {
                     (Some(elt1), Some(elt2)) => {
                         let mut rest = iter::once(elt2).chain(elts).collect_vec();
                         let last = rest.pop().expect("rest contains at least elt2");
-                        Some(format!("{elt1}{} et {last}", rest.into_iter().map(|elt| format!(", {elt}")).format("")))
+                        Some(format!("{elt1}{} {conjunction} {last}", rest.into_iter().map(|elt| format!(", {elt}")).format("")))
                     }
                 }
             }
@@ -132,11 +139,11 @@ impl Language {
                 match (elts.next(), elts.next(), elts.next()) {
                     (None, _, _) => None,
                     (Some(elt), None, _) => Some(elt.to_string()),
-                    (Some(elt1), Some(elt2), None) => Some(format!("{elt1} and {elt2}")),
+                    (Some(elt1), Some(elt2), None) => Some(format!("{elt1} {conjunction} {elt2}")),
                     (Some(elt1), Some(elt2), Some(elt3)) => {
                         let mut rest = [elt2, elt3].into_iter().chain(elts).collect_vec();
                         let last = rest.pop().expect("rest contains at least elt2 and elt3");
-                        Some(format!("{elt1}, {}, and {last}", rest.into_iter().format(", ")))
+                        Some(format!("{elt1}, {}, {conjunction} {last}", rest.into_iter().format(", ")))
                     }
                 }
             }

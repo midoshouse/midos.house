@@ -63,13 +63,14 @@ use {
 pub(crate) const CATEGORY: &str = "ootr";
 
 /// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
-const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 10] = [
+const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 11] = [
     rando::Version::from_dev(6, 2, 181),
     rando::Version::from_dev(6, 2, 205),
     rando::Version::from_dev(7, 1, 143),
     rando::Version::from_dev(7, 1, 181),
     rando::Version::from_dev(7, 1, 191),
     rando::Version::from_dev(7, 1, 199),
+    rando::Version::from_dev(8, 0, 0),
     rando::Version::from_branch(rando::Branch::DevR, 6, 2, 238, 1),
     rando::Version::from_branch(rando::Branch::DevR, 7, 1, 83, 1), // commit 578a64f4c78a831cde4215e0ac31565d3bf9bc46
     rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1), // commit 06390ece7e38fce1dd02ca60a28a7b1ff9fceb10
@@ -263,6 +264,7 @@ impl VersionedRslPreset {
 #[derive(Clone, Copy, Sequence)]
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum Goal {
+    Cc7,
     CopaDoBrasil,
     MixedPoolsS2,
     MultiworldS3,
@@ -288,6 +290,7 @@ impl Goal {
 
     fn matches_event(&self, series: Series, event: &str) -> bool {
         match self {
+            Self::Cc7 => series == Series::Standard && event == "7cc",
             Self::CopaDoBrasil => series == Series::CopaDoBrasil && event == "1",
             Self::MixedPoolsS2 => series == Series::MixedPools && event == "2",
             Self::MultiworldS3 => series == Series::Multiworld && event == "3",
@@ -308,6 +311,7 @@ impl Goal {
             | Self::Rsl
             | Self::TriforceBlitz
                 => false,
+            | Self::Cc7
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
             | Self::MultiworldS3
@@ -324,6 +328,7 @@ impl Goal {
 
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
+            Self::Cc7 => "Standard Tournament Season 7 Challenge Cup",
             Self::CopaDoBrasil => "Copa do Brasil",
             Self::MixedPoolsS2 => "2nd Mixed Pools Tournament",
             Self::MultiworldS3 => "3rd Multiworld Tournament",
@@ -341,6 +346,7 @@ impl Goal {
 
     fn language(&self) -> Language {
         match self {
+            | Self::Cc7
             | Self::MixedPoolsS2
             | Self::MultiworldS3
             | Self::MultiworldS4
@@ -361,6 +367,7 @@ impl Goal {
 
     fn draft_kind(&self) -> Option<draft::Kind> {
         match self {
+            Self::Cc7 => Some(draft::Kind::S7),
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
             Self::MultiworldS4 => Some(draft::Kind::MultiworldS4),
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
@@ -370,6 +377,7 @@ impl Goal {
 
     pub(crate) fn preroll_seeds(&self) -> bool {
         match self {
+            | Self::Cc7 //TODO preroll by 5 minutes?
             | Self::Sgl2023
             | Self::TriforceBlitz
                 => false,
@@ -389,6 +397,7 @@ impl Goal {
 
     pub(crate) fn rando_version(&self) -> VersionedBranch {
         match self {
+            Self::Cc7 => VersionedBranch::Pinned(rando::Version::from_dev(8, 0, 0)),
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
@@ -409,6 +418,7 @@ impl Goal {
             | Self::NineDaysOfSaws
             | Self::Rsl
                 => false,
+            | Self::Cc7
             | Self::CopaDoBrasil
             | Self::MultiworldS3
             | Self::MultiworldS4
@@ -424,6 +434,12 @@ impl Goal {
 
     async fn send_presets(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         match self {
+            Self::Cc7 => {
+                ctx.say("!seed base: The tournament's base settings.").await?;
+                ctx.say("!seed random: Simulate a settings draft with both players picking randomly. The settings are posted along with the seed.").await?;
+                ctx.say("!seed draft: Pick the settings here in the chat.").await?;
+                ctx.say("!seed <setting> <value> <setting> <value>... (e.g. !seed deku open camc off): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
+            }
             Self::Pic7 => ctx.say("!seed: The settings used for the race").await?,
             Self::PicRs2 => ctx.say("!seed: The weights used for the race").await?,
             Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::Sgl2023 => ctx.say("!seed: The settings used for the tournament").await?,
@@ -435,12 +451,10 @@ impl Goal {
                 ctx.say("!seed <setting> <value> <setting> <value>... (e.g. !seed trials 2 wincon scrubs): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
             }
             Self::MultiworldS4 => {
-                ctx.say("All presets use the preliminary base settings plus one setting to be tested:").await?;
-                ctx.say("!seed warps: Randomize Warp Song Destinations").await?;
-                ctx.say("!seed cows: Shuffle Cows").await?;
-                ctx.say("!seed bees: Shuffle Beehives").await?;
-                ctx.say("!seed merchants: Shuffle Expensive Merchants (Medigoron, Carpet Salesman, Granny)").await?;
-                ctx.say("!seed frogs: Shuffle Frog Song Rupees").await?;
+                ctx.say("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
+                ctx.say("!seed random: Simulate a settings draft with both teams picking randomly. The settings are posted along with the seed.").await?;
+                ctx.say("!seed draft: Pick the settings here in the chat.").await?;
+                ctx.say("!seed <setting> <value> <setting> <value>... (e.g. !seed trials 2 gbk stones): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
             }
             Self::NineDaysOfSaws => {
                 ctx.say("!seed day1: S6").await?;
@@ -486,6 +500,56 @@ impl Goal {
 
     pub(crate) async fn parse_seed_command(&self, http_client: &reqwest::Client, spoiler_log: bool, args: &[String]) -> Result<SeedCommandParseResult, Error> {
         Ok(match self {
+            Self::Cc7 => {
+                let settings = match args {
+                    [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
+                    [arg] if arg == "base" => HashMap::default(),
+                    [arg] if arg == "random" => Draft {
+                        high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
+                        went_first: None,
+                        skipped_bans: 0,
+                        settings: HashMap::default(),
+                    }.complete_randomly(draft::Kind::S7).await.to_racetime()?,
+                    [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
+                        new_state: Draft {
+                            high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
+                            went_first: None,
+                            skipped_bans: 0,
+                            settings: HashMap::default(),
+                        },
+                        spoiler_log,
+                    }),
+                    [arg] if s::S7_SETTINGS.into_iter().any(|s::Setting { name, .. }| name == arg) => {
+                        return Ok(SeedCommandParseResult::SendSettings { language: English, msg: "you need to pair each setting with a value.".into() })
+                    }
+                    [_] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" }),
+                    args => {
+                        let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
+                        let mut settings = HashMap::default();
+                        let mut tuples = args.into_iter().tuples();
+                        for (setting, value) in &mut tuples {
+                            if let Some(s::Setting { other, .. }) = s::S7_SETTINGS.into_iter().find(|s::Setting { name, .. }| **name == setting) {
+                                if value == "default" || other.iter().any(|(other, _, _)| value == **other) {
+                                    settings.insert(Cow::Owned(setting), Cow::Owned(value));
+                                } else {
+                                    return Ok(SeedCommandParseResult::Error { language: English, msg: format!("I don't recognize that value for the {setting} setting. Use {}", iter::once("default").chain(other.iter().map(|&(other, _, _)| other)).join(" or ")).into() })
+                                }
+                            } else {
+                                return Ok(SeedCommandParseResult::Error { language: English, msg: format!(
+                                    "I don't recognize {}. Use one of the following:",
+                                    if setting.chars().all(|c| c.is_ascii_alphanumeric()) { Cow::Owned(format!("the setting “{setting}”")) } else { Cow::Borrowed("one of those settings") },
+                                ).into() })
+                            }
+                        }
+                        if tuples.into_buffer().next().is_some() {
+                            return Ok(SeedCommandParseResult::SendSettings { language: English, msg: "you need to pair each setting with a value.".into() })
+                        } else {
+                            settings
+                        }
+                    }
+                };
+                SeedCommandParseResult::Regular { settings: s::resolve_s7_draft_settings(&settings), spoiler_log, language: English, article: "a", description: format!("seed with {}", s::display_s7_draft_picks(&settings)) }
+            }
             Self::CopaDoBrasil => SeedCommandParseResult::Regular { settings: br::s1_settings(), spoiler_log, language: English, article: "a", description: format!("seed") },
             Self::MixedPoolsS2 => SeedCommandParseResult::Regular { settings: mp::s2_settings(), spoiler_log, language: English, article: "a", description: format!("mixed pools seed") },
             Self::MultiworldS3 => {
@@ -1781,7 +1845,11 @@ impl OotrApiClient {
             }
             let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[
                 ("key", &*self.api_key),
-                ("version", &*format!("{}_{}", branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?, version)),
+                ("version", &*if branch == rando::Branch::Dev && version.patch == 0 {
+                    version.to_string()
+                } else {
+                    format!("{}_{}", branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?, version)
+                }),
                 ("locked", if spoiler_log { "0" } else { "1" }),
             ]), Some(&settings), is_mw.then_some(MULTIWORLD_RATE_LIMIT)).await?
                 .detailed_error_for_status().await?
@@ -1939,9 +2007,10 @@ impl Handler {
                 None
             };
             let available_settings = available_settings.unwrap_or_else(|| match draft_kind {
-                draft::Kind::MultiworldS3 => mw::S3_SETTINGS.into_iter().map(|mw::Setting { description, .. }| description).collect(),
-                draft::Kind::MultiworldS4 => mw::S4_SETTINGS.into_iter().map(|mw::Setting { description, .. }| description).collect(),
-                draft::Kind::TournoiFrancoS3 => fr::S3_SETTINGS.into_iter().map(|fr::S3Setting { description, .. }| description).collect(),
+                draft::Kind::S7 => s::S7_SETTINGS.into_iter().map(|setting| Cow::Owned(setting.description())).collect(),
+                draft::Kind::MultiworldS3 => mw::S3_SETTINGS.into_iter().map(|mw::Setting { description, .. }| Cow::Borrowed(description)).collect(),
+                draft::Kind::MultiworldS4 => mw::S4_SETTINGS.into_iter().map(|mw::Setting { description, .. }| Cow::Borrowed(description)).collect(),
+                draft::Kind::TournoiFrancoS3 => fr::S3_SETTINGS.into_iter().map(|fr::S3Setting { description, .. }| Cow::Borrowed(description)).collect(),
             });
             if available_settings.is_empty() {
                 ctx.say(&if let French = goal.language() {
@@ -1952,7 +2021,7 @@ impl Handler {
             } else {
                 ctx.say(preface).await?;
                 for setting in available_settings {
-                    ctx.say(setting).await?;
+                    ctx.say(&setting).await?;
                 }
             }
         } else {
@@ -1987,7 +2056,7 @@ impl Handler {
             if let Some(draft_kind) = goal.draft_kind() {
                 match *state {
                     RaceState::Init => match draft_kind {
-                        draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => ctx.say(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
+                        draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => ctx.say(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         draft::Kind::TournoiFrancoS3 => ctx.say(&format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
                     },
                     RaceState::Draft { state: ref mut draft, .. } => match draft.apply(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }, action).await.to_racetime()? {
@@ -2336,6 +2405,46 @@ impl RaceHandler<GlobalState> for Handler {
             } else {
                 match race_state {
                     RaceState::Init => match goal {
+                        Goal::Cc7 => ctx.send_message(
+                            "Welcome! This is a practice room for the S7 Challenge Cup. Learn more about the tournament at https://midos.house/event/s/7cc",
+                            true,
+                            vec![
+                                ("Roll seed (base settings)", ActionButton::Message {
+                                    message: format!("!seed base"),
+                                    help_text: Some(format!("Create a seed with the tournament's base settings.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                                ("Roll seed (random settings)", ActionButton::Message {
+                                    message: format!("!seed random"),
+                                    help_text: Some(format!("Simulate a settings draft with both players picking randomly. The settings are posted along with the seed.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                                ("Roll seed (custom settings)", ActionButton::Message {
+                                    message: format!("!seed {}", s::S7_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
+                                    help_text: Some(format!("Pick a set of draftable settings without doing a full draft.")),
+                                    survey: Some(s::S7_SETTINGS.into_iter().map(|setting| SurveyQuestion {
+                                        name: setting.name.to_owned(),
+                                        label: setting.display.to_owned(),
+                                        default: Some(format!("default")),
+                                        help_text: None,
+                                        kind: SurveyQuestionKind::Radio,
+                                        placeholder: None,
+                                        options: iter::once((format!("default"), setting.default_display.to_owned()))
+                                            .chain(setting.other.iter().map(|(name, display, _)| (name.to_string(), display.to_string())))
+                                            .collect(),
+                                    }).collect()),
+                                    submit: Some(format!("Roll")),
+                                }),
+                                ("Roll seed (settings draft)", ActionButton::Message {
+                                    message: format!("!seed draft"),
+                                    help_text: Some(format!("Pick the settings here in the chat.")),
+                                    survey: None,
+                                    submit: None,
+                                }),
+                            ],
+                        ).await?,
                         Goal::CopaDoBrasil => ctx.send_message(
                             "Welcome! This is a practice room for the Copa do Brasil. Learn more about the tournament at https://midos.house/event/br/1",
                             true,
@@ -2775,7 +2884,7 @@ impl RaceHandler<GlobalState> for Handler {
                 match *state {
                     RaceState::Init => match goal {
                         Goal::MixedPoolsS2 | Goal::Rsl => unreachable!("no official race rooms"),
-                        Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::TournoiFrancoS3 => unreachable!("should have draft state set"),
+                        Goal::Cc7 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::TournoiFrancoS3 => unreachable!("should have draft state set"),
                         Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
                         Goal::CopaDoBrasil => this.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), br::s1_settings(), false, English, "a", format!("seed")),
                         Goal::Pic7 => this.roll_seed(ctx, state, goal.preroll_seeds(), goal.rando_version(), pic::race7_settings(), true, English, "a", format!("seed")),
@@ -3392,7 +3501,7 @@ impl RaceHandler<GlobalState> for Handler {
                             })
                         });
                     }
-                    Goal::CopaDoBrasil | Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::NineDaysOfSaws | Goal::Rsl | Goal::Sgl2023 | Goal::TournoiFrancoS3 | Goal::WeTryToBeBetter => {}
+                    Goal::Cc7 | Goal::CopaDoBrasil | Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::NineDaysOfSaws | Goal::Rsl | Goal::Sgl2023 | Goal::TournoiFrancoS3 | Goal::WeTryToBeBetter => {}
                 }
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx).await? {

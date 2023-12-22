@@ -1,4 +1,5 @@
 use {
+    std::cmp::min_by_key,
     chrono::Duration,
     chrono_tz::{
         America,
@@ -1649,6 +1650,12 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
             };
             let [team1, team2] = [team1, team2].map(|team| team.expect("validated"));
             let draft = match event.draft_kind() {
+                Some(draft::Kind::S7) => Some(Draft {
+                    high_seed: min_by_key(&team1, &team2, |team| team.qualifier_rank).id,
+                    went_first: None,
+                    skipped_bans: 0,
+                    settings: HashMap::default(),
+                }),
                 Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => Some(Draft {
                     high_seed: team1.id,
                     went_first: None,
@@ -1925,6 +1932,12 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                     scheduling_thread: None,
                     schedule: RaceSchedule::Unscheduled,
                     draft: match event.draft_kind() {
+                        Some(draft::Kind::S7) => Some(Draft {
+                            high_seed: min_by_key(team1, team2, |team| team.qualifier_rank).id,
+                            went_first: None,
+                            skipped_bans: 0,
+                            settings: HashMap::default(),
+                        }),
                         Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => {
                             let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
                                 show_times: event.show_qualifier_times && event.is_started(&mut *transaction).await?,
