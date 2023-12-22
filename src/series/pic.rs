@@ -226,6 +226,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         ]), true).await?),
         _ => None,
     };
+    let winniedemon = User::from_id(&mut **transaction, Id::from(1807131022132982871_u64)).await?.ok_or(Error::OrganizerUserData)?;
     Ok(Some(html! {
         article {
             h2 : "What is a Pictionary Spoiler Log Race?";
@@ -351,7 +352,11 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 a(href = "https://discord.com/channels/663207960432082944/865206020015128586") : "direct channel link";
                 : "). If you have any questions, feel free to ask there!";
             }
-            p : "Special thanks to winniedemon who will be helping us keep important posts from getting lost in the Discord!";
+            p {
+                : "Special thanks to ";
+                : winniedemon;
+                : " who will be helping us keep important posts from getting lost in the Discord!";
+            }
         }
     }))
 }

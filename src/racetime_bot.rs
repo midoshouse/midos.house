@@ -261,6 +261,27 @@ impl VersionedRslPreset {
     }
 }
 
+/// Determines how early the bot may start generating the seed for an official race.
+///
+/// There are two factors to consider here:
+///
+/// 1. If we start rolling the seed too late, players may have to wait for the seed to become available, which may delay the start of the race.
+/// 2. If we start rolling the seed too early, players may be able to cheat by finding the seed's sequential ID on ootrandomizer.com
+///    or by finding the seed in the list of recently rolled seeds on triforceblitz.com.
+///    This is not an issue for seeds rolled locally, so the local generator will always be started immediately after the room is opened.
+///
+/// How early we should start rolling seeds therefore depends on how long seed generation is expected to take, which depends on the settings.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum PrerollMode {
+    /// Do not preroll seeds.
+    None,
+    /// Preroll seeds within the 5 minutes before the deadline.
+    Short,
+    /// Start prerolling seeds between the time the room is opened and 15 minutes before the deadline.
+    Medium,
+    // Long is reserved for the behavior from mp/2, where seed rolling starts immediately as the room is opened and one seed is always kept in reserve.
+}
+
 #[derive(Clone, Copy, Sequence)]
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum Goal {
@@ -375,12 +396,14 @@ impl Goal {
         }
     }
 
-    pub(crate) fn preroll_seeds(&self) -> bool {
+    /// See the [`PrerollMode`] docs.
+    pub(crate) fn preroll_seeds(&self) -> PrerollMode {
         match self {
-            | Self::Cc7 //TODO preroll by 5 minutes?
             | Self::Sgl2023
             | Self::TriforceBlitz
-                => false,
+                => PrerollMode::None,
+            | Self::Cc7
+                => PrerollMode::Short,
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
             | Self::MultiworldS3
@@ -391,7 +414,7 @@ impl Goal {
             | Self::Rsl
             | Self::TournoiFrancoS3
             | Self::WeTryToBeBetter
-                => true,
+                => PrerollMode::Medium,
         }
     }
 
@@ -1005,7 +1028,7 @@ impl GlobalState {
         }
     }
 
-    pub(crate) fn roll_seed(self: Arc<Self>, preroll: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool) -> mpsc::Receiver<SeedRollUpdate> {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
@@ -1016,52 +1039,29 @@ impl GlobalState {
                     return Ok(())
                 }
             };
-            if preroll {
-                if let (true, Some(max_sleep_duration)) = (web_version.is_some(), delay_until.and_then(|delay_until| (delay_until - chrono::Duration::minutes(15) - Utc::now()).to_std().ok())) {
-                    // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
-                    // This is especially true for open races, whose rooms are opened an entire hour before start.
-                    // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
-                    let sleep_duration = thread_rng().gen_range(UDuration::default()..max_sleep_duration);
-                    sleep(sleep_duration).await;
-                }
-            } else {
-                if let Some(sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
+            if let (Some(web_version), Some(branch)) = (web_version, version.branch()) {
+                // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
+                // This is especially true for open races, whose rooms are opened an entire hour before start.
+                // To make this a bit more difficult, we delay the start of seed rolling depending on the goal.
+                match preroll {
                     // The type of seed being rolled is unlikely to require a long time or multiple attempts to generate,
                     // so we avoid the issue with sequential IDs by simply not rolling ahead of time.
-                    sleep(sleep_duration).await;
+                    PrerollMode::None => if let Some(sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
+                        sleep(sleep_duration).await;
+                    },
+                    // Middle-ground option. Start rolling the seed at a random point between 20 and 15 minutes before start.
+                    PrerollMode::Short => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
+                        let min_sleep_duration = max_sleep_duration.saturating_sub(UDuration::from_secs(5 * 60));
+                        let sleep_duration = thread_rng().gen_range(min_sleep_duration..max_sleep_duration);
+                        sleep(sleep_duration).await;
+                    },
+                    // The type of seed being rolled is fairly likely to require a long time and/or multiple attempts to generate.
+                    // Start rolling the seed at a random point between the room being opened and 30 minutes before start.
+                    PrerollMode::Medium => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - chrono::Duration::minutes(15) - Utc::now()).to_std().ok()) {
+                        let sleep_duration = thread_rng().gen_range(UDuration::default()..max_sleep_duration);
+                        sleep(sleep_duration).await;
+                    },
                 }
-            }
-            let mw_permit = if web_version.is_some() && world_count > 1 {
-                Some(match self.ootr_api_client.mw_seed_rollers.try_acquire() {
-                    Ok(permit) => permit,
-                    Err(TryAcquireError::Closed) => unreachable!(),
-                    Err(TryAcquireError::NoPermits) => {
-                        let (mut pos, mut pos_rx) = {
-                            let mut waiting = lock!(self.ootr_api_client.waiting);
-                            let pos = waiting.len();
-                            let (pos_tx, pos_rx) = mpsc::unbounded_channel();
-                            waiting.push(pos_tx);
-                            (pos, pos_rx)
-                        };
-                        update_tx.send(SeedRollUpdate::Queued(pos.try_into().unwrap())).await?;
-                        while pos > 0 {
-                            let () = pos_rx.recv().await.expect("queue position notifier closed");
-                            pos -= 1;
-                            update_tx.send(SeedRollUpdate::MovedForward(pos.try_into().unwrap())).await?;
-                        }
-                        let mut waiting = lock!(self.ootr_api_client.waiting);
-                        let permit = self.ootr_api_client.mw_seed_rollers.acquire().await.expect("seed queue semaphore closed");
-                        waiting.remove(0);
-                        for tx in &*waiting {
-                            let _ = tx.send(());
-                        }
-                        permit
-                    }
-                })
-            } else {
-                None
-            };
-            if let (Some(web_version), Some(branch)) = (web_version, version.branch()) {
                 match self.ootr_api_client.roll_seed_web(update_tx.clone(), delay_until, branch, web_version, false, spoiler_log, settings).await {
                     Ok((id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
@@ -1076,7 +1076,6 @@ impl GlobalState {
                     }).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?, //TODO fall back to rolling locally for network errors
                 }
-                drop(mw_permit);
             } else {
                 update_tx.send(SeedRollUpdate::Started).await?;
                 match roll_seed_locally(delay_until, version, settings).await {
@@ -1184,42 +1183,11 @@ impl GlobalState {
                         let sleep_duration = thread_rng().gen_range(UDuration::default()..max_sleep_duration);
                         sleep(sleep_duration).await;
                     }
-                    let mw_permit = if world_count > 1 {
-                        Some(match self.ootr_api_client.mw_seed_rollers.try_acquire() {
-                            Ok(permit) => permit,
-                            Err(TryAcquireError::Closed) => unreachable!(),
-                            Err(TryAcquireError::NoPermits) => {
-                                let (mut pos, mut pos_rx) = {
-                                    let mut waiting = lock!(self.ootr_api_client.waiting);
-                                    let pos = waiting.len();
-                                    let (pos_tx, pos_rx) = mpsc::unbounded_channel();
-                                    waiting.push(pos_tx);
-                                    (pos, pos_rx)
-                                };
-                                let _ = update_tx.send(SeedRollUpdate::Queued(pos.try_into().unwrap())).await;
-                                while pos > 0 {
-                                    let () = pos_rx.recv().await.expect("queue position notifier closed");
-                                    pos -= 1;
-                                    let _ = update_tx.send(SeedRollUpdate::MovedForward(pos.try_into().unwrap())).await;
-                                }
-                                let mut waiting = lock!(self.ootr_api_client.waiting);
-                                let permit = self.ootr_api_client.mw_seed_rollers.acquire().await.expect("seed queue semaphore closed");
-                                waiting.remove(0);
-                                for tx in &*waiting {
-                                    let _ = tx.send(());
-                                }
-                                permit
-                            }
-                        })
-                    } else {
-                        None
-                    };
                     let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), None /* always limit to 3 tries per settings */, version.branch(), web_version, true, spoiler_log, settings).await {
                         Ok(data) => data,
                         Err(RollError::Retries { .. }) => continue,
                         Err(e) => return Err(e), //TODO fall back to rolling locally for network errors
                     };
-                    drop(mw_permit);
                     let _ = update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
                             file_hash: Some(file_hash),
@@ -1832,9 +1800,40 @@ impl OotrApiClient {
         }
 
         let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
+        let mw_permit = if is_mw {
+            Some(match self.mw_seed_rollers.try_acquire() {
+                Ok(permit) => permit,
+                Err(TryAcquireError::Closed) => unreachable!(),
+                Err(TryAcquireError::NoPermits) => {
+                    let (mut pos, mut pos_rx) = {
+                        let mut waiting = lock!(self.waiting);
+                        let pos = waiting.len();
+                        let (pos_tx, pos_rx) = mpsc::unbounded_channel();
+                        waiting.push(pos_tx);
+                        (pos, pos_rx)
+                    };
+                    update_tx.send(SeedRollUpdate::Queued(pos.try_into().unwrap())).await?;
+                    while pos > 0 {
+                        let () = pos_rx.recv().await.expect("queue position notifier closed");
+                        pos -= 1;
+                        update_tx.send(SeedRollUpdate::MovedForward(pos.try_into().unwrap())).await?;
+                    }
+                    let mut waiting = lock!(self.waiting);
+                    let permit = self.mw_seed_rollers.acquire().await.expect("seed queue semaphore closed");
+                    waiting.remove(0);
+                    for tx in &*waiting {
+                        let _ = tx.send(());
+                    }
+                    permit
+                }
+            })
+        } else {
+            None
+        };
         let mut last_id = None;
         for attempt in 0.. {
             if attempt >= 3 && delay_until.map_or(true, |delay_until| Utc::now() >= delay_until) {
+                drop(mw_permit);
                 return Err(RollError::Retries {
                     num_retries: attempt,
                     last_error: last_id.map(|id| format!("https://ootrandomizer.com/seed/get?id={id}")),
@@ -1866,6 +1865,7 @@ impl OotrApiClient {
                 match resp.json_with_text_in_error::<SeedStatusResponse>().await?.status {
                     0 => continue, // still generating
                     1 => { // generated success
+                        drop(mw_permit);
                         let SeedDetailsResponse { creation_timestamp, settings_log } = self.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &self.api_key), ("id", &id.to_string())])).await?
                             .detailed_error_for_status().await?
                             .json_with_text_in_error().await?;
@@ -1880,7 +1880,10 @@ impl OotrApiClient {
                     }
                     2 => unreachable!(), // generated with link (not possible from API)
                     3 => break, // failed to generate
-                    n => return Err(RollError::UnespectedSeedStatus(n)),
+                    n => {
+                        drop(mw_permit);
+                        return Err(RollError::UnespectedSeedStatus(n))
+                    }
                 }
             }
         }
@@ -2132,7 +2135,7 @@ impl Handler {
         });
     }
 
-    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preroll: bool, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool, language: Language, article: &'static str, description: String) {
+    fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preroll: PrerollMode, version: VersionedBranch, settings: serde_json::Map<String, Json>, spoiler_log: bool, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
         self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_seed(preroll, delay_until, version, settings, spoiler_log), language, article, description);

@@ -64,7 +64,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "1" => Some(html! {
             article {
                 p {
-                    : "This is an archive of the 1st season of the Random Settings League tournament, organized by Cubsrule21, ";
+                    : "This is an archive of the 1st season of the Random Settings League tournament, organized by ";
                     : English.join_html(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1wmoZHdwYijJwXLYgZbadjRYOGBNXio2hhKEIkFNgDgU/edit") : "the official document";
@@ -75,7 +75,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "2" => Some(html! {
             article {
                 p {
-                    : "This is an archive of the 2nd season of the Random Settings League tournament, organized by Cubsrule21, ";
+                    : "This is an archive of the 2nd season of the Random Settings League tournament, organized by ";
                     : English.join_html(data.organizers(transaction).await?);
                     : ".";
                 }
@@ -90,7 +90,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "3" => Some(html! {
             article {
                 p {
-                    : "This is an archive of the 3rd season of the Random Settings League tournament, organized by Cubsrule21, ";
+                    : "This is an archive of the 3rd season of the Random Settings League tournament, organized by ";
                     : English.join_html(data.organizers(transaction).await?);
                     : ".";
                 }
@@ -105,7 +105,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "4" => Some(html! {
             article {
                 p {
-                    : "This is an archive of the 4th season of the Random Settings League tournament, organized by Cubsrule21, ";
+                    : "This is an archive of the 4th season of the Random Settings League tournament, organized by ";
                     : English.join_html(data.organizers(transaction).await?);
                     : ".";
                 }
@@ -123,7 +123,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "5" => Some(html! {
             article {
                 p {
-                    : "This is the 5th season of the Random Settings League tournament, organized by Cubsrule21, ";
+                    : "This is the 5th season of the Random Settings League tournament, organized by ";
                     : English.join_html(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1Js03yFcMw_mWx4UO_3UJB39CNCKa0bsxlBEYrHPq5Os/edit") : "the official document";
@@ -134,7 +134,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "6" => Some(html! {
             article {
                 p {
-                    : "This is the 6th season of the Random Settings League tournament, organized by Cubsrule21, Kirox, ";
+                    : "This is the 6th season of the Random Settings League tournament, organized by ";
                     : English.join_html(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1xpZIVh6znG7mgyEUQk8J2B-_5PfbcERen-P4tDX6VqE/edit") : "the official document";

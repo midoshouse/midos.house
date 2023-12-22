@@ -9,6 +9,7 @@ use {
         prelude::*,
         racetime_bot::{
             Goal,
+            PrerollMode,
             RollError,
             SeedCommandParseResult,
             SeedRollUpdate,
@@ -89,7 +90,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                 break
                             }
                             Ok(ClientMessage::Roll { version, settings, spoiler_log }) => if let Json::Object(settings) = settings {
-                                let mut rx = global_state.clone().roll_seed(true, None, VersionedBranch::Pinned(version), settings, spoiler_log);
+                                let mut rx = global_state.clone().roll_seed(PrerollMode::Medium, None, VersionedBranch::Pinned(version), settings, spoiler_log);
                                 loop {
                                     let update = rx.recv().await;
                                     update.write(&mut sock).await.expect("error writing to UNIX socket");
