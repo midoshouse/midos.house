@@ -154,6 +154,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
             db_pool,
             http_client,
             config.ootr_api_key.clone(),
+            config.ootr_api_key_encryption.clone(),
             startgg_token.clone(),
             env,
             discord_builder.ctx_fut.clone(),

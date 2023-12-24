@@ -14,6 +14,7 @@ pub(crate) struct Config {
     pub(crate) discord_production: ConfigDiscord,
     pub(crate) discord_dev: ConfigDiscord,
     pub(crate) ootr_api_key: String,
+    pub(crate) ootr_api_key_encryption: String,
     pub(crate) racetime_bot_production: ConfigRaceTime,
     pub(crate) racetime_bot_dev: ConfigRaceTime,
     #[serde(rename = "racetimeOAuthProduction")]
