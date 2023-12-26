@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE races SET video_url = $1, video_url_fr = $2, video_url_pt = $3 WHERE id = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "86d2830598bb0a56cebb386862a1ba9bc70fa3077462d17d5980be86d42edbcc"
+}

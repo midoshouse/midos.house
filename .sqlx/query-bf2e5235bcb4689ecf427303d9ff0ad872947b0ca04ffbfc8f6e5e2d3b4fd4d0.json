@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT entrants_read, user_search FROM api_keys WHERE key = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "entrants_read",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_search",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Bpchar"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "bf2e5235bcb4689ecf427303d9ff0ad872947b0ca04ffbfc8f6e5e2d3b4fd4d0"
+}

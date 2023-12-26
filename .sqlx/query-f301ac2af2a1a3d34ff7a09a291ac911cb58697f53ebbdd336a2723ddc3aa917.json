@@ -1,0 +1,94 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id AS \"id!: Id<Teams>\", name, racetime_slug, plural_name, submitted IS NOT NULL AS \"qualified!\", pieces, hard_settings_ok, mq_ok, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE\n            series = $1\n            AND event = $2\n            AND NOT resigned\n            AND (\n                EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)\n                OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')\n            )\n            AND (kind = 'qualifier' OR kind IS NULL)\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id!: Id<Teams>",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "racetime_slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "plural_name",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "qualified!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "pieces",
+        "type_info": "Int2"
+      },
+      {
+        "ordinal": 6,
+        "name": "hard_settings_ok",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "mq_ok",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "restream_consent",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
+        "name": "mw_impl: mw::Impl",
+        "type_info": {
+          "Custom": {
+            "name": "mw_impl",
+            "kind": {
+              "Enum": [
+                "bizhawk_co_op",
+                "midos_house"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 10,
+        "name": "qualifier_rank",
+        "type_info": "Int2"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      null,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "f301ac2af2a1a3d34ff7a09a291ac911cb58697f53ebbdd336a2723ddc3aa917"
+}

@@ -1,0 +1,42 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT user_id AS \"user!: Id<Users>\", role AS \"role: RolePreference\" FROM looking_for_team WHERE series = $1 AND event = $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user!: Id<Users>",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "role: RolePreference",
+        "type_info": {
+          "Custom": {
+            "name": "role_preference",
+            "kind": {
+              "Enum": [
+                "sheikah_only",
+                "sheikah_preferred",
+                "no_preference",
+                "gerudo_preferred",
+                "gerudo_only"
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "a213ff07445a00f949dc8b0e1b639a80cc51214388b998b03abf101a4fd810fd"
+}

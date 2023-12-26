@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE races SET\n                    startgg_event = $1,\n                    phase = $2,\n                    round = $3\n                WHERE id = $4",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "63a59e795c8733c30736b33767344b0228095d9c1e38769bd02779dd17b5d020"
+}

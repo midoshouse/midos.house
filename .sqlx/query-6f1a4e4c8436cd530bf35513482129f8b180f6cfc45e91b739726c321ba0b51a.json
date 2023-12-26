@@ -1,0 +1,68 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, plural_name, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id: Id<Teams>",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "racetime_slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "plural_name",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 4,
+        "name": "restream_consent",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "mw_impl: mw::Impl",
+        "type_info": {
+          "Custom": {
+            "name": "mw_impl",
+            "kind": {
+              "Enum": [
+                "bizhawk_co_op",
+                "midos_house"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "qualifier_rank",
+        "type_info": "Int2"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "6f1a4e4c8436cd530bf35513482129f8b180f6cfc45e91b739726c321ba0b51a"
+}

@@ -1,0 +1,219 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE races SET hash1 = $1, hash2 = $2, hash3 = $3, hash4 = $4, hash5 = $5 WHERE id = $6",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        {
+          "Custom": {
+            "name": "hash_icon",
+            "kind": {
+              "Enum": [
+                "Deku Stick",
+                "Deku Nut",
+                "Bow",
+                "Slingshot",
+                "Fairy Ocarina",
+                "Bombchu",
+                "Longshot",
+                "Boomerang",
+                "Lens of Truth",
+                "Beans",
+                "Megaton Hammer",
+                "Bottled Fish",
+                "Bottled Milk",
+                "Mask of Truth",
+                "SOLD OUT",
+                "Cucco",
+                "Mushroom",
+                "Saw",
+                "Frog",
+                "Master Sword",
+                "Mirror Shield",
+                "Kokiri Tunic",
+                "Hover Boots",
+                "Silver Gauntlets",
+                "Gold Scale",
+                "Stone of Agony",
+                "Skull Token",
+                "Heart Container",
+                "Boss Key",
+                "Compass",
+                "Map",
+                "Big Magic"
+              ]
+            }
+          }
+        },
+        {
+          "Custom": {
+            "name": "hash_icon",
+            "kind": {
+              "Enum": [
+                "Deku Stick",
+                "Deku Nut",
+                "Bow",
+                "Slingshot",
+                "Fairy Ocarina",
+                "Bombchu",
+                "Longshot",
+                "Boomerang",
+                "Lens of Truth",
+                "Beans",
+                "Megaton Hammer",
+                "Bottled Fish",
+                "Bottled Milk",
+                "Mask of Truth",
+                "SOLD OUT",
+                "Cucco",
+                "Mushroom",
+                "Saw",
+                "Frog",
+                "Master Sword",
+                "Mirror Shield",
+                "Kokiri Tunic",
+                "Hover Boots",
+                "Silver Gauntlets",
+                "Gold Scale",
+                "Stone of Agony",
+                "Skull Token",
+                "Heart Container",
+                "Boss Key",
+                "Compass",
+                "Map",
+                "Big Magic"
+              ]
+            }
+          }
+        },
+        {
+          "Custom": {
+            "name": "hash_icon",
+            "kind": {
+              "Enum": [
+                "Deku Stick",
+                "Deku Nut",
+                "Bow",
+                "Slingshot",
+                "Fairy Ocarina",
+                "Bombchu",
+                "Longshot",
+                "Boomerang",
+                "Lens of Truth",
+                "Beans",
+                "Megaton Hammer",
+                "Bottled Fish",
+                "Bottled Milk",
+                "Mask of Truth",
+                "SOLD OUT",
+                "Cucco",
+                "Mushroom",
+                "Saw",
+                "Frog",
+                "Master Sword",
+                "Mirror Shield",
+                "Kokiri Tunic",
+                "Hover Boots",
+                "Silver Gauntlets",
+                "Gold Scale",
+                "Stone of Agony",
+                "Skull Token",
+                "Heart Container",
+                "Boss Key",
+                "Compass",
+                "Map",
+                "Big Magic"
+              ]
+            }
+          }
+        },
+        {
+          "Custom": {
+            "name": "hash_icon",
+            "kind": {
+              "Enum": [
+                "Deku Stick",
+                "Deku Nut",
+                "Bow",
+                "Slingshot",
+                "Fairy Ocarina",
+                "Bombchu",
+                "Longshot",
+                "Boomerang",
+                "Lens of Truth",
+                "Beans",
+                "Megaton Hammer",
+                "Bottled Fish",
+                "Bottled Milk",
+                "Mask of Truth",
+                "SOLD OUT",
+                "Cucco",
+                "Mushroom",
+                "Saw",
+                "Frog",
+                "Master Sword",
+                "Mirror Shield",
+                "Kokiri Tunic",
+                "Hover Boots",
+                "Silver Gauntlets",
+                "Gold Scale",
+                "Stone of Agony",
+                "Skull Token",
+                "Heart Container",
+                "Boss Key",
+                "Compass",
+                "Map",
+                "Big Magic"
+              ]
+            }
+          }
+        },
+        {
+          "Custom": {
+            "name": "hash_icon",
+            "kind": {
+              "Enum": [
+                "Deku Stick",
+                "Deku Nut",
+                "Bow",
+                "Slingshot",
+                "Fairy Ocarina",
+                "Bombchu",
+                "Longshot",
+                "Boomerang",
+                "Lens of Truth",
+                "Beans",
+                "Megaton Hammer",
+                "Bottled Fish",
+                "Bottled Milk",
+                "Mask of Truth",
+                "SOLD OUT",
+                "Cucco",
+                "Mushroom",
+                "Saw",
+                "Frog",
+                "Master Sword",
+                "Mirror Shield",
+                "Kokiri Tunic",
+                "Hover Boots",
+                "Silver Gauntlets",
+                "Gold Scale",
+                "Stone of Agony",
+                "Skull Token",
+                "Heart Container",
+                "Boss Key",
+                "Compass",
+                "Map",
+                "Big Magic"
+              ]
+            }
+          }
+        },
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "184415c18749955df1c4080b066887cfdb3167deee56cbe203c62784b4bff1c7"
+}

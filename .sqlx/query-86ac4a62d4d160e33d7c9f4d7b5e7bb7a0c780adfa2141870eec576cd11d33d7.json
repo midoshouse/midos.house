@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent, text_field, text_field2, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Varchar",
+        "Varchar",
+        "Varchar",
+        "Text",
+        "Bool",
+        "Text",
+        "Text",
+        {
+          "Custom": {
+            "name": "mw_impl",
+            "kind": {
+              "Enum": [
+                "bizhawk_co_op",
+                "midos_house"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "86ac4a62d4d160e33d7c9f4d7b5e7bb7a0c780adfa2141870eec576cd11d33d7"
+}
