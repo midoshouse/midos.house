@@ -322,7 +322,7 @@ impl Requirement {
             }
             &Self::TextField2 { ref label, long, .. } => {
                 let label = label.clone();
-                let value = defaults.field_value("text_field").map(|value| value.to_owned());
+                let value = defaults.field_value("text_field2").map(|value| value.to_owned());
                 RequirementStatus {
                     blocks_submit: false,
                     html_content: Box::new(move |errors| html! {
