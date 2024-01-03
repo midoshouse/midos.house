@@ -466,6 +466,7 @@ impl<'a> Data<'a> {
         match (self.series, &*self.event) {
             (Series::Multiworld, "3") => Some(draft::Kind::MultiworldS3),
             (Series::Multiworld, "4") => Some(draft::Kind::MultiworldS4),
+            (Series::Standard, "7" | "7cc") => Some(draft::Kind::S7),
             (Series::TournoiFrancophone, "3") => Some(draft::Kind::TournoiFrancoS3),
             (_, _) => None,
         }

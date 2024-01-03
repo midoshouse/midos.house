@@ -34,6 +34,7 @@ impl fmt::Display for Team {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Kind {
+    // when defining a new variant, make sure to add it to event::Data::draft_kind
     S7,
     MultiworldS3,
     MultiworldS4,
