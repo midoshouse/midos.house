@@ -1894,6 +1894,66 @@ pub(crate) async fn race_table(transaction: &mut Transaction<'_, Postgres>, disc
 ///   A `game` value of `None` should be treated like `Some(1)`.
 /// * A list of start.gg set IDs that were not imported, along with the reasons they were skipped.
 async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, event_slug: &str) -> Result<(Vec<Race>, Vec<(String, ImportSkipReason)>), Error> {
+    async fn process_set(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, races: &mut Vec<Race>, startgg_event: &str, startgg_set: String, phase: Option<String>, round: Option<String>, team1: Team, team2: Team) -> Result<(), Error> {
+        races.push(Race {
+            id: Id::new(&mut *transaction).await?,
+            series: event.series,
+            event: event.event.to_string(),
+            startgg_event: Some(startgg_event.to_owned()),
+            startgg_set: Some(startgg_set),
+            entrants: Entrants::Two([
+                Entrant::MidosHouseTeam(team1.clone()),
+                Entrant::MidosHouseTeam(team2.clone()),
+            ]),
+            game: None, //TODO get from start.gg
+            scheduling_thread: None,
+            schedule: RaceSchedule::Unscheduled,
+            draft: match event.draft_kind() {
+                Some(draft::Kind::S7) => Some(Draft {
+                    high_seed: min_by_key(team1, team2, |team| team.qualifier_rank).id,
+                    went_first: None,
+                    skipped_bans: 0,
+                    settings: HashMap::default(),
+                }),
+                Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => {
+                    let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
+                        show_times: event.show_qualifier_times && event.is_started(&mut *transaction).await?,
+                    };
+                    let signups = teams::signups_sorted(&mut *transaction, http_client, env, config, None, event, qualifier_kind).await?;
+                    let SignupsTeam { members: members1, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team1)).expect("match with team that didn't sign up");
+                    let SignupsTeam { members: members2, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team2)).expect("match with team that didn't sign up");
+                    let avg1 = members1.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members1.len()).expect("too many team members"));
+                    let avg2 = members2.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members2.len()).expect("too many team members"));
+                    Some(Draft {
+                        high_seed: match (avg1, avg2) {
+                            (Some(_), None) => team1.id,
+                            (None, Some(_)) => team2.id,
+                            (Some(avg1), Some(avg2)) if avg1 < avg2 => team1.id,
+                            (Some(avg1), Some(avg2)) if avg1 > avg2 => team2.id,
+                            _ => if thread_rng().gen() { team1.id } else { team2.id }, // tie broken by coin flip
+                        },
+                        went_first: None,
+                        skipped_bans: 0,
+                        // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
+                        settings: HashMap::from_iter(
+                            (team1.id == Id::from(17814073240662869290_u64) || team2.id == Id::from(17814073240662869290_u64))
+                                .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
+                        ),
+                    })
+                }
+                Some(draft::Kind::TournoiFrancoS3) => unreachable!("this event does not use start.gg"),
+                None => None,
+            },
+            seed: seed::Data::default(),
+            video_urls: HashMap::default(),
+            restreamers: HashMap::default(),
+            ignored: false,
+            schedule_locked: false,
+            phase, round,
+        });
+        Ok(())
+    }
+
     async fn process_page(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, event_slug: &str, page: i64, races: &mut Vec<Race>, skips: &mut Vec<(String, ImportSkipReason)>) -> Result<i64, Error> {
         let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
         if let TeamConfig::Solo = event.team_config() {
@@ -1919,65 +1979,10 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                         if let [Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrantParticipants { id: Some(startgg::ID(ref team2)) })] = **p2 {
                             let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(cal::Error::UnknownTeam)?;
                             let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(cal::Error::UnknownTeam)?;
-                            races.push(Race {
-                                id: Id::new(&mut *transaction).await?,
-                                series: event.series,
-                                event: event.event.to_string(),
-                                startgg_event: Some(event_slug.to_owned()),
-                                startgg_set: Some(id),
-                                entrants: Entrants::Two([
-                                    Entrant::MidosHouseTeam(team1.clone()),
-                                    Entrant::MidosHouseTeam(team2.clone()),
-                                ]),
-                                phase: phase_group
-                                    .and_then(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroup { phase }| phase)
-                                    .and_then(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroupPhase { name }| name),
-                                round: full_round_text,
-                                game: None, //TODO get from start.gg
-                                scheduling_thread: None,
-                                schedule: RaceSchedule::Unscheduled,
-                                draft: match event.draft_kind() {
-                                    Some(draft::Kind::S7) => Some(Draft {
-                                        high_seed: min_by_key(team1, team2, |team| team.qualifier_rank).id,
-                                        went_first: None,
-                                        skipped_bans: 0,
-                                        settings: HashMap::default(),
-                                    }),
-                                    Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => {
-                                        let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
-                                            show_times: event.show_qualifier_times && event.is_started(&mut *transaction).await?,
-                                        };
-                                        let signups = teams::signups_sorted(&mut *transaction, http_client, env, config, None, event, qualifier_kind).await?;
-                                        let SignupsTeam { members: members1, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team1)).expect("match with team that didn't sign up");
-                                        let SignupsTeam { members: members2, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team2)).expect("match with team that didn't sign up");
-                                        let avg1 = members1.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members1.len()).expect("too many team members"));
-                                        let avg2 = members2.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members2.len()).expect("too many team members"));
-                                        Some(Draft {
-                                            high_seed: match (avg1, avg2) {
-                                                (Some(_), None) => team1.id,
-                                                (None, Some(_)) => team2.id,
-                                                (Some(avg1), Some(avg2)) if avg1 < avg2 => team1.id,
-                                                (Some(avg1), Some(avg2)) if avg1 > avg2 => team2.id,
-                                                _ => if thread_rng().gen() { team1.id } else { team2.id }, // tie broken by coin flip
-                                            },
-                                            went_first: None,
-                                            skipped_bans: 0,
-                                            // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
-                                            settings: HashMap::from_iter(
-                                                (team1.id == Id::from(17814073240662869290_u64) || team2.id == Id::from(17814073240662869290_u64))
-                                                    .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
-                                            ),
-                                        })
-                                    }
-                                    Some(draft::Kind::TournoiFrancoS3) => unreachable!("this event does not use start.gg"),
-                                    None => None,
-                                },
-                                seed: seed::Data::default(),
-                                video_urls: HashMap::default(),
-                                restreamers: HashMap::default(),
-                                ignored: false,
-                                schedule_locked: false,
-                            });
+                            let phase = phase_group
+                                .and_then(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroup { phase }| phase)
+                                .and_then(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroupPhase { name }| name);
+                            process_set(&mut *transaction, http_client, env, config, event, races, event_slug, id, phase, full_round_text, team1, team2).await?;
                         } else {
                             skips.push((id, ImportSkipReason::Participants));
                         }
@@ -2010,65 +2015,10 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                 ] = *slots {
                     let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(cal::Error::UnknownTeam)?;
                     let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(cal::Error::UnknownTeam)?;
-                    races.push(Race {
-                        id: Id::new(&mut *transaction).await?,
-                        series: event.series,
-                        event: event.event.to_string(),
-                        startgg_event: Some(event_slug.to_owned()),
-                        startgg_set: Some(id),
-                        entrants: Entrants::Two([
-                            Entrant::MidosHouseTeam(team1.clone()),
-                            Entrant::MidosHouseTeam(team2.clone()),
-                        ]),
-                        phase: phase_group
-                            .and_then(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroup { phase }| phase)
-                            .and_then(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroupPhase { name }| name),
-                        round: full_round_text,
-                        game: None, //TODO get from start.gg
-                        scheduling_thread: None,
-                        schedule: RaceSchedule::Unscheduled,
-                        draft: match event.draft_kind() {
-                            Some(draft::Kind::S7) => Some(Draft {
-                                high_seed: min_by_key(team1, team2, |team| team.qualifier_rank).id,
-                                went_first: None,
-                                skipped_bans: 0,
-                                settings: HashMap::default(),
-                            }),
-                            Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => {
-                                let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
-                                    show_times: event.show_qualifier_times && event.is_started(&mut *transaction).await?,
-                                };
-                                let signups = teams::signups_sorted(&mut *transaction, http_client, env, config, None, event, qualifier_kind).await?;
-                                let SignupsTeam { members: members1, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team1)).expect("match with team that didn't sign up");
-                                let SignupsTeam { members: members2, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team2)).expect("match with team that didn't sign up");
-                                let avg1 = members1.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members1.len()).expect("too many team members"));
-                                let avg2 = members2.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members2.len()).expect("too many team members"));
-                                Some(Draft {
-                                    high_seed: match (avg1, avg2) {
-                                        (Some(_), None) => team1.id,
-                                        (None, Some(_)) => team2.id,
-                                        (Some(avg1), Some(avg2)) if avg1 < avg2 => team1.id,
-                                        (Some(avg1), Some(avg2)) if avg1 > avg2 => team2.id,
-                                        _ => if thread_rng().gen() { team1.id } else { team2.id }, // tie broken by coin flip
-                                    },
-                                    went_first: None,
-                                    skipped_bans: 0,
-                                    // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
-                                    settings: HashMap::from_iter(
-                                        (team1.id == Id::from(17814073240662869290_u64) || team2.id == Id::from(17814073240662869290_u64))
-                                            .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
-                                    ),
-                                })
-                            }
-                            Some(draft::Kind::TournoiFrancoS3) => unreachable!("this event does not use start.gg"),
-                            None => None,
-                        },
-                        seed: seed::Data::default(),
-                        video_urls: HashMap::default(),
-                        restreamers: HashMap::default(),
-                        ignored: false,
-                        schedule_locked: false,
-                    });
+                    let phase = phase_group
+                        .and_then(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroup { phase }| phase)
+                        .and_then(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroupPhase { name }| name);
+                    process_set(&mut *transaction, http_client, env, config, event, races, event_slug, id, phase, full_round_text, team1, team2).await?;
                 } else {
                     skips.push((id, ImportSkipReason::Slots));
                 }
