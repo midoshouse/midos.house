@@ -2344,17 +2344,31 @@ impl RaceHandler<GlobalState> for Handler {
                 let state = cal_event.race.draft.clone().expect("missing draft state");
                 let [high_seed_name, low_seed_name] = match cal_event.race.entrants {
                     Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => [format!("Team A"), format!("Team B")],
-                    Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => if team1.id == state.high_seed {
-                        [
-                            team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
-                            team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
-                        ]
-                    } else {
-                        [
-                            team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned),
-                            team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned),
-                        ]
-                    },
+                    Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
+                        let name1 = if_chain! {
+                            if let Ok(member) = team1.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one();
+                            if let Some(ref racetime) = member.racetime;
+                            then {
+                                racetime.display_name.clone()
+                            } else {
+                                team1.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team A"), Cow::into_owned)
+                            }
+                        };
+                        let name2 = if_chain! {
+                            if let Ok(member) = team2.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one();
+                            if let Some(ref racetime) = member.racetime;
+                            then {
+                                racetime.display_name.clone()
+                            } else {
+                                team2.name(&mut transaction).await.to_racetime()?.map_or_else(|| format!("Team B"), Cow::into_owned)
+                            }
+                        };
+                        if team1.id == state.high_seed {
+                            [name1, name2]
+                        } else {
+                            [name2, name1]
+                        }
+                    }
                     Entrants::Two([_, _]) => unimplemented!("draft with non-MH teams"),
                     Entrants::Three([_, _, _]) => unimplemented!("draft with 3 teams"),
                 };
