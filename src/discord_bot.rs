@@ -1564,7 +1564,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                     .ephemeral(true)
                                     .content(response_content)
-                                    .button(CreateButton::new(format!("draft_option_{}_{}", setting.name, setting.default)).label(setting.default_display))
+                                    .button(CreateButton::new(format!("draft_option_{}__{}", setting.name, setting.default)).label(setting.default_display))
                                     .button(CreateButton::new("draft_page_0").label(if let French = event.language { "Retour" } else { "Back" }).style(ButtonStyle::Secondary)) //TODO remember page?
                                 )).await?;
                             }
@@ -1580,7 +1580,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     .ephemeral(true)
                                     .content(response_content);
                                 for option in setting.options {
-                                    response_msg = response_msg.button(CreateButton::new(format!("draft_option_{}_{}", setting.name, option.name)).label(option.display));
+                                    response_msg = response_msg.button(CreateButton::new(format!("draft_option_{}__{}", setting.name, option.name)).label(option.display));
                                 }
                                 response_msg = response_msg.button(CreateButton::new("draft_page_0").label(if let French = event.language { "Retour" } else { "Back" }).style(ButtonStyle::Secondary)); //TODO remember page?
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
@@ -1596,7 +1596,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 }
                             },
                         }
-                    } else if let Some((setting, value)) = custom_id.strip_prefix("draft_option_").and_then(|setting_value| setting_value.split_once('_')) {
+                    } else if let Some((setting, value)) = custom_id.strip_prefix("draft_option_").and_then(|setting_value| setting_value.split_once("__")) {
                         draft_action(ctx, interaction, draft::Action::Pick { setting: setting.to_owned(), value: value.to_owned() }).await?;
                     } else {
                         panic!("received message component interaction with unknown custom ID {custom_id:?}")
