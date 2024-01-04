@@ -321,7 +321,7 @@ impl Draft {
                                     .mention_command(command_ids.first.unwrap(), "first")
                                     .push(" or ")
                                     .mention_command(command_ids.second.unwrap(), "second")
-                                    .push(" in the settings draft.")
+                                    .push(" in the settings draft. You can also wait until the race room is opened to draft your settings.")
                                     .build()
                             }
                             MessageContext::RaceTime { high_seed_name, .. } => format!("{high_seed_name}, you have the higher seed. Choose whether you want to go !first or !second"),
