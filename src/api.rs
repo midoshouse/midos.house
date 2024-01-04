@@ -246,6 +246,12 @@ struct Race(cal::Race);
         }
     }
 
+    /// The time the scheduling of this race was last changed. Null if this race's schedule has not been touched or if the event does not use Mido's House to schedule races.
+    /// This info was not tracked before 2024-01-04 so this is also null for races whose schedule was last changed before then.
+    async fn schedule_updated_at(&self, ctx: &Context<'_>) -> sqlx::Result<Option<UtcTimestamp>> {
+        Ok(sqlx::query_scalar!("SELECT schedule_updated_at FROM races WHERE id = $1", self.0.id as _).fetch_one(&mut **db!(ctx)).await?.map(UtcTimestamp::from))
+    }
+
     /// The race room URL. Null if no room has been opened yet or if this race is asynced.
     async fn room(&self) -> Option<&str> {
         if let RaceSchedule::Live { ref room, .. } = self.0.schedule {

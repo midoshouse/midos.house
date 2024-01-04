@@ -989,7 +989,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             )).await?;
                                             transaction.rollback().await?;
                                         } else {
-                                            sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
+                                            sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
                                             let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
                                             if cal_event.should_create_room(&mut transaction, &event).await? && start - Utc::now() < Duration::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
@@ -1120,10 +1120,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             let kind = match race.entrants {
                                                 Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
                                                     if team.as_ref().map_or(false, |team| team1 == team) {
-                                                        sqlx::query!("UPDATE races SET async_start1 = $1, start = NULL WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
+                                                        sqlx::query!("UPDATE races SET async_start1 = $1, start = NULL, schedule_updated_at = NOW() WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
                                                         cal::EventKind::Async1
                                                     } else if team.as_ref().map_or(false, |team| team2 == team) {
-                                                        sqlx::query!("UPDATE races SET async_start2 = $1, start = NULL WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
+                                                        sqlx::query!("UPDATE races SET async_start2 = $1, start = NULL, schedule_updated_at = NOW() WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
                                                         cal::EventKind::Async2
                                                     } else {
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1272,7 +1272,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             RaceSchedule::Live { .. } => false,
                                             RaceSchedule::Async { start1, start2, .. } => start1.is_some() && start2.is_some(),
                                         };
-                                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
                                         transaction.commit().await?;
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(false)
