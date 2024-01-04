@@ -5,7 +5,7 @@ use {
         EmptySubscription,
         Error,
         Guard,
-        ID,
+        ID as GqlId,
         InputValueError,
         InputValueResult,
         Object,
@@ -19,7 +19,6 @@ use {
             GraphQLPlaygroundConfig,
             playground_source,
         },
-        types::ID as GqlId,
     },
     async_graphql_rocket::{
         GraphQLQuery,
@@ -336,12 +335,12 @@ struct User(user::User);
 
 
     /// Returns the user's connected racetime.gg user ID, if any.
-    async fn racetime_id(&self) -> Option<&str> {
-        self.0.racetime.as_ref().map(|racetime| &*racetime.id)
+    async fn racetime_id(&self) -> Option<GqlId> {
+        self.0.racetime.as_ref().map(|racetime| GqlId::from(&racetime.id))
     }
 
     /// Returns the user's connected Discord user snowflake ID, if any.
-    async fn discord_id(&self) -> Option<ID> {
+    async fn discord_id(&self) -> Option<GqlId> {
         self.0.discord.as_ref().map(|discord| discord.id.into())
     }
 }
