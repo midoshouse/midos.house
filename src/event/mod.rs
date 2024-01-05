@@ -264,6 +264,7 @@ pub(crate) struct Data<'a> {
     pub(crate) show_qualifier_times: bool,
     pub(crate) default_game_count: i16,
     pub(crate) min_schedule_notice: UDuration,
+    pub(crate) retime_window: UDuration,
     pub(crate) language: Language,
 }
 
@@ -303,6 +304,7 @@ impl<'a> Data<'a> {
             show_qualifier_times,
             default_game_count,
             min_schedule_notice,
+            retime_window,
             language AS "language: Language"
         FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(&mut **transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
@@ -327,6 +329,7 @@ impl<'a> Data<'a> {
                 show_qualifier_times: row.show_qualifier_times,
                 default_game_count: row.default_game_count,
                 min_schedule_notice: decode_pginterval(row.min_schedule_notice)?,
+                retime_window: decode_pginterval(row.retime_window)?,
                 language: row.language,
                 series, event,
             }))
