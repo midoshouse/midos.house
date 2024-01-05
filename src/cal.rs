@@ -737,8 +737,44 @@ impl Race {
             },
             Series::Standard => match &*event.event {
                 "6" => {} // added to database
-                "7" => {} //TODO get races from ZSR schedule sheet (see code deleted in https://github.com/midoshouse/midos.house/commit/9afb7a28e446ecf877bf047ed4905121f5ecf10b)
-                "7cc" => {} //TODO get from start.gg?
+                "7" => for row in sheet_values(http_client.clone(), &config.zsr_volunteer_signups, "Scheduled Races!B2:D").await? {
+                    if let [datetime_et, matchup, round] = &*row {
+                        let start = NaiveDateTime::parse_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}")).and_local_timezone(America::New_York).single_ok()?;
+                        if start < America::New_York.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue }
+                        let id = Id::<Races>::new(&mut *transaction).await?;
+                        add_or_update_race(&mut *transaction, &mut races, Self {
+                            series: event.series,
+                            event: event.event.to_string(),
+                            startgg_event: None,
+                            startgg_set: None,
+                            entrants: if let Some((_, p1, p2)) = regex_captures!("^(.+) +(?i:vs?\\.?|x) +(.+)$", matchup) {
+                                Entrants::Two([
+                                    Entrant::Named(p1.to_owned()),
+                                    Entrant::Named(p2.to_owned()),
+                                ])
+                            } else {
+                                Entrants::Named(matchup.clone())
+                            },
+                            phase: None, // main bracket
+                            round: Some(round.clone()),
+                            game: None,
+                            scheduling_thread: None,
+                            schedule: RaceSchedule::Live {
+                                start: start.with_timezone(&Utc),
+                                end: None,
+                                room: None,
+                            },
+                            draft: None,
+                            seed: seed::Data::default(),
+                            video_urls: HashMap::default(),
+                            restreamers: HashMap::default(),
+                            ignored: false,
+                            schedule_locked: false,
+                            id,
+                        }).await?;
+                    }
+                },
+                "7cc" => {} //TODO get from start.gg without manual confirmation (after testing best-of-3)
                 _ => unimplemented!(),
             },
             Series::TournoiFrancophone => match &*event.event {

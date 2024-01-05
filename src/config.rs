@@ -26,6 +26,7 @@ pub(crate) struct Config {
     #[serde(rename = "startggOAuth")]
     pub(crate) startgg_oauth: ConfigOAuth,
     pub(crate) secret_key: String,
+    pub(crate) zsr_volunteer_signups: String,
 }
 
 impl Config {
