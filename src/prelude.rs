@@ -140,6 +140,7 @@ pub(crate) use {
             self,
             File,
         },
+        io_error_from_reqwest,
         traits::{
             IoResultExt as _,
             ReqwestResponseExt as _,

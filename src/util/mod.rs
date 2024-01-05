@@ -154,11 +154,3 @@ pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
         },
     }
 }
-
-pub(crate) fn io_error_from_reqwest(e: reqwest::Error) -> io::Error {
-    io::Error::new(if e.is_timeout() {
-        io::ErrorKind::TimedOut
-    } else {
-        io::ErrorKind::Other
-    }, e)
-}
