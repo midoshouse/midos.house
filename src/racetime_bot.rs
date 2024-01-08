@@ -282,7 +282,8 @@ pub(crate) enum PrerollMode {
     // Long is reserved for the behavior from mp/2, where seed rolling starts immediately as the room is opened and one seed is always kept in reserve.
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum UnlockSpoilerLog {
     Now,
     After,
@@ -1104,7 +1105,7 @@ impl GlobalState {
                             }),
                         },
                         rsl_preset: None,
-                        send_spoiler_log: unlock_spoiler_log == UnlockSpoilerLog::Now,
+                        unlock_spoiler_log,
                     }).await?,
                     Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?, //TODO fall back to rolling locally for network errors
                 }
@@ -1122,7 +1123,7 @@ impl GlobalState {
                                     }),
                                 },
                                 rsl_preset: None,
-                                send_spoiler_log: unlock_spoiler_log == UnlockSpoilerLog::Now,
+                                unlock_spoiler_log,
                             },
                             None => SeedRollUpdate::Error(RollError::PatchPath),
                         },
@@ -1230,7 +1231,7 @@ impl GlobalState {
                             }),
                         },
                         rsl_preset: if let VersionedRslPreset::Xopar { preset, .. } = preset { Some(preset) } else { None },
-                        send_spoiler_log: unlock_spoiler_log == UnlockSpoilerLog::Now,
+                        unlock_spoiler_log,
                     }).await;
                     return Ok(())
                 } else {
@@ -1257,7 +1258,7 @@ impl GlobalState {
                                 }),
                             },
                             rsl_preset: if let VersionedRslPreset::Xopar { preset, .. } = preset { Some(preset) } else { None },
-                            send_spoiler_log: unlock_spoiler_log == UnlockSpoilerLog::Now,
+                            unlock_spoiler_log,
                         },
                         None => SeedRollUpdate::Error(RollError::PatchPath),
                     }).await;
@@ -1326,7 +1327,7 @@ impl GlobalState {
                     files: Some(seed::Files::TriforceBlitz { uuid }),
                 },
                 rsl_preset: None,
-                send_spoiler_log: unlock_spoiler_log == UnlockSpoilerLog::Now,
+                unlock_spoiler_log,
             }).await;
             Ok(())
         }.then(|res| async move {
@@ -1506,7 +1507,7 @@ pub(crate) enum SeedRollUpdate {
     Done {
         seed: seed::Data,
         rsl_preset: Option<rsl::Preset>,
-        send_spoiler_log: bool,
+        unlock_spoiler_log: UnlockSpoilerLog,
     },
     /// Seed rolling failed.
     Error(RollError),
@@ -1529,9 +1530,9 @@ impl SeedRollUpdate {
             } else {
                 format!("Rolling {article} {description}…")
             }).await?,
-            Self::Done { mut seed, rsl_preset, send_spoiler_log } => {
+            Self::Done { mut seed, rsl_preset, unlock_spoiler_log } => {
                 if let Some(seed::Files::MidosHouse { ref file_stem, ref mut locked_spoiler_log_path }) = seed.files {
-                    if send_spoiler_log && locked_spoiler_log_path.is_some() {
+                    if unlock_spoiler_log == UnlockSpoilerLog::Now && locked_spoiler_log_path.is_some() {
                         fs::rename(locked_spoiler_log_path.as_ref().unwrap(), Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await.to_racetime()?;
                         *locked_spoiler_log_path = None;
                     }
@@ -1594,22 +1595,24 @@ impl SeedRollUpdate {
                 } else {
                     format!("@entrants Here is your seed: {seed_url}")
                 }).await?;
-                if send_spoiler_log {
-                    ctx.say("The spoiler log is also available on the seed page.").await?;
-                } else if let Some(seed::Files::TfbSotd { date, .. }) = seed.files {
-                    if let Some(unlock_date) = date.succ_opt().and_then(|next| next.succ_opt()) {
-                        let unlock_time = Utc.from_utc_datetime(&unlock_date.and_hms_opt(20, 0, 0).expect("failed to construct naive datetime at 20:00:00"));
-                        let unlock_time = (unlock_time - Utc::now()).to_std().expect("unlock time for current daily seed in the past");
-                        ctx.say(&format!("The spoiler log will be available on the seed page in {}.", English.format_duration(unlock_time, true))).await?;
+                match unlock_spoiler_log {
+                    UnlockSpoilerLog::Now => ctx.say("The spoiler log is also available on the seed page.").await?,
+                    UnlockSpoilerLog::After => if let Some(seed::Files::TfbSotd { date, .. }) = seed.files {
+                        if let Some(unlock_date) = date.succ_opt().and_then(|next| next.succ_opt()) {
+                            let unlock_time = Utc.from_utc_datetime(&unlock_date.and_hms_opt(20, 0, 0).expect("failed to construct naive datetime at 20:00:00"));
+                            let unlock_time = (unlock_time - Utc::now()).to_std().expect("unlock time for current daily seed in the past");
+                            ctx.say(&format!("The spoiler log will be available on the seed page in {}.", English.format_duration(unlock_time, true))).await?;
+                        } else {
+                            unimplemented!("distant future Triforce Blitz SotD")
+                        }
                     } else {
-                        unimplemented!("distant future Triforce Blitz SotD")
-                    }
-                } else {
-                    ctx.say(if let French = language {
-                        "Le spoiler log sera disponible sur le lien de la seed après la seed."
-                    } else {
-                        "The spoiler log will be available on the seed page after the race."
-                    }).await?;
+                        ctx.say(if let French = language {
+                            "Le spoiler log sera disponible sur le lien de la seed après la seed."
+                        } else {
+                            "The spoiler log will be available on the seed page after the race."
+                        }).await?;
+                    },
+                    UnlockSpoilerLog::Never => {}
                 }
                 ctx.set_bot_raceinfo(&format!(
                     "{}{}{seed_url}",
@@ -2198,7 +2201,7 @@ impl Handler {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
         let (tx, rx) = mpsc::channel(1);
-        tx.send(SeedRollUpdate::Done { rsl_preset: None, send_spoiler_log: false, seed }).await.unwrap();
+        tx.send(SeedRollUpdate::Done { rsl_preset: None, unlock_spoiler_log: UnlockSpoilerLog::After, seed }).await.unwrap();
         self.roll_seed_inner(ctx, state, delay_until, rx, language, article, description);
     }
 
