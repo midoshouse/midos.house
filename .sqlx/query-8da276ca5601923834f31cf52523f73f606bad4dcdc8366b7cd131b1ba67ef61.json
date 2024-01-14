@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                id AS \"id: Id<Users>\",\n                display_source AS \"display_source: DisplaySource\",\n                racetime_id,\n                racetime_display_name,\n                racetime_discriminator AS \"racetime_discriminator: Discriminator\",\n                racetime_pronouns AS \"racetime_pronouns: RaceTimePronouns\",\n                discord_display_name,\n                discord_discriminator AS \"discord_discriminator: Discriminator\",\n                discord_username,\n                challonge_id,\n                startgg_id,\n                is_archivist\n            FROM users WHERE discord_id = $1",
+  "query": "SELECT\n                id AS \"id: Id<Users>\",\n                display_source AS \"display_source: DisplaySource\",\n                racetime_id,\n                racetime_display_name,\n                racetime_discriminator AS \"racetime_discriminator: Discriminator\",\n                racetime_pronouns AS \"racetime_pronouns: RaceTimePronouns\",\n                discord_display_name,\n                discord_discriminator AS \"discord_discriminator: Discriminator\",\n                discord_username,\n                challonge_id,\n                startgg_id AS \"startgg_id: startgg::ID\",\n                is_archivist\n            FROM users WHERE discord_id = $1",
   "describe": {
     "columns": [
       {
@@ -79,7 +79,7 @@
       },
       {
         "ordinal": 10,
-        "name": "startgg_id",
+        "name": "startgg_id: startgg::ID",
         "type_info": "Varchar"
       },
       {
@@ -108,5 +108,5 @@
       false
     ]
   },
-  "hash": "5afd7ca4f1792f746b4e147505980d770079980a36372732664205fd77b7af79"
+  "hash": "8da276ca5601923834f31cf52523f73f606bad4dcdc8366b7cd131b1ba67ef61"
 }

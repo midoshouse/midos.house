@@ -111,6 +111,7 @@ pub(crate) use {
             MessageBuilder,
         },
         model::prelude::*,
+        utils::EmbedMessageBuilding as _,
     },
     serenity_utils::{
         RwFuture,

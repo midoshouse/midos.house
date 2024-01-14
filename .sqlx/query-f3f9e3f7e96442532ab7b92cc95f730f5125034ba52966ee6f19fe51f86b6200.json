@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            series AS \"series: Series\",\n            event,\n            startgg_event,\n            startgg_set,\n            game,\n            team1 AS \"team1: Id<Teams>\",\n            team2 AS \"team2: Id<Teams>\",\n            team3 AS \"team3: Id<Teams>\",\n            p1,\n            p2,\n            p3,\n            p1_discord AS \"p1_discord: PgSnowflake<UserId>\",\n            p2_discord AS \"p2_discord: PgSnowflake<UserId>\",\n            p1_twitch,\n            p2_twitch,\n            total,\n            finished,\n            phase,\n            round,\n            scheduling_thread AS \"scheduling_thread: PgSnowflake<ChannelId>\",\n            draft_state AS \"draft_state: Json<Draft>\",\n            start,\n            async_start1,\n            async_start2,\n            end_time,\n            async_end1,\n            async_end2,\n            room,\n            async_room1,\n            async_room2,\n            file_stem,\n            locked_spoiler_log_path,\n            web_id,\n            web_gen_time,\n            tfb_uuid,\n            hash1 AS \"hash1: HashIcon\",\n            hash2 AS \"hash2: HashIcon\",\n            hash3 AS \"hash3: HashIcon\",\n            hash4 AS \"hash4: HashIcon\",\n            hash5 AS \"hash5: HashIcon\",\n            video_url,\n            restreamer,\n            video_url_fr,\n            restreamer_fr,\n            video_url_pt,\n            restreamer_pt,\n            ignored,\n            schedule_locked\n        FROM races WHERE id = $1",
+  "query": "SELECT\n            series AS \"series: Series\",\n            event,\n            startgg_event,\n            startgg_set AS \"startgg_set: startgg::ID\",\n            game,\n            team1 AS \"team1: Id<Teams>\",\n            team2 AS \"team2: Id<Teams>\",\n            team3 AS \"team3: Id<Teams>\",\n            p1,\n            p2,\n            p3,\n            p1_discord AS \"p1_discord: PgSnowflake<UserId>\",\n            p2_discord AS \"p2_discord: PgSnowflake<UserId>\",\n            p1_twitch,\n            p2_twitch,\n            total,\n            finished,\n            phase,\n            round,\n            scheduling_thread AS \"scheduling_thread: PgSnowflake<ChannelId>\",\n            draft_state AS \"draft_state: Json<Draft>\",\n            start,\n            async_start1,\n            async_start2,\n            end_time,\n            async_end1,\n            async_end2,\n            room,\n            async_room1,\n            async_room2,\n            file_stem,\n            locked_spoiler_log_path,\n            web_id,\n            web_gen_time,\n            tfb_uuid,\n            hash1 AS \"hash1: HashIcon\",\n            hash2 AS \"hash2: HashIcon\",\n            hash3 AS \"hash3: HashIcon\",\n            hash4 AS \"hash4: HashIcon\",\n            hash5 AS \"hash5: HashIcon\",\n            video_url,\n            restreamer,\n            video_url_fr,\n            restreamer_fr,\n            video_url_pt,\n            restreamer_pt,\n            ignored,\n            schedule_locked\n        FROM races WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -20,7 +20,7 @@
       },
       {
         "ordinal": 3,
-        "name": "startgg_set",
+        "name": "startgg_set: startgg::ID",
         "type_info": "Text"
       },
       {
@@ -500,5 +500,5 @@
       false
     ]
   },
-  "hash": "5ed43f0eb65bbe226aef5d4fda40b1154e53a4f626b4c57bb70a1064c2174f14"
+  "hash": "f3f9e3f7e96442532ab7b92cc95f730f5125034ba52966ee6f19fe51f86b6200"
 }

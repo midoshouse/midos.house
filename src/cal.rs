@@ -219,7 +219,7 @@ pub(crate) struct Race {
     pub(crate) series: Series,
     pub(crate) event: String,
     pub(crate) startgg_event: Option<String>,
-    pub(crate) startgg_set: Option<String>,
+    pub(crate) startgg_set: Option<startgg::ID>,
     pub(crate) entrants: Entrants,
     pub(crate) phase: Option<String>,
     pub(crate) round: Option<String>,
@@ -240,7 +240,7 @@ impl Race {
             series AS "series: Series",
             event,
             startgg_event,
-            startgg_set,
+            startgg_set AS "startgg_set: startgg::ID",
             game,
             team1 AS "team1: Id<Teams>",
             team2 AS "team2: Id<Teams>",
@@ -302,7 +302,7 @@ impl Race {
                     }),
                     slots: Some(slots),
                 }),
-            } = startgg::query_cached::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg::ID(startgg_set.clone()) }).await? {
+            } = startgg::query_cached::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg_set.clone() }).await? {
                 sqlx::query!("UPDATE races SET
                     startgg_event = $1,
                     phase = $2,
@@ -383,8 +383,8 @@ impl Race {
                 [Some(Entrant::Named(p1)), None, None] => Entrants::Named(p1),
                 [None, None, None] => if let (Some(startgg_set), Some(slots)) = (&startgg_set, slots) {
                     if let [
-                        Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team1)), on: _ }) }) }),
-                        Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(startgg::ID(ref team2)), on: _ }) }) }),
+                        Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(ref team1), on: _ }) }) }),
+                        Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(ref team2), on: _ }) }) }),
                     ] = *slots {
                         let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?;
                         let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
@@ -815,7 +815,7 @@ impl Race {
     }
 
     pub(crate) fn startgg_set_url(&self) -> Result<Option<Url>, url::ParseError> {
-        Ok(if let Self { startgg_event: Some(event), startgg_set: Some(set), .. } = self {
+        Ok(if let Self { startgg_event: Some(event), startgg_set: Some(startgg::ID(set)), .. } = self {
             Some(format!("https://start.gg/{event}/set/{set}").parse()?)
         } else {
             None
@@ -1066,7 +1066,7 @@ impl Race {
                 team3
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47)",
-                self.startgg_set,
+                self.startgg_set as _,
                 start,
                 self.series as _,
                 self.event,
@@ -1306,9 +1306,9 @@ pub(crate) enum Error {
     #[error(transparent)] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
-    #[error("wrong number of teams in start.gg set {startgg_set}")]
+    #[error("wrong number of teams in start.gg set {}", .startgg_set.0)]
     StartggTeams {
-        startgg_set: String,
+        startgg_set: startgg::ID,
     },
     #[error("this start.gg team ID is not associated with a Mido's House team")]
     UnknownTeam,
@@ -1929,8 +1929,8 @@ pub(crate) async fn race_table(transaction: &mut Transaction<'_, Postgres>, disc
 ///   The caller is expected to duplicate this race to get the different games of the match, and create a single scheduling thread for the match.
 ///   A `game` value of `None` should be treated like `Some(1)`.
 /// * A list of start.gg set IDs that were not imported, along with the reasons they were skipped.
-async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, event_slug: &str) -> Result<(Vec<Race>, Vec<(String, ImportSkipReason)>), Error> {
-    async fn process_set(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, races: &mut Vec<Race>, startgg_event: &str, startgg_set: String, phase: Option<String>, round: Option<String>, team1: Team, team2: Team) -> Result<(), Error> {
+async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, event_slug: &str) -> Result<(Vec<Race>, Vec<(startgg::ID, ImportSkipReason)>), Error> {
+    async fn process_set(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, races: &mut Vec<Race>, startgg_event: &str, startgg_set: startgg::ID, phase: Option<String>, round: Option<String>, team1: Team, team2: Team) -> Result<(), Error> {
         races.push(Race {
             id: Id::new(&mut *transaction).await?,
             series: event.series,
@@ -1990,7 +1990,7 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
         Ok(())
     }
 
-    async fn process_page(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, event_slug: &str, page: i64, races: &mut Vec<Race>, skips: &mut Vec<(String, ImportSkipReason)>) -> Result<i64, Error> {
+    async fn process_page(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, event_slug: &str, page: i64, races: &mut Vec<Race>, skips: &mut Vec<(startgg::ID, ImportSkipReason)>) -> Result<i64, Error> {
         let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
         if let TeamConfig::Solo = event.team_config() {
             let startgg::solo_event_sets_query::ResponseData {
@@ -2002,17 +2002,17 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                 }),
             } = startgg::query_cached::<startgg::SoloEventSetsQuery>(http_client, startgg_token, startgg::solo_event_sets_query::Variables { event_slug: event_slug.to_owned(), page }).await? else { panic!("no match on query") };
             for set in sets.into_iter().filter_map(identity) {
-                let startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodes { id: Some(startgg::ID(id)), phase_group, full_round_text, slots: Some(slots) } = set else { panic!("unexpected set format") };
-                if id.starts_with("preview") {
+                let startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodes { id: Some(id), phase_group, full_round_text, slots: Some(slots) } = set else { panic!("unexpected set format") };
+                if id.0.starts_with("preview") {
                     skips.push((id, ImportSkipReason::Preview));
-                } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE startgg_set = $1) AS "exists!""#, id).fetch_one(&mut **transaction).await? {
+                } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE startgg_set = $1) AS "exists!""#, id as _).fetch_one(&mut **transaction).await? {
                     skips.push((id, ImportSkipReason::Exists));
                 } else if let [
                     Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrant { participants: Some(ref p1) }) }),
                     Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrant { participants: Some(ref p2) }) }),
                 ] = *slots {
-                    if let [Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrantParticipants { id: Some(startgg::ID(ref team1)) })] = **p1 {
-                        if let [Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrantParticipants { id: Some(startgg::ID(ref team2)) })] = **p2 {
+                    if let [Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrantParticipants { id: Some(ref team1) })] = **p1 {
+                        if let [Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrantParticipants { id: Some(ref team2) })] = **p2 {
                             let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(cal::Error::UnknownTeam)?;
                             let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(cal::Error::UnknownTeam)?;
                             let phase = phase_group
@@ -2040,14 +2040,14 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                 }),
             } = startgg::query_cached::<startgg::TeamEventSetsQuery>(http_client, startgg_token, startgg::team_event_sets_query::Variables { event_slug: event_slug.to_owned(), page }).await? else { panic!("no match on query") };
             for set in sets.into_iter().filter_map(identity) {
-                let startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodes { id: Some(startgg::ID(id)), phase_group, full_round_text, slots: Some(slots) } = set else { panic!("unexpected set format") };
-                if id.starts_with("preview") {
+                let startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodes { id: Some(id), phase_group, full_round_text, slots: Some(slots) } = set else { panic!("unexpected set format") };
+                if id.0.starts_with("preview") {
                     skips.push((id, ImportSkipReason::Preview));
-                } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE startgg_set = $1) AS "exists!""#, id).fetch_one(&mut **transaction).await? {
+                } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE startgg_set = $1) AS "exists!""#, id as _).fetch_one(&mut **transaction).await? {
                     skips.push((id, ImportSkipReason::Exists));
                 } else if let [
-                    Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { team: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrantTeam { id: Some(startgg::ID(ref team1)), on: _ }) }) }),
-                    Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { team: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrantTeam { id: Some(startgg::ID(ref team2)), on: _ }) }) }),
+                    Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { team: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrantTeam { id: Some(ref team1), on: _ }) }) }),
+                    Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { team: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrantTeam { id: Some(ref team2), on: _ }) }) }),
                 ] = *slots {
                     let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(cal::Error::UnknownTeam)?;
                     let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(cal::Error::UnknownTeam)?;
@@ -2108,7 +2108,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                                 tbody {
                                     @for (set_id, reason) in skips {
                                         tr {
-                                            td : set_id;
+                                            td : set_id.0;
                                             td : reason.to_string();
                                         }
                                     }
@@ -2304,7 +2304,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                 : startgg_event;
             }
         }
-        @if let Some(startgg_set) = race.startgg_set {
+        @if let Some(startgg::ID(startgg_set)) = race.startgg_set {
             p {
                 : "start.gg match: ";
                 : startgg_set;

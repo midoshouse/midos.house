@@ -1,15 +1,10 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                id AS \"id: Id<Users>\",\n                display_source AS \"display_source: DisplaySource\",\n                racetime_display_name,\n                racetime_discriminator AS \"racetime_discriminator: Discriminator\",\n                racetime_pronouns AS \"racetime_pronouns: RaceTimePronouns\",\n                discord_id AS \"discord_id: PgSnowflake<UserId>\",\n                discord_display_name,\n                discord_discriminator AS \"discord_discriminator: Discriminator\",\n                discord_username,\n                challonge_id,\n                startgg_id,\n                is_archivist\n            FROM users WHERE racetime_id = $1",
+  "query": "SELECT\n                display_source AS \"display_source: DisplaySource\",\n                racetime_id,\n                racetime_display_name,\n                racetime_discriminator AS \"racetime_discriminator: Discriminator\",\n                racetime_pronouns AS \"racetime_pronouns: RaceTimePronouns\",\n                discord_id AS \"discord_id: PgSnowflake<UserId>\",\n                discord_display_name,\n                discord_discriminator AS \"discord_discriminator: Discriminator\",\n                discord_username,\n                challonge_id,\n                startgg_id AS \"startgg_id: startgg::ID\",\n                is_archivist\n            FROM users WHERE id = $1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id: Id<Users>",
-        "type_info": "Int8"
-      },
-      {
-        "ordinal": 1,
         "name": "display_source: DisplaySource",
         "type_info": {
           "Custom": {
@@ -22,6 +17,11 @@
             }
           }
         }
+      },
+      {
+        "ordinal": 1,
+        "name": "racetime_id",
+        "type_info": "Text"
       },
       {
         "ordinal": 2,
@@ -79,7 +79,7 @@
       },
       {
         "ordinal": 10,
-        "name": "startgg_id",
+        "name": "startgg_id: startgg::ID",
         "type_info": "Varchar"
       },
       {
@@ -90,12 +90,12 @@
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Int8"
       ]
     },
     "nullable": [
       false,
-      false,
+      true,
       true,
       true,
       true,
@@ -108,5 +108,5 @@
       false
     ]
   },
-  "hash": "3d89942bd6c2f99b318fa98d6981ae37672d37ab435d841ba52bd754dbb1b19e"
+  "hash": "2eae4337fd972d9112726caf2e9f7df5f4ad63f0673b48621ea709959fdc0f1a"
 }

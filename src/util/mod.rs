@@ -1,7 +1,4 @@
-use {
-    serenity::utils::EmbedMessageBuilding as _,
-    crate::prelude::*,
-};
+use crate::prelude::*;
 pub(crate) use self::{
     form::{
         EmptyForm,

@@ -482,7 +482,7 @@ pub(crate) enum StartGGCallbackError {
 pub(crate) async fn startgg_callback(pool: &State<PgPool>, me: User, client: &State<reqwest::Client>, token: TokenResponse<StartGG>, cookies: &CookieJar<'_>) -> Result<Redirect, StartGGCallbackError> {
     let mut transaction = pool.begin().await?;
     let startgg_id = handle_startgg_token_response(client, &token).await?;
-    sqlx::query!("UPDATE users SET startgg_id = $1 WHERE id = $2", startgg_id.0, me.id as _).execute(&mut *transaction).await?;
+    sqlx::query!("UPDATE users SET startgg_id = $1 WHERE id = $2", startgg_id as _, me.id as _).execute(&mut *transaction).await?;
     transaction.commit().await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(Redirect::to(redirect_uri))

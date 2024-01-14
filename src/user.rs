@@ -78,7 +78,7 @@ impl User {
         discord_discriminator: Option<Discriminator>,
         discord_username: Option<String>,
         challonge_id: Option<String>,
-        startgg_id: Option<String>,
+        startgg_id: Option<startgg::ID>,
         is_archivist: bool,
     ) -> Self {
         Self {
@@ -103,8 +103,7 @@ impl User {
                 (None, None) => None,
                 (_, _) => unreachable!("database constraint"),
             },
-            startgg_id: startgg_id.map(startgg::ID),
-            id, display_source, challonge_id, is_archivist,
+            id, display_source, challonge_id, startgg_id, is_archivist,
         }
     }
 
@@ -121,7 +120,7 @@ impl User {
                 discord_discriminator AS "discord_discriminator: Discriminator",
                 discord_username,
                 challonge_id,
-                startgg_id,
+                startgg_id AS "startgg_id: startgg::ID",
                 is_archivist
             FROM users WHERE id = $1"#, id as _).fetch_optional(pool).await?
             .map(|row| Self::from_row(
@@ -155,7 +154,7 @@ impl User {
                 discord_discriminator AS "discord_discriminator: Discriminator",
                 discord_username,
                 challonge_id,
-                startgg_id,
+                startgg_id AS "startgg_id: startgg::ID",
                 is_archivist
             FROM users WHERE racetime_id = $1"#, racetime_id).fetch_optional(pool).await?
             .map(|row| Self::from_row(
@@ -189,7 +188,7 @@ impl User {
                 discord_discriminator AS "discord_discriminator: Discriminator",
                 discord_username,
                 challonge_id,
-                startgg_id,
+                startgg_id AS "startgg_id: startgg::ID",
                 is_archivist
             FROM users WHERE discord_id = $1"#, i64::from(discord_id)).fetch_optional(pool).await?
             .map(|row| Self::from_row(

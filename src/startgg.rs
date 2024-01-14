@@ -42,8 +42,9 @@ impl From<IdInner> for ID {
 }
 
 /// Workaround for <https://github.com/smashgg/developer-portal/issues/171>
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize, sqlx::Type)]
 #[serde(from = "IdInner", into = "String")]
+#[sqlx(transparent)]
 pub struct ID(pub(crate) String);
 
 impl From<ID> for String {
@@ -94,6 +95,16 @@ pub(crate) struct TeamEventSetsQuery;
     response_derives = "Debug, Clone",
 )]
 pub(crate) struct SetQuery;
+
+#[derive(GraphQLQuery)]
+#[graphql(
+    schema_path = "assets/graphql/startgg-schema.json",
+    query_path = "assets/graphql/startgg-report-one-game-result-mutation.graphql",
+    skip_default_scalars, // workaround for https://github.com/smashgg/developer-portal/issues/171
+    variables_derives = "Clone, PartialEq, Eq, Hash",
+    response_derives = "Debug, Clone",
+)]
+pub(crate) struct ReportOneGameResultMutation;
 
 async fn query_inner<T: GraphQLQuery + 'static>(client: &reqwest::Client, auth_token: &str, variables: T::Variables, next_request: &mut Instant) -> Result<T::ResponseData, Error>
 where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Send + Sync {

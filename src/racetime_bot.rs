@@ -3593,14 +3593,23 @@ impl RaceHandler<GlobalState> for Handler {
                             msg.push(ctx.global_state.env.racetime_host());
                             msg.push(&ctx.data().await.url);
                             msg.push('>');
-                            if let Some(results_channel) = event.discord_race_results_channel {
-                                msg.push(" — please post the announcement in ");
-                                msg.mention(&results_channel);
-                                msg.push(" manually after adjusting the times");
+                            if event.discord_race_results_channel.is_some() || cal_event.race.startgg_set.is_some() {
+                                msg.push(" — please manually ");
+                                if let Some(results_channel) = event.discord_race_results_channel {
+                                    msg.push("post the announcement in ");
+                                    msg.mention(&results_channel);
+                                }
+                                if let Some(startgg_set_url) = cal_event.race.startgg_set_url().to_racetime()? {
+                                    if event.discord_race_results_channel.is_some() {
+                                        msg.push(" and ");
+                                    }
+                                    msg.push_named_link("report the result on start.gg", startgg_set_url);
+                                }
+                                msg.push(" after adjusting the times");
                             }
                             organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
                         }
-                    } else if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
+                    } else {
                         match event.team_config() {
                             TeamConfig::Solo => {
                                 let mut times = data.entrants.iter().map(|entrant| (entrant.user.id.clone(), entrant.finish_time)).collect_vec();
@@ -3611,74 +3620,76 @@ impl RaceHandler<GlobalState> for Handler {
                                     Entrants::Two(_) => {
                                         let [(ref winner, winning_time), (ref loser, losing_time)] = *times else { panic!("wrong number of times for 2 entrants") };
                                         if winning_time.is_none() && losing_time.is_none() {
-                                            let entrant1 = User::from_racetime(&mut *transaction, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                            let entrant2 = User::from_racetime(&mut *transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                            let msg = if_chain! {
-                                                if let French = event.language;
-                                                if let Some(phase_round) = match (&cal_event.race.phase, &cal_event.race.round) {
-                                                    (Some(phase), Some(round)) => if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()? {
-                                                        Some(Some(phase_round))
-                                                    } else {
-                                                        None // no translation
-                                                    },
-                                                    (Some(_), None) | (None, Some(_)) => None, // no translation
-                                                    (None, None) => Some(None), // no phase/round
-                                                };
-                                                if cal_event.race.game.is_none();
-                                                then {
-                                                    let mut builder = MessageBuilder::default();
-                                                    if let Some(phase_round) = phase_round {
-                                                        builder.push_safe(phase_round);
-                                                        builder.push(" : ");
-                                                    }
-                                                    builder
-                                                        .push("Ni ")
-                                                        .mention_user(&entrant1)
-                                                        .push(" ni ")
-                                                        .mention_user(&entrant2)
-                                                        .push(" n'ont fini <https://")
-                                                        .push(ctx.global_state.env.racetime_host())
-                                                        .push(&ctx.data().await.url)
-                                                        .push('>')
-                                                        .build()
-                                                } else {
-                                                    let mut builder = MessageBuilder::default();
-                                                    let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
-                                                        (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
-                                                        (Some(phase), None) => Some(phase.clone()),
-                                                        (None, Some(round)) => Some(round.clone()),
-                                                        (None, None) => None,
+                                            if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
+                                                let entrant1 = User::from_racetime(&mut *transaction, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                                let entrant2 = User::from_racetime(&mut *transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                                let msg = if_chain! {
+                                                    if let French = event.language;
+                                                    if let Some(phase_round) = match (&cal_event.race.phase, &cal_event.race.round) {
+                                                        (Some(phase), Some(round)) => if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()? {
+                                                            Some(Some(phase_round))
+                                                        } else {
+                                                            None // no translation
+                                                        },
+                                                        (Some(_), None) | (None, Some(_)) => None, // no translation
+                                                        (None, None) => Some(None), // no phase/round
                                                     };
-                                                    match (info_prefix, cal_event.race.game) {
-                                                        (Some(prefix), Some(game)) => {
-                                                            builder.push_safe(prefix);
-                                                            builder.push(", game ");
-                                                            builder.push(game.to_string());
-                                                            builder.push(": ");
+                                                    if cal_event.race.game.is_none();
+                                                    then {
+                                                        let mut builder = MessageBuilder::default();
+                                                        if let Some(phase_round) = phase_round {
+                                                            builder.push_safe(phase_round);
+                                                            builder.push(" : ");
                                                         }
-                                                        (Some(prefix), None) => {
-                                                            builder.push_safe(prefix);
-                                                            builder.push(": ");
+                                                        builder
+                                                            .push("Ni ")
+                                                            .mention_user(&entrant1)
+                                                            .push(" ni ")
+                                                            .mention_user(&entrant2)
+                                                            .push(" n'ont fini <https://")
+                                                            .push(ctx.global_state.env.racetime_host())
+                                                            .push(&ctx.data().await.url)
+                                                            .push('>')
+                                                            .build()
+                                                    } else {
+                                                        let mut builder = MessageBuilder::default();
+                                                        let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
+                                                            (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                                                            (Some(phase), None) => Some(phase.clone()),
+                                                            (None, Some(round)) => Some(round.clone()),
+                                                            (None, None) => None,
+                                                        };
+                                                        match (info_prefix, cal_event.race.game) {
+                                                            (Some(prefix), Some(game)) => {
+                                                                builder.push_safe(prefix);
+                                                                builder.push(", game ");
+                                                                builder.push(game.to_string());
+                                                                builder.push(": ");
+                                                            }
+                                                            (Some(prefix), None) => {
+                                                                builder.push_safe(prefix);
+                                                                builder.push(": ");
+                                                            }
+                                                            (None, Some(game)) => {
+                                                                builder.push("game ");
+                                                                builder.push(game.to_string());
+                                                                builder.push(": ");
+                                                            }
+                                                            (None, None) => {}
                                                         }
-                                                        (None, Some(game)) => {
-                                                            builder.push("game ");
-                                                            builder.push(game.to_string());
-                                                            builder.push(": ");
-                                                        }
-                                                        (None, None) => {}
+                                                        builder
+                                                            .mention_user(&entrant1)
+                                                            .push(" and ")
+                                                            .mention_user(&entrant2)
+                                                            .push(" both did not finish <https://")
+                                                            .push(ctx.global_state.env.racetime_host())
+                                                            .push(&ctx.data().await.url)
+                                                            .push('>')
+                                                            .build()
                                                     }
-                                                    builder
-                                                        .mention_user(&entrant1)
-                                                        .push(" and ")
-                                                        .mention_user(&entrant2)
-                                                        .push(" both did not finish <https://")
-                                                        .push(ctx.global_state.env.racetime_host())
-                                                        .push(&ctx.data().await.url)
-                                                        .push('>')
-                                                        .build()
-                                                }
-                                            };
-                                            results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
+                                                };
+                                                results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
+                                            }
                                         } else if winning_time.is_some_and(|winning_time| losing_time.is_some_and(|losing_time| losing_time - winning_time <= event.retime_window)) {
                                             if let Some(organizer_channel) = event.discord_organizer_channel {
                                                 let mut msg = MessageBuilder::default();
@@ -3687,89 +3698,132 @@ impl RaceHandler<GlobalState> for Handler {
                                                 msg.push(ctx.global_state.env.racetime_host());
                                                 msg.push(&ctx.data().await.url);
                                                 msg.push('>');
-                                                if let Some(results_channel) = event.discord_race_results_channel {
-                                                    msg.push(" — please post the announcement in ");
-                                                    msg.mention(&results_channel);
-                                                    msg.push(" manually after adjusting the times");
+                                                if event.discord_race_results_channel.is_some() || cal_event.race.startgg_set.is_some() {
+                                                    msg.push(" — please manually ");
+                                                    if let Some(results_channel) = event.discord_race_results_channel {
+                                                        msg.push("post the announcement in ");
+                                                        msg.mention(&results_channel);
+                                                    }
+                                                    if let Some(startgg_set_url) = cal_event.race.startgg_set_url().to_racetime()? {
+                                                        if event.discord_race_results_channel.is_some() {
+                                                            msg.push(" and ");
+                                                        }
+                                                        msg.push_named_link("report the result on start.gg", startgg_set_url);
+                                                    }
+                                                    msg.push(" after adjusting the times");
                                                 }
                                                 organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
                                             }
                                         } else {
                                             let winner = User::from_racetime(&mut *transaction, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                            let loser = User::from_racetime(&mut *transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                            let msg = if_chain! {
-                                                if let French = event.language;
-                                                if let Some(phase_round) = match (&cal_event.race.phase, &cal_event.race.round) {
-                                                    (Some(phase), Some(round)) => if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()? {
-                                                        Some(Some(phase_round))
-                                                    } else {
-                                                        None // no translation
-                                                    },
-                                                    (Some(_), None) | (None, Some(_)) => None, // no translation
-                                                    (None, None) => Some(None), // no phase/round
-                                                };
-                                                if cal_event.race.game.is_none();
-                                                then {
-                                                    let mut builder = MessageBuilder::default();
-                                                    if let Some(phase_round) = phase_round {
-                                                        builder.push_safe(phase_round);
-                                                        builder.push(" : ");
-                                                    }
-                                                    builder
-                                                        .mention_user(&winner)
-                                                        .push(" (")
-                                                        .push(winning_time.map_or(Cow::Borrowed("forfait"), |time| Cow::Owned(French.format_duration(time, false))))
-                                                        .push(") a battu ")
-                                                        .mention_user(&loser)
-                                                        .push(" (")
-                                                        .push(losing_time.map_or(Cow::Borrowed("forfait"), |time| Cow::Owned(French.format_duration(time, false))))
-                                                        .push(") <https://")
-                                                        .push(ctx.global_state.env.racetime_host())
-                                                        .push(&ctx.data().await.url)
-                                                        .push('>')
-                                                        .build()
-                                                } else {
-                                                    let mut builder = MessageBuilder::default();
-                                                    let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
-                                                        (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
-                                                        (Some(phase), None) => Some(phase.clone()),
-                                                        (None, Some(round)) => Some(round.clone()),
-                                                        (None, None) => None,
+                                            if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
+                                                let loser = User::from_racetime(&mut *transaction, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                                let msg = if_chain! {
+                                                    if let French = event.language;
+                                                    if let Some(phase_round) = match (&cal_event.race.phase, &cal_event.race.round) {
+                                                        (Some(phase), Some(round)) => if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()? {
+                                                            Some(Some(phase_round))
+                                                        } else {
+                                                            None // no translation
+                                                        },
+                                                        (Some(_), None) | (None, Some(_)) => None, // no translation
+                                                        (None, None) => Some(None), // no phase/round
                                                     };
-                                                    match (info_prefix, cal_event.race.game) {
-                                                        (Some(prefix), Some(game)) => {
-                                                            builder.push_safe(prefix);
-                                                            builder.push(", game ");
-                                                            builder.push(game.to_string());
-                                                            builder.push(": ");
+                                                    if cal_event.race.game.is_none();
+                                                    then {
+                                                        let mut builder = MessageBuilder::default();
+                                                        if let Some(phase_round) = phase_round {
+                                                            builder.push_safe(phase_round);
+                                                            builder.push(" : ");
                                                         }
-                                                        (Some(prefix), None) => {
-                                                            builder.push_safe(prefix);
-                                                            builder.push(": ");
+                                                        builder
+                                                            .mention_user(&winner)
+                                                            .push(" (")
+                                                            .push(winning_time.map_or(Cow::Borrowed("forfait"), |time| Cow::Owned(French.format_duration(time, false))))
+                                                            .push(") a battu ")
+                                                            .mention_user(&loser)
+                                                            .push(" (")
+                                                            .push(losing_time.map_or(Cow::Borrowed("forfait"), |time| Cow::Owned(French.format_duration(time, false))))
+                                                            .push(") <https://")
+                                                            .push(ctx.global_state.env.racetime_host())
+                                                            .push(&ctx.data().await.url)
+                                                            .push('>')
+                                                            .build()
+                                                    } else {
+                                                        let mut builder = MessageBuilder::default();
+                                                        let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
+                                                            (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+                                                            (Some(phase), None) => Some(phase.clone()),
+                                                            (None, Some(round)) => Some(round.clone()),
+                                                            (None, None) => None,
+                                                        };
+                                                        match (info_prefix, cal_event.race.game) {
+                                                            (Some(prefix), Some(game)) => {
+                                                                builder.push_safe(prefix);
+                                                                builder.push(", game ");
+                                                                builder.push(game.to_string());
+                                                                builder.push(": ");
+                                                            }
+                                                            (Some(prefix), None) => {
+                                                                builder.push_safe(prefix);
+                                                                builder.push(": ");
+                                                            }
+                                                            (None, Some(game)) => {
+                                                                builder.push("game ");
+                                                                builder.push(game.to_string());
+                                                                builder.push(": ");
+                                                            }
+                                                            (None, None) => {}
                                                         }
-                                                        (None, Some(game)) => {
-                                                            builder.push("game ");
-                                                            builder.push(game.to_string());
-                                                            builder.push(": ");
-                                                        }
-                                                        (None, None) => {}
+                                                        builder
+                                                            .mention_user(&winner)
+                                                            .push(" (")
+                                                            .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
+                                                            .push(") defeats ")
+                                                            .mention_user(&loser)
+                                                            .push(" (")
+                                                            .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
+                                                            .push(") <https://")
+                                                            .push(ctx.global_state.env.racetime_host())
+                                                            .push(&ctx.data().await.url)
+                                                            .push('>')
+                                                            .build()
                                                     }
-                                                    builder
-                                                        .mention_user(&winner)
-                                                        .push(" (")
-                                                        .push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
-                                                        .push(") defeats ")
-                                                        .mention_user(&loser)
-                                                        .push(" (")
-                                                        .push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))))
-                                                        .push(") <https://")
-                                                        .push(ctx.global_state.env.racetime_host())
-                                                        .push(&ctx.data().await.url)
-                                                        .push('>')
-                                                        .build()
+                                                };
+                                                results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
+                                            }
+                                            if cal_event.race.game.is_none() { //TODO also auto-report multi-game matches (report all games but the last as match progress)
+                                                if let Some(ref set_id) = cal_event.race.startgg_set {
+                                                    if let Some(winning_team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, winner.id).await.to_racetime()? {
+                                                        if let Some(winner_entrant_id) = winning_team.startgg_id {
+                                                            startgg::query_uncached::<startgg::ReportOneGameResultMutation>(&ctx.global_state.http_client, &ctx.global_state.startgg_token, startgg::report_one_game_result_mutation::Variables {
+                                                                set_id: set_id.clone(),
+                                                                winner_entrant_id,
+                                                            }).await.to_racetime()?;
+                                                        } else {
+                                                            if let Some(organizer_channel) = event.discord_organizer_channel {
+                                                                let mut msg = MessageBuilder::default();
+                                                                //TODO mention organizer role
+                                                                msg.push("failed to report race result to start.gg: <https://");
+                                                                msg.push(ctx.global_state.env.racetime_host());
+                                                                msg.push(&ctx.data().await.url);
+                                                                msg.push("> (winner has no start.gg entrant ID)");
+                                                                organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
+                                                            }
+                                                        }
+                                                    } else {
+                                                        if let Some(organizer_channel) = event.discord_organizer_channel {
+                                                            let mut msg = MessageBuilder::default();
+                                                            //TODO mention organizer role
+                                                            msg.push("failed to report race result to start.gg: <https://");
+                                                            msg.push(ctx.global_state.env.racetime_host());
+                                                            msg.push(&ctx.data().await.url);
+                                                            msg.push("> (winner is not an event entrant)");
+                                                            organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
+                                                        }
+                                                    }
                                                 }
-                                            };
-                                            results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
+                                            }
                                         }
                                     }
                                     Entrants::Three(_) => unimplemented!(), //TODO
@@ -3840,43 +3894,45 @@ impl RaceHandler<GlobalState> for Handler {
                                         (None, None) => {}
                                     }
                                     if winning_time.is_none() && losing_time.is_none() {
-                                        let team1 = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                        let team2 = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                        builder.mention_team(&mut transaction, event.discord_guild, &team1).await.to_racetime()?;
-                                        if let Some(ref active_team) = active_team {
-                                            if *active_team == team1 {
-                                                builder.push(" [<https://");
+                                        if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
+                                            let team1 = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                            let team2 = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                            builder.mention_team(&mut transaction, event.discord_guild, &team1).await.to_racetime()?;
+                                            if let Some(ref active_team) = active_team {
+                                                if *active_team == team1 {
+                                                    builder.push(" [<https://");
+                                                    builder.push(ctx.global_state.env.racetime_host());
+                                                    builder.push(&ctx.data().await.url);
+                                                    builder.push(">]");
+                                                } else if let Some(ref room) = first_async_half_room {
+                                                    builder.push(" [<");
+                                                    builder.push(room.as_str());
+                                                    builder.push(">]");
+                                                }
+                                            }
+                                            builder.push(" and ");
+                                            builder.mention_team(&mut transaction, event.discord_guild, &team2).await.to_racetime()?;
+                                            if let Some(ref active_team) = active_team {
+                                                if *active_team == team2 {
+                                                    builder.push(" [<https://");
+                                                    builder.push(ctx.global_state.env.racetime_host());
+                                                    builder.push(&ctx.data().await.url);
+                                                    builder.push(">]");
+                                                } else if let Some(ref room) = first_async_half_room {
+                                                    builder.push(" [<");
+                                                    builder.push(room.as_str());
+                                                    builder.push(">]");
+                                                }
+                                            }
+                                            builder.push(" both did not finish");
+                                            if active_team.is_none() {
+                                                builder.push(" <https://");
                                                 builder.push(ctx.global_state.env.racetime_host());
                                                 builder.push(&ctx.data().await.url);
-                                                builder.push(">]");
-                                            } else if let Some(ref room) = first_async_half_room {
-                                                builder.push(" [<");
-                                                builder.push(room.as_str());
-                                                builder.push(">]");
+                                                builder.push('>');
                                             }
+                                            results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder.build()).await.to_racetime()?;
                                         }
-                                        builder.push(" and ");
-                                        builder.mention_team(&mut transaction, event.discord_guild, &team2).await.to_racetime()?;
-                                        if let Some(ref active_team) = active_team {
-                                            if *active_team == team2 {
-                                                builder.push(" [<https://");
-                                                builder.push(ctx.global_state.env.racetime_host());
-                                                builder.push(&ctx.data().await.url);
-                                                builder.push(">]");
-                                            } else if let Some(ref room) = first_async_half_room {
-                                                builder.push(" [<");
-                                                builder.push(room.as_str());
-                                                builder.push(">]");
-                                            }
-                                        }
-                                        builder.push(" both did not finish");
-                                        if active_team.is_none() {
-                                            builder.push(" <https://");
-                                            builder.push(ctx.global_state.env.racetime_host());
-                                            builder.push(&ctx.data().await.url);
-                                            builder.push('>');
-                                        }
-                                        results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder.build()).await.to_racetime()?;
                                     } else if winning_time.is_some_and(|winning_time| losing_time.is_some_and(|losing_time| losing_time - winning_time <= event.retime_window)) {
                                         if let Some(organizer_channel) = event.discord_organizer_channel {
                                             let mut msg = MessageBuilder::default();
@@ -3885,56 +3941,67 @@ impl RaceHandler<GlobalState> for Handler {
                                             msg.push(ctx.global_state.env.racetime_host());
                                             msg.push(&ctx.data().await.url);
                                             msg.push('>');
-                                            if let Some(results_channel) = event.discord_race_results_channel {
-                                                msg.push(" — please post the announcement in ");
-                                                msg.mention(&results_channel);
-                                                msg.push(" manually after adjusting the times");
+                                            if event.discord_race_results_channel.is_some() || cal_event.race.startgg_set.is_some() {
+                                                msg.push(" — please manually ");
+                                                if let Some(results_channel) = event.discord_race_results_channel {
+                                                    msg.push("post the announcement in ");
+                                                    msg.mention(&results_channel);
+                                                }
+                                                if let Some(startgg_set_url) = cal_event.race.startgg_set_url().to_racetime()? {
+                                                    if event.discord_race_results_channel.is_some() {
+                                                        msg.push(" and ");
+                                                    }
+                                                    msg.push_named_link("report the result on start.gg", startgg_set_url);
+                                                }
+                                                msg.push(" after adjusting the times");
                                             }
                                             organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
                                         }
                                     } else {
-                                        let winner = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                        let loser = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                        builder.mention_team(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
-                                        builder.push(" (");
-                                        builder.push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))));
-                                        builder.push(')');
-                                        if let Some(ref active_team) = active_team {
-                                            if *active_team == winner {
-                                                builder.push(" [<https://");
+                                        if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
+                                            let winner = Team::from_racetime(&mut transaction, event.series, &event.event, winner).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                            let loser = Team::from_racetime(&mut transaction, event.series, &event.event, loser).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                            builder.mention_team(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
+                                            builder.push(" (");
+                                            builder.push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))));
+                                            builder.push(')');
+                                            if let Some(ref active_team) = active_team {
+                                                if *active_team == winner {
+                                                    builder.push(" [<https://");
+                                                    builder.push(ctx.global_state.env.racetime_host());
+                                                    builder.push(&ctx.data().await.url);
+                                                    builder.push(">]");
+                                                } else if let Some(ref room) = first_async_half_room {
+                                                    builder.push(" [<");
+                                                    builder.push(room.as_str());
+                                                    builder.push(">]");
+                                                }
+                                            }
+                                            builder.push(if winner.name_is_plural() { " defeat " } else { " defeats " });
+                                            builder.mention_team(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
+                                            builder.push(" (");
+                                            builder.push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))));
+                                            builder.push(')');
+                                            if let Some(ref active_team) = active_team {
+                                                if *active_team == loser {
+                                                    builder.push(" [<https://");
+                                                    builder.push(ctx.global_state.env.racetime_host());
+                                                    builder.push(&ctx.data().await.url);
+                                                    builder.push(">]");
+                                                } else if let Some(ref room) = first_async_half_room {
+                                                    builder.push(" [<");
+                                                    builder.push(room.as_str());
+                                                    builder.push(">]");
+                                                }
+                                            }
+                                            if active_team.is_none() {
+                                                builder.push(" <https://");
                                                 builder.push(ctx.global_state.env.racetime_host());
                                                 builder.push(&ctx.data().await.url);
-                                                builder.push(">]");
-                                            } else if let Some(ref room) = first_async_half_room {
-                                                builder.push(" [<");
-                                                builder.push(room.as_str());
-                                                builder.push(">]");
+                                                builder.push('>');
                                             }
+                                            results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder.build()).await.to_racetime()?;
                                         }
-                                        builder.push(if winner.name_is_plural() { " defeat " } else { " defeats " });
-                                        builder.mention_team(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
-                                        builder.push(" (");
-                                        builder.push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))));
-                                        builder.push(')');
-                                        if let Some(ref active_team) = active_team {
-                                            if *active_team == loser {
-                                                builder.push(" [<https://");
-                                                builder.push(ctx.global_state.env.racetime_host());
-                                                builder.push(&ctx.data().await.url);
-                                                builder.push(">]");
-                                            } else if let Some(ref room) = first_async_half_room {
-                                                builder.push(" [<");
-                                                builder.push(room.as_str());
-                                                builder.push(">]");
-                                            }
-                                        }
-                                        if active_team.is_none() {
-                                            builder.push(" <https://");
-                                            builder.push(ctx.global_state.env.racetime_host());
-                                            builder.push(&ctx.data().await.url);
-                                            builder.push('>');
-                                        }
-                                        results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder.build()).await.to_racetime()?;
                                     }
                                 } else {
                                     unimplemented!() //TODO handle races with more than 2 teams
