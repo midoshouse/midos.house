@@ -641,10 +641,12 @@ impl Race {
                 "6" => for row in sheet_values(http_client.clone(), "1ZC2PfHKK2uVYRCJSLjdO1M0P2D7Njvohg20T8p4Z0ro", "Form Responses 1!B2:F").await? {
                     let [p1, p2, round, date_utc, time_utc] = &*row else { continue };
                     let id = Id::new(&mut *transaction).await?;
-                    let (phase, round) = if let Some(group) = round.strip_prefix("Group ") {
-                        (format!("Group"), group.to_owned())
+                    let (phase, round, game) = if let Some(group) = round.strip_prefix("Group ") {
+                        (format!("Group"), group.to_owned(), None)
+                    } else if let Some((round, game)) = round.split_once(" - Game ") {
+                        (format!("Top 8"), round.to_owned(), Some(game.parse()?))
                     } else {
-                        (format!("Top 8"), round.clone())
+                        (format!("Top 8"), round.clone(), None)
                     };
                     add_or_update_race(&mut *transaction, &mut races, Self {
                         series: event.series,
@@ -657,7 +659,6 @@ impl Race {
                         ]),
                         phase: Some(phase),
                         round: Some(round),
-                        game: None, //TODO top 8
                         scheduling_thread: None,
                         schedule: RaceSchedule::Live {
                             start: NaiveDateTime::parse_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S")?.and_utc(),
@@ -670,7 +671,7 @@ impl Race {
                         restreamers: HashMap::default(),
                         ignored: false,
                         schedule_locked: false,
-                        id,
+                        id, game,
                     }).await?;
                 },
                 _ => unimplemented!(),
@@ -1298,6 +1299,7 @@ pub(crate) enum Error {
     #[error(transparent)] ChronoParse(#[from] chrono::format::ParseError),
     #[error(transparent)] Discord(#[from] discord_bot::Error),
     #[error(transparent)] Event(#[from] event::DataError),
+    #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
     #[error(transparent)] Sheets(#[from] SheetsError),
