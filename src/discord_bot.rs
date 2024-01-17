@@ -1256,7 +1256,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         )).await?;
                                         transaction.rollback().await?;
                                     } else {
-                                        let had_multiple_times = match race.schedule {
+                                        match race.schedule {
                                             RaceSchedule::Unscheduled => {
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                     .ephemeral(true)
@@ -1267,30 +1267,50 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     })
                                                 )).await?;
                                                 transaction.rollback().await?;
-                                                return Ok(())
                                             }
-                                            RaceSchedule::Live { .. } => false,
-                                            RaceSchedule::Async { start1, start2, .. } => start1.is_some() && start2.is_some(),
-                                        };
-                                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
-                                        transaction.commit().await?;
-                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                            .ephemeral(false)
-                                            .content(match (race.game, had_multiple_times) {
-                                                (None, false) => if let French = event.language {
-                                                    format!("L'horaire pour cette race ou cette async a été correctement retirée.")
-                                                } else {
-                                                    format!("This race's starting time has been removed from the schedule.")
-                                                },
-                                                (None, true) => if let French = event.language {
-                                                    format!("Les deux horaires pour les async ont été correctement retirées.")
-                                                } else {
-                                                    format!("This race's starting times have been removed from the schedule.")
-                                                },
-                                                (Some(game), false) => format!("Game {game}'s starting time has been removed from the schedule."),
-                                                (Some(game), true) => format!("Game {game}'s starting times have been removed from the schedule."),
-                                            })
-                                        )).await?;
+                                            RaceSchedule::Live { .. } => {
+                                                sqlx::query!("UPDATE races SET start = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                                transaction.commit().await?;
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(false)
+                                                    .content(if let Some(game) = race.game {
+                                                        format!("Game {game}'s starting time has been removed from the schedule.")
+                                                    } else {
+                                                        if let French = event.language {
+                                                            format!("L'horaire pour cette race ou cette async a été correctement retirée.")
+                                                        } else {
+                                                            format!("This race's starting time has been removed from the schedule.")
+                                                        }
+                                                    })
+                                                )).await?;
+                                            }
+                                            RaceSchedule::Async { .. } => match race.entrants {
+                                                Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
+                                                    if team.as_ref().map_or(false, |team| team1 == team) {
+                                                        sqlx::query!("UPDATE races SET async_start1 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                                    } else if team.as_ref().map_or(false, |team| team2 == team) {
+                                                        sqlx::query!("UPDATE races SET async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                                    } else {
+                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                            .ephemeral(true)
+                                                            .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to edit asynced schedules (with team parameter)
+                                                        )).await?;
+                                                        transaction.rollback().await?;
+                                                        return Ok(())
+                                                    }
+                                                    transaction.commit().await?;
+                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                        .ephemeral(false)
+                                                        .content(if let Some(game) = race.game {
+                                                            format!("The starting time for your half of game {game} has been removed from the schedule.")
+                                                        } else {
+                                                            format!("The starting time for your half of this race has been removed from the schedule.")
+                                                        })
+                                                    )).await?;
+                                                }
+                                                _ => panic!("found race with not two MH teams scheduled as async"),
+                                            },
+                                        }
                                     }
                                 } else {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
