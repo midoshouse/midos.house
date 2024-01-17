@@ -3792,6 +3792,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                 };
                                                 results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
                                             }
+                                            /*
                                             if cal_event.race.game.is_none() { //TODO also auto-report multi-game matches (report all games but the last as match progress)
                                                 if let Some(ref set_id) = cal_event.race.startgg_set {
                                                     if let Some(winning_team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, winner.id).await.to_racetime()? {
@@ -3824,6 +3825,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                     }
                                                 }
                                             }
+                                            */ //TODO debug errors returned from this mutation
                                         }
                                     }
                                     Entrants::Three(_) => unimplemented!(), //TODO

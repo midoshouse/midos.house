@@ -29,7 +29,7 @@ def b(seed_id, room=None, *, startgg=None, async_room1=None, async_room2=None, u
         api_resp.raise_for_status()
     except requests.HTTPError:
         if room is not None or startgg is not None or async_room1 is not None or async_room2 is not None:
-            creation_timestamp = f"{datetime.datetime.strptime(input('creation timestamp: ').strip(), '%m/%d/%Y, %I:%M:%S %p UTC'):%Y-%m-%dT%H:%M:%SZ}"
+            creation_timestamp = f"{datetime.datetime.strptime(input('creation timestamp: ').strip(), '%-m/%-d/%Y, %-I:%M %p UTC'):%Y-%m-%dT%H:%M:%SZ}"
             file_hash = json.loads(input('file hash: '))
         spoiler_resp = requests.get('https://ootrandomizer.com/spoilers/get', params={'id': seed_id})
         if spoiler_resp.status_code != 400: # returns error 400 if no spoiler log has been generated

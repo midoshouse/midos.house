@@ -8,6 +8,7 @@ pub(crate) struct Team {
     pub(crate) id: Id<Teams>,
     pub(crate) name: Option<String>,
     pub(crate) racetime_slug: Option<String>,
+    #[allow(unused)] //TODO reenable start.gg result reporting
     pub(crate) startgg_id: Option<startgg::ID>,
     pub(crate) plural_name: Option<bool>,
     pub(crate) restream_consent: bool,
@@ -32,6 +33,7 @@ impl Team {
         sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE series = $1 AND event = $2 AND NOT resigned"#, series as _, event).fetch_all(&mut **transaction).await
     }
 
+    #[allow(unused)] //TODO reenable start.gg result reporting
     pub(crate) async fn from_event_and_member(transaction: &mut Transaction<'_, Postgres>, series: Series, event: &str, member_id: Id<Users>) -> sqlx::Result<Option<Self>> {
         sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, teams.startgg_id AS "startgg_id: startgg::ID", plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams, team_members WHERE series = $1 AND event = $2 AND NOT resigned AND id = team AND member = $3"#, series as _, event, member_id as _).fetch_optional(&mut **transaction).await
     }
