@@ -3603,7 +3603,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     if event.discord_race_results_channel.is_some() {
                                         msg.push(" and ");
                                     }
-                                    msg.push_named_link("report the result on start.gg", startgg_set_url);
+                                    msg.push_named_link_no_preview("report the result on start.gg", startgg_set_url);
                                 }
                                 msg.push(" after adjusting the times");
                             }
@@ -3708,7 +3708,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                         if event.discord_race_results_channel.is_some() {
                                                             msg.push(" and ");
                                                         }
-                                                        msg.push_named_link("report the result on start.gg", startgg_set_url);
+                                                        msg.push_named_link_no_preview("report the result on start.gg", startgg_set_url);
                                                     }
                                                     msg.push(" after adjusting the times");
                                                 }
@@ -3953,7 +3953,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                     if event.discord_race_results_channel.is_some() {
                                                         msg.push(" and ");
                                                     }
-                                                    msg.push_named_link("report the result on start.gg", startgg_set_url);
+                                                    msg.push_named_link_no_preview("report the result on start.gg", startgg_set_url);
                                                 }
                                                 msg.push(" after adjusting the times");
                                             }

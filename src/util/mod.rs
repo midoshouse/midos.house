@@ -1,4 +1,7 @@
-use crate::prelude::*;
+use {
+    serenity::all::Content,
+    crate::prelude::*,
+};
 pub(crate) use self::{
     form::{
         EmptyForm,
@@ -40,6 +43,8 @@ pub(crate) trait MessageBuilderExt {
     async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self>;
     async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, team: &Team) -> sqlx::Result<&mut Self>;
     fn mention_user(&mut self, user: &User) -> &mut Self;
+    fn push_named_link_no_preview(&mut self, name: impl Into<Content>, url: impl Into<Content>) -> &mut Self;
+    fn push_named_link_safe_no_preview(&mut self, name: impl Into<Content>, url: impl Into<Content>) -> &mut Self;
 }
 
 #[async_trait]
@@ -66,13 +71,13 @@ impl MessageBuilderExt for MessageBuilder {
                 self.role(team_role);
             } else if let Some(team_name) = team.name(transaction).await? {
                 if let Some(ref racetime_slug) = team.racetime_slug {
-                    self.push_named_link_safe(team_name, format!("https://racetime.gg/team/{racetime_slug}"));
+                    self.push_named_link_safe_no_preview(team_name, format!("https://racetime.gg/team/{racetime_slug}"));
                 } else {
                     self.push_italic_safe(team_name);
                 }
             } else {
                 if let Some(ref racetime_slug) = team.racetime_slug {
-                    self.push_named_link_safe("an unnamed team", format!("https://racetime.gg/team/{racetime_slug}"));
+                    self.push_named_link_safe_no_preview("an unnamed team", format!("https://racetime.gg/team/{racetime_slug}"));
                 } else {
                     self.push("an unnamed team");
                 }
@@ -87,6 +92,14 @@ impl MessageBuilderExt for MessageBuilder {
         } else {
             self.push_safe(user.display_name())
         }
+    }
+
+    fn push_named_link_no_preview(&mut self, name: impl Into<Content>, url: impl Into<Content>) -> &mut Self {
+        self.push_named_link(name, format!("<{}>", url.into()))
+    }
+
+    fn push_named_link_safe_no_preview(&mut self, name: impl Into<Content>, url: impl Into<Content>) -> &mut Self {
+        self.push_named_link_safe(name, format!("<{}>", url.into()))
     }
 }
 
