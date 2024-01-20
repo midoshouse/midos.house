@@ -1528,7 +1528,7 @@ pub(crate) async fn for_event(env: &State<Environment>, discord_ctx: &State<RwFu
     Ok(Response(cal))
 }
 
-pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>, is_3p: bool) -> Result<RawHtml<String>, event::Error> {
     let header = event.header(&mut transaction, env, me.as_ref(), Tab::Races, true).await?;
     let form = if me.is_some() {
         let teams = Team::for_event(&mut transaction, event.series, &event.event).await?;
@@ -1567,11 +1567,27 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
                     }
                 }
                 select(name = "team2") {
-                    @for (id, name) in team_data {
-                        option(value = id, selected? = ctx.field_value("team2") == Some(&id)) : name;
+                    @for (id, name) in &team_data {
+                        option(value = id, selected? = ctx.field_value("team2") == Some(id)) : name;
                     }
                 }
             });
+            @if is_3p {
+                : form_field("team3", &mut errors, html! {
+                    label(for = "team3") {
+                        @if let TeamConfig::Solo = event.team_config() {
+                            : "Player C:";
+                        } else {
+                            : "Team C:";
+                        }
+                    }
+                    select(name = "team3") {
+                        @for (id, name) in team_data {
+                            option(value = id, selected? = ctx.field_value("team3") == Some(&id)) : name;
+                        }
+                    }
+                });
+            }
             @if phase_round_options.is_empty() {
                 : form_field("phase", &mut errors, html! {
                     label(for = "phase") : "Phase:";
@@ -1606,7 +1622,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
         html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(create_race(event.series, &*event.event))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(create_race(event.series, &*event.event, Some(NonZeroU8::new(if ctx.field_value("team3").is_some() { 3 } else { 2 }).unwrap())))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to create a race.";
                 }
             }
@@ -1619,11 +1635,16 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
     }).await?)
 }
 
-#[rocket::get("/event/<series>/<event>/races/new")]
-pub(crate) async fn create_race(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+#[rocket::get("/event/<series>/<event>/races/new?<players>")]
+pub(crate) async fn create_race(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String, players: Option<NonZeroU8>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let is_3p = match players.unwrap_or_else(|| NonZeroU8::new(2).unwrap()).get() {
+        2 => false,
+        3 => true,
+        _ => return Err(StatusOrError::Status(Status::NotImplemented)),
+    };
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(RedirectOrContent::Content(create_race_form(transaction, **env, me, uri, csrf.as_ref(), event, Context::default()).await?))
+    Ok(RedirectOrContent::Content(create_race_form(transaction, **env, me, uri, csrf.as_ref(), event, Context::default(), is_3p).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1632,6 +1653,7 @@ pub(crate) struct CreateRaceForm {
     csrf: String,
     team1: Id<Teams>,
     team2: Id<Teams>,
+    team3: Option<Id<Teams>>,
     #[field(default = String::new())]
     phase: String,
     #[field(default = String::new())]
@@ -1653,7 +1675,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
     match event.match_source() {
         MatchSource::Manual => {}
         MatchSource::League => form.context.push_error(form::Error::validation("This event's races are generated automatically from league.ootrandomizer.com and cannot be edited manually. Please contact Fenhl if a race needs to be added that's not listed at league.ootrandomizer.com.")),
-        MatchSource::StartGG(_) => form.context.push_error(form::Error::validation("This event's races are generated automatically from start.gg and cannot be edited manually. Please contact Fenhl if a race needs to be added that's not represented by a start.gg match.")),
+        MatchSource::StartGG(_) => {} // allow adding tiebreakers which aren't tracked by start.gg
     }
     Ok(if let Some(ref value) = form.value {
         let team1 = Team::from_id(&mut transaction, value.team1).await?;
@@ -1671,8 +1693,22 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
         if team1 == team2 {
             form.context.push_error(form::Error::validation("Can't choose the same team twice.").with_name("team2"));
         }
+        let team3 = if let Some(team3) = value.team3 {
+            let team3 = Team::from_id(&mut transaction, team3).await?;
+            if let Some(_) = team3 {
+                //TODO validate that this team is for this event
+            } else {
+                form.context.push_error(form::Error::validation("There is no team with this ID.").with_name("team3"));
+            }
+            if team1 == team3 || team2 == team3 {
+                form.context.push_error(form::Error::validation("Can't choose the same team twice.").with_name("team3"));
+            }
+            team3
+        } else {
+            None
+        };
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(create_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, form.context).await?)
+            RedirectOrContent::Content(create_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, form.context, team3.is_some()).await?)
         } else {
             let (phase, round) = if value.phase_round.is_empty() {
                 (
@@ -1687,41 +1723,45 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                     .unwrap_or_else(|| (None, Some(value.phase_round.clone())))
             };
             let [team1, team2] = [team1, team2].map(|team| team.expect("validated"));
-            let draft = match event.draft_kind() {
-                Some(draft::Kind::S7) => Some(Draft {
-                    high_seed: min_by_key(&team1, &team2, |team| team.qualifier_rank).id,
-                    went_first: None,
-                    skipped_bans: 0,
-                    settings: HashMap::default(),
-                }),
-                Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => Some(Draft {
-                    high_seed: team1.id,
-                    went_first: None,
-                    skipped_bans: 0,
-                    // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
-                    settings: HashMap::from_iter(
-                        (team1.id == Id::from(17814073240662869290_u64) || team2.id == Id::from(17814073240662869290_u64))
-                            .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
-                    ),
-                }),
-                Some(draft::Kind::TournoiFrancoS3) => {
-                    let high_seed = *[team1.id, team2.id].choose(&mut thread_rng()).unwrap();
-                    Some(Draft {
+            let draft = if team3.is_some() {
+                None // waiting for s/7cc organizers to decide on draft format
+            } else {
+                match event.draft_kind() {
+                    Some(draft::Kind::S7) => Some(Draft {
+                        high_seed: min_by_key(&team1, &team2, |team| team.qualifier_rank).id,
                         went_first: None,
                         skipped_bans: 0,
-                        settings: {
-                            let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", team1.id as _, team2.id as _).fetch_all(&mut *transaction).await?;
-                            let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
-                            let mq_ok = team_rows.iter().all(|row| row.mq_ok);
-                            collect![as HashMap<_, _>:
-                                Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
-                                Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_ok { "ok" } else { "no" }),
-                            ]
-                        },
-                        high_seed,
-                    })
+                        settings: HashMap::default(),
+                    }),
+                    Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => Some(Draft {
+                        high_seed: team1.id,
+                        went_first: None,
+                        skipped_bans: 0,
+                        // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
+                        settings: HashMap::from_iter(
+                            (team1.id == Id::from(17814073240662869290_u64) || team2.id == Id::from(17814073240662869290_u64))
+                                .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
+                        ),
+                    }),
+                    Some(draft::Kind::TournoiFrancoS3) => {
+                        let high_seed = *[team1.id, team2.id].choose(&mut thread_rng()).unwrap();
+                        Some(Draft {
+                            went_first: None,
+                            skipped_bans: 0,
+                            settings: {
+                                let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", team1.id as _, team2.id as _).fetch_all(&mut *transaction).await?;
+                                let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
+                                let mq_ok = team_rows.iter().all(|row| row.mq_ok);
+                                collect![as HashMap<_, _>:
+                                    Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
+                                    Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_ok { "ok" } else { "no" }),
+                                ]
+                            },
+                            high_seed,
+                        })
+                    }
+                    None => None,
                 }
-                None => None,
             };
             let mut scheduling_thread = None;
             for game in 1..=value.game_count {
@@ -1731,10 +1771,18 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                     event: event.event.to_string(),
                     startgg_event: None,
                     startgg_set: None,
-                    entrants: Entrants::Two([
-                        Entrant::MidosHouseTeam(team1.clone()),
-                        Entrant::MidosHouseTeam(team2.clone()),
-                    ]),
+                    entrants: if let Some(ref team3) = team3 {
+                        Entrants::Three([
+                            Entrant::MidosHouseTeam(team1.clone()),
+                            Entrant::MidosHouseTeam(team2.clone()),
+                            Entrant::MidosHouseTeam(team3.clone()),
+                        ])
+                    } else {
+                        Entrants::Two([
+                            Entrant::MidosHouseTeam(team1.clone()),
+                            Entrant::MidosHouseTeam(team2.clone()),
+                        ])
+                    },
                     phase: phase.clone(),
                     round: round.clone(),
                     game: (value.game_count > 1).then_some(game),
@@ -1757,7 +1805,8 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(create_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, form.context).await?)
+        let is_3p = form.context.field_value("team3").is_some();
+        RedirectOrContent::Content(create_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, form.context, is_3p).await?)
     })
 }
 
@@ -1808,7 +1857,7 @@ pub(crate) async fn race_table(transaction: &mut Transaction<'_, Postgres>, disc
                         th {
                             @if can_create {
                                 @match event.match_source() {
-                                    MatchSource::Manual => a(class = "button", href = uri!(create_race(races[0].series, &*races[0].event)).to_string()) : "New Race";
+                                    MatchSource::Manual => a(class = "button", href = uri!(create_race(races[0].series, &*races[0].event, _)).to_string()) : "New Race";
                                     MatchSource::League => {}
                                     MatchSource::StartGG(_) => a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event)).to_string()) : "Import";
                                 }

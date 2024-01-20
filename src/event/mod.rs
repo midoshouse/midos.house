@@ -816,7 +816,7 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 @match data.match_source() {
-                    MatchSource::Manual => a(class = "button", href = uri!(crate::cal::create_race(series, event)).to_string()) : "New Race";
+                    MatchSource::Manual => a(class = "button", href = uri!(crate::cal::create_race(series, event, _)).to_string()) : "New Race";
                     MatchSource::League => {}
                     MatchSource::StartGG(_) => a(class = "button", href = uri!(crate::cal::import_races(series, event)).to_string()) : "Import";
                 }
