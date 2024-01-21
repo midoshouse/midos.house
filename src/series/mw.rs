@@ -603,7 +603,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     li : "Water Temple GS River";
                     li : "Spirit Temple GS Hall After Sun Block Room";
                 }
-                p : "Always and Sometimes hint are upgraded to Dual hints where available.";
+                p : "Always and Sometimes hints are upgraded to Dual hints where available.";
                 p : "The following Sometimes hints have been removed:";
                 ul {
                     li : "Sheik in Crater";
@@ -973,7 +973,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         }
                     }
                 }
-                p : "The remainder of the hints will be filled out with selections from the “Sometimes” hint pool for a total of 20 paired hints. Always and Sometimes hint are upgraded to Dual hints where available.";
+                p : "The remainder of the hints will be filled out with selections from the “Sometimes” hint pool for a total of 20 paired hints. Always and Sometimes hints are upgraded to Dual hints where available.";
                 p : "The following locations are added to the Sometimes hint pool (if dungeon Tokensanity is enabled):";
                 ul {
                     li : "Deku Tree GS Basement Back Room";
