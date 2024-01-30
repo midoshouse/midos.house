@@ -1,12 +1,15 @@
 #!/usr/bin/python3 -i
 
 import datetime
+import email.utils
 import json
 import pathlib
 import re
+import urllib.parse
 
-import psycopg # PyPI: psycopg[binary]
-import requests # PyPI: requests
+import bs4 # Debian: python3-bs4, PyPI: beautifulsoup4
+import psycopg # Debian: python3-psycopg, PyPI: psycopg[binary]
+import requests # Debian: python3-requests, PyPI: requests
 
 SEEDS_DIR = pathlib.Path('/var/www/midos.house/seed')
 
@@ -29,8 +32,11 @@ def b(seed_id, room=None, *, startgg=None, async_room1=None, async_room2=None, u
         api_resp.raise_for_status()
     except requests.HTTPError:
         if room is not None or startgg is not None or async_room1 is not None or async_room2 is not None:
-            creation_timestamp = f"{datetime.datetime.strptime(input('creation timestamp: ').strip(), '%-m/%-d/%Y, %-I:%M %p UTC'):%Y-%m-%dT%H:%M:%SZ}"
-            file_hash = json.loads(input('file hash: '))
+            page_resp = requests.get('https://ootrandomizer.com/seed/get', params={'id': seed_id})
+            page_resp.raise_for_status()
+            soup = bs4.BeautifulSoup(page_resp.text)
+            creation_timestamp = f"{email.utils.parsedate_to_datetime(soup.find(id='parsedTimestamp').string).astimezone(datetime.timezone.utc):%Y-%m-%dT%H:%M:%SZ}"
+            file_hash = [urllib.parse.unquote(re.match('^/img/hash/(.+)\\.png$', img.attrs['src']).group(1)) for img in soup.find(id='seedHashBox').find_all('img')]
         spoiler_resp = requests.get('https://ootrandomizer.com/spoilers/get', params={'id': seed_id})
         if spoiler_resp.status_code != 400: # returns error 400 if no spoiler log has been generated
             spoiler_resp.raise_for_status()
