@@ -10,6 +10,10 @@ query SoloEventSetsQuery($event_slug: String!, $page: Int!) {
           phase {
             name
           }
+          rounds {
+            number
+            bestOf
+          }
         }
         fullRoundText
         slots {
@@ -19,6 +23,9 @@ query SoloEventSetsQuery($event_slug: String!, $page: Int!) {
             }
           }
         }
+        setGamesType
+        totalGames
+        round
       }
     }
   }
