@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id AS \"id: Id<Races>\" FROM races WHERE\n                series = $1\n                AND event = $2\n                AND phase = $3\n                AND round = $4\n                AND game = $5\n                AND team1 = $6\n                AND team2 = $7\n                AND team3 = $8\n                AND p1 = $9\n                AND p2 = $10\n                AND p3 = $11\n                AND p1_discord = $12\n                AND p2_discord = $13\n                AND p1_twitch = $14\n                AND p2_twitch = $15\n                AND total = $16\n                AND finished = $17\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id: Id<Races>",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int2",
+        "Int8",
+        "Int8",
+        "Int8",
+        "Text",
+        "Text",
+        "Text",
+        "Int8",
+        "Int8",
+        "Text",
+        "Text",
+        "Int4",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e49c3b201fc700c847ef564be818eddde02cc992bdb8446b47846c3387c8a9f9"
+}

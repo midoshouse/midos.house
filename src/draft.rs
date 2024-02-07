@@ -1,9 +1,6 @@
 use {
     serde_json::Value as Json,
-    crate::{
-        discord_bot::CommandIds,
-        prelude::*,
-    },
+    crate::prelude::*,
 };
 
 pub(crate) type Picks = HashMap<Cow<'static, str>, Cow<'static, str>>;
@@ -179,6 +176,31 @@ pub(crate) struct Draft {
 }
 
 impl Draft {
+    pub(crate) async fn new(transaction: &mut Transaction<'_, Postgres>, kind: Kind, high_seed: Id<Teams>, low_seed: Id<Teams>) -> sqlx::Result<Self> {
+        Ok(Self {
+            went_first: None,
+            skipped_bans: 0,
+            settings: match kind {
+                Kind::S7 => HashMap::default(),
+                // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
+                Kind::MultiworldS3 | Kind::MultiworldS4 => HashMap::from_iter(
+                    (high_seed == Id::from(17814073240662869290_u64) || low_seed == Id::from(17814073240662869290_u64))
+                        .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
+                ),
+                Kind::TournoiFrancoS3 => {
+                    let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", high_seed as _, low_seed as _).fetch_all(&mut **transaction).await?;
+                    let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
+                    let mq_ok = team_rows.iter().all(|row| row.mq_ok);
+                    collect![as HashMap<_, _>:
+                        Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
+                        Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_ok { "ok" } else { "no" }),
+                    ]
+                }
+            },
+            high_seed,
+        })
+    }
+
     fn pick_count(&self, kind: Kind) -> u8 {
         match kind {
             Kind::S7 => self.skipped_bans + u8::try_from(self.settings.len()).unwrap(),

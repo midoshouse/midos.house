@@ -158,7 +158,10 @@ pub(crate) use {
             RaceSchedule,
         },
         config::Config,
-        discord_bot::PgSnowflake,
+        discord_bot::{
+            CommandIds,
+            PgSnowflake,
+        },
         draft::{
             self,
             Draft,

@@ -1,5 +1,8 @@
 use {
-    std::cmp::min_by_key,
+    std::cmp::{
+        max_by_key,
+        min_by_key,
+    },
     chrono::Duration,
     chrono_tz::{
         America,
@@ -109,6 +112,51 @@ pub(crate) enum Entrants {
     Named(String),
     Two([Entrant; 2]),
     Three([Entrant; 3]),
+}
+
+impl Entrants {
+    fn to_db(&self) -> ([Option<Id<Teams>>; 3], [Option<&String>; 3], [Option<UserId>; 2], [Option<&String>; 2], [Option<u32>; 2]) {
+        match *self {
+            Entrants::Open => ([None; 3], [None; 3], [None; 2], [None; 2], [None; 2]),
+            Entrants::Count { total, finished } => ([None; 3], [None; 3], [None; 2], [None; 2], [Some(total), Some(finished)]),
+            Entrants::Named(ref entrants) => ([None; 3], [Some(entrants), None, None], [None; 2], [None; 2], [None; 2]),
+            Entrants::Two([ref p1, ref p2]) => {
+                let (team1, p1, p1_discord, p1_twitch) = match p1 {
+                    Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None),
+                    Entrant::Discord(discord_id) => (None, None, Some(*discord_id), None),
+                    Entrant::DiscordTwitch(discord_id, twitch) => (None, None, Some(*discord_id), Some(twitch)),
+                    Entrant::Named(name) => (None, Some(name), None, None),
+                    Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), None, Some(twitch)),
+                };
+                let (team2, p2, p2_discord, p2_twitch) = match p2 {
+                    Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None),
+                    Entrant::Discord(discord_id) => (None, None, Some(*discord_id), None),
+                    Entrant::DiscordTwitch(discord_id, twitch) => (None, None, Some(*discord_id), Some(twitch)),
+                    Entrant::Named(name) => (None, Some(name), None, None),
+                    Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), None, Some(twitch)),
+                };
+                ([team1, team2, None], [p1, p2, None], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [None; 2])
+            }
+            Entrants::Three([ref p1, ref p2, ref p3]) => {
+                let (team1, p1) = match p1 {
+                    Entrant::MidosHouseTeam(team) => (Some(team.id), None),
+                    Entrant::Named(name) => (None, Some(name)),
+                    _ => unimplemented!(), //TODO
+                };
+                let (team2, p2) = match p2 {
+                    Entrant::MidosHouseTeam(team) => (Some(team.id), None),
+                    Entrant::Named(name) => (None, Some(name)),
+                    _ => unimplemented!(), //TODO
+                };
+                let (team3, p3) = match p3 {
+                    Entrant::MidosHouseTeam(team) => (Some(team.id), None),
+                    Entrant::Named(name) => (None, Some(name)),
+                    _ => unimplemented!(), //TODO
+                };
+                ([team1, team2, team3], [p1, p2, p3], [None; 2], [None; 2], [None; 2])
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -811,6 +859,55 @@ impl Race {
         Ok(races)
     }
 
+    pub(crate) async fn next_game(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str) -> Result<Option<Self>, Error> {
+        Ok(if_chain! {
+            if let Some(game) = self.game;
+            let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
+            if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE
+                series = $1
+                AND event = $2
+                AND phase = $3
+                AND round = $4
+                AND game = $5
+                AND team1 = $6
+                AND team2 = $7
+                AND team3 = $8
+                AND p1 = $9
+                AND p2 = $10
+                AND p3 = $11
+                AND p1_discord = $12
+                AND p2_discord = $13
+                AND p1_twitch = $14
+                AND p2_twitch = $15
+                AND total = $16
+                AND finished = $17
+            "#,
+                self.series as _,
+                self.event,
+                self.phase,
+                self.round,
+                game + 1,
+                team1.map(|id| i64::from(id)),
+                team2.map(|id| i64::from(id)),
+                team3.map(|id| i64::from(id)),
+                p1,
+                p2,
+                p3,
+                p1_discord.map(|id| i64::from(id)),
+                p2_discord.map(|id| i64::from(id)),
+                p1_twitch,
+                p2_twitch,
+                total.map(|total| total as i32),
+                finished.map(|finished| finished as i32),
+            ).fetch_optional(&mut **transaction).await?;
+            then {
+                Some(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?)
+            } else {
+                None
+            }
+        })
+    }
+
     pub(crate) async fn event(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<event::Data<'static>, event::DataError> {
         event::Data::new(transaction, self.series, self.event.clone()).await?.ok_or(event::DataError::Missing)
     }
@@ -965,46 +1062,7 @@ impl Race {
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE id = $1) AS "exists!""#, self.id as _).fetch_one(&mut **transaction).await? {
             unimplemented!("updating existing races not yet implemented") //TODO
         } else {
-            let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [total, finished]) = match self.entrants {
-                Entrants::Open => ([None; 3], [None; 3], [None; 2], [None; 2], [None; 2]),
-                Entrants::Count { total, finished } => ([None; 3], [None; 3], [None; 2], [None; 2], [Some(total), Some(finished)]),
-                Entrants::Named(ref entrants) => ([None; 3], [Some(entrants), None, None], [None; 2], [None; 2], [None; 2]),
-                Entrants::Two([ref p1, ref p2]) => {
-                    let (team1, p1, p1_discord, p1_twitch) = match p1 {
-                        Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None),
-                        Entrant::Discord(discord_id) => (None, None, Some(*discord_id), None),
-                        Entrant::DiscordTwitch(discord_id, twitch) => (None, None, Some(*discord_id), Some(twitch)),
-                        Entrant::Named(name) => (None, Some(name), None, None),
-                        Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), None, Some(twitch)),
-                    };
-                    let (team2, p2, p2_discord, p2_twitch) = match p2 {
-                        Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None),
-                        Entrant::Discord(discord_id) => (None, None, Some(*discord_id), None),
-                        Entrant::DiscordTwitch(discord_id, twitch) => (None, None, Some(*discord_id), Some(twitch)),
-                        Entrant::Named(name) => (None, Some(name), None, None),
-                        Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), None, Some(twitch)),
-                    };
-                    ([team1, team2, None], [p1, p2, None], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [None; 2])
-                }
-                Entrants::Three([ref p1, ref p2, ref p3]) => {
-                    let (team1, p1) = match p1 {
-                        Entrant::MidosHouseTeam(team) => (Some(team.id), None),
-                        Entrant::Named(name) => (None, Some(name)),
-                        _ => unimplemented!(), //TODO
-                    };
-                    let (team2, p2) = match p2 {
-                        Entrant::MidosHouseTeam(team) => (Some(team.id), None),
-                        Entrant::Named(name) => (None, Some(name)),
-                        _ => unimplemented!(), //TODO
-                    };
-                    let (team3, p3) = match p3 {
-                        Entrant::MidosHouseTeam(team) => (Some(team.id), None),
-                        Entrant::Named(name) => (None, Some(name)),
-                        _ => unimplemented!(), //TODO
-                    };
-                    ([team1, team2, team3], [p1, p2, p3], [None; 2], [None; 2], [None; 2])
-                }
-            };
+            let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
             let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match self.schedule {
                 RaceSchedule::Unscheduled => (None, None, None, None, None, None, None, None, None),
                 RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
@@ -1724,44 +1782,23 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
             };
             let [team1, team2] = [team1, team2].map(|team| team.expect("validated"));
             let draft = if team3.is_some() {
-                None // waiting for s/7cc organizers to decide on draft format
-            } else {
-                match event.draft_kind() {
-                    Some(draft::Kind::S7) => Some(Draft {
-                        high_seed: min_by_key(&team1, &team2, |team| team.qualifier_rank).id,
-                        went_first: None,
-                        skipped_bans: 0,
-                        settings: HashMap::default(),
-                    }),
-                    Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => Some(Draft {
-                        high_seed: team1.id,
-                        went_first: None,
-                        skipped_bans: 0,
-                        // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
-                        settings: HashMap::from_iter(
-                            (team1.id == Id::from(17814073240662869290_u64) || team2.id == Id::from(17814073240662869290_u64))
-                                .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
-                        ),
-                    }),
-                    Some(draft::Kind::TournoiFrancoS3) => {
-                        let high_seed = *[team1.id, team2.id].choose(&mut thread_rng()).unwrap();
-                        Some(Draft {
-                            went_first: None,
-                            skipped_bans: 0,
-                            settings: {
-                                let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", team1.id as _, team2.id as _).fetch_all(&mut *transaction).await?;
-                                let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
-                                let mq_ok = team_rows.iter().all(|row| row.mq_ok);
-                                collect![as HashMap<_, _>:
-                                    Cow::Borrowed("hard_settings_ok") => Cow::Borrowed(if hard_settings_ok { "ok" } else { "no" }),
-                                    Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_ok { "ok" } else { "no" }),
-                                ]
-                            },
-                            high_seed,
-                        })
+                None
+            } else if let Some(draft_kind) = event.draft_kind() {
+                let [high_seed, low_seed] = match draft_kind {
+                    draft::Kind::S7 => [
+                        min_by_key(&team1, &team2, |team| team.qualifier_rank).id,
+                        max_by_key(&team1, &team2, |team| team.qualifier_rank).id,
+                    ],
+                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => [team1.id, team2.id],
+                    draft::Kind::TournoiFrancoS3 => {
+                        let mut team_ids = [team1.id, team2.id];
+                        team_ids.shuffle(&mut thread_rng());
+                        team_ids
                     }
-                    None => None,
-                }
+                };
+                Some(Draft::new(&mut transaction, draft_kind, high_seed, low_seed).await?)
+            } else {
+                None
             };
             let mut scheduling_thread = None;
             for game in 1..=value.game_count {
@@ -1995,41 +2032,39 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
             game: None, //TODO get from start.gg
             scheduling_thread: None,
             schedule: RaceSchedule::Unscheduled,
-            draft: match event.draft_kind() {
-                Some(draft::Kind::S7) => Some(Draft {
-                    high_seed: min_by_key(team1, team2, |team| team.qualifier_rank).id,
-                    went_first: None,
-                    skipped_bans: 0,
-                    settings: HashMap::default(),
-                }),
-                Some(draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => {
-                    let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
-                        show_times: event.show_qualifier_times && event.is_started(&mut *transaction).await?,
-                    };
-                    let signups = teams::signups_sorted(&mut *transaction, http_client, env, config, None, event, qualifier_kind).await?;
-                    let SignupsTeam { members: members1, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team1)).expect("match with team that didn't sign up");
-                    let SignupsTeam { members: members2, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team2)).expect("match with team that didn't sign up");
-                    let avg1 = members1.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members1.len()).expect("too many team members"));
-                    let avg2 = members2.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members2.len()).expect("too many team members"));
-                    Some(Draft {
-                        high_seed: match (avg1, avg2) {
-                            (Some(_), None) => team1.id,
-                            (None, Some(_)) => team2.id,
-                            (Some(avg1), Some(avg2)) if avg1 < avg2 => team1.id,
-                            (Some(avg1), Some(avg2)) if avg1 > avg2 => team2.id,
-                            _ => if thread_rng().gen() { team1.id } else { team2.id }, // tie broken by coin flip
-                        },
-                        went_first: None,
-                        skipped_bans: 0,
-                        // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
-                        settings: HashMap::from_iter(
-                            (team1.id == Id::from(17814073240662869290_u64) || team2.id == Id::from(17814073240662869290_u64))
-                                .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
-                        ),
-                    })
-                }
-                Some(draft::Kind::TournoiFrancoS3) => unreachable!("this event does not use start.gg"),
-                None => None,
+            draft: if let Some(draft_kind) = event.draft_kind() {
+                let [high_seed, low_seed] = match draft_kind {
+                    draft::Kind::S7 => [
+                        min_by_key(&team1, &team2, |team| team.qualifier_rank).id,
+                        max_by_key(&team1, &team2, |team| team.qualifier_rank).id,
+                    ],
+                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => {
+                        let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
+                            show_times: event.show_qualifier_times && event.is_started(&mut *transaction).await?,
+                        };
+                        let signups = teams::signups_sorted(&mut *transaction, http_client, env, config, None, event, qualifier_kind).await?;
+                        let SignupsTeam { members: members1, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team1)).expect("match with team that didn't sign up");
+                        let SignupsTeam { members: members2, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team2)).expect("match with team that didn't sign up");
+                        let avg1 = members1.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members1.len()).expect("too many team members"));
+                        let avg2 = members2.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members2.len()).expect("too many team members"));
+                        match [avg1, avg2] { //TODO adjust for top 8
+                            [Some(_), None] => [team1.id, team2.id],
+                            [None, Some(_)] => [team2.id, team1.id],
+                            [Some(avg1), Some(avg2)] if avg1 < avg2 => [team1.id, team2.id],
+                            [Some(avg1), Some(avg2)] if avg1 > avg2 => [team2.id, team1.id],
+                            _ => {
+                                // tie broken by coin flip
+                                let mut team_ids = [team1.id, team2.id];
+                                team_ids.shuffle(&mut thread_rng());
+                                team_ids
+                            }
+                        }
+                    }
+                    draft::Kind::TournoiFrancoS3 => unreachable!("this event does not use start.gg"),
+                };
+                Some(Draft::new(&mut *transaction, draft_kind, high_seed, low_seed).await?)
+            } else {
+                None
             },
             seed: seed::Data::default(),
             video_urls: HashMap::default(),
