@@ -4,10 +4,10 @@ function ThrowOnNativeFailure {
     }
 }
 
-ssh midos.house env -C /opt/git/github.com/racetimeGG/racetime-app/main docker-compose up --build -d
+ssh midos.house env -C /opt/git/github.com/racetimeGG/racetime-app/main docker compose up --build -d
 ThrowOnNativeFailure
 
-ssh -t midos.house env -C /opt/git/github.com/racetimeGG/racetime-app/main docker-compose exec racetime.web python manage.py migrate
+ssh -t midos.house env -C /opt/git/github.com/racetimeGG/racetime-app/main docker compose exec racetime.web python manage.py migrate
 ThrowOnNativeFailure
 
 ssh midos.house "sudo -u postgres psql -c 'DROP DATABASE fados_house;'"
