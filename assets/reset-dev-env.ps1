@@ -22,6 +22,9 @@ ThrowOnNativeFailure
 ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, racetime_id, racetime_display_name, discord_id, discord_display_name, discord_username, display_source, is_archivist) VALUES (-3874943390487736167, ''5BRGVMd30E368Lzv'', ''Fenhl'', 86841168427495424, ''Fenhl'', ''fenhl'', ''racetime'', TRUE);"'
 ThrowOnNativeFailure
 
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO api_keys (key, user_id, mw_admin) VALUES (''IAjThkPzhBOiwon7WLMvIavCaEhApHJI'', -3874943390487736167, TRUE);"'
+ThrowOnNativeFailure
+
 ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, discord_id, discord_display_name, discord_username, display_source, is_archivist) VALUES (-683803002234927632, 187048694539878401, ''Xopar'', ''xopar'', ''discord'', FALSE);"'
 ThrowOnNativeFailure
 
