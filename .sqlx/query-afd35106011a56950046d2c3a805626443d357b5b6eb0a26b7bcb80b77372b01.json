@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT user_id AS \"user!: Id<Users>\", availability, notes FROM looking_for_team WHERE series = $1 AND event = $2",
+  "query": "SELECT user_id AS \"user: Id<Users>\", availability, notes FROM looking_for_team WHERE series = $1 AND event = $2",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "user!: Id<Users>",
+        "name": "user: Id<Users>",
         "type_info": "Int8"
       },
       {
@@ -31,5 +31,5 @@
       true
     ]
   },
-  "hash": "e80f0eabc6baaf8dd86652a820cdcf8e24c186110ce252a2ac45dc9dccc54d7f"
+  "hash": "afd35106011a56950046d2c3a805626443d357b5b6eb0a26b7bcb80b77372b01"
 }

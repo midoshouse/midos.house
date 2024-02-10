@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT series AS \"series!: Series\", event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW()) ORDER BY start ASC NULLS LAST",
+  "query": "SELECT series AS \"series: Series\", event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW()) ORDER BY start ASC NULLS LAST",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "series!: Series",
+        "name": "series: Series",
         "type_info": "Varchar"
       },
       {
@@ -22,5 +22,5 @@
       false
     ]
   },
-  "hash": "b643917a4b9052f8b5ddbd9e13fcc9ad59ca5c8ad30af6038dc4234f5c123002"
+  "hash": "52da9938b5959437da32290fca45f5446fc301acd6af9763c0a27daf06581298"
 }

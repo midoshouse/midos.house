@@ -38,7 +38,7 @@ impl Notification {
             .map_ok(Self::Simple)
             .try_collect::<Vec<_>>().await?;
         for team_id in sqlx::query_scalar!(r#"SELECT team AS "team: Id<Teams>" FROM team_members WHERE member = $1 AND status = 'unconfirmed'"#, me.id as _).fetch_all(&mut **transaction).await? {
-            let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, team_id as _).fetch_one(&mut **transaction).await?;
+            let team_row = sqlx::query!(r#"SELECT series AS "series: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, team_id as _).fetch_one(&mut **transaction).await?;
             let event = event::Data::new(&mut *transaction, team_row.series, team_row.event).await?.expect("enforced by database constraint");
             if !event.is_started(&mut *transaction).await? {
                 notifications.push(Self::TeamInvite(team_id));
@@ -101,7 +101,7 @@ impl Notification {
 }
 
 pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, env: Environment, me: &User, csrf: Option<&CsrfToken>, team_id: Id<Teams>) -> Result<RawHtml<String>, Error> {
-    let team_row = sqlx::query!(r#"SELECT series AS "series!: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, team_id as _).fetch_one(&mut **transaction).await?;
+    let team_row = sqlx::query!(r#"SELECT series AS "series: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, team_id as _).fetch_one(&mut **transaction).await?;
     let event = event::Data::new(&mut *transaction, team_row.series, team_row.event).await?.ok_or(Error::UnknownEvent)?;
     let mut creator = None;
     let mut my_role = None;

@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id AS \"id!: Id<Teams>\", name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, submitted IS NOT NULL AS \"qualified!\", pieces, hard_settings_ok, mq_ok, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE\n            series = $1\n            AND event = $2\n            AND NOT resigned\n            AND (\n                EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)\n                OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')\n            )\n            AND (kind = 'qualifier' OR kind IS NULL)\n        ",
+  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, submitted IS NOT NULL AS \"qualified!\", pieces, hard_settings_ok, mq_ok, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE\n            series = $1\n            AND event = $2\n            AND NOT resigned\n            AND (\n                EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)\n                OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')\n            )\n            AND (kind = 'qualifier' OR kind IS NULL)\n        ",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "id!: Id<Teams>",
+        "name": "id: Id<Teams>",
         "type_info": "Int8"
       },
       {
@@ -96,5 +96,5 @@
       true
     ]
   },
-  "hash": "43060e559626a2156bf411b0a442deedcb053941ded652a727fd552658cbb766"
+  "hash": "d52adae4e90dbcb3bfa1596dffebf587654d7ff30066e530e67cbac569f192bd"
 }

@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT series AS \"series!: Series\", event FROM events WHERE listed",
+  "query": "SELECT series AS \"series: Series\", event FROM events WHERE listed",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "series!: Series",
+        "name": "series: Series",
         "type_info": "Varchar"
       },
       {
@@ -22,5 +22,5 @@
       false
     ]
   },
-  "hash": "5f4bd7f5d06e69d5a3ad3be4a3cbae6636eb8c02ccae6c68f07c821ace589f60"
+  "hash": "adf03a3f564a746a880bf0887727d8ebde1a6e7d83d22666200344bf8b4156f2"
 }
