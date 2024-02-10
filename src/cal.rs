@@ -1383,7 +1383,7 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
 static SHEETS_CACHE: Lazy<Mutex<HashMap<(String, String), (Instant, Vec<Vec<String>>)>>> = Lazy::new(|| Mutex::default());
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum SheetsError {
+enum SheetsUncachedError {
     #[error(transparent)] OAuth(#[from] yup_oauth2::Error),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
@@ -1393,7 +1393,7 @@ pub(crate) enum SheetsError {
     TokenExpired,
 }
 
-impl IsNetworkError for SheetsError {
+impl IsNetworkError for SheetsUncachedError {
     fn is_network_error(&self) -> bool {
         match self {
             Self::OAuth(_) => false,
@@ -1405,20 +1405,33 @@ impl IsNetworkError for SheetsError {
     }
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("{source}")]
+pub(crate) struct SheetsError {
+    source: SheetsUncachedError,
+    cache: SheetsCacheMissReason,
+}
+
+#[derive(Debug)]
+enum SheetsCacheMissReason {
+    Elapsed,
+    Vacant,
+}
+
 async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str) -> Result<Vec<Vec<String>>, SheetsError> {
     #[derive(Deserialize)]
     struct ValueRange {
         values: Vec<Vec<String>>,
     }
 
-    async fn sheet_values_uncached(http_client: &reqwest::Client, sheet_id: &str, range: &str) -> Result<Vec<Vec<String>>, SheetsError> {
+    async fn sheet_values_uncached(http_client: &reqwest::Client, sheet_id: &str, range: &str) -> Result<Vec<Vec<String>>, SheetsUncachedError> {
         let gsuite_secret = read_service_account_key("assets/google-client-secret.json").await.at("assets/google-client-secret.json")?;
         let auth = ServiceAccountAuthenticator::builder(gsuite_secret)
             .build().await.at_unknown()?;
         let token = auth.token(&["https://www.googleapis.com/auth/spreadsheets"]).await?;
-        if token.is_expired() { return Err(SheetsError::TokenExpired) }
-        let Some(token) = token.token() else { return Err(SheetsError::EmptyToken) };
-        if token.is_empty() { return Err(SheetsError::EmptyToken) }
+        if token.is_expired() { return Err(SheetsUncachedError::TokenExpired) }
+        let Some(token) = token.token() else { return Err(SheetsUncachedError::EmptyToken) };
+        if token.is_empty() { return Err(SheetsUncachedError::EmptyToken) }
         let ValueRange { values } = http_client.get(&format!("https://sheets.googleapis.com/v4/spreadsheets/{sheet_id}/values/{range}"))
             .bearer_auth(token)
             .query(&[
@@ -1446,12 +1459,12 @@ async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str)
                         values
                     }
                     Err(e) if e.is_network_error() && retrieved.elapsed() < UDuration::from_secs(60 * 60) => values.clone(),
-                    Err(e) => return Err(e),
+                    Err(source) => return Err(SheetsError { cache: SheetsCacheMissReason::Elapsed, source }),
                 }
             }
         }
         hash_map::Entry::Vacant(entry) => {
-            let values = sheet_values_uncached(&http_client, sheet_id, range).await?;
+            let values = sheet_values_uncached(&http_client, sheet_id, range).await.map_err(|source| SheetsError { cache: SheetsCacheMissReason::Vacant, source })?;
             entry.insert((Instant::now(), values.clone()));
             values
         }
