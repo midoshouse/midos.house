@@ -373,32 +373,6 @@ impl Race {
         if let Some(video_url_pt) = row.video_url_pt {
             video_urls.insert(Portuguese, video_url_pt.parse()?);
         }
-        if row.series == Series::SpeedGaming && row.event == "2023onl" {
-            let restreams = sgl::restreams(http_client).await?;
-            if phase.as_ref().map_or(false, |phase| phase == "Qualifier") {
-                for restream in &restreams {
-                    if !restream.match1.iter()
-                        .chain(&restream.match2)
-                        .flat_map(|restream_match| regex_captures!("^Qualifier #([0-9]+)$", &restream_match.title))
-                        .any(|(_, iter_round)| round.as_ref().map_or(false, |round| round == iter_round))
-                    { continue }
-                    for channel in &restream.channels {
-                        if let hash_map::Entry::Vacant(entry) = video_urls.entry(channel.language) {
-                            let video_url = Url::parse(&format!("https://twitch.tv/{}", channel.slug))?;
-                            match channel.language {
-                                English => { sqlx::query!("UPDATE races SET video_url = $1 WHERE id = $2", video_url.as_str(), id as _).execute(&mut **transaction).await?; }
-                                French => { sqlx::query!("UPDATE races SET video_url_fr = $1 WHERE id = $2", video_url.as_str(), id as _).execute(&mut **transaction).await?; }
-                                Portuguese => { sqlx::query!("UPDATE races SET video_url_pt = $1 WHERE id = $2", video_url.as_str(), id as _).execute(&mut **transaction).await?; }
-                            }
-                            entry.insert(video_url);
-                        }
-                        //TODO register restreamer, if any
-                    }
-                }
-            } else {
-                //TODO add restreams for bracket races as well
-            }
-        }
         let entrants = {
             let p1 = if let Some(team1) = row.team1 {
                 Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?))

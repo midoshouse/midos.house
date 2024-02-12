@@ -9,40 +9,6 @@ use {
     },
 };
 
-static CACHE: Lazy<Mutex<(Instant, Response)>> = Lazy::new(|| Mutex::new((Instant::now(), Response::default())));
-
-#[derive(Clone, Deserialize)]
-pub(crate) struct RestreamMatch {
-    pub(crate) title: String,
-}
-
-#[derive(Clone, Deserialize)]
-pub(crate) struct RestreamChannel {
-    pub(crate) language: Language,
-    pub(crate) slug: String,
-}
-
-#[derive(Clone, Deserialize)]
-pub(crate) struct Restream {
-    pub(crate) match1: Option<RestreamMatch>,
-    pub(crate) match2: Option<RestreamMatch>,
-    pub(crate) channels: Vec<RestreamChannel>,
-}
-
-pub(crate) type Response = Vec<Restream>;
-
-pub(crate) async fn restreams(http_client: &reqwest::Client) -> wheel::Result<Response> {
-    let (ref mut next_request, ref mut cache) = *lock!(CACHE);
-    if *next_request <= Instant::now() {
-        *cache = http_client.get("https://speedgaming.org/api/schedule?event=sgl23ootr&from=2023-07-29T14:00:00Z")
-            .send().await?
-            .detailed_error_for_status().await?
-            .json_with_text_in_error().await?;
-        *next_request = Instant::now() + UDuration::from_secs(60);
-    }
-    Ok(cache.clone())
-}
-
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     Ok(match &*data.event {
         "2023onl" => {
