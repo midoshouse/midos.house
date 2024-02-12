@@ -22,8 +22,8 @@ thiserror = "1"
 
 [dependencies]
 anyhow = "1"
-async-graphql = "6"
-async-graphql-rocket = "6"
+async-graphql = "7"
+async-graphql-rocket = "7"
 async-trait = "0.1"
 base64 = "0.21"
 chrono-tz = "0.8"

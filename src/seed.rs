@@ -124,7 +124,7 @@ impl Data {
                 let (file_hash, world_count) = if spoiler_path_exists {
                     let log = fs::read_to_string(&spoiler_path).await?;
                     if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
-                        (Some(log.file_hash), Some(log.settings.world_count))
+                        (Some(log.file_hash), Some(log.settings[0].world_count))
                     } else {
                         (
                             self.file_hash.or_else(|| serde_json::from_str::<SparseSpoilerLog>(&log).ok().map(|log| log.file_hash)),

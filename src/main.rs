@@ -101,7 +101,7 @@ enum Error {
     #[cfg(unix)] #[error(transparent)] Write(#[from] async_proto::WriteError),
 }
 
-#[wheel::main(rocket, debug)]
+#[wheel::main(rocket, console)]
 async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
     if let Some(subcommand) = subcommand {
         #[cfg(unix)] let mut sock = UnixStream::connect(unix_socket::PATH).await?;
