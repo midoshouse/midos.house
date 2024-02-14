@@ -2166,6 +2166,7 @@ impl Handler {
                             while let Some(update) = updates.recv().await {
                                 update.handle(&db_pool, &ctx, &state, official_data.as_ref(), language, article, &description).await?;
                             }
+                            break
                         }
                         Some(update) = updates.recv() => seed_state = Some(update),
                     }
