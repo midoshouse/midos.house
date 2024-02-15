@@ -453,7 +453,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 idx
             });
             let delete_after = match match_source {
-                Ok(MatchSource::Manual) => {
+                Ok(MatchSource::Manual | MatchSource::StartGG(_)) => { //TODO automate for start.gg
                     let idx = commands.len();
                     commands.push(CreateCommand::new("delete-after")
                         .kind(CommandType::ChatInput)
@@ -471,7 +471,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     );
                     Some(idx)
                 }
-                Ok(MatchSource::League | MatchSource::StartGG(_)) => None,
+                Ok(MatchSource::League) => None,
                 Err(Some((_, _))) => unimplemented!("Discord guilds with mixed match sources not yet supported (guild ID: {}, events: {})", guild.id, guild_events.iter().map(|event| format!("{}/{}", event.series, event.event)).format(", ")),
                 Err(None) => None,
             };
