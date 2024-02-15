@@ -773,27 +773,21 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     )).await?;
                                     return Ok(())
                                 }
-                                match event.match_source() {
-                                    MatchSource::Manual => {
-                                        let after_game = match interaction.data.options[0].value {
-                                            CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
-                                            _ => panic!("unexpected slash command option type"),
-                                        };
-                                        let races_deleted = sqlx::query_scalar!(r#"DELETE FROM races WHERE scheduling_thread = $1 AND NOT ignored AND GAME > $2"#, i64::from(interaction.channel_id), after_game).execute(&mut *transaction).await?
-                                            .rows_affected();
-                                        transaction.commit().await?;
-                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                            .ephemeral(true)
-                                            .content(if races_deleted == 0 {
-                                                format!("Sorry, looks like that didn't delete any races.")
-                                            } else {
-                                                format!("{races_deleted} race{} deleted from the schedule.", if races_deleted == 1 { "" } else { "s" })
-                                            })
-                                        )).await?;
-                                    }
-                                    MatchSource::League => unreachable!(), // races are managed via league.ootrandomizer.com
-                                    MatchSource::StartGG(_) => unreachable!(), // races are managed via the start.gg tournament
-                                }
+                                let after_game = match interaction.data.options[0].value {
+                                    CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
+                                    _ => panic!("unexpected slash command option type"),
+                                };
+                                let races_deleted = sqlx::query_scalar!(r#"DELETE FROM races WHERE scheduling_thread = $1 AND NOT ignored AND GAME > $2"#, i64::from(interaction.channel_id), after_game).execute(&mut *transaction).await?
+                                    .rows_affected();
+                                transaction.commit().await?;
+                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                    .ephemeral(true)
+                                    .content(if races_deleted == 0 {
+                                        format!("Sorry, looks like that didn't delete any races.")
+                                    } else {
+                                        format!("{races_deleted} race{} deleted from the schedule.", if races_deleted == 1 { "" } else { "s" })
+                                    })
+                                )).await?;
                             } else {
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                     .ephemeral(true)
