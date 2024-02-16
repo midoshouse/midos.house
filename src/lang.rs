@@ -13,6 +13,10 @@ pub(crate) enum Language {
     #[sqlx(rename = "fr")]
     #[field(value = "fr")]
     French,
+    #[serde(rename = "de")]
+    #[sqlx(rename = "de")]
+    #[field(value = "de")]
+    German,
     #[serde(rename = "pt")]
     #[sqlx(rename = "pt")]
     #[field(value = "pt")]
@@ -24,6 +28,7 @@ impl Language {
         match self {
             English => "en",
             French => "fr",
+            German => "de",
             Portuguese => "pt",
         }
     }
@@ -156,6 +161,7 @@ impl fmt::Display for Language {
         match self {
             English => write!(f, "English"),
             French => write!(f, "French"),
+            German => write!(f, "German"),
             Portuguese => write!(f, "Portuguese"),
         }
     }

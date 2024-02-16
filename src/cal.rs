@@ -329,6 +329,8 @@ impl Race {
             restreamer,
             video_url_fr,
             restreamer_fr,
+            video_url_de,
+            restreamer_de,
             video_url_pt,
             restreamer_pt,
             ignored,
@@ -363,16 +365,6 @@ impl Race {
         } else {
             (None, None, row.phase, row.round, None)
         };
-        let mut video_urls = HashMap::default();
-        if let Some(video_url_en) = row.video_url {
-            video_urls.insert(English, video_url_en.parse()?);
-        }
-        if let Some(video_url_fr) = row.video_url_fr {
-            video_urls.insert(French, video_url_fr.parse()?);
-        }
-        if let Some(video_url_pt) = row.video_url_pt {
-            video_urls.insert(Portuguese, video_url_pt.parse()?);
-        }
         let entrants = {
             let p1 = if let Some(team1) = row.team1 {
                 Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?))
@@ -481,22 +473,21 @@ impl Race {
                 },
                 files: seed_files,
             },
-            restreamers: {
-                let mut restreamers = HashMap::default();
-                if let Some(restreamer_en) = row.restreamer {
-                    restreamers.insert(English, restreamer_en);
-                }
-                if let Some(restreamer_fr) = row.restreamer_fr {
-                    restreamers.insert(French, restreamer_fr);
-                }
-                if let Some(restreamer_pt) = row.restreamer_pt {
-                    restreamers.insert(Portuguese, restreamer_pt);
-                }
-                restreamers
-            },
+            video_urls: all().filter_map(|language| match language {
+                English => row.video_url.clone(),
+                French => row.video_url_fr.clone(),
+                German => row.video_url_de.clone(),
+                Portuguese => row.video_url_pt.clone(),
+            }.map(|video_url| Ok::<_, Error>((language, video_url.parse()?)))).try_collect()?,
+            restreamers: all().filter_map(|language| match language {
+                English => row.restreamer.clone(),
+                French => row.restreamer_fr.clone(),
+                German => row.restreamer_de.clone(),
+                Portuguese => row.restreamer_pt.clone(),
+            }.map(|restreamer| (language, restreamer))).collect(),
             ignored: row.ignored,
             schedule_locked: row.schedule_locked,
-            id, startgg_event, startgg_set, entrants, phase, round, video_urls,
+            id, startgg_event, startgg_set, entrants, phase, round,
         })
     }
 
@@ -540,9 +531,10 @@ impl Race {
                 }
                 if race.video_urls.iter().any(|(language, new_url)| found_race.video_urls.get(language).map_or(true, |old_url| old_url != new_url)) {
                     if found_race.video_urls.iter().all(|(language, old_url)| race.video_urls.get(language).map_or(true, |new_url| old_url == new_url)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
-                        sqlx::query!("UPDATE races SET video_url = $1, video_url_fr = $2, video_url_pt = $3 WHERE id = $4",
+                        sqlx::query!("UPDATE races SET video_url = $1, video_url_fr = $2, video_url_de = $3, video_url_pt = $4 WHERE id = $5",
                             race.video_urls.get(&English).or_else(|| found_race.video_urls.get(&English)).map(|url| url.to_string()),
                             race.video_urls.get(&French).or_else(|| found_race.video_urls.get(&French)).map(|url| url.to_string()),
+                            race.video_urls.get(&German).or_else(|| found_race.video_urls.get(&German)).map(|url| url.to_string()),
                             race.video_urls.get(&Portuguese).or_else(|| found_race.video_urls.get(&Portuguese)).map(|url| url.to_string()),
                             found_race.id as _,
                         ).execute(&mut **transaction).await?;
@@ -1096,9 +1088,11 @@ impl Race {
                 p2_twitch,
                 p1_discord,
                 p2_discord,
-                team3
+                team3,
+                video_url_de,
+                restreamer_de
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47)",
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49)",
                 self.startgg_set as _,
                 start,
                 self.series as _,
@@ -1146,6 +1140,8 @@ impl Race {
                 p1_discord.map(|id| i64::from(id)),
                 p2_discord.map(|id| i64::from(id)),
                 team3.map(|id| i64::from(id)),
+                self.video_urls.get(&German).map(|url| url.to_string()),
+                self.restreamers.get(&German),
             ).execute(&mut **transaction).await?;
         }
         Ok(())
@@ -2801,11 +2797,13 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                     restreamer = $5,
                     video_url_fr = $6,
                     restreamer_fr = $7,
-                    video_url_pt = $8,
-                    restreamer_pt = $9,
-                    last_edited_by = $10,
+                    video_url_de = $8,
+                    restreamer_de = $9,
+                    video_url_pt = $10,
+                    restreamer_pt = $11,
+                    last_edited_by = $12,
                     last_edited_at = NOW()
-                WHERE id = $11",
+                WHERE id = $13",
                 (!value.room.is_empty()).then(|| &value.room),
                 (!value.async_room1.is_empty()).then(|| &value.async_room1),
                 (!value.async_room2.is_empty()).then(|| &value.async_room2),
@@ -2813,6 +2811,8 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                 restreamers.get(&English),
                 value.video_urls.get(&French).filter(|video_url| !video_url.is_empty()),
                 restreamers.get(&French),
+                value.video_urls.get(&German).filter(|video_url| !video_url.is_empty()),
+                restreamers.get(&German),
                 value.video_urls.get(&Portuguese).filter(|video_url| !video_url.is_empty()),
                 restreamers.get(&Portuguese),
                 me.id as _,
