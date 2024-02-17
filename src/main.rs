@@ -120,7 +120,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
         let default_panic_hook = std::panic::take_hook();
         if let Environment::Production = env {
             std::panic::set_hook(Box::new(move |info| {
-                let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
+                let _ = wheel::night_report_sync("/net/midoshouse/error", Some("thread panic"));
                 default_panic_hook(info)
             }));
         }

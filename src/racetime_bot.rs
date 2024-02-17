@@ -1710,7 +1710,7 @@ impl SeedRollUpdate {
             Self::Error(e) => {
                 eprintln!("seed roll error: {e} ({e:?})");
                 if let Environment::Production = ctx.global_state.env {
-                    let _ = Command::new("sudo").arg("-u").arg("fenhl").arg("/opt/night/bin/nightd").arg("report").arg("/net/midoshouse/error").spawn(); //TODO include error details in report
+                    wheel::night_report("/net/midoshouse/error", Some(&format!("seed roll error: {e} ({e:?})"))).await.to_racetime()?;
                 }
                 ctx.say("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl and if necessary roll the seed manually.").await?;
             }
