@@ -354,7 +354,8 @@ impl<'a> Data<'a> {
             (Series::CopaDoBrasil, "1") => from_file!("../../assets/event/br/chests-1-7.1.143.json"),
             (Series::CopaDoBrasil, _) => unimplemented!(),
             (Series::League, "4") => from_file!("../../assets/event/league/chests-4-7.1.94.json"),
-            (Series::League, "5") => from_file!("../../assets/event/league/chests-4-7.1.94.json"), //TODO
+            (Series::League, "5") => from_file!("../../assets/event/league/chests-4-7.1.94.json"), //TODO S5 was generated on Dev versions between 7.1.184 and 7.1.200
+            (Series::League, "6") => from_file!("../../assets/event/league/chests-6-8.0.22.json"),
             (Series::League, _) => unimplemented!(),
             (Series::MixedPools, "1") => from_file!("../../assets/event/mp/chests-1-6.2.100-fenhl.4.json"),
             (Series::MixedPools, "2") => from_file!("../../assets/event/mp/chests-2-7.1.117-fenhl.17.json"),
