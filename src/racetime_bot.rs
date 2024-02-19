@@ -3834,35 +3834,61 @@ impl RaceHandler<GlobalState> for Handler {
                                                 }
                                             }
                                             */ //TODO debug errors returned from this mutation
-                                            if_chain! {
-                                                if let Some(draft_kind) = event.draft_kind();
-                                                if let Some(next_game) = cal_event.race.next_game(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token).await.to_racetime()?;
-                                                if let Some(winning_team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, winner.id).await.to_racetime()?;
-                                                if let Some(losing_team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, loser.id).await.to_racetime()?;
-                                                //TODO if this game decides the match, delete next game instead of initializing draft
-                                                then {
-                                                    sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", sqlx::types::Json(Draft::new(&mut transaction, draft_kind, losing_team.id, winning_team.id).await.to_racetime()?) as _, next_game.id as _).execute(&mut *transaction).await.to_racetime()?;
-                                                    if_chain! {
-                                                        if let Some(discord_guild) = event.discord_guild;
-                                                        if let Some(scheduling_thread) = next_game.scheduling_thread;
-                                                        let discord_ctx = ctx.global_state.discord_ctx.read().await;
-                                                        let data = discord_ctx.data.read().await;
-                                                        if let Some(command_ids) = data.get::<CommandIds>().and_then(|command_ids| command_ids.get(&discord_guild).copied());
-                                                        if let (Some(first), Some(second)) = (command_ids.first, command_ids.second);
-                                                        then {
-                                                            let mut content = MessageBuilder::default();
-                                                            content.mention_user(&loser);
-                                                            content.push(": Please choose whether you want to go ");
-                                                            content.mention_command(first, "first");
-                                                            content.push(" or ");
-                                                            content.mention_command(second, "second");
-                                                            content.push(" in the settings draft for game ");
-                                                            content.push(next_game.game.expect("next game has no game number").to_string());
-                                                            content.push('.');
-                                                            scheduling_thread.say(&*discord_ctx, content.build()).await.to_racetime()?;
+                                            //TODO after debugging the code below, reduce nesting level using if_chain
+                                            if let Some(draft_kind) = event.draft_kind() {
+                                                if let Some(next_game) = cal_event.race.next_game(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token).await.to_racetime()? {
+                                                    if let Some(winning_team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, winner.id).await.to_racetime()? {
+                                                        if let Some(losing_team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, loser.id).await.to_racetime()? {
+                                                            //TODO if this game decides the match, delete next game instead of initializing draft
+                                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", sqlx::types::Json(Draft::new(&mut transaction, draft_kind, losing_team.id, winning_team.id).await.to_racetime()?) as _, next_game.id as _).execute(&mut *transaction).await.to_racetime()?;
+                                                            //TODO after debugging the code below, reduce nesting level using if_chain
+                                                            if let Some(discord_guild) = event.discord_guild {
+                                                                if let Some(scheduling_thread) = next_game.scheduling_thread {
+                                                                    let discord_ctx = ctx.global_state.discord_ctx.read().await;
+                                                                    let data = discord_ctx.data.read().await;
+                                                                    if let Some(command_ids) = data.get::<CommandIds>().and_then(|command_ids| command_ids.get(&discord_guild).copied()) {
+                                                                        if let (Some(first), Some(second)) = (command_ids.first, command_ids.second) {
+                                                                            let mut content = MessageBuilder::default();
+                                                                            content.mention_user(&loser);
+                                                                            content.push(": Please choose whether you want to go ");
+                                                                            content.mention_command(first, "first");
+                                                                            content.push(" or ");
+                                                                            content.mention_command(second, "second");
+                                                                            content.push(" in the settings draft for game ");
+                                                                            content.push(next_game.game.expect("next game has no game number").to_string());
+                                                                            content.push('.');
+                                                                            scheduling_thread.say(&*discord_ctx, content.build()).await.to_racetime()?;
+                                                                        } else if let Series::Standard = cal_event.race.series {
+                                                                            println!("no game-2 draft kickoff for race {} due to missing first/second command IDs", cal_event.race.id);
+                                                                            wheel::night_report("/net/midoshouse/game2DraftError", Some(&format!("no game-2 draft kickoff for race {} due to missing first/second command IDs", cal_event.race.id))).await.to_racetime()?;
+                                                                        }
+                                                                    } else if let Series::Standard = cal_event.race.series {
+                                                                        println!("no game-2 draft kickoff for race {} due to missing command IDs for guild", cal_event.race.id);
+                                                                        wheel::night_report("/net/midoshouse/game2DraftError", Some(&format!("no game-2 draft kickoff for race {} due to missing command IDs for guild", cal_event.race.id))).await.to_racetime()?;
+                                                                    }
+                                                                } else if let Series::Standard = cal_event.race.series {
+                                                                    println!("no game-2 draft kickoff for race {} due to missing scheduling thread", cal_event.race.id);
+                                                                    wheel::night_report("/net/midoshouse/game2DraftError", Some(&format!("no game-2 draft kickoff for race {} due to missing scheduling thread", cal_event.race.id))).await.to_racetime()?;
+                                                                }
+                                                            } else if let Series::Standard = cal_event.race.series {
+                                                                println!("no game-2 draft kickoff for race {} due to missing Discord guild", cal_event.race.id);
+                                                                wheel::night_report("/net/midoshouse/game2DraftError", Some(&format!("no game-2 draft kickoff for race {} due to missing Discord guild", cal_event.race.id))).await.to_racetime()?;
+                                                            }
+                                                        } else if let Series::Standard = cal_event.race.series {
+                                                            println!("no game-2 draft kickoff for race {} due to missing losing team", cal_event.race.id);
+                                                            wheel::night_report("/net/midoshouse/game2DraftError", Some(&format!("no game-2 draft kickoff for race {} due to missing losing team", cal_event.race.id))).await.to_racetime()?;
                                                         }
+                                                    } else if let Series::Standard = cal_event.race.series {
+                                                        println!("no game-2 draft kickoff for race {} due to missing winning team", cal_event.race.id);
+                                                        wheel::night_report("/net/midoshouse/game2DraftError", Some(&format!("no game-2 draft kickoff for race {} due to missing winning team", cal_event.race.id))).await.to_racetime()?;
                                                     }
+                                                } else if let Series::Standard = cal_event.race.series {
+                                                    println!("no game-2 draft kickoff for race {} due to missing next game", cal_event.race.id);
+                                                    wheel::night_report("/net/midoshouse/game2DraftError", Some(&format!("no game-2 draft kickoff for race {} due to missing next game", cal_event.race.id))).await.to_racetime()?;
                                                 }
+                                            } else if let Series::Standard = cal_event.race.series {
+                                                println!("no game-2 draft kickoff for race {} due to missing draft kind", cal_event.race.id);
+                                                wheel::night_report("/net/midoshouse/game2DraftError", Some(&format!("no game-2 draft kickoff for race {} due to missing draft kind", cal_event.race.id))).await.to_racetime()?;
                                             }
                                         }
                                     }
