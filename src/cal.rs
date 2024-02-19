@@ -791,21 +791,21 @@ impl Race {
             if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE
                 series = $1
                 AND event = $2
-                AND phase = $3
-                AND round = $4
+                AND phase IS NOT DISTINCT FROM $3
+                AND round IS NOT DISTINCT FROM $4
                 AND game = $5
-                AND team1 = $6
-                AND team2 = $7
-                AND team3 = $8
-                AND p1 = $9
-                AND p2 = $10
-                AND p3 = $11
-                AND p1_discord = $12
-                AND p2_discord = $13
-                AND p1_twitch = $14
-                AND p2_twitch = $15
-                AND total = $16
-                AND finished = $17
+                AND team1 IS NOT DISTINCT FROM $6
+                AND team2 IS NOT DISTINCT FROM $7
+                AND team3 IS NOT DISTINCT FROM $8
+                AND p1 IS NOT DISTINCT FROM $9
+                AND p2 IS NOT DISTINCT FROM $10
+                AND p3 IS NOT DISTINCT FROM $11
+                AND p1_discord IS NOT DISTINCT FROM $12
+                AND p2_discord IS NOT DISTINCT FROM $13
+                AND p1_twitch IS NOT DISTINCT FROM $14
+                AND p2_twitch IS NOT DISTINCT FROM $15
+                AND total IS NOT DISTINCT FROM $16
+                AND finished IS NOT DISTINCT FROM $17
             "#,
                 self.series as _,
                 self.event,
