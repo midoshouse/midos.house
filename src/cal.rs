@@ -784,6 +784,47 @@ impl Race {
         Ok(races)
     }
 
+    pub(crate) async fn game_count(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<i16, Error> {
+        let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
+        Ok(sqlx::query_scalar!(r#"SELECT game AS "game!" FROM races WHERE
+            series = $1
+            AND event = $2
+            AND phase IS NOT DISTINCT FROM $3
+            AND round IS NOT DISTINCT FROM $4
+            AND game IS NOT NULL
+            AND team1 IS NOT DISTINCT FROM $5
+            AND team2 IS NOT DISTINCT FROM $6
+            AND team3 IS NOT DISTINCT FROM $7
+            AND p1 IS NOT DISTINCT FROM $8
+            AND p2 IS NOT DISTINCT FROM $9
+            AND p3 IS NOT DISTINCT FROM $10
+            AND p1_discord IS NOT DISTINCT FROM $11
+            AND p2_discord IS NOT DISTINCT FROM $12
+            AND p1_twitch IS NOT DISTINCT FROM $13
+            AND p2_twitch IS NOT DISTINCT FROM $14
+            AND total IS NOT DISTINCT FROM $15
+            AND finished IS NOT DISTINCT FROM $16
+            ORDER BY game DESC LIMIT 1
+        "#,
+            self.series as _,
+            self.event,
+            self.phase,
+            self.round,
+            team1.map(|id| i64::from(id)),
+            team2.map(|id| i64::from(id)),
+            team3.map(|id| i64::from(id)),
+            p1,
+            p2,
+            p3,
+            p1_discord.map(|id| i64::from(id)),
+            p2_discord.map(|id| i64::from(id)),
+            p1_twitch,
+            p2_twitch,
+            total.map(|total| total as i32),
+            finished.map(|finished| finished as i32),
+        ).fetch_optional(&mut **transaction).await?.unwrap_or(1))
+    }
+
     pub(crate) async fn next_game(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str) -> Result<Option<Self>, Error> {
         Ok(if_chain! {
             if let Some(game) = self.game;
