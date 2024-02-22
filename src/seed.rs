@@ -106,7 +106,7 @@ impl Data {
         if_chain! {
             if self.file_hash.is_none() || match self.files {
                 Some(Files::MidosHouse { .. }) => true,
-                Some(Files::OotrWeb { gen_time, .. }) => gen_time <= now - chrono::Duration::days(90),
+                Some(Files::OotrWeb { gen_time, .. }) => gen_time <= now - TimeDelta::days(90),
                 Some(Files::TriforceBlitz { .. }) => false,
                 Some(Files::TfbSotd { .. }) => false,
                 None => false,
@@ -202,7 +202,7 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
         }
         // ootrandomizer.com seeds are deleted after 90 days
         @match seed.files {
-            Some(Files::OotrWeb { id, gen_time, .. }) if gen_time > now - chrono::Duration::days(90) => td(colspan? = spoiler_logs.then_some("2")) {
+            Some(Files::OotrWeb { id, gen_time, .. }) if gen_time > now - TimeDelta::days(90) => td(colspan? = spoiler_logs.then_some("2")) {
                 a(href = format!("https://ootrandomizer.com/seed/get?id={id}")) : "View";
             }
             Some(Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem, .. }) => {

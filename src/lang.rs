@@ -33,7 +33,7 @@ impl Language {
         }
     }
 
-    pub(crate) fn format_duration(&self, duration: UDuration, running_text: bool) -> String {
+    pub(crate) fn format_duration(&self, duration: Duration, running_text: bool) -> String {
         let secs = duration.as_secs();
         let hours = secs / 3600;
         let mins = (secs % 3600) / 60;

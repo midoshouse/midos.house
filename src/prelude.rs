@@ -26,10 +26,13 @@ pub(crate) use {
         pin::pin,
         str::FromStr,
         sync::Arc,
-        time::Duration as UDuration,
+        time::Duration,
     },
     async_trait::async_trait,
-    chrono::prelude::*,
+    chrono::{
+        TimeDelta,
+        prelude::*,
+    },
     collect_mac::collect,
     either::Either,
     enum_iterator::{

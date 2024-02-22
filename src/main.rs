@@ -127,7 +127,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
         let config = Config::load().await?;
         let http_client = reqwest::Client::builder()
             .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION")))
-            .timeout(UDuration::from_secs(30))
+            .timeout(Duration::from_secs(30))
             .use_rustls_tls()
             .trust_dns(true)
             .https_only(true)
@@ -138,7 +138,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
             .username("mido")
             .database(if env.is_dev() { "fados_house" } else { "midos_house" })
             .application_name("midos-house")
-            .log_slow_statements(log::LevelFilter::Warn, UDuration::from_secs(10))
+            .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(10))
         ).await?;
         let rocket = http::rocket(db_pool.clone(), discord_builder.ctx_fut.clone(), http_client.clone(), config.clone(), env, port.unwrap_or_else(|| if env.is_dev() { 24814 } else { 24812 })).await?;
         let new_room_lock = Arc::default();

@@ -263,8 +263,8 @@ pub(crate) struct Data<'a> {
     show_opt_out: bool,
     pub(crate) show_qualifier_times: bool,
     pub(crate) default_game_count: i16,
-    pub(crate) min_schedule_notice: UDuration,
-    pub(crate) retime_window: UDuration,
+    pub(crate) min_schedule_notice: Duration,
+    pub(crate) retime_window: Duration,
     pub(crate) language: Language,
 }
 
@@ -502,7 +502,7 @@ impl<'a> Data<'a> {
                     }
                 } else {
                     if start <= Utc::now() {
-                        start += chrono::Duration::from_std(decode_pginterval(max_delay)?).expect("max delay on async too long");
+                        start += TimeDelta::from_std(decode_pginterval(max_delay)?).expect("max delay on async too long");
                     }
                 }
             }
@@ -1604,7 +1604,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
                     let mut message = MessageBuilder::default();
                     message.push("Please welcome ");
                     message.mention_team(&mut transaction, Some(discord_guild), &team).await?;
-                    if let Some(sum) = times.iter().take(players.len()).try_fold(UDuration::default(), |acc, &time| Some(acc + time?)) {
+                    if let Some(sum) = times.iter().take(players.len()).try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
                         message.push(" who finished with a time of ");
                         message.push(English.format_duration(sum / u32::try_from(players.len()).expect("too many players in team"), true));
                         message.push_line('!');

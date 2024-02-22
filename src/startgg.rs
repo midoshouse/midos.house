@@ -117,7 +117,7 @@ where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Se
         .json_with_text_in_error::<graphql_client::Response<T::ResponseData>>().await?;
     // from https://dev.start.gg/docs/rate-limits
     // “You may not average more than 80 requests per 60 seconds.”
-    *next_request = Instant::now() + UDuration::from_millis(60_000 / 80);
+    *next_request = Instant::now() + Duration::from_millis(60_000 / 80);
     match (data, errors) {
         (Some(_), Some(errors)) if !errors.is_empty() => Err(Error::GraphQL(errors)),
         (Some(data), _) => Ok(data),
@@ -138,7 +138,7 @@ where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Se
     Ok(match cache.entry::<QueryCache<T>>().or_default().entry(variables.clone()) {
         hash_map::Entry::Occupied(mut entry) => {
             let (retrieved, entry) = entry.get_mut();
-            if retrieved.elapsed() >= UDuration::from_secs(5 * 60) {
+            if retrieved.elapsed() >= Duration::from_secs(5 * 60) {
                 *entry = query_inner::<T>(client, auth_token, variables, next_request).await?;
                 *retrieved = Instant::now();
             }

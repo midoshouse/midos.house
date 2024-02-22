@@ -1,6 +1,5 @@
 use {
     std::num::NonZeroU64,
-    chrono::Duration,
     serenity::all::{
         CacheHttp,
         CreateButton,
@@ -967,7 +966,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         } else if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
-                                                .content(if event.min_schedule_notice <= UDuration::default() {
+                                                .content(if event.min_schedule_notice <= Duration::default() {
                                                     if let French = event.language {
                                                         format!("Désolé mais cette date est dans le passé.")
                                                     } else {
@@ -985,7 +984,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         } else {
                                             sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
                                             let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
-                                            if cal_event.should_create_room(&mut transaction, &event).await? && start - Utc::now() < Duration::minutes(30) {
+                                            if cal_event.should_create_room(&mut transaction, &event).await? && start - Utc::now() < TimeDelta::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
                                                     let data = ctx.data.read().await;
                                                     (
@@ -1095,7 +1094,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         } else if (start - Utc::now()).to_std().map_or(true, |schedule_notice| schedule_notice < event.min_schedule_notice) {
                                             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                 .ephemeral(true)
-                                                .content(if event.min_schedule_notice <= UDuration::default() {
+                                                .content(if event.min_schedule_notice <= Duration::default() {
                                                     if let French = event.language {
                                                         format!("Désolé mais cette date est dans le passé.")
                                                     } else {
@@ -1131,7 +1130,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 _ => panic!("tried to schedule race with not two MH teams as async"),
                                             };
                                             let cal_event = cal::Event { race, kind };
-                                            if cal_event.should_create_room(&mut transaction, &event).await? && event.team_config().is_racetime_team_format() && start - Utc::now() < Duration::minutes(30) {
+                                            if cal_event.should_create_room(&mut transaction, &event).await? && event.team_config().is_racetime_team_format() && start - Utc::now() < TimeDelta::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
                                                     let data = ctx.data.read().await;
                                                     (

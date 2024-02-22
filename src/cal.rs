@@ -3,7 +3,6 @@ use {
         max_by_key,
         min_by_key,
     },
-    chrono::Duration,
     chrono_tz::{
         America,
         Tz,
@@ -447,8 +446,8 @@ impl Race {
             (_, _, _, _, Some(uuid)) => Some(seed::Files::TriforceBlitz { uuid }),
             (Some(file_stem), _, Some(id), Some(gen_time), None) => Some(seed::Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
             (Some(file_stem), locked_spoiler_log_path, Some(id), None, None) => Some(match (row.start, row.async_start1, row.async_start2) {
-                (Some(start), None, None) | (None, Some(start), None) | (None, None, Some(start)) => seed::Files::OotrWeb { id, gen_time: start - Duration::days(1), file_stem: Cow::Owned(file_stem) },
-                (None, Some(async_start1), Some(async_start2)) => seed::Files::OotrWeb { id, gen_time: async_start1.min(async_start2) - Duration::days(1), file_stem: Cow::Owned(file_stem) },
+                (Some(start), None, None) | (None, Some(start), None) | (None, None, Some(start)) => seed::Files::OotrWeb { id, gen_time: start - TimeDelta::days(1), file_stem: Cow::Owned(file_stem) },
+                (None, Some(async_start1), Some(async_start2)) => seed::Files::OotrWeb { id, gen_time: async_start1.min(async_start2) - TimeDelta::days(1), file_stem: Cow::Owned(file_stem) },
                 (_, _, _) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path },
             }),
             (Some(file_stem), locked_spoiler_log_path, None, _, None) => Some(seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path }),
@@ -1420,7 +1419,7 @@ async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str)
     Ok(match cache.entry(key) {
         hash_map::Entry::Occupied(mut entry) => {
             let (retrieved, values) = entry.get();
-            if retrieved.elapsed() < UDuration::from_secs(5 * 60) {
+            if retrieved.elapsed() < Duration::from_secs(5 * 60) {
                 values.clone()
             } else {
                 match sheet_values_uncached(&http_client, sheet_id, range).await {
@@ -1428,7 +1427,7 @@ async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str)
                         entry.insert((Instant::now(), values.clone()));
                         values
                     }
-                    Err(e) if e.is_network_error() && retrieved.elapsed() < UDuration::from_secs(60 * 60) => values.clone(),
+                    Err(e) if e.is_network_error() && retrieved.elapsed() < Duration::from_secs(60 * 60) => values.clone(),
                     Err(source) => return Err(SheetsError { cache: SheetsCacheMissReason::Elapsed, source }),
                 }
             }
@@ -1503,11 +1502,11 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                 }));
                 cal_event.push(DtStart::new(ics_datetime(start)));
                 cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + match event.series {
-                    Series::TriforceBlitz => Duration::hours(2),
-                    Series::MixedPools | Series::Scrubs | Series::SpeedGaming | Series::WeTryToBeBetter => Duration::hours(3),
-                    Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::Standard | Series::TournoiFrancophone => Duration::hours(3) + Duration::minutes(30),
-                    Series::Multiworld | Series::Pictionary => Duration::hours(4),
-                    Series::Rsl => Duration::hours(4) + Duration::minutes(30),
+                    Series::TriforceBlitz => TimeDelta::hours(2),
+                    Series::MixedPools | Series::Scrubs | Series::SpeedGaming | Series::WeTryToBeBetter => TimeDelta::hours(3),
+                    Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::Standard | Series::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
+                    Series::Multiworld | Series::Pictionary => TimeDelta::hours(4),
+                    Series::Rsl => TimeDelta::hours(4) + TimeDelta::minutes(30),
                 })))); //TODO better fallback duration estimates depending on participants
                 let mut urls = Vec::default();
                 for (language, video_url) in &race.video_urls {
@@ -2054,8 +2053,8 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                         let signups = teams::signups_sorted(&mut *transaction, http_client, env, config, None, event, qualifier_kind).await?;
                         let SignupsTeam { members: members1, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team1)).expect("match with team that didn't sign up");
                         let SignupsTeam { members: members2, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team2)).expect("match with team that didn't sign up");
-                        let avg1 = members1.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members1.len()).expect("too many team members"));
-                        let avg2 = members2.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members2.len()).expect("too many team members"));
+                        let avg1 = members1.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members1.len()).expect("too many team members"));
+                        let avg2 = members2.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members2.len()).expect("too many team members"));
                         match [avg1, avg2] { //TODO adjust for top 8
                             [Some(_), None] => [team1.id, team2.id],
                             [None, Some(_)] => [team2.id, team1.id],

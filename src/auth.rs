@@ -63,7 +63,7 @@ async fn handle_racetime_token_response(env: &State<Environment>, client: &reqwe
     let mut cookie = Cookie::build(("racetime_token", token.access_token().to_owned()))
         .same_site(SameSite::Lax);
     if let Some(expires_in) = token.expires_in() {
-        cookie = cookie.max_age(UDuration::from_secs(u64::try_from(expires_in)?.saturating_sub(60)).try_into()?);
+        cookie = cookie.max_age(Duration::from_secs(u64::try_from(expires_in)?.saturating_sub(60)).try_into()?);
     }
     cookies.add_private(cookie);
     if let Some(refresh_token) = token.refresh_token() {
@@ -82,7 +82,7 @@ async fn handle_discord_token_response(client: &reqwest::Client, cookies: &Cooki
     let mut cookie = Cookie::build(("discord_token", token.access_token().to_owned()))
         .same_site(SameSite::Lax);
     if let Some(expires_in) = token.expires_in() {
-        cookie = cookie.max_age(UDuration::from_secs(u64::try_from(expires_in)?.saturating_sub(60)).try_into()?);
+        cookie = cookie.max_age(Duration::from_secs(u64::try_from(expires_in)?.saturating_sub(60)).try_into()?);
     }
     cookies.add_private(cookie);
     if let Some(refresh_token) = token.refresh_token() {

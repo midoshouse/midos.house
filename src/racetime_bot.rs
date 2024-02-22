@@ -77,7 +77,7 @@ const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 11] = [
     rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2),
 ];
 
-const MULTIWORLD_RATE_LIMIT: UDuration = UDuration::from_secs(20);
+const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ParseUserError {
@@ -1084,14 +1084,14 @@ impl GlobalState {
                     },
                     // Middle-ground option. Start rolling the seed at a random point between 20 and 15 minutes before start.
                     PrerollMode::Short => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
-                        let min_sleep_duration = max_sleep_duration.saturating_sub(UDuration::from_secs(5 * 60));
+                        let min_sleep_duration = max_sleep_duration.saturating_sub(Duration::from_secs(5 * 60));
                         let sleep_duration = thread_rng().gen_range(min_sleep_duration..max_sleep_duration);
                         sleep(sleep_duration).await;
                     },
                     // The type of seed being rolled is fairly likely to require a long time and/or multiple attempts to generate.
                     // Start rolling the seed at a random point between the room being opened and 30 minutes before start.
-                    PrerollMode::Medium => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - chrono::Duration::minutes(15) - Utc::now()).to_std().ok()) {
-                        let sleep_duration = thread_rng().gen_range(UDuration::default()..max_sleep_duration);
+                    PrerollMode::Medium => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
+                        let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
                         sleep(sleep_duration).await;
                     },
                 }
@@ -1209,11 +1209,11 @@ impl GlobalState {
                     let plando_file = fs::read_to_string(&plando_path).await?;
                     let settings = serde_json::from_str::<Plando>(&plando_file)?.settings;
                     fs::remove_file(plando_path).await?;
-                    if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - chrono::Duration::minutes(15) - Utc::now()).to_std().ok()) {
+                    if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
                         // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
                         // This is especially true for open races, whose rooms are opened an entire hour before start.
                         // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
-                        let sleep_duration = thread_rng().gen_range(UDuration::default()..max_sleep_duration);
+                        let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
                         sleep(sleep_duration).await;
                     }
                     let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), None /* always limit to 3 tries per settings */, version.branch(), web_version, true, unlock_spoiler_log, settings).await {
@@ -1279,11 +1279,11 @@ impl GlobalState {
         let (update_tx, update_rx) = mpsc::channel(128);
         let update_tx2 = update_tx.clone();
         tokio::spawn(async move {
-            if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - chrono::Duration::minutes(15) - Utc::now()).to_std().ok()) {
+            if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
                 // triforceblitz.com has a list of recently rolled seeds, making it easy to find a seed if you know when it was rolled.
                 // This is especially true for open races, whose rooms are opened an entire hour before start.
                 // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
-                let sleep_duration = thread_rng().gen_range(UDuration::default()..max_sleep_duration);
+                let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
                 sleep(sleep_duration).await;
             }
             let _ = update_tx.send(SeedRollUpdate::Started).await;
@@ -1309,7 +1309,7 @@ impl GlobalState {
             let response = self.http_client
                 .post("https://www.triforceblitz.com/generator")
                 .form(&form_data)
-                .timeout(UDuration::from_secs(5 * 60))
+                .timeout(Duration::from_secs(5 * 60))
                 .send().await?
                 .detailed_error_for_status().await?;
             let uuid = tfb::parse_seed_url(response.url()).ok_or(RollError::TfbUrl)?;
@@ -1747,11 +1747,11 @@ impl OotrApiClient {
             builder = builder.query(query);
         }
         let res = builder.send().await;
-        *next_request = Instant::now() + UDuration::from_millis(500);
+        *next_request = Instant::now() + Duration::from_millis(500);
         res
     }
 
-    async fn post(&self, uri: impl IntoUrl + Clone, query: Option<&(impl Serialize + ?Sized)>, json: Option<&(impl Serialize + ?Sized)>, rate_limit: Option<UDuration>) -> reqwest::Result<reqwest::Response> {
+    async fn post(&self, uri: impl IntoUrl + Clone, query: Option<&(impl Serialize + ?Sized)>, json: Option<&(impl Serialize + ?Sized)>, rate_limit: Option<Duration>) -> reqwest::Result<reqwest::Response> {
         let mut next_request = lock!(self.next_request);
         sleep_until(*next_request).await;
         let mut builder = self.http_client.post(uri.clone());
@@ -1762,7 +1762,7 @@ impl OotrApiClient {
             builder = builder.json(json);
         }
         let res = builder.send().await;
-        *next_request = Instant::now() + rate_limit.unwrap_or_else(|| UDuration::from_millis(500));
+        *next_request = Instant::now() + rate_limit.unwrap_or_else(|| Duration::from_millis(500));
         res
     }
 
@@ -1899,7 +1899,7 @@ impl OotrApiClient {
                 .json_with_text_in_error().await?;
             last_id = Some(id);
             loop {
-                sleep(UDuration::from_secs(1)).await;
+                sleep(Duration::from_secs(1)).await;
                 let resp = self.get(
                     "https://ootrandomizer.com/api/v2/seed/status",
                     Some(&[("key", api_key), ("id", &*id.to_string())]),
@@ -1941,8 +1941,8 @@ fn format_hash(file_hash: [HashIcon; 5]) -> impl fmt::Display {
 
 #[derive(Clone, Copy)]
 struct Breaks {
-    duration: UDuration,
-    interval: UDuration,
+    duration: Duration,
+    interval: Duration,
 }
 
 impl Breaks {
@@ -2144,10 +2144,10 @@ impl Handler {
             let mut seed_state = None::<SeedRollUpdate>;
             if let Some(delay) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
                 // don't want to give an unnecessarily exact estimate if the room was opened automatically 30 or 60 minutes ahead of start
-                let display_delay = if delay > UDuration::from_secs(14 * 60) && delay < UDuration::from_secs(16 * 60) {
-                    UDuration::from_secs(15 * 60)
-                } else if delay > UDuration::from_secs(44 * 60) && delay < UDuration::from_secs(46 * 60) {
-                    UDuration::from_secs(45 * 60)
+                let display_delay = if delay > Duration::from_secs(14 * 60) && delay < Duration::from_secs(16 * 60) {
+                    Duration::from_secs(15 * 60)
+                } else if delay > Duration::from_secs(44 * 60) && delay < Duration::from_secs(46 * 60) {
+                    Duration::from_secs(45 * 60)
                 } else {
                     delay
                 };
@@ -2182,25 +2182,25 @@ impl Handler {
 
     fn roll_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preroll: PrerollMode, version: VersionedBranch, settings: serde_json::Map<String, Json>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
-        let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
+        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
         self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_seed(preroll, delay_until, version, settings, unlock_spoiler_log), language, article, description);
     }
 
     fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, preset: VersionedRslPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
-        let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
+        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
         self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_rsl_seed(delay_until, preset, world_count, unlock_spoiler_log), language, article, description);
     }
 
     async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, version: &'static str, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
-        let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
+        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
         self.roll_seed_inner(ctx, state, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(delay_until, version, Some(format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url)), unlock_spoiler_log), language, article, description);
     }
 
     async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, state: OwnedRwLockWriteGuard<RaceState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
-        let delay_until = official_start.map(|start| start - chrono::Duration::minutes(15));
+        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
         let (tx, rx) = mpsc::channel(1);
         tx.send(SeedRollUpdate::Done { rsl_preset: None, unlock_spoiler_log: UnlockSpoilerLog::After, seed }).await.unwrap();
         self.roll_seed_inner(ctx, state, delay_until, rx, language, article, description);
@@ -2395,7 +2395,7 @@ impl RaceHandler<GlobalState> for Handler {
                 ready: false,
             })).collect();
             if let Series::SpeedGaming = event.series {
-                let delay_until = cal_event.start().expect("handling room for official race without start time") - chrono::Duration::minutes(20);
+                let delay_until = cal_event.start().expect("handling room for official race without start time") - TimeDelta::minutes(20);
                 if let Ok(delay) = (delay_until - Utc::now()).to_std() {
                     let ctx = ctx.clone();
                     let requires_emote_only = cal_event.race.phase.as_ref().map_or(false, |phase| phase == "Bracket");
@@ -2407,7 +2407,7 @@ impl RaceHandler<GlobalState> for Handler {
                         } else {
                             "@entrants Remember to go live with a 15 minute (900 second) delay!"
                         }).await.expect("failed to send stream delay notice");
-                        sleep(UDuration::from_secs(15 * 60)).await;
+                        sleep(Duration::from_secs(15 * 60)).await;
                         let data = ctx.data().await;
                         if !Self::should_handle_inner(&*data, ctx.global_state.clone(), false).await { return }
                         if let RaceStatusValue::Open = data.status.value {
@@ -3022,19 +3022,19 @@ impl RaceHandler<GlobalState> for Handler {
                     }).await?;
                 },
                 _ => if let Ok(breaks) = args.join(" ").parse::<Breaks>() {
-                    if breaks.duration < UDuration::from_secs(60) {
+                    if breaks.duration < Duration::from_secs(60) {
                         ctx.say(&if let French = goal.language() {
                             format!("Désolé {reply_to}, le temps minimum pour une pause (si active) est de 1 minute. Vous pouvez désactiver les pauses avec !breaks off")
                         } else {
                             format!("Sorry {reply_to}, minimum break time (if enabled at all) is 1 minute. You can disable breaks entirely with !breaks off")
                         }).await?;
-                    } else if breaks.interval < breaks.duration + UDuration::from_secs(5 * 60) {
+                    } else if breaks.interval < breaks.duration + Duration::from_secs(5 * 60) {
                         ctx.say(&if let French = goal.language() {
                             format!("Désolé {reply_to}, il doit y avoir un minimum de 5 minutes entre les pauses.")
                         } else {
                             format!("Sorry {reply_to}, there must be a minimum of 5 minutes between breaks since I notify runners 5 minutes in advance.")
                         }).await?;
-                    } else if breaks.duration + breaks.interval >= UDuration::from_secs(24 * 60 * 60) {
+                    } else if breaks.duration + breaks.interval >= Duration::from_secs(24 * 60 * 60) {
                         ctx.say(&if let French = goal.language() {
                             format!("Désolé {reply_to}, vous ne pouvez pas faire de pauses si tard dans la race, vu que les race rooms se ferment au bout de 24 heures.")
                         } else {
@@ -3494,7 +3494,7 @@ impl RaceHandler<GlobalState> for Handler {
                     self.break_notifications.get_or_insert_with(|| {
                         let ctx = ctx.clone();
                         tokio::spawn(async move {
-                            sleep(breaks.interval - UDuration::from_secs(5 * 60)).await;
+                            sleep(breaks.interval - Duration::from_secs(5 * 60)).await;
                             while Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await {
                                 let (_, ()) = tokio::join!(
                                     ctx.say(if let French = goal.language() {
@@ -3502,7 +3502,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     } else {
                                         "@entrants Reminder: Next break in 5 minutes."
                                     }),
-                                    sleep(UDuration::from_secs(5 * 60)),
+                                    sleep(Duration::from_secs(5 * 60)),
                                 );
                                 if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
                                 let msg = if let French = goal.language() {
@@ -3521,7 +3521,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     } else {
                                         "@entrants Break ended. You may resume playing."
                                     }),
-                                    sleep(breaks.interval - breaks.duration - UDuration::from_secs(5 * 60)),
+                                    sleep(breaks.interval - breaks.duration - Duration::from_secs(5 * 60)),
                                 );
                             }
                         })
@@ -3532,7 +3532,7 @@ impl RaceHandler<GlobalState> for Handler {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
-                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + chrono::Duration::minutes(match goal {
+                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::minutes(match goal {
                                     Goal::Pic7 => 10,
                                     Goal::PicRs2 => 25,
                                     _ => unreachable!(),
@@ -3542,7 +3542,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
                                     let (_, ()) = tokio::join!(
                                         ctx.say("@entrants Reminder: 5 minutes until you can start drawing/playing."),
-                                        sleep(UDuration::from_secs(5 * 60)),
+                                        sleep(Duration::from_secs(5 * 60)),
                                     );
                                     let _ = ctx.say("@entrants You may now start drawing/playing.").await;
                                 }
@@ -3553,7 +3553,7 @@ impl RaceHandler<GlobalState> for Handler {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
-                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + chrono::Duration::hours(2) - Utc::now();
+                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::hours(2) - Utc::now();
                                 if let Ok(initial_wait) = initial_wait.to_std() {
                                     sleep(initial_wait).await;
                                     let is_1v1 = {
@@ -3576,7 +3576,7 @@ impl RaceHandler<GlobalState> for Handler {
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx, goal).await? {
                 if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, .. }) = self.official_data {
                     if let Series::SpeedGaming = event.series {
-                        sleep(UDuration::from_secs(15 * 60)).await;
+                        sleep(Duration::from_secs(15 * 60)).await;
                     }
                     let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
                     if cal_event.is_first_async_half() {
@@ -3907,7 +3907,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     (None, None)
                                 };
                                 let mut team_averages = team_times.into_iter()
-                                    .map(|(team_slug, times)| (team_slug, times.iter().try_fold(UDuration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many team members"))))
+                                    .map(|(team_slug, times)| (team_slug, times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many team members"))))
                                     .collect_vec();
                                 team_averages.sort_unstable_by_key(|(_, average)| (average.is_none(), *average)); // sort DNF last
                                 if let [(ref winner, winning_time), (ref loser, losing_time)] = *team_averages {
@@ -4339,7 +4339,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
     loop {
         select! {
             () = &mut shutdown => break,
-            _ = sleep(UDuration::from_secs(30)) => { //TODO exact timing (coordinate with everything that can change the schedule)
+            _ = sleep(Duration::from_secs(30)) => { //TODO exact timing (coordinate with everything that can change the schedule)
                 let new_room_lock = lock!(global_state.new_room_lock); // make sure a new room isn't handled before it's added to the database
                 let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
                 let rooms_to_open = cal::Event::rooms_to_open(&mut transaction, &global_state.http_client, &global_state.startgg_token).await.to_racetime()?;
@@ -4390,7 +4390,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
 
 async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRaceTime, shutdown: rocket::Shutdown) -> Result<(), Error> {
     let mut last_crash = Instant::now();
-    let mut wait_time = UDuration::from_secs(1);
+    let mut wait_time = Duration::from_secs(1);
     loop {
         match racetime::Bot::new_with_host(global_state.host_info.clone(), CATEGORY, &racetime_config.client_id, &racetime_config.client_secret, global_state.clone()).await {
             Ok(bot) => {
@@ -4399,13 +4399,13 @@ async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRa
                 break Ok(())
             }
             Err(Error::Reqwest(e)) if e.status().map_or(false, |status| status.is_server_error()) => {
-                if last_crash.elapsed() >= UDuration::from_secs(60 * 60 * 24) {
-                    wait_time = UDuration::from_secs(1); // reset wait time after no crash for a day
+                if last_crash.elapsed() >= Duration::from_secs(60 * 60 * 24) {
+                    wait_time = Duration::from_secs(1); // reset wait time after no crash for a day
                 } else {
                     wait_time *= 2; // exponential backoff
                 }
                 eprintln!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
-                //TODO notify if wait_time >= UDuration::from_secs(2)
+                //TODO notify if wait_time >= Duration::from_secs(2)
                 sleep(wait_time).await;
                 last_crash = Instant::now();
             }

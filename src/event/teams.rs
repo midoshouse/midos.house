@@ -81,7 +81,7 @@ pub(crate) struct SignupsMember {
     role: Role,
     pub(crate) user: MemberUser,
     is_confirmed: bool,
-    pub(crate) qualifier_time: Option<UDuration>,
+    pub(crate) qualifier_time: Option<Duration>,
     qualifier_vod: Option<String>,
 }
 
@@ -126,7 +126,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             }
             entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
             let par_cutoff = if entrants.len() < 20 { 3 } else { 4 };
-            let par_time = entrants[0..par_cutoff].iter().map(|entrant| entrant.finish_time.expect("not enough finishers to calculate par")).sum::<UDuration>() / par_cutoff as u32;
+            let par_time = entrants[0..par_cutoff].iter().map(|entrant| entrant.finish_time.expect("not enough finishers to calculate par")).sum::<Duration>() / par_cutoff as u32;
             for entrant in entrants {
                 scores.entry(MemberUser::RaceTime {
                     id: entrant.user.id,
@@ -262,7 +262,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             QualifierKind::Single { show_times: true } => {
                 #[derive(PartialEq, Eq, PartialOrd, Ord)]
                 enum QualificationOrder {
-                    Finished(Option<i16>, UDuration),
+                    Finished(Option<i16>, Duration),
                     DidNotFinish,
                     NotYetQualified,
                 }
@@ -271,12 +271,12 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     fn new(qualification: Qualification, members: &[SignupsMember]) -> Self {
                         match qualification {
                             Qualification::Single { qualified: false } | Qualification::TriforceBlitz { qualified: false, .. } => Self::NotYetQualified,
-                            Qualification::Single { qualified: true } => if let Some(time) = members.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)) {
+                            Qualification::Single { qualified: true } => if let Some(time) = members.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)) {
                                 Self::Finished(None, time)
                             } else {
                                 Self::DidNotFinish
                             },
-                            Qualification::TriforceBlitz { qualified: true, pieces } => if let Some(time) = members.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)) {
+                            Qualification::TriforceBlitz { qualified: true, pieces } => if let Some(time) = members.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)) {
                                 Self::Finished(
                                     Some(-pieces), // list teams with more pieces first
                                     time,
@@ -433,7 +433,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                     @if let (QualifierKind::Single { show_times: true }, Qualification::Single { qualified: true } | Qualification::TriforceBlitz { qualified: true, .. }) = (qualifier_kind, qualification) {
                                         br;
                                         small {
-                                            @if let Some(time) = members.iter().try_fold(UDuration::default(), |acc, member| Some(acc + member.qualifier_time?)) {
+                                            @if let Some(time) = members.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)) {
                                                 : English.format_duration(time / u32::try_from(members.len()).expect("too many team members"), false);
                                             } else {
                                                 : "DNF";
