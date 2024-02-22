@@ -210,7 +210,7 @@ impl Draft {
         }
     }
 
-    pub(crate) async fn next_step(&self, kind: Kind, msg_ctx: &mut MessageContext<'_>) -> sqlx::Result<Step> {
+    pub(crate) async fn next_step(&self, kind: Kind, game: Option<i16>, msg_ctx: &mut MessageContext<'_>) -> sqlx::Result<Step> {
         Ok(match kind {
             Kind::S7 => {
                 if let Some(went_first) = self.went_first {
@@ -337,13 +337,25 @@ impl Draft {
                             MessageContext::Discord { transaction, guild_id, command_ids, teams, .. } => {
                                 let (mut high_seed, _) = teams.iter().partition::<Vec<_>, _>(|team| team.id == self.high_seed);
                                 let high_seed = high_seed.remove(0);
-                                MessageBuilder::default()
-                                    .mention_team(transaction, Some(*guild_id), high_seed).await?
-                                    .push(": you have the higher seed. Choose whether you want to go ")
-                                    .mention_command(command_ids.first.unwrap(), "first")
-                                    .push(" or ")
-                                    .mention_command(command_ids.second.unwrap(), "second")
-                                    .push(" in the settings draft. You can also wait until the race room is opened to draft your settings.")
+                                let mut builder = MessageBuilder::default();
+                                builder.mention_team(transaction, Some(*guild_id), high_seed).await?;
+                                if game.is_some_and(|game| game > 1) {
+                                    builder.push(": as the loser of the previous race, please choose whether you want to go ");
+                                } else {
+                                    builder.push(": you have the higher seed. Choose whether you want to go ");
+                                }
+                                builder.mention_command(command_ids.first.unwrap(), "first");
+                                builder.push(" or ");
+                                builder.mention_command(command_ids.second.unwrap(), "second");
+                                if let Some(game) = game {
+                                    builder.push(" in the settings draft for game ");
+                                    builder.push(game.to_string());
+                                    builder.push('.');
+                                } else {
+                                    builder.push(" in the settings draft.");
+                                }
+                                builder
+                                    .push(" You can also wait until the race room is opened to draft your settings.")
                                     .build()
                             }
                             MessageContext::RaceTime { high_seed_name, .. } => format!("{high_seed_name}, you have the higher seed. Choose whether you want to go !first or !second"),
@@ -483,14 +495,24 @@ impl Draft {
                             MessageContext::Discord { transaction, guild_id, command_ids, teams, .. } => {
                                 let (mut high_seed, _) = teams.iter().partition::<Vec<_>, _>(|team| team.id == self.high_seed);
                                 let high_seed = high_seed.remove(0);
-                                MessageBuilder::default()
-                                    .mention_team(transaction, Some(*guild_id), high_seed).await?
-                                    .push(": you have the higher seed. Choose whether you want to go ")
-                                    .mention_command(command_ids.first.unwrap(), "first")
-                                    .push(" or ")
-                                    .mention_command(command_ids.second.unwrap(), "second")
-                                    .push(" in the settings draft.")
-                                    .build()
+                                let mut builder = MessageBuilder::default();
+                                builder.mention_team(transaction, Some(*guild_id), high_seed).await?;
+                                if game.is_some_and(|game| game > 1) {
+                                    builder.push(": as the loser of the previous race, please choose whether you want to go ");
+                                } else {
+                                    builder.push(": you have the higher seed. Choose whether you want to go ");
+                                }
+                                builder.mention_command(command_ids.first.unwrap(), "first");
+                                builder.push(" or ");
+                                builder.mention_command(command_ids.second.unwrap(), "second");
+                                if let Some(game) = game {
+                                    builder.push(" in the settings draft for game ");
+                                    builder.push(game.to_string());
+                                    builder.push('.');
+                                } else {
+                                    builder.push(" in the settings draft.");
+                                }
+                                builder.build()
                             }
                             MessageContext::RaceTime { high_seed_name, .. } => format!("{high_seed_name}, you have the higher seed. Choose whether you want to go !first or !second"),
                         },
@@ -654,14 +676,28 @@ impl Draft {
                             MessageContext::Discord { transaction, guild_id, command_ids, teams, .. } => {
                                 let (mut high_seed, _) = teams.iter().partition::<Vec<_>, _>(|team| team.id == self.high_seed);
                                 let high_seed = high_seed.remove(0);
-                                MessageBuilder::default()
-                                    .mention_team(transaction, Some(*guild_id), high_seed).await?
-                                    .push(": you have the higher seed. Choose whether you want to go ")
-                                    .mention_command(command_ids.first.unwrap(), "first")
-                                    .push(" or ")
-                                    .mention_command(command_ids.second.unwrap(), "second")
-                                    .push(" in the settings draft.")
-                                    .build()
+                                let mut builder = MessageBuilder::default();
+                                builder.mention_team(transaction, Some(*guild_id), high_seed).await?;
+                                if game.is_some_and(|game| game > 1) {
+                                    builder.push(": as the loser of the previous race, please choose whether you want to go ");
+                                } else {
+                                    builder.push(": you have the higher seed. Choose whether you want to go ");
+                                }
+                                builder.mention_command(command_ids.first.unwrap(), "first");
+                                builder.push(" or ");
+                                builder.mention_command(command_ids.second.unwrap(), "second");
+                                if let Some(game) = game {
+                                    builder.push(" in the settings draft for game ");
+                                    builder.push(game.to_string());
+                                    builder.push('.');
+                                } else {
+                                    builder.push(" in the settings draft.");
+                                }
+                                if self.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
+                                    builder.push_line("");
+                                    builder.push("Please note that for accessibility reasons, the Chest Appearance Matches Contents setting will default to Both Size and Texture for this match. It can be locked to Both Size and Texture using a ban or pick, or changed to Off using a pick. Texture Only is not available in this match.");
+                                }
+                                builder.build()
                             }
                             MessageContext::RaceTime { high_seed_name, .. } => format!("{high_seed_name}, you have the higher seed. Choose whether you want to go !first or !second"),
                         },
@@ -880,8 +916,8 @@ impl Draft {
         })
     }
 
-    pub(crate) async fn active_team(&self, kind: Kind) -> sqlx::Result<Option<Team>> {
-        Ok(match self.next_step(kind, &mut MessageContext::None).await?.kind {
+    pub(crate) async fn active_team(&self, kind: Kind, game: Option<i16>) -> sqlx::Result<Option<Team>> {
+        Ok(match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
             StepKind::GoFirst => Some(Team::HighSeed),
             StepKind::Ban { team, .. } | StepKind::Pick { team, .. } | StepKind::BooleanChoice { team } => Some(team),
             StepKind::Done(_) => None,
@@ -889,15 +925,15 @@ impl Draft {
     }
 
     /// Assumes that the caller has checked that the team is part of the race in the first place.
-    pub(crate) async fn is_active_team(&self, kind: Kind, team: Id<Teams>) -> sqlx::Result<bool> {
-        Ok(match self.active_team(kind).await? {
+    pub(crate) async fn is_active_team(&self, kind: Kind, game: Option<i16>, team: Id<Teams>) -> sqlx::Result<bool> {
+        Ok(match self.active_team(kind, game).await? {
             Some(Team::HighSeed) => team == self.high_seed,
             Some(Team::LowSeed) => team != self.high_seed,
             None => false,
         })
     }
 
-    pub(crate) async fn apply(&mut self, kind: Kind, msg_ctx: &mut MessageContext<'_>, action: Action) -> sqlx::Result<Result<String, String>> {
+    pub(crate) async fn apply(&mut self, kind: Kind, game: Option<i16>, msg_ctx: &mut MessageContext<'_>, action: Action) -> sqlx::Result<Result<String, String>> {
         Ok(match kind {
             Kind::S7 => {
                 let resolved_action = match action {
@@ -923,11 +959,11 @@ impl Draft {
                             ),
                         }))
                     },
-                    Action::BooleanChoice(value) if matches!(self.next_step(kind, &mut MessageContext::None).await?.kind, StepKind::GoFirst) => Action::GoFirst(value),
+                    Action::BooleanChoice(value) if matches!(self.next_step(kind, game, &mut MessageContext::None).await?.kind, StepKind::GoFirst) => Action::GoFirst(value),
                     _ => action,
                 };
                 match resolved_action {
-                    Action::GoFirst(first) => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::GoFirst(first) => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => {
                             self.went_first = Some(first);
                             Ok(match msg_ctx {
@@ -954,7 +990,7 @@ impl Draft {
                         }),
                     },
                     Action::Ban { .. } => unreachable!("normalized to Action::Pick above"),
-                    Action::Pick { setting, value } => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::Pick { setting, value } => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => Err(match msg_ctx {
                             MessageContext::None => String::default(),
                             MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
@@ -1090,7 +1126,7 @@ impl Draft {
                             MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
                         }),
                     },
-                    Action::Skip => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::Skip => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => Err(match msg_ctx {
                             MessageContext::None => String::default(),
                             MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
@@ -1131,7 +1167,7 @@ impl Draft {
                             MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
                         }),
                     },
-                    Action::BooleanChoice(_) => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::BooleanChoice(_) => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => unreachable!("normalized to Action::GoFirst above"),
                         StepKind::BooleanChoice { .. } => unreachable!(),
                         StepKind::Done(_) => Err(match msg_ctx {
@@ -1171,11 +1207,11 @@ impl Draft {
                             ),
                         }))
                     },
-                    Action::BooleanChoice(value) if matches!(self.next_step(kind, &mut MessageContext::None).await?.kind, StepKind::GoFirst) => Action::GoFirst(value),
+                    Action::BooleanChoice(value) if matches!(self.next_step(kind, game, &mut MessageContext::None).await?.kind, StepKind::GoFirst) => Action::GoFirst(value),
                     _ => action,
                 };
                 match resolved_action {
-                    Action::GoFirst(first) => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::GoFirst(first) => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => {
                             self.went_first = Some(first);
                             Ok(match msg_ctx {
@@ -1202,7 +1238,7 @@ impl Draft {
                         }),
                     },
                     Action::Ban { .. } => unreachable!("normalized to Action::Pick above"),
-                    Action::Pick { setting, value } => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::Pick { setting, value } => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => Err(match msg_ctx {
                             MessageContext::None => String::default(),
                             MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
@@ -1338,7 +1374,7 @@ impl Draft {
                             MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
                         }),
                     },
-                    Action::Skip => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::Skip => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => Err(match msg_ctx {
                             MessageContext::None => String::default(),
                             MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
@@ -1379,7 +1415,7 @@ impl Draft {
                             MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
                         }),
                     },
-                    Action::BooleanChoice(_) => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::BooleanChoice(_) => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => unreachable!("normalized to Action::GoFirst above"),
                         StepKind::BooleanChoice { .. } => unreachable!(),
                         StepKind::Done(_) => Err(match msg_ctx {
@@ -1426,11 +1462,11 @@ impl Draft {
                             ),
                         }))
                     },
-                    Action::BooleanChoice(value) if matches!(self.next_step(kind, &mut MessageContext::None).await?.kind, StepKind::GoFirst) => Action::GoFirst(value),
+                    Action::BooleanChoice(value) if matches!(self.next_step(kind, game, &mut MessageContext::None).await?.kind, StepKind::GoFirst) => Action::GoFirst(value),
                     _ => action,
                 };
                 match resolved_action {
-                    Action::GoFirst(first) => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::GoFirst(first) => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => {
                             self.went_first = Some(first);
                             Ok(match msg_ctx {
@@ -1457,7 +1493,7 @@ impl Draft {
                         }),
                     },
                     Action::Ban { .. } => unreachable!("normalized to Action::Pick above"),
-                    Action::Pick { setting, value } => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::Pick { setting, value } => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => Err(match msg_ctx {
                             MessageContext::None => String::default(),
                             MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
@@ -1593,7 +1629,7 @@ impl Draft {
                             MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
                         }),
                     },
-                    Action::Skip => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::Skip => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => Err(match msg_ctx {
                             MessageContext::None => String::default(),
                             MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
@@ -1635,7 +1671,7 @@ impl Draft {
                             MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
                         }),
                     },
-                    Action::BooleanChoice(_) => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::BooleanChoice(_) => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => unreachable!("normalized to Action::GoFirst above"),
                         StepKind::BooleanChoice { .. } => unreachable!(),
                         StepKind::Done(_) => Err(match msg_ctx {
@@ -1678,7 +1714,7 @@ impl Draft {
                     _ => action,
                 };
                 match resolved_action {
-                    Action::GoFirst(first) => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::GoFirst(first) => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => {
                             self.went_first = Some(first);
                             Ok(match msg_ctx {
@@ -1728,7 +1764,7 @@ impl Draft {
                         }),
                     },
                     Action::Ban { .. } => unreachable!("normalized to Action::Pick above"),
-                    Action::Pick { setting, value } => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::Pick { setting, value } => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => Err(match msg_ctx {
                             MessageContext::None => String::default(),
                             MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
@@ -1799,7 +1835,7 @@ impl Draft {
                             if let Some(option) = setting.options.iter().find(|option| option.name == value) {
                                 let is_default = value == fr::S3_SETTINGS.into_iter().find(|&fr::S3Setting { name, .. }| setting.name == name).unwrap().default;
                                 if !is_default {
-                                    self.settings.insert(Cow::Borrowed(self.active_team(kind).await?.unwrap().choose("high_seed_has_picked", "low_seed_has_picked")), Cow::Borrowed("yes"));
+                                    self.settings.insert(Cow::Borrowed(self.active_team(kind, game).await?.unwrap().choose("high_seed_has_picked", "low_seed_has_picked")), Cow::Borrowed("yes"));
                                 }
                                 self.settings.insert(Cow::Borrowed(setting.name), Cow::Borrowed(option.name));
                                 Ok(match msg_ctx {
@@ -1880,7 +1916,7 @@ impl Draft {
                             MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, ce draft est terminé."),
                         }),
                     },
-                    Action::Skip => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::Skip => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::GoFirst => Err(match msg_ctx {
                             MessageContext::None => String::default(),
                             MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
@@ -1931,7 +1967,7 @@ impl Draft {
                             MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, ce draft est terminé."),
                         }),
                     },
-                    Action::BooleanChoice(value) => match self.next_step(kind, &mut MessageContext::None).await?.kind {
+                    Action::BooleanChoice(value) => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
                         StepKind::BooleanChoice { .. } => {
                             self.settings.insert(Cow::Borrowed("mixed-dungeons"), Cow::Borrowed(if value { "mixed" } else { "separate" }));
                             Ok(match msg_ctx {
@@ -1964,7 +2000,7 @@ impl Draft {
 
     pub(crate) async fn complete_randomly(mut self, kind: Kind) -> sqlx::Result<Picks> {
         Ok(loop {
-            let action = match self.next_step(kind, &mut MessageContext::None).await?.kind {
+            let action = match self.next_step(kind, None, &mut MessageContext::None).await?.kind {
                 StepKind::GoFirst => Action::GoFirst(thread_rng().gen()),
                 StepKind::Ban { available_settings, skippable, .. } => {
                     let mut settings = available_settings.all().map(Some).collect_vec();
@@ -1991,7 +2027,7 @@ impl Draft {
                 StepKind::BooleanChoice { .. } => Action::BooleanChoice(thread_rng().gen()),
                 StepKind::Done(_) => break self.settings,
             };
-            self.apply(kind, &mut MessageContext::None, action).await?.expect("random draft made illegal action");
+            self.apply(kind, None, &mut MessageContext::None, action).await?.expect("random draft made illegal action");
         })
     }
 }

@@ -1815,7 +1815,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                     scheduling_thread,
                 };
                 if game == 1 {
-                    discord_bot::create_scheduling_thread(&*discord_ctx.read().await, &mut transaction, &mut race, value.game_count).await?;
+                    transaction = discord_bot::create_scheduling_thread(&*discord_ctx.read().await, transaction, &mut race, value.game_count).await?;
                     scheduling_thread = race.scheduling_thread;
                 }
                 race.save(&mut transaction).await?;
@@ -2300,7 +2300,7 @@ pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>,
                     ..race.clone()
                 };
                 if game == 1 {
-                    discord_bot::create_scheduling_thread(&*discord_ctx.read().await, &mut transaction, &mut race, game_count).await?;
+                    transaction = discord_bot::create_scheduling_thread(&*discord_ctx.read().await, transaction, &mut race, game_count).await?;
                     scheduling_thread = race.scheduling_thread;
                 }
                 race.save(&mut transaction).await?;

@@ -2044,7 +2044,7 @@ impl Handler {
         let goal = self.goal(ctx).await.to_racetime()?;
         if let Some(draft_kind) = goal.draft_kind() {
             let available_settings = if let RaceState::Draft { state: ref draft, .. } = *lock!(@read self.race_state) {
-                match draft.next_step(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }).await.to_racetime()?.kind {
+                match draft.next_step(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }).await.to_racetime()?.kind {
                     draft::StepKind::GoFirst => None,
                     draft::StepKind::Ban { available_settings, .. } => Some(available_settings.all().map(|setting| setting.description).collect()),
                     draft::StepKind::Pick { available_choices, .. } => Some(available_choices.all().map(|setting| setting.description).collect()),
@@ -2082,7 +2082,7 @@ impl Handler {
         let state = lock!(@write @owned self.race_state.clone());
         let Some(draft_kind) = goal.draft_kind() else { unreachable!() };
         let RaceState::Draft { state: ref draft, unlock_spoiler_log } = *state else { unreachable!() };
-        let step = draft.next_step(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to: "friend" }).await.to_racetime()?;
+        let step = draft.next_step(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to: "friend" }).await.to_racetime()?;
         if let draft::StepKind::Done(settings) = step.kind {
             let (article, description) = if let French = goal.language() {
                 ("une", format!("seed avec {}", step.message))
@@ -2106,7 +2106,7 @@ impl Handler {
                         draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => ctx.say(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         draft::Kind::TournoiFrancoS3 => ctx.say(&format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
                     },
-                    RaceState::Draft { state: ref mut draft, .. } => match draft.apply(draft_kind, &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }, action).await.to_racetime()? {
+                    RaceState::Draft { state: ref mut draft, .. } => match draft.apply(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }, action).await.to_racetime()? {
                         Ok(_) => {
                             drop(state);
                             self.advance_draft(ctx).await?;
@@ -2346,7 +2346,7 @@ impl RaceHandler<GlobalState> for Handler {
             }, true, Vec::default()).await?;
             let (race_state, high_seed_name, low_seed_name) = if let Some(draft_kind) = event.draft_kind() {
                 let state = cal_event.race.draft.clone().expect("missing draft state");
-                let [high_seed_name, low_seed_name] = if let draft::StepKind::Done(_) = state.next_step(draft_kind, &mut draft::MessageContext::None).await.to_racetime()?.kind {
+                let [high_seed_name, low_seed_name] = if let draft::StepKind::Done(_) = state.next_step(draft_kind, cal_event.race.game, &mut draft::MessageContext::None).await.to_racetime()?.kind {
                     // we just need to roll the seed so player/team names are no longer required
                     [format!("Team A"), format!("Team B")]
                 } else {
@@ -3841,28 +3841,25 @@ impl RaceHandler<GlobalState> for Handler {
                                                 if let Some(losing_team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, loser.id).await.to_racetime()?;
                                                 then {
                                                     //TODO if this game decides the match, delete next game instead of initializing draft
-                                                    sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", sqlx::types::Json(Draft::new(&mut transaction, draft_kind, losing_team.id, winning_team.id).await.to_racetime()?) as _, next_game.id as _).execute(&mut *transaction).await.to_racetime()?;
+                                                    let draft = Draft::new(&mut transaction, draft_kind, losing_team.id, winning_team.id).await.to_racetime()?;
+                                                    sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", sqlx::types::Json(&draft) as _, next_game.id as _).execute(&mut *transaction).await.to_racetime()?;
                                                     if_chain! {
-                                                        if let Some(discord_guild) = event.discord_guild;
+                                                        if let Some(guild_id) = event.discord_guild;
                                                         if let Some(scheduling_thread) = next_game.scheduling_thread;
                                                         // not automatically posting if the match might already be decided
                                                         //TODO remove this condition after implementing handling for decided matches (see TODO comment above)
                                                         if cal_event.race.game.expect("found next game for race without game number") <= cal_event.race.game_count(&mut transaction).await.to_racetime()? / 2;
                                                         let discord_ctx = ctx.global_state.discord_ctx.read().await;
                                                         let data = discord_ctx.data.read().await;
-                                                        if let Some(command_ids) = data.get::<CommandIds>().and_then(|command_ids| command_ids.get(&discord_guild).copied());
-                                                        if let (Some(first), Some(second)) = (command_ids.first, command_ids.second);
+                                                        if let Some(command_ids) = data.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied());
                                                         then {
-                                                            let mut content = MessageBuilder::default();
-                                                            content.mention_user(&loser);
-                                                            content.push(": Please choose whether you want to go ");
-                                                            content.mention_command(first, "first");
-                                                            content.push(" or ");
-                                                            content.mention_command(second, "second");
-                                                            content.push(" in the settings draft for game ");
-                                                            content.push(next_game.game.expect("next game has no game number").to_string());
-                                                            content.push('.');
-                                                            scheduling_thread.say(&*discord_ctx, content.build()).await.to_racetime()?;
+                                                            let mut msg_ctx = draft::MessageContext::Discord {
+                                                                teams: cal_event.race.teams().cloned().collect(),
+                                                                team: Team::dummy(),
+                                                                transaction, guild_id, command_ids,
+                                                            };
+                                                            scheduling_thread.say(&*discord_ctx, draft.next_step(draft_kind, cal_event.race.game, &mut msg_ctx).await.to_racetime()?.message).await.to_racetime()?;
+                                                            transaction = msg_ctx.into_transaction();
                                                         }
                                                     }
                                                 }

@@ -229,7 +229,7 @@ async fn check_draft_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl Gen
     Ok(if let Some(team) = team {
         if let Some(draft_kind) = event.draft_kind() {
             if let Some(ref draft) = race.draft {
-                if draft.is_active_team(draft_kind, team.id).await? {
+                if draft.is_active_team(draft_kind, race.game, team.id).await? {
                     let msg_ctx = draft::MessageContext::Discord {
                         command_ids: *ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)).expect("draft action called from outside registered guild"),
                         teams: race.teams().cloned().collect(),
@@ -282,8 +282,8 @@ async fn check_draft_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl Gen
 
 async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericInteraction, action: &str, page: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
-    match race.draft.as_ref().unwrap().next_step(draft_kind, &mut msg_ctx).await?.kind {
-        draft::StepKind::GoFirst | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) => match race.draft.as_mut().unwrap().apply(draft_kind, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
+    match race.draft.as_ref().unwrap().next_step(draft_kind, race.game, &mut msg_ctx).await?.kind {
+        draft::StepKind::GoFirst | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) => match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
             Ok(_) => unreachable!(),
             Err(error_msg) => {
                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -369,7 +369,7 @@ async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericIn
 
 async fn draft_action(ctx: &DiscordCtx, interaction: &impl GenericInteraction, action: draft::Action) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
-    match race.draft.as_mut().unwrap().apply(draft_kind, &mut msg_ctx, action).await? {
+    match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, action).await? {
         Ok(apply_response) => {
             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                 .ephemeral(false)
@@ -377,7 +377,7 @@ async fn draft_action(ctx: &DiscordCtx, interaction: &impl GenericInteraction, a
             )).await?;
             if let Some(draft_kind) = event.draft_kind() {
                 interaction.channel_id()
-                    .say(ctx, race.draft.as_ref().unwrap().next_step(draft_kind, &mut msg_ctx).await?.message).await?;
+                    .say(ctx, race.draft.as_ref().unwrap().next_step(draft_kind, race.game, &mut msg_ctx).await?.message).await?;
             }
             let mut transaction = msg_ctx.into_transaction();
             sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
@@ -849,7 +849,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             };
                                             let message_content = MessageBuilder::default()
                                                 //TODO include scheduling status, both for regular races and for asyncs
-                                                .push(draft.next_step(draft_kind, &mut msg_ctx).await?.message)
+                                                .push(draft.next_step(draft_kind, race.game, &mut msg_ctx).await?.message)
                                                 .build();
                                             interaction.channel.as_ref().expect("received draft action outside channel")
                                                 .id
@@ -1370,7 +1370,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         };
                                         let response_content = MessageBuilder::default()
                                             //TODO include scheduling status, both for regular races and for asyncs
-                                            .push(draft.next_step(draft_kind, &mut msg_ctx).await?.message)
+                                            .push(draft.next_step(draft_kind, race.game, &mut msg_ctx).await?.message)
                                             .build();
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
@@ -1565,7 +1565,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         send_draft_settings_page(ctx, interaction, "draft", page.parse().unwrap()).await?;
                     } else if let Some(setting) = custom_id.strip_prefix("draft_setting_") {
                         let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
-                        match race.draft.as_ref().unwrap().next_step(draft_kind, &mut msg_ctx).await?.kind {
+                        match race.draft.as_ref().unwrap().next_step(draft_kind, race.game, &mut msg_ctx).await?.kind {
                             draft::StepKind::Ban { available_settings, .. } if available_settings.get(setting).is_some() => {
                                 let setting = available_settings.get(setting).unwrap(); // `if let` guards are experimental
                                 msg_ctx.into_transaction().commit().await?;
@@ -1598,7 +1598,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 response_msg = response_msg.button(CreateButton::new("draft_page_0").label(if let French = event.language { "Retour" } else { "Back" }).style(ButtonStyle::Secondary)); //TODO remember page?
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
                             }
-                            draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) => match race.draft.as_mut().unwrap().apply(draft_kind, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
+                            draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) => match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
                                 Ok(_) => unreachable!(),
                                 Err(error_msg) => {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1634,28 +1634,28 @@ pub(crate) enum Error {
     UnregisteredDiscordGuild,
 }
 
-pub(crate) async fn create_scheduling_thread(ctx: &DiscordCtx, transaction: &mut Transaction<'_, Postgres>, race: &mut Race, game_count: i16) -> Result<(), Error> {
-    let event = race.event(&mut *transaction).await?;
-    let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) else { return Ok(()) };
+pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transaction: Transaction<'a, Postgres>, race: &mut Race, game_count: i16) -> Result<Transaction<'a, Postgres>, Error> {
+    let event = race.event(&mut transaction).await?;
+    let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) else { return Ok(transaction) };
     let Some(command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied()) else { return Err(Error::UnregisteredDiscordGuild) };
     let title = if_chain! {
         if let French = event.language;
         if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
-        if let Some(Some(info_prefix)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await?;
+        if let Some(Some(info_prefix)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?;
         then {
             match race.entrants {
                 Entrants::Open | Entrants::Count { .. } => info_prefix,
                 Entrants::Named(ref entrants) => format!("{info_prefix} : {entrants}"),
                 Entrants::Two([ref team1, ref team2]) => format!(
                     "{info_prefix} : {} vs {}",
-                    team1.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team1.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team2.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                 ),
                 Entrants::Three([ref team1, ref team2, ref team3]) => format!(
                     "{info_prefix} : {} vs {} vs {}",
-                    team1.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team3.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team1.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team2.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team3.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                 ),
             }
         } else {
@@ -1670,30 +1670,30 @@ pub(crate) async fn create_scheduling_thread(ctx: &DiscordCtx, transaction: &mut
                 Entrants::Two([ref team1, ref team2]) => format!(
                     "{info_prefix}{}{} vs {}",
                     if info_prefix.is_empty() { "" } else { ": " },
-                    team1.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team1.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team2.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                 ),
                 Entrants::Three([ref team1, ref team2, ref team3]) => format!(
                     "{info_prefix}{}{} vs {} vs {}",
                     if info_prefix.is_empty() { "" } else { ": " },
-                    team1.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team2.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                    team3.name(&mut *transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team1.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team2.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                    team3.name(&mut transaction, ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                 ),
             }
         }
     };
-    let content = if_chain! {
+    let mut content = MessageBuilder::default();
+    if_chain! {
         if let French = event.language;
         if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
-        if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await?;
+        if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?;
         if game_count == 1;
         if event.asyncs_allowed();
         if let None | Some(draft::Kind::TournoiFrancoS3) = event.draft_kind();
         then {
-            let mut content = MessageBuilder::default();
             for team in race.teams() {
-                content.mention_team(&mut *transaction, Some(guild_id), team).await?;
+                content.mention_team(&mut transaction, Some(guild_id), team).await?;
                 content.push(' ');
             }
             content.push("Bienvenue dans votre ");
@@ -1703,29 +1703,9 @@ pub(crate) async fn create_scheduling_thread(ctx: &DiscordCtx, transaction: &mut
             content.push(" pour schedule votre race en live ou ");
             content.mention_command(command_ids.schedule_async, "schedule-async");
             content.push(" pour schedule votre async. Vous devez insérer un timestamp Discord que vous pouvez créer sur <https://hammertime.cyou/>");
-            match event.draft_kind() {
-                Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => unreachable!("these events are held in English"),
-                Some(draft::Kind::TournoiFrancoS3) => if let Some(ref draft) = race.draft {
-                    if let (Some(first), Some(second), Some(high_seed)) = (command_ids.first, command_ids.second, Team::from_id(&mut *transaction, draft.high_seed).await?) {
-                        content.push_line("");
-                        content.mention_team(&mut *transaction, Some(guild_id), &high_seed).await?;
-                        content.push(" : Vous avez été sélectionné pour décider qui commencera le draft en premier. Si vous voulez commencer, veuillez entrer ");
-                        content.mention_command(first, "first");
-                        content.push(". Autrement, entrez ");
-                        content.mention_command(second, "second");
-                        content.push(".");
-                        if draft.settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
-                            content.push(" Veuillez choisir combien de donjons Master Quest seront présents. Vous devez vous concerter pour choisir ce nombre.");
-                        }
-                    }
-                },
-                None => {}
-            }
-            content.build()
         } else {
-            let mut content = MessageBuilder::default();
             for team in race.teams() {
-                content.mention_team(&mut *transaction, Some(guild_id), team).await?;
+                content.mention_team(&mut transaction, Some(guild_id), team).await?;
                 content.push(' ');
             }
             content.push("Welcome to your ");
@@ -1751,52 +1731,31 @@ pub(crate) async fn create_scheduling_thread(ctx: &DiscordCtx, transaction: &mut
                 content.push_mono("game:");
                 content.push(" parameter with these commands to schedule subsequent games ahead of time.");
             }
-            match event.draft_kind() {
-                Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4) => if let Some(ref draft) = race.draft {
-                    if let (Some(first), Some(second), Some(high_seed)) = (command_ids.first, command_ids.second, Team::from_id(&mut *transaction, draft.high_seed).await?) {
-                        content.push_line("");
-                        content.mention_team(&mut *transaction, Some(guild_id), &high_seed).await?;
-                        content.push(": you have the higher seed. Choose whether you want to go ");
-                        content.mention_command(first, "first");
-                        content.push(" or ");
-                        content.mention_command(second, "second");
-                        content.push(" in the settings draft.");
-                        if draft.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
-                            content.push_line("");
-                            content.push("Please note that for accessibility reasons, the Chest Appearance Matches Contents setting will default to Both Size and Texture for this match. It can be locked to Both Size and Texture using a ban or pick, or changed to Off using a pick. Texture Only is not available in this match.");
-                        }
-                    }
-                },
-                Some(draft::Kind::TournoiFrancoS3) => if let Some(ref draft) = race.draft {
-                    if let (Some(first), Some(second), Some(high_seed)) = (command_ids.first, command_ids.second, Team::from_id(&mut *transaction, draft.high_seed).await?) {
-                        content.push_line("");
-                        content.mention_team(&mut *transaction, Some(guild_id), &high_seed).await?;
-                        content.push(": you have won the coin flip. Choose whether you want to go ");
-                        content.mention_command(first, "first");
-                        content.push(" or ");
-                        content.mention_command(second, "second");
-                        content.push(" in the settings draft.");
-                        if draft.settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
-                            content.push(" Please include the number of MQ dungeons.");
-                        }
-                    }
-                },
-                None => {}
-            }
-            content.build()
         }
     };
+    if let Some(draft_kind) = event.draft_kind() {
+        if let Some(ref draft) = race.draft {
+            let mut msg_ctx = draft::MessageContext::Discord {
+                teams: race.teams().cloned().collect(),
+                team: Team::dummy(),
+                transaction, guild_id, command_ids,
+            };
+            content.push_line("");
+            content.push(draft.next_step(draft_kind, race.game, &mut msg_ctx).await?.message);
+            transaction = msg_ctx.into_transaction();
+        }
+    }
     race.scheduling_thread = Some(if let Some(ChannelType::Forum) = scheduling_channel.to_channel(ctx).await?.guild().map(|c| c.kind) {
         scheduling_channel.create_forum_post(ctx, CreateForumPost::new(
             title,
-            CreateMessage::new().content(content),
+            CreateMessage::new().content(content.build()),
         ).auto_archive_duration(AutoArchiveDuration::OneWeek)).await?.id
     } else {
         let thread = scheduling_channel.create_thread(ctx, CreateThread::new(
             title,
         ).kind(ChannelType::PublicThread).auto_archive_duration(AutoArchiveDuration::OneWeek)).await?;
-        thread.say(ctx, content).await?;
+        thread.say(ctx, content.build()).await?;
         thread.id
     });
-    Ok(())
+    Ok(transaction)
 }
