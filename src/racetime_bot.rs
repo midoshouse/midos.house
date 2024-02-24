@@ -3854,11 +3854,11 @@ impl RaceHandler<GlobalState> for Handler {
                                                         if let Some(command_ids) = data.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied());
                                                         then {
                                                             let mut msg_ctx = draft::MessageContext::Discord {
-                                                                teams: cal_event.race.teams().cloned().collect(),
+                                                                teams: next_game.teams().cloned().collect(),
                                                                 team: Team::dummy(),
                                                                 transaction, guild_id, command_ids,
                                                             };
-                                                            scheduling_thread.say(&*discord_ctx, draft.next_step(draft_kind, cal_event.race.game, &mut msg_ctx).await.to_racetime()?.message).await.to_racetime()?;
+                                                            scheduling_thread.say(&*discord_ctx, draft.next_step(draft_kind, next_game.game, &mut msg_ctx).await.to_racetime()?.message).await.to_racetime()?;
                                                             transaction = msg_ctx.into_transaction();
                                                         }
                                                     }
