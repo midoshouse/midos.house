@@ -424,7 +424,7 @@ async fn not_found(request: &Request<'_>) -> PageResult {
         div(style = "flex-grow: 0;") {
             h1 : "Error 404: Not Found";
         }
-        img(style = "flex-grow: 1;", class = "banner nearest-neighbor", src = "https://cdn.discordapp.com/attachments/512048482677424138/905673263005433866/unknown.png");
+        img(style = "flex-grow: 1;", class = "banner nearest-neighbor", src = "https://i.imgur.com/i4lJkiq.png");
     }).await
 }
 
