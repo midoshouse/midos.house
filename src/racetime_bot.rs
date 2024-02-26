@@ -2137,12 +2137,12 @@ impl Handler {
     }
 
     async fn roll_seed_inner(&self, ctx: &RaceContext<GlobalState>, delay_until: Option<DateTime<Utc>>, mut updates: mpsc::Receiver<SeedRollUpdate>, language: Language, article: &'static str, description: String) {
-        lock!(@write state = self.race_state; *state = RaceState::Rolling);
         let db_pool = ctx.global_state.db_pool.clone();
         let ctx = ctx.clone();
         let state = self.race_state.clone();
         let official_data = self.official_data.clone();
         tokio::spawn(async move {
+            lock!(@write state = state; *state = RaceState::Rolling); //TODO ensure only one seed is rolled at a time
             let mut seed_state = None::<SeedRollUpdate>;
             if let Some(delay) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
                 // don't want to give an unnecessarily exact estimate if the room was opened automatically 30 or 60 minutes ahead of start
