@@ -1415,8 +1415,7 @@ async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str)
     }
 
     let key = (sheet_id.to_owned(), range.to_owned());
-    let mut cache = lock!(SHEETS_CACHE);
-    Ok(match cache.entry(key) {
+    lock!(cache = SHEETS_CACHE; Ok(match cache.entry(key) {
         hash_map::Entry::Occupied(mut entry) => {
             let (retrieved, values) = entry.get();
             if retrieved.elapsed() < Duration::from_secs(5 * 60) {
@@ -1437,7 +1436,7 @@ async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str)
             entry.insert((Instant::now(), values.clone()));
             values
         }
-    })
+    }))
 }
 
 fn ics_datetime<Z: TimeZone>(datetime: DateTime<Z>) -> String {

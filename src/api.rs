@@ -34,9 +34,9 @@ use {
 };
 
 macro_rules! db {
-    ($ctx:expr) => {{
-        &mut *lock!($ctx.data_unchecked::<ArcTransaction>())
-    }};
+    ($db:ident = $ctx:expr; $expr:expr) => {
+        lock!($db = $ctx.data_unchecked::<ArcTransaction>(); $expr)
+    };
 }
 
 #[derive(Default, PartialEq, Eq)]
@@ -108,7 +108,6 @@ impl fmt::Display for Scopes {
     }
 }
 
-#[async_trait]
 impl Guard for Scopes {
     async fn check(&self, ctx: &Context<'_>) -> Result<()> {
         if ctx.data::<ApiKey>().map_err(|e| Error {
@@ -125,7 +124,6 @@ impl Guard for Scopes {
 
 struct ShowRestreamConsent<'a>(&'a cal::Race);
 
-#[async_trait]
 impl Guard for ShowRestreamConsent<'_> {
     async fn check(&self, ctx: &Context<'_>) -> Result<()> {
         let me = &ctx.data::<ApiKey>().map_err(|e| Error {
@@ -133,12 +131,14 @@ impl Guard for ShowRestreamConsent<'_> {
             source: Some(Arc::new(e)),
             extensions: None,
         })?.user;
-        let event = self.0.event(db!(ctx)).await?;
-        if event.organizers(db!(ctx)).await?.contains(me) || event.restreamers(db!(ctx)).await?.contains(me) {
-            Ok(())
-        } else {
-            Err("Only event organizers and restreamers can view restream consent info.".into())
-        }
+        db!(db = ctx; {
+            let event = self.0.event(&mut *db).await?;
+            if event.organizers(&mut *db).await?.contains(me) || event.restreamers(&mut *db).await?.contains(me) {
+                Ok(())
+            } else {
+                Err("Only event organizers and restreamers can view restream consent info.".into())
+            }
+        })
     }
 }
 
@@ -201,14 +201,14 @@ enum UserFromDiscordError {
     /// Requires an API key with `user_search` scope.
     #[graphql(guard = Scopes { user_search: true, ..Scopes::default() })]
     async fn user_from_racetime(&self, ctx: &Context<'_>, id: GqlId) -> sqlx::Result<Option<User>> {
-        Ok(user::User::from_racetime(&mut **db!(ctx), id.as_str()).await?.map(User))
+        Ok(db!(db = ctx; user::User::from_racetime(&mut **db, id.as_str()).await?).map(User))
     }
 
     /// Returns the Mido's House user connected to the given Discord user snowflake ID, if any.
     /// Requires an API key with `user_search` scope.
     #[graphql(guard = Scopes { user_search: true, ..Scopes::default() })]
     async fn user_from_discord(&self, ctx: &Context<'_>, id: GqlId) -> Result<Option<User>, UserFromDiscordError> {
-        Ok(user::User::from_discord(&mut **db!(ctx), id.parse()?).await?.map(User))
+        Ok(db!(db = ctx; user::User::from_discord(&mut **db, id.parse()?).await?).map(User))
     }
 }
 
@@ -217,7 +217,7 @@ struct Series(event::Series);
 #[Object] impl Series {
     /// Returns an event by its URL part.
     async fn event(&self, ctx: &Context<'_>, name: String) -> Result<Option<Event>, event::DataError> {
-        Ok(event::Data::new(db!(ctx), self.0, name).await?.map(Event))
+        Ok(db!(db = ctx; event::Data::new(&mut *db, self.0, name).await?).map(Event))
     }
 }
 
@@ -226,7 +226,7 @@ struct Event(event::Data<'static>);
 #[Object] impl Event {
     /// All past, upcoming, and unscheduled races for this event, sorted chronologically.
     async fn races(&self, ctx: &Context<'_>) -> Result<Vec<Race>, cal::Error> {
-        Ok(cal::Race::for_event(db!(ctx), ctx.data_unchecked(), *ctx.data_unchecked(), ctx.data_unchecked(), &self.0).await?.into_iter().map(Race).collect())
+        Ok(db!(db = ctx; cal::Race::for_event(&mut *db, ctx.data_unchecked(), *ctx.data_unchecked(), ctx.data_unchecked(), &self.0).await?).into_iter().map(Race).collect())
     }
 }
 
@@ -248,7 +248,7 @@ struct Race(cal::Race);
     /// The time the scheduling of this race was last changed. Null if this race's schedule has not been touched or if the event does not use Mido's House to schedule races.
     /// This info was not tracked before 2024-01-04 so this is also null for races whose schedule was last changed before then.
     async fn schedule_updated_at(&self, ctx: &Context<'_>) -> sqlx::Result<Option<UtcTimestamp>> {
-        Ok(sqlx::query_scalar!("SELECT schedule_updated_at FROM races WHERE id = $1", self.0.id as _).fetch_one(&mut **db!(ctx)).await?.map(UtcTimestamp::from))
+        Ok(db!(db = ctx; sqlx::query_scalar!("SELECT schedule_updated_at FROM races WHERE id = $1", self.0.id as _).fetch_one(&mut **db).await?).map(UtcTimestamp::from))
     }
 
     /// The race room URL. Null if no room has been opened yet or if this race is asynced.
@@ -274,7 +274,7 @@ struct Race(cal::Race);
     /// All teams participating in this race. For solo events, these will be single-member teams.
     /// Null if the race is open (not invitational) or if the event does not use Mido's House to manage entrants.
     async fn teams(&self, ctx: &Context<'_>) -> Result<Option<Vec<Team>>, event::DataError> {
-        let event = self.0.event(db!(ctx)).await?;
+        let event = db!(db = ctx; self.0.event(&mut *db).await?);
         Ok(self.0.teams_opt().map(|teams| teams.map(|team| Team { inner: team.clone(), event: event.clone() }).collect()))
     }
 
@@ -302,7 +302,7 @@ struct Team {
     /// Members are guaranteed to be listed in a consistent order depending on the team configuration of the event, e.g. pictionary events will always list the runner first and the pilot second.
     async fn members(&self, ctx: &Context<'_>) -> sqlx::Result<Vec<TeamMember>> {
         let team_config = self.event.team_config();
-        let members = self.inner.members(db!(ctx)).await?;
+        let members = db!(db = ctx; self.inner.members(&mut *db).await?);
         let roles = team_config.roles();
         Ok(
             members.into_iter().zip_eq(roles)

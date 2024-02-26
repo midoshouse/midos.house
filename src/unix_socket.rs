@@ -73,18 +73,23 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                         match ClientMessage::read(&mut sock).await {
                             Ok(ClientMessage::PrepareStop { no_new_rooms }) => {
                                 println!("preparing to stop Mido's House: acquiring clean shutdown mutex");
-                                let mut clean_shutdown = lock!(clean_shutdown);
-                                clean_shutdown.requested = true;
-                                if no_new_rooms { clean_shutdown.block_new = true }
-                                if !clean_shutdown.open_rooms.is_empty() {
-                                    println!("preparing to stop Mido's House: waiting for {} rooms to close:", clean_shutdown.open_rooms.len());
-                                    for room_url in &clean_shutdown.open_rooms {
-                                        println!("https://{}{room_url}", global_state.env.racetime_host());
+                                lock!(clean_shutdown = clean_shutdown; {
+                                    clean_shutdown.requested = true;
+                                    if no_new_rooms { clean_shutdown.block_new = true }
+                                    if !clean_shutdown.open_rooms.is_empty() {
+                                        println!("preparing to stop Mido's House: waiting for {} rooms to close:", clean_shutdown.open_rooms.len());
+                                        for room_url in &clean_shutdown.open_rooms {
+                                            println!("https://{}{room_url}", global_state.env.racetime_host());
+                                        }
+                                        let notifier = Arc::clone(&clean_shutdown.notifier);
+                                        unlock!();
+                                        notifier.notified().await;
+                                        println!("preparing to stop Mido's House: sending reply");
+                                        0u8.write(&mut sock).await.expect("error writing to UNIX socket");
+                                        println!("preparing to stop Mido's House: done");
+                                        break
                                     }
-                                    let notifier = Arc::clone(&clean_shutdown.notifier);
-                                    drop(clean_shutdown);
-                                    notifier.notified().await;
-                                }
+                                });
                                 println!("preparing to stop Mido's House: sending reply");
                                 0u8.write(&mut sock).await.expect("error writing to UNIX socket");
                                 println!("preparing to stop Mido's House: done");

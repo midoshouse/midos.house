@@ -128,26 +128,30 @@ where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Se
 
 pub(crate) async fn query_uncached<T: GraphQLQuery + 'static>(client: &reqwest::Client, auth_token: &str, variables: T::Variables) -> Result<T::ResponseData, Error>
 where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Send + Sync {
-    let (ref mut next_request, _) = *lock!(CACHE);
-    query_inner::<T>(client, auth_token, variables, next_request).await
+    lock!(cache = CACHE; {
+        let (ref mut next_request, _) = *cache;
+        query_inner::<T>(client, auth_token, variables, next_request).await
+    })
 }
 
 pub(crate) async fn query_cached<T: GraphQLQuery + 'static>(client: &reqwest::Client, auth_token: &str, variables: T::Variables) -> Result<T::ResponseData, Error>
 where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Send + Sync {
-    let (ref mut next_request, ref mut cache) = *lock!(CACHE);
-    Ok(match cache.entry::<QueryCache<T>>().or_default().entry(variables.clone()) {
-        hash_map::Entry::Occupied(mut entry) => {
-            let (retrieved, entry) = entry.get_mut();
-            if retrieved.elapsed() >= Duration::from_secs(5 * 60) {
-                *entry = query_inner::<T>(client, auth_token, variables, next_request).await?;
-                *retrieved = Instant::now();
+    lock!(cache = CACHE; {
+        let (ref mut next_request, ref mut cache) = *cache;
+        Ok(match cache.entry::<QueryCache<T>>().or_default().entry(variables.clone()) {
+            hash_map::Entry::Occupied(mut entry) => {
+                let (retrieved, entry) = entry.get_mut();
+                if retrieved.elapsed() >= Duration::from_secs(5 * 60) {
+                    *entry = query_inner::<T>(client, auth_token, variables, next_request).await?;
+                    *retrieved = Instant::now();
+                }
+                entry.clone()
             }
-            entry.clone()
-        }
-        hash_map::Entry::Vacant(entry) => {
-            let data = query_inner::<T>(client, auth_token, variables, next_request).await?;
-            entry.insert((Instant::now(), data.clone()));
-            data
-        }
+            hash_map::Entry::Vacant(entry) => {
+                let data = query_inner::<T>(client, auth_token, variables, next_request).await?;
+                entry.insert((Instant::now(), data.clone()));
+                data
+            }
+        })
     })
 }

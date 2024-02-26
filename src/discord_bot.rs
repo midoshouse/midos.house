@@ -995,29 +995,29 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
                                                     )
                                                 };
-                                                let new_room_lock = lock!(new_room_lock);
-                                                if let Some(msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, &cal_event, &event).await? {
-                                                    if let Some(channel) = event.discord_race_room_channel {
-                                                        channel.say(ctx, &msg).await?;
+                                                lock!(new_room_lock = new_room_lock; {
+                                                    if let Some(msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, &cal_event, &event).await? {
+                                                        if let Some(channel) = event.discord_race_room_channel {
+                                                            channel.say(ctx, &msg).await?;
+                                                        }
+                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                            .ephemeral(false)
+                                                            .content(msg)
+                                                        )).await?;
+                                                    } else {
+                                                        let response_content = MessageBuilder::default()
+                                                            .push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") })
+                                                            .push(" is now scheduled for ")
+                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                            .push(". The race room will be opened momentarily.")
+                                                            .build();
+                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                            .ephemeral(false)
+                                                            .content(response_content)
+                                                        )).await?;
                                                     }
-                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                        .ephemeral(false)
-                                                        .content(msg)
-                                                    )).await?;
-                                                } else {
-                                                    let response_content = MessageBuilder::default()
-                                                        .push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") })
-                                                        .push(" is now scheduled for ")
-                                                        .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
-                                                        .push(". The race room will be opened momentarily.")
-                                                        .build();
-                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                        .ephemeral(false)
-                                                        .content(response_content)
-                                                    )).await?;
-                                                }
-                                                transaction.commit().await?;
-                                                drop(new_room_lock);
+                                                    transaction.commit().await?;
+                                                })
                                             } else {
                                                 transaction.commit().await?;
                                                 let response_content = if_chain! {
@@ -1141,40 +1141,40 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
                                                     )
                                                 };
-                                                let new_room_lock = lock!(new_room_lock);
-                                                if let Some(mut msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, &cal_event, &event).await? {
-                                                    if cal_event.is_first_async_half() {
-                                                        msg = format!("unlisted room for first async half: {msg}");
-                                                        if let Some(channel) = event.discord_organizer_channel {
-                                                            channel.say(ctx, &msg).await?;
+                                                lock!(new_room_lock = new_room_lock; {
+                                                    if let Some(mut msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, &cal_event, &event).await? {
+                                                        if cal_event.is_first_async_half() {
+                                                            msg = format!("unlisted room for first async half: {msg}");
+                                                            if let Some(channel) = event.discord_organizer_channel {
+                                                                channel.say(ctx, &msg).await?;
+                                                            } else {
+                                                                // DM Fenhl
+                                                                UserId::new(86841168427495424).create_dm_channel(ctx).await?.say(ctx, &msg).await?;
+                                                            }
                                                         } else {
-                                                            // DM Fenhl
-                                                            UserId::new(86841168427495424).create_dm_channel(ctx).await?.say(ctx, &msg).await?;
+                                                            if let Some(channel) = event.discord_race_room_channel {
+                                                                channel.say(ctx, &msg).await?; //TODO only ping once?
+                                                            }
                                                         }
+                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                            .ephemeral(cal_event.is_first_async_half())
+                                                            .content(msg)
+                                                        )).await?;
                                                     } else {
-                                                        if let Some(channel) = event.discord_race_room_channel {
-                                                            channel.say(ctx, &msg).await?; //TODO only ping once?
-                                                        }
+                                                        let response_content = MessageBuilder::default()
+                                                            .push("Your half of ")
+                                                            .push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") })
+                                                            .push(" is now scheduled for ")
+                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                            .push(". The race room will be opened momentarily.")
+                                                            .build();
+                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                            .ephemeral(false)
+                                                            .content(response_content)
+                                                        )).await?;
                                                     }
-                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                        .ephemeral(cal_event.is_first_async_half())
-                                                        .content(msg)
-                                                    )).await?;
-                                                } else {
-                                                    let response_content = MessageBuilder::default()
-                                                        .push("Your half of ")
-                                                        .push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") })
-                                                        .push(" is now scheduled for ")
-                                                        .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
-                                                        .push(". The race room will be opened momentarily.")
-                                                        .build();
-                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                        .ephemeral(false)
-                                                        .content(response_content)
-                                                    )).await?;
-                                                }
-                                                transaction.commit().await?;
-                                                drop(new_room_lock);
+                                                    transaction.commit().await?;
+                                                });
                                             } else {
                                                 transaction.commit().await?;
                                                 let response_content = if_chain! {
