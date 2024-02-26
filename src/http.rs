@@ -388,8 +388,8 @@ async fn mw_platforms(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -
             }
             tr {
                 th : "Project64-EM";
-                td {
-                    : "Not planned. Projec64-EM is a modified version of Project64 created by the ";
+                td(colspan = "3") {
+                    : "Not planned. Project64-EM is a modified version of Project64 created by the ";
                     a(href = "https://ootmm.com/") : "OoTMM";
                     : " community which removes the plugin system used by Mido's House Multiworld and replaces it with a different one. Note that Mido's House Multiworld does not support OoTMM — please follow ";
                     a(href = "https://ootmm.com/multiworld") : "the OoTMM multiworld setup guide";
