@@ -229,6 +229,8 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
             a(href = uri!(archive).to_string()) : "Past events";
             : " • ";
             a(href = uri!(new_event).to_string()) : "Planning an event?";
+            : " • ";
+            a(href = uri!(mw).to_string()) : "Mido's House Multiworld";
         }
         h1 : "Calendar";
         p {
