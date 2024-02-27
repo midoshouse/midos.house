@@ -620,8 +620,8 @@ impl Race {
                     let id = Id::new(&mut *transaction).await?;
                     let (phase, round, game) = if let Some(group) = round.strip_prefix("Group ") {
                         (format!("Group"), group.to_owned(), None)
-                    } else if let Some((round, game)) = round.split_once(" - Game ") {
-                        (format!("Top 8"), round.to_owned(), Some(game.parse()?))
+                    } else if let Some((round, game)) = round.split_once(" - Game ").and_then(|(round, game)| Some((round, game.parse().ok()?))) {
+                        (format!("Top 8"), round.to_owned(), Some(game))
                     } else {
                         (format!("Top 8"), round.clone(), None)
                     };
@@ -722,8 +722,8 @@ impl Race {
                         let id = Id::<Races>::new(&mut *transaction).await?;
                         let (phase, parsed_round, game) = if let Some(group) = round.strip_prefix("Group ") {
                             (format!("Group"), group.to_owned(), None)
-                        } else if let Some((round, game)) = round.split_once(" Game ") {
-                            (format!("Bracket"), round.to_owned(), Some(game.parse()?))
+                        } else if let Some((round, game)) = round.split_once(" Game ").and_then(|(round, game)| Some((round, game.parse().ok()?))) {
+                            (format!("Bracket"), round.to_owned(), Some(game))
                         } else {
                             (format!("Bracket"), round.clone(), None)
                         };
