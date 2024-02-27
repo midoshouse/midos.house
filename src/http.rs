@@ -224,7 +224,9 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
         p {
             : "Mido's House is a platform where ";
             a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
-            : " events like tournaments or community races can be organized.";
+            : " events like tournaments or community races can be organized. You may also be looking for the ";
+            a(href = uri!(mw).to_string()) : "Mido's House Multiworld";
+            : " app.";
         }
         h1 : "Ongoing events";
         ul {
@@ -256,8 +258,6 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
             a(href = uri!(archive).to_string()) : "Past events";
             : " • ";
             a(href = uri!(new_event).to_string()) : "Planning an event?";
-            : " • ";
-            a(href = uri!(mw).to_string()) : "Mido's House Multiworld";
         }
         h1 : "Ongoing/upcoming races";
         p {
