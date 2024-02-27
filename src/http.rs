@@ -266,7 +266,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
         @if races.is_empty() {
             i : "(none currently)";
         } else {
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, None, false, true, false, false, false, &races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, None, false, true, false, me.as_ref().is_some_and(|me| me.is_archivist), false, &races).await?;
         }
     };
     Ok(page(transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", page_content).await?)
