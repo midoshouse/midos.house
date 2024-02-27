@@ -720,14 +720,14 @@ impl Race {
                         let start = NaiveDateTime::parse_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}")).and_local_timezone(America::New_York).single_ok()?;
                         if start < America::New_York.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue }
                         let id = Id::<Races>::new(&mut *transaction).await?;
-                        let (phase, parsed_round, game) = if let Some(group) = round.strip_prefix("Group ") {
+                        let (phase, round, game) = if let Some(group) = round.strip_prefix("Group ") {
                             (format!("Group"), group.to_owned(), None)
                         } else if let Some((round, game)) = round.split_once(" Game ").and_then(|(round, game)| Some((round, game.parse().ok()?))) {
                             (format!("Bracket"), round.to_owned(), Some(game))
                         } else {
                             (format!("Bracket"), round.clone(), None)
                         };
-                        let race = Self {
+                        add_or_update_race(&mut *transaction, &mut races, Self {
                             series: event.series,
                             event: event.event.to_string(),
                             startgg_event: None,
@@ -741,7 +741,7 @@ impl Race {
                                 Entrants::Named(matchup.clone())
                             },
                             phase: Some(phase),
-                            round: Some(parsed_round),
+                            round: Some(round),
                             scheduling_thread: None,
                             schedule: RaceSchedule::Live {
                                 start: start.with_timezone(&Utc),
@@ -755,24 +755,7 @@ impl Race {
                             ignored: false,
                             schedule_locked: false,
                             id, game,
-                        };
-                        if let Some(found_race) = races.iter_mut().find(|iter_race|
-                            iter_race.series == race.series
-                            && iter_race.event == race.event
-                            && iter_race.phase.is_none()
-                            && iter_race.round.as_ref().is_some_and(|iter_round| iter_round == round)
-                            && iter_race.game.is_none()
-                            && iter_race.entrants == race.entrants
-                            && !iter_race.schedule_locked
-                        ) { //TODO remove (temporary code to migrate existing races to the fixed phase/round/game format)
-                            sqlx::query!("UPDATE races SET phase = $1, round = $2, game = $3 WHERE id = $4", &race.phase as _, &race.round as _, game, found_race.id as _).execute(&mut **transaction).await?;
-                            found_race.phase = race.phase.clone();
-                            found_race.round = race.round.clone();
-                            found_race.game = game;
-                            update_race(&mut *transaction, found_race, race).await?;
-                        } else {
-                            add_or_update_race(&mut *transaction, &mut races, race).await?;
-                        }
+                        }).await?;
                     }
                 },
                 "7cc" => {} //TODO get from start.gg without manual confirmation (after testing best-of-3)
