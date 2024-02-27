@@ -371,6 +371,12 @@ footer,
     }
 }
 
+@media not (min-width: 768px) {
+    .large-table-content {
+        display: none;
+    }
+}
+
 @media (min-width: 768px) {
     nav h1 {
         font-size: 64px;
@@ -379,6 +385,10 @@ footer,
     table th,
     table td {
         padding: 8px;
+    }
+
+    .small-table-content {
+        display: none;
     }
 }
 

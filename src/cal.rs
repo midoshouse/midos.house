@@ -1960,7 +1960,10 @@ pub(crate) async fn race_table(
                             }
                         }
                         @if show_event {
-                            td : event;
+                            td(class = "small-table-content") {
+                                a(href = uri!(event::info(event.series, &*event.event)).to_string()) : event.short_name();
+                            }
+                            td(class = "large-table-content") : event;
                         }
                         td {
                             : race.phase;
