@@ -16,7 +16,6 @@ use {
     rocket_util::Error,
     serde_plain::derive_serialize_from_display,
     crate::{
-        http::PageResult,
         prelude::*,
         user::RaceTimePronouns,
     },

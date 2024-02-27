@@ -1533,6 +1533,32 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
     Ok(())
 }
 
+#[rocket::get("/calendar")]
+pub(crate) async fn index_help(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
+    page(pool.begin().await?, &me, &uri, PageStyle::default(), "Calendar — Mido's House", html! {
+        p {
+            : "A calendar of all races across all events can be found at ";
+            code : uri!("https://midos.house", index).to_string();
+            : " — by pasting this link into most calendar apps' “subscribe” feature instead of downloading it, you can get automatic updates as races are scheduled:";
+        }
+        ul {
+            li {
+                : "In Google Calendar, select ";
+                a(href = "https://calendar.google.com/calendar/u/0/r/settings/addbyurl") : "Add calendar → From URL";
+            }
+            li {
+                : "In Apple Calendar, press ";
+                kbd : "⌥";
+                kbd : "⌘";
+                kbd : "S";
+                : " or select File → New Calendar Subscription";
+            }
+            li : "In Mozilla Thunderbird, select New Calendar → On the Network. Paste the link into the “Location” field and click “Find Calendars”, then “Properties”. Enable “Read Only” and click “OK”, then “Subscribe”.";
+        }
+        //p : "You can also find calendar links for individual events on their pages."; //TODO
+    }).await
+}
+
 #[rocket::get("/calendar.ics")]
 pub(crate) async fn index(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>) -> Result<Response<ICalendar<'static>>, Error> {
     let mut transaction = pool.begin().await?;
@@ -1848,7 +1874,19 @@ impl fmt::Display for ImportSkipReason {
     }
 }
 
-pub(crate) async fn race_table(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, env: Environment, http_client: &reqwest::Client, event: &event::Data<'_>, game_count: bool, show_multistreams: bool, can_create: bool, can_edit: bool, show_restream_consent: bool, races: &[Race]) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn race_table(
+    transaction: &mut Transaction<'_, Postgres>,
+    discord_ctx: &DiscordCtx,
+    env: Environment,
+    http_client: &reqwest::Client,
+    event: Option<&event::Data<'_>>,
+    game_count: bool,
+    show_multistreams: bool,
+    can_create: bool,
+    can_edit: bool,
+    show_restream_consent: bool,
+    races: &[Race],
+) -> Result<RawHtml<String>, Error> {
     let has_games = game_count || races.iter().any(|race| race.game.is_some());
     let has_seeds = races.iter().any(|race|
         (race.seed.file_hash.is_some() || race.seed.files.is_some())
@@ -1860,6 +1898,9 @@ pub(crate) async fn race_table(transaction: &mut Transaction<'_, Postgres>, disc
         table {
             thead {
                 tr {
+                    @if event.is_none() {
+                        th : "Event";
+                    }
                     th : "Start";
                     th : "Round";
                     @if has_games {
@@ -1880,10 +1921,12 @@ pub(crate) async fn race_table(transaction: &mut Transaction<'_, Postgres>, disc
                     @if has_buttons {
                         th {
                             @if can_create {
-                                @match event.match_source() {
-                                    MatchSource::Manual => a(class = "button", href = uri!(create_race(races[0].series, &*races[0].event, _)).to_string()) : "New Race";
-                                    MatchSource::League => {}
-                                    MatchSource::StartGG(_) => a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event)).to_string()) : "Import";
+                                @if let Some(event) = event {
+                                    @match event.match_source() {
+                                        MatchSource::Manual => a(class = "button", href = uri!(create_race(races[0].series, &*races[0].event, _)).to_string()) : "New Race";
+                                        MatchSource::League => {}
+                                        MatchSource::StartGG(_) => a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event)).to_string()) : "Import";
+                                    }
                                 }
                             }
                         }
@@ -1893,6 +1936,14 @@ pub(crate) async fn race_table(transaction: &mut Transaction<'_, Postgres>, disc
             tbody {
                 @for race in races {
                     tr {
+                        @let (event, show_event) = if let Some(event) = event {
+                            (event.clone(), false)
+                        } else {
+                            (event::Data::new(&mut *transaction, race.series, &race.event).await?.expect("race for nonexistent event"), true)
+                        };
+                        @if show_event {
+                            td : event;
+                        }
                         td {
                             @match race.schedule {
                                 RaceSchedule::Unscheduled => {}
@@ -1953,7 +2004,7 @@ pub(crate) async fn race_table(transaction: &mut Transaction<'_, Postgres>, disc
                                     a(class = "favicon", href = video_url.to_string()) : favicon(video_url);
                                 }
                                 @if show_multistreams && race.video_urls.is_empty() {
-                                    @if let Some(multistream_url) = race.multistream_url(&mut *transaction, env, http_client, event).await? {
+                                    @if let Some(multistream_url) = race.multistream_url(&mut *transaction, env, http_client, &event).await? {
                                         a(class = "favicon", href = multistream_url.to_string()) : favicon(&multistream_url);
                                     }
                                 }
@@ -2223,7 +2274,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                     }
                 }
             } else {
-                let table = race_table(&mut transaction, discord_ctx, env, http_client, &event, true, false, false, false, false, &races).await?;
+                let table = race_table(&mut transaction, discord_ctx, env, http_client, Some(&event), true, false, false, false, false, &races).await?;
                 let errors = ctx.errors().collect_vec();
                 full_form(uri!(import_races_post(event.series, &*event.event)), csrf, html! {
                     p : "The following races will be imported:";

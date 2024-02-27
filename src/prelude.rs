@@ -183,6 +183,7 @@ pub(crate) use {
         http::{
             PageError,
             PageKind,
+            PageResult,
             PageStyle,
             page,
             static_url,

@@ -181,12 +181,39 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
 }
 
 #[rocket::get("/")]
-async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
+async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
     let mut transaction = pool.begin().await?;
     let mut upcoming_events = Vec::default();
+    let mut races = Vec::default();
     for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW()) ORDER BY start ASC NULLS LAST"#).fetch_all(&mut *transaction).await? {
-        upcoming_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction"));
+        let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction");
+        races.extend(Race::for_event(&mut transaction, http_client, **env, config, &event).await?.into_iter().filter(|race| match race.schedule {
+            RaceSchedule::Unscheduled => false,
+            RaceSchedule::Live { end, .. } => end.is_none(),
+            RaceSchedule::Async { start1, start2, end1, end2, .. } => start1.is_some() && start2.is_some() && (end1.is_none() || end2.is_none()), // second half scheduled and not ended
+        }));
+        upcoming_events.push(event);
     }
+    races.sort_unstable_by(|race1, race2| {
+        let start1 = match race1.schedule {
+            RaceSchedule::Unscheduled => None,
+            RaceSchedule::Live { start, .. } => Some(start),
+            RaceSchedule::Async { start1, start2, .. } => start1.max(start2),
+        };
+        let start2 = match race2.schedule {
+            RaceSchedule::Unscheduled => None,
+            RaceSchedule::Live { start, .. } => Some(start),
+            RaceSchedule::Async { start1, start2, .. } => start1.max(start2),
+        };
+        start1.cmp(&start2)
+            .then_with(|| race1.series.to_str().cmp(race2.series.to_str()))
+            .then_with(|| race1.event.cmp(&race2.event))
+            .then_with(|| race1.phase.cmp(&race2.phase))
+            .then_with(|| race1.round.cmp(&race2.round))
+            .then_with(|| race1.startgg_set.cmp(&race2.startgg_set))
+            .then_with(|| race1.game.cmp(&race2.game))
+            .then_with(|| race1.id.cmp(&race2.id))
+    });
     let chests_event = upcoming_events.choose(&mut thread_rng());
     let chests = if let Some(event) = chests_event { event.chests().await } else { ChestAppearances::random() };
     let mut ongoing_events = Vec::default();
@@ -232,27 +259,15 @@ async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Resul
             : " • ";
             a(href = uri!(mw).to_string()) : "Mido's House Multiworld";
         }
-        h1 : "Calendar";
+        h1 : "Ongoing/upcoming races";
         p {
-            : "A calendar of all races across all events can be found at ";
-            code : uri!("https://midos.house", cal::index).to_string();
-            : " — by pasting this link into most calendar apps' “subscribe” feature instead of downloading it, you can get automatic updates as races are scheduled:";
+            a(href = uri!(cal::index_help).to_string()) : "Add to calendar";
         }
-        ul {
-            li {
-                : "In Google Calendar, select ";
-                a(href = "https://calendar.google.com/calendar/u/0/r/settings/addbyurl") : "Add calendar → From URL";
-            }
-            li {
-                : "In Apple Calendar, press ";
-                kbd : "⌥";
-                kbd : "⌘";
-                kbd : "S";
-                : " or select File → New Calendar Subscription";
-            }
-            li : "In Mozilla Thunderbird, select New Calendar → On the Network. Paste the link into the “Location” field and click “Find Calendars”, then “Properties”. Enable “Read Only” and click “OK”, then “Subscribe”.";
+        @if races.is_empty() {
+            i : "(none currently)";
+        } else {
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, None, false, true, false, false, false, &races).await?;
         }
-        //p : "You can also find calendar links for individual events on their pages."; //TODO figure out where to put these calendar links (below the date for single races, “Schedule” tab for tournaments?)
     };
     Ok(page(transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", page_content).await?)
 }
@@ -489,6 +504,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         auth::register_racetime,
         auth::register_discord,
         auth::merge_accounts,
+        cal::index_help,
         cal::index,
         cal::for_series,
         cal::for_event,
