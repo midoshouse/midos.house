@@ -1898,10 +1898,10 @@ pub(crate) async fn race_table(
         table {
             thead {
                 tr {
+                    th : "Start";
                     @if event.is_none() {
                         th : "Event";
                     }
-                    th : "Start";
                     th : "Round";
                     @if has_games {
                         @if game_count {
@@ -1941,15 +1941,15 @@ pub(crate) async fn race_table(
                         } else {
                             (event::Data::new(&mut *transaction, race.series, &race.event).await?.expect("race for nonexistent event"), true)
                         };
-                        @if show_event {
-                            td : event;
-                        }
                         td {
                             @match race.schedule {
                                 RaceSchedule::Unscheduled => {}
                                 RaceSchedule::Live { start, .. } => : format_datetime(start, DateTimeFormat { long: false, running_text: false });
                                 RaceSchedule::Async { .. } => : "(async)";
                             }
+                        }
+                        @if show_event {
+                            td : event;
                         }
                         td {
                             : race.phase;
