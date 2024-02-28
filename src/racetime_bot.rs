@@ -951,7 +951,7 @@ impl Goal {
                         let href = a_attrs.get("href").ok_or(RollError::TfbHtml).to_racetime()?;
                         let (_, ordinal) = regex_captures!("^/seed/daily/([0-9]+)$", href).ok_or(RollError::TfbHtml).to_racetime()?;
                         let ordinal = ordinal.parse().to_racetime()?;
-                        let date = NaiveDate::parse_from_str(&a.text_contents(), "%-d %B %Y").to_racetime()?;
+                        let date = NaiveDate::parse_from_str(&a.text_contents(), "%B %-d, %Y").to_racetime()?;
                         let file_hash = latest.select_first(".hash-icons").map_err(|()| RollError::TfbHtml).to_racetime()?
                             .as_node()
                             .children()
