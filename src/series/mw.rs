@@ -668,6 +668,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 ul {
                     li : "Fire Arrow Entry is allowed";
                     li : "Playing Treasure Chest Game without magic and lens is banned";
+                    li : "Bypassing the boulders blocking the DMC fairy fountain is banned";
                 }
                 p : "All teams are expected to record their matches. Failure to do so may result in a game loss or disqualification from the tournament.";
                 h2 : "Fair Play Agreement";
