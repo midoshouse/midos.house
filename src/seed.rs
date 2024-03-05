@@ -321,7 +321,7 @@ pub(crate) async fn get(pool: &State<PgPool>, env: &State<Environment>, me: Opti
                 inner: RawJson(spoiler),
                 content_disposition: Header::new(CONTENT_DISPOSITION.as_str(), "inline"),
                 // may not work in all browsers, see https://bugzilla.mozilla.org/show_bug.cgi?id=1185705
-                link: Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(chests.textures(), Suffix(1024, "png"))))),
+                link: Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(Suffix(chests.textures(), "png"))))),
             }
         }
         Some(_) => return Err(StatusOrError::Status(Status::NotFound)),

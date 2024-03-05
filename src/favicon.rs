@@ -93,16 +93,13 @@ pub(crate) enum FaviconError {
     UnsupportedSuffix,
 }
 
-#[rocket::get("/favicon/<textures>/<size_ext>")]
-pub(crate) async fn favicon_png(textures: ChestTextures, size_ext: Suffix<'_, u32>) -> Result<Response<RgbaImage>, FaviconError> {
-    let ChestTextures([top_left, top_right, bottom_left, bottom_right]) = textures;
-    let Suffix(size, ext) = size_ext;
-    if ext != "png" { return Err(FaviconError::UnsupportedSuffix) }
-    let chest_size = size / 2;
-    let mut buf = RgbaImage::new(size, size);
-    buf.copy_from(&ImageReader::open(format!("assets/static/chest/{}{chest_size}.png", char::from(top_left)))?.decode()?, 0, 0)?;
-    buf.copy_from(&ImageReader::open(format!("assets/static/chest/{}{chest_size}.png", char::from(top_right)))?.decode()?, chest_size, 0)?;
-    buf.copy_from(&ImageReader::open(format!("assets/static/chest/{}{chest_size}.png", char::from(bottom_left)))?.decode()?, 0, chest_size)?;
-    buf.copy_from(&ImageReader::open(format!("assets/static/chest/{}{chest_size}.png", char::from(bottom_right)))?.decode()?, chest_size, chest_size)?;
+#[rocket::get("/favicon/<textures_ext>")]
+pub(crate) async fn favicon_png(textures_ext: Suffix<'_, ChestTextures>) -> Result<Response<RgbaImage>, FaviconError> {
+    let Suffix(ChestTextures([top_left, top_right, bottom_left, bottom_right]), "png") = textures_ext else { return Err(FaviconError::UnsupportedSuffix) };
+    let mut buf = RgbaImage::new(1024, 1024);
+    buf.copy_from(&ImageReader::open(format!("assets/static/chest/{}.png", char::from(top_left)))?.decode()?, 0, 0)?;
+    buf.copy_from(&ImageReader::open(format!("assets/static/chest/{}.png", char::from(top_right)))?.decode()?, 512, 0)?;
+    buf.copy_from(&ImageReader::open(format!("assets/static/chest/{}.png", char::from(bottom_left)))?.decode()?, 0, 512)?;
+    buf.copy_from(&ImageReader::open(format!("assets/static/chest/{}.png", char::from(bottom_right)))?.decode()?, 512, 512)?;
     Ok(Response(buf))
 }

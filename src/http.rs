@@ -96,7 +96,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                 meta(charset = "utf-8");
                 title : title;
                 meta(name = "viewport", content = "width=device-width, initial-scale=1, shrink-to-fit=no");
-                link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(style.chests.textures(), Suffix(1024, "png"))).to_string());
+                link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(Suffix(style.chests.textures(), "png"))).to_string());
                 link(rel = "stylesheet", href = static_url!("common.css"));
                 script(defer, src = static_url!("common.js"));
             }
