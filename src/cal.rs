@@ -558,6 +558,10 @@ impl Race {
             races.push(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?);
         }
         match event.series {
+            Series::BattleRoyale => match &*event.event {
+                "1" => {} //TODO manually add scheduled/played races, allow archivists to add races?
+                _ => unimplemented!(),
+            },
             Series::CopaDoBrasil => match &*event.event {
                 "1" => {}
                 _ => unimplemented!(),
@@ -1462,6 +1466,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                 cal_event.push(DtStart::new(ics_datetime(start)));
                 cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + match event.series {
                     Series::TriforceBlitz => TimeDelta::hours(2),
+                    Series::BattleRoyale => TimeDelta::hours(2) + TimeDelta::minutes(30),
                     Series::MixedPools | Series::Scrubs | Series::SpeedGaming | Series::WeTryToBeBetter => TimeDelta::hours(3),
                     Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::Standard | Series::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
                     Series::Multiworld | Series::Pictionary => TimeDelta::hours(4),

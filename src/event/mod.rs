@@ -231,6 +231,8 @@ impl<'a> Data<'a> {
         //TODO parse weights at compile time
 
         match (self.series, &*self.event) {
+            (Series::BattleRoyale, "1") => from_file!("../../assets/event/s/chests-7-7.1.198.json"), //TODO
+            (Series::BattleRoyale, _) => unimplemented!(),
             (Series::CopaDoBrasil, "1") => from_file!("../../assets/event/br/chests-1-7.1.143.json"),
             (Series::CopaDoBrasil, _) => unimplemented!(),
             (Series::League, "4") => from_file!("../../assets/event/league/chests-4-7.1.94.json"),
@@ -288,6 +290,7 @@ impl<'a> Data<'a> {
 
     pub(crate) fn is_single_race(&self) -> bool {
         match self.series {
+            Series::BattleRoyale => false,
             Series::CopaDoBrasil => false,
             Series::League => false,
             Series::MixedPools => false,
@@ -306,6 +309,7 @@ impl<'a> Data<'a> {
 
     pub(crate) fn team_config(&self) -> TeamConfig {
         match self.series {
+            Series::BattleRoyale => TeamConfig::Solo,
             Series::CopaDoBrasil => TeamConfig::Solo,
             Series::League => TeamConfig::Solo,
             Series::MixedPools => TeamConfig::Solo,
@@ -619,6 +623,7 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Info, false).await?;
     let content = match data.series {
+        Series::BattleRoyale => None,
         Series::CopaDoBrasil => br::info(&mut transaction, &data).await?,
         Series::League => league::info(&mut transaction, &data).await?,
         Series::MixedPools => mp::info(&mut transaction, &data).await?,
@@ -785,6 +790,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                 } else {
                     //TODO deduplicate async handling code
                     @match data.series {
+                        Series::BattleRoyale => @unimplemented // no signups on Mido's House
                         Series::CopaDoBrasil => : br::status(&mut transaction, csrf, &data, row.id, &mut ctx).await?;
                         Series::League => @unimplemented // no signups on Mido's House
                         Series::MixedPools => @unimplemented // no signups on Mido's House

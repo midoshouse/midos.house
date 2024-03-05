@@ -611,96 +611,80 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                 p : "You can no longer enter this event since it has already started.";
             }
         }
-    } else if let (Series::Standard, "7") = (data.series, &*data.event) {
-        s::enter_form()
     } else {
-        match data.team_config() {
-            TeamConfig::Solo => {
-                if let Some(Flow { ref requirements }) = data.enter_flow {
-                    let opted_out = if let Some(racetime) = me.as_ref().and_then(|me| me.racetime.as_ref()) {
-                        sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM opt_outs WHERE series = $1 AND event = $2 AND racetime_id = $3) AS "exists!""#, data.series as _, &data.event, racetime.id).fetch_one(&mut *transaction).await?
-                    } else {
-                        false
-                    };
-                    if opted_out {
-                        html! {
-                            article {
-                                p : "You can no longer enter this event since you have already opted out.";
+        match (data.series, &*data.event) {
+            (Series::BattleRoyale, "1") => ohko::enter_form(),
+            (Series::Standard, "7") => s::enter_form(),
+            _ => match data.team_config() {
+                TeamConfig::Solo => {
+                    if let Some(Flow { ref requirements }) = data.enter_flow {
+                        let opted_out = if let Some(racetime) = me.as_ref().and_then(|me| me.racetime.as_ref()) {
+                            sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM opt_outs WHERE series = $1 AND event = $2 AND racetime_id = $3) AS "exists!""#, data.series as _, &data.event, racetime.id).fetch_one(&mut *transaction).await?
+                        } else {
+                            false
+                        };
+                        if opted_out {
+                            html! {
+                                article {
+                                    p : "You can no longer enter this event since you have already opted out.";
+                                }
                             }
-                        }
-                    } else if requirements.is_empty() {
-                        if data.is_single_race() {
+                        } else if requirements.is_empty() {
+                            if data.is_single_race() {
+                                html! {
+                                    article {
+                                        p {
+                                            @if let Some(ref url) = data.url {
+                                                : "Enter ";
+                                                a(href = url.to_string()) : "the race room";
+                                                : " to participate in this race.";
+                                            } else {
+                                                : "The race room will be opened around 30 minutes before the scheduled starting time. ";
+                                                @if me.as_ref().map_or(false, |me| me.racetime.is_some()) {
+                                                    : "You don't need to sign up beforehand.";
+                                                } else {
+                                                    : "You will need a ";
+                                                    a(href = "https://racetime.gg/") : "racetime.gg";
+                                                    : " account to participate.";
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                full_form(uri!(post(data.series, &*data.event)), csrf, html! {}, defaults.errors(), "Enter")
+                            }
+                        } else if requirements.iter().any(Requirement::requires_sign_in) && me.is_none() {
                             html! {
                                 article {
                                     p {
-                                        @if let Some(ref url) = data.url {
-                                            : "Enter ";
-                                            a(href = url.to_string()) : "the race room";
-                                            : " to participate in this race.";
-                                        } else {
-                                            : "The race room will be opened around 30 minutes before the scheduled starting time. ";
-                                            @if me.as_ref().map_or(false, |me| me.racetime.is_some()) {
-                                                : "You don't need to sign up beforehand.";
-                                            } else {
-                                                : "You will need a ";
-                                                a(href = "https://racetime.gg/") : "racetime.gg";
-                                                : " account to participate.";
-                                            }
-                                        }
+                                        a(href = uri!(auth::login(Some(uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
+                                        : " to enter this event.";
                                     }
                                 }
                             }
                         } else {
-                            full_form(uri!(post(data.series, &*data.event)), csrf, html! {}, defaults.errors(), "Enter")
-                        }
-                    } else if requirements.iter().any(Requirement::requires_sign_in) && me.is_none() {
-                        html! {
-                            article {
-                                p {
-                                    a(href = uri!(auth::login(Some(uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
-                                    : " to enter this event.";
-                                }
+                            let mut can_submit = true;
+                            let mut requirements_display = Vec::with_capacity(requirements.len());
+                            for requirement in requirements {
+                                let status = requirement.check_get(&data, requirement.is_checked(&mut transaction, http_client, env, config, discord_ctx, me.as_ref(), &data).await?, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults)?;
+                                if status.blocks_submit { can_submit = false }
+                                requirements_display.push((requirement.is_checked(&mut transaction, http_client, env, config, discord_ctx, me.as_ref(), &data).await?, status.html_content));
                             }
-                        }
-                    } else {
-                        let mut can_submit = true;
-                        let mut requirements_display = Vec::with_capacity(requirements.len());
-                        for requirement in requirements {
-                            let status = requirement.check_get(&data, requirement.is_checked(&mut transaction, http_client, env, config, discord_ctx, me.as_ref(), &data).await?, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults)?;
-                            if status.blocks_submit { can_submit = false }
-                            requirements_display.push((requirement.is_checked(&mut transaction, http_client, env, config, discord_ctx, me.as_ref(), &data).await?, status.html_content));
-                        }
-                        let preface = html! {
-                            @if data.show_opt_out {
-                                p {
-                                    : "If you would like to enter this event, please fill out the form below. If not, please ";
-                                    a(href = uri!(super::opt_out(data.series, &*data.event)).to_string()) : "opt out";
-                                    : ".";
-                                }
-                            } else {
-                                p : "To enter this event:";
-                            }
-                        };
-                        if can_submit {
-                            let mut errors = defaults.errors();
-                            full_form(uri!(post(data.series, &*data.event)), csrf, html! {
-                                : preface;
-                                @for (is_checked, html_content) in requirements_display {
-                                    div(class = "check-item") {
-                                        div(class = "checkmark") {
-                                            @match is_checked {
-                                                Some(true) => : "✓";
-                                                Some(false) => {}
-                                                None => : "?";
-                                            }
-                                        }
-                                        div : html_content(&mut errors);
+                            let preface = html! {
+                                @if data.show_opt_out {
+                                    p {
+                                        : "If you would like to enter this event, please fill out the form below. If not, please ";
+                                        a(href = uri!(super::opt_out(data.series, &*data.event)).to_string()) : "opt out";
+                                        : ".";
                                     }
+                                } else {
+                                    p : "To enter this event:";
                                 }
-                            }, errors, "Enter")
-                        } else {
-                            html! {
-                                article {
+                            };
+                            if can_submit {
+                                let mut errors = defaults.errors();
+                                full_form(uri!(post(data.series, &*data.event)), csrf, html! {
                                     : preface;
                                     @for (is_checked, html_content) in requirements_display {
                                         div(class = "check-item") {
@@ -711,43 +695,61 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                                                     None => : "?";
                                                 }
                                             }
-                                            div : html_content(&mut Vec::default());
+                                            div : html_content(&mut errors);
+                                        }
+                                    }
+                                }, errors, "Enter")
+                            } else {
+                                html! {
+                                    article {
+                                        : preface;
+                                        @for (is_checked, html_content) in requirements_display {
+                                            div(class = "check-item") {
+                                                div(class = "checkmark") {
+                                                    @match is_checked {
+                                                        Some(true) => : "✓";
+                                                        Some(false) => {}
+                                                        None => : "?";
+                                                    }
+                                                }
+                                                div : html_content(&mut Vec::default());
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
-                    }
-                } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE series = $1 AND event = $2) AS "exists!""#, data.series as _, &*data.event).fetch_one(&mut *transaction).await? {
-                    if me.is_none() {
-                        html! {
-                            article {
-                                p {
-                                    : "This is an invitational event. ";
-                                    a(href = uri!(auth::login(Some(uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
-                                    : " to see if you're invited.";
+                    } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE series = $1 AND event = $2) AS "exists!""#, data.series as _, &*data.event).fetch_one(&mut *transaction).await? {
+                        if me.is_none() {
+                            html! {
+                                article {
+                                    p {
+                                        : "This is an invitational event. ";
+                                        a(href = uri!(auth::login(Some(uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
+                                        : " to see if you're invited.";
+                                    }
                                 }
                             }
-                        }
-                    } else if my_invites.is_empty() {
-                        html! {
-                            article {
-                                p : "This is an invitational event and it looks like you're not invited.";
+                        } else if my_invites.is_empty() {
+                            html! {
+                                article {
+                                    p : "This is an invitational event and it looks like you're not invited.";
+                                }
                             }
+                        } else {
+                            html! {} // invite should be rendered above this content
                         }
                     } else {
-                        html! {} // invite should be rendered above this content
-                    }
-                } else {
-                    html! {
-                        article {
-                            p : "Signups for this event aren't open yet."; //TODO option to be notified when signups open
+                        html! {
+                            article {
+                                p : "Signups for this event aren't open yet."; //TODO option to be notified when signups open
+                            }
                         }
                     }
                 }
-            }
-            TeamConfig::Pictionary => return Ok(pic::enter_form(transaction, env, me, uri, csrf, data, defaults).await?),
-            TeamConfig::CoOp | TeamConfig::Multiworld => return Ok(mw::enter_form(transaction, env, me, uri, csrf, data, defaults.into_context(), client).await?),
+                TeamConfig::Pictionary => return Ok(pic::enter_form(transaction, env, me, uri, csrf, data, defaults).await?),
+                TeamConfig::CoOp | TeamConfig::Multiworld => return Ok(mw::enter_form(transaction, env, me, uri, csrf, data, defaults.into_context(), client).await?),
+            },
         }
     };
     let header = data.header(&mut transaction, env, me.as_ref(), Tab::Enter, false).await?;
