@@ -3,7 +3,6 @@ use {
         io::prelude::*,
         process::Stdio,
     },
-    chrono_tz::America,
     git2::{
         BranchType,
         Repository,
@@ -62,12 +61,6 @@ use {
 #[cfg(windows)] const PYTHON: &str = "py";
 
 pub(crate) const CATEGORY: &str = "ootr";
-
-macro_rules! tfb_s3_start {
-    () => {
-        America::New_York.with_ymd_and_hms(2024, 3, 2, 13, 0, 0).single().expect("wrong hardcoded datetime")
-    };
-}
 
 /// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
 const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 11] = [
@@ -553,9 +546,7 @@ impl Goal {
                 ctx.say("Activez les donjons Master Quest en utilisant par exemple : “!seed base 6mq” ou “!seed draft advanced 12mq”").await?;
             }
             Self::TriforceBlitz => {
-                if Utc::now() >= tfb_s3_start!() {
-                    ctx.say("!seed s3: Triforce Blitz season 3 settings").await?;
-                }
+                ctx.say("!seed s3: Triforce Blitz season 3 settings").await?;
                 ctx.say("!seed jr: Jabu's Revenge").await?;
                 ctx.say("!seed s2: Triforce Blitz season 2 settings").await?;
                 ctx.say("!seed daily: Triforce Blitz Seed of the Day").await?;
@@ -968,7 +959,7 @@ impl Goal {
                 }
                 [arg] if arg == "jr" => SeedCommandParseResult::Tfb { version: "v7.1.143-blitz-0.43", spoiler_log, language: English, article: "a", description: format!("Triforce Blitz: Jabu's Revenge seed") },
                 [arg] if arg == "s2" => SeedCommandParseResult::Tfb { version: "v7.1.3-blitz-0.42", spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S2 seed") },
-                [arg] if arg == "s3" && Utc::now() >= tfb_s3_start!() => SeedCommandParseResult::Tfb { version: "LATEST", spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S3 seed") },
+                [arg] if arg == "s3" => SeedCommandParseResult::Tfb { version: "LATEST", spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S3 seed") },
                 [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
             },
             Self::WeTryToBeBetter => SeedCommandParseResult::Regular { settings: wttbb::settings(), spoiler_log, language: French, article: "une", description: format!("seed") },
@@ -2853,62 +2844,39 @@ impl RaceHandler<GlobalState> for Handler {
                             Goal::TriforceBlitz => ctx.send_message(
                                 "Welcome to Triforce Blitz! Learn more at https://triforceblitz.com/",
                                 true,
-                                if Utc::now() >= tfb_s3_start!() {
-                                    vec![
-                                        ("Roll S3 seed", ActionButton::Message {
-                                            message: format!("!seed s3"),
-                                            help_text: Some(format!("Create a Triforce Blitz season 3 seed.")),
-                                            survey: None,
-                                            submit: None,
-                                        }),
-                                        ("Seed of the day", ActionButton::Message {
-                                            message: format!("!seed daily"),
-                                            help_text: Some(format!("Link the current seed of the day.")),
-                                            survey: None,
-                                            submit: None,
-                                        }),
-                                        ("More presets", ActionButton::Message {
-                                            message: format!("!seed ${{preset}}"),
-                                            help_text: Some(format!("Select a preset and create a seed.")),
-                                            survey: Some(vec![
-                                                SurveyQuestion {
-                                                    name: format!("preset"),
-                                                    label: format!("Preset"),
-                                                    default: None,
-                                                    help_text: None,
-                                                    kind: SurveyQuestionKind::Select,
-                                                    placeholder: None,
-                                                    options: vec![
-                                                        (format!("jr"), format!("Jabu's Revenge")),
-                                                        (format!("s2"), format!("S2")),
-                                                    ],
-                                                },
-                                            ]),
-                                            submit: Some(format!("Roll")),
-                                        }),
-                                    ]
-                                } else {
-                                    vec![
-                                        ("Roll Jabu's Revenge seed", ActionButton::Message {
-                                            message: format!("!seed jr"),
-                                            help_text: Some(format!("Create a Triforce Blitz: Jabu's Revenge seed.")),
-                                            survey: None,
-                                            submit: None,
-                                        }),
-                                        ("Roll S2 seed", ActionButton::Message {
-                                            message: format!("!seed s2"),
-                                            help_text: Some(format!("Create a Triforce Blitz season 2 seed.")),
-                                            survey: None,
-                                            submit: None,
-                                        }),
-                                        ("Seed of the day", ActionButton::Message {
-                                            message: format!("!seed daily"),
-                                            help_text: Some(format!("Link the current seed of the day.")),
-                                            survey: None,
-                                            submit: None,
-                                        }),
-                                    ]
-                                },
+                                vec![
+                                    ("Roll S3 seed", ActionButton::Message {
+                                        message: format!("!seed s3"),
+                                        help_text: Some(format!("Create a Triforce Blitz season 3 seed.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                    ("Seed of the day", ActionButton::Message {
+                                        message: format!("!seed daily"),
+                                        help_text: Some(format!("Link the current seed of the day.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                    ("More presets", ActionButton::Message {
+                                        message: format!("!seed ${{preset}}"),
+                                        help_text: Some(format!("Select a preset and create a seed.")),
+                                        survey: Some(vec![
+                                            SurveyQuestion {
+                                                name: format!("preset"),
+                                                label: format!("Preset"),
+                                                default: None,
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Select,
+                                                placeholder: None,
+                                                options: vec![
+                                                    (format!("jr"), format!("Jabu's Revenge")),
+                                                    (format!("s2"), format!("S2")),
+                                                ],
+                                            },
+                                        ]),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                ],
                             ).await?,
                             Goal::WeTryToBeBetter => ctx.send_message(
                                 "Bienvenue ! Ceci est une practice room pour le tournoi WeTryToBeBetter. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/wttbb/1",
