@@ -107,16 +107,17 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                             div(class = "logo") {
                                 @for chest in style.chests.0 {
                                     img(class = format!("chest chest-{}", char::from(chest.texture)), src = match chest.texture {
-                                        ChestTexture::Normal => static_url!("chest/n512.png"),
-                                        ChestTexture::OldMajor => static_url!("chest/m512.png"),
-                                        ChestTexture::Major => static_url!("chest/i512.png"),
-                                        ChestTexture::SmallKeyOld => static_url!("chest/k512.png"),
-                                        ChestTexture::SmallKey1500 => static_url!("chest/y512.png"),
-                                        ChestTexture::SmallKey1751 => static_url!("chest/a512.png"),
-                                        ChestTexture::BossKey => static_url!("chest/b512.png"),
-                                        ChestTexture::Token => static_url!("chest/s512.png"),
-                                        ChestTexture::Invisible => static_url!("chest/d512.png"),
-                                        ChestTexture::Heart => static_url!("chest/h512.png"),
+                                        ChestTexture::Normal => static_url!("chest/n.png"),
+                                        ChestTexture::OldMajor => static_url!("chest/m.png"),
+                                        ChestTexture::Major => static_url!("chest/i.png"),
+                                        ChestTexture::SmallKeyOld => static_url!("chest/k.png"),
+                                        ChestTexture::SmallKey1500 => static_url!("chest/y.png"),
+                                        ChestTexture::SmallKey1751 => static_url!("chest/a.png"),
+                                        ChestTexture::BossKey => static_url!("chest/b.png"),
+                                        ChestTexture::Token => static_url!("chest/s.png"),
+                                        ChestTexture::Invisible => static_url!("chest/d.png"),
+                                        ChestTexture::Heart => static_url!("chest/h.png"),
+                                        ChestTexture::Bombchu => static_url!("chest/c.png"),
                                     });
                                 }
                             }
