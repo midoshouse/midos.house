@@ -654,58 +654,7 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::Scrubs => match &*event.event {
-                "5" => for row in sheet_values(http_client.clone(), "1w1AS87VMB7jE-qiFmSYPlCiLh8pf6F5fdYz_I0I8aE8", "B3:G").await? {
-                    let (time_et, group, round, matchup, restream) = match &*row {
-                        [time_et, _time_utc, group, round, matchup] => (time_et, group, round, matchup, ""),
-                        [time_et, _time_utc, group, round, matchup, restream] => (time_et, group, round, matchup, &**restream),
-                        _ => continue,
-                    };
-                    let id = Id::new(&mut *transaction).await?;
-                    let (phase, round, entrants) = if let "Qualifier" = &**round {
-                        let Some(round) = round.strip_prefix("Scrubs Qualifier ") else { continue };
-                        (format!("Live Qualifier"), round.to_owned(), Entrants::Open)
-                    } else {
-                        let Some((p1, p2)) = matchup.split_once(" vs. ") else { continue };
-                        (format!("Group {group}"), round.clone(), Entrants::Two([
-                            Entrant::Named(p1.to_owned()),
-                            Entrant::Named(p2.to_owned()),
-                        ]))
-                    };
-                    add_or_update_race(&mut *transaction, &mut races, Self {
-                        series: event.series,
-                        event: event.event.to_string(),
-                        startgg_event: None,
-                        startgg_set: None,
-                        phase: Some(phase),
-                        round: Some(round),
-                        game: None,
-                        scheduling_thread: None,
-                        schedule: RaceSchedule::Live {
-                            start: {
-                                // source timestamp is without year, guess the year by assuming all races in the event are between 2023-09-01 and 2024-08-31
-                                let start = NaiveDateTime::parse_from_str(&format!("2023 at {time_et}"), "%Y at %b %d,  %I:%M%p")?.and_local_timezone(America::New_York).single_ok()?;
-                                if start < America::New_York.with_ymd_and_hms(2023, 9, 1, 0, 0, 0).single_ok()? {
-                                    NaiveDateTime::parse_from_str(&format!("2024 at {time_et}"), "%Y at %b %d,  %I:%M%p")?.and_local_timezone(America::New_York).single_ok()?
-                                } else {
-                                    start
-                                }
-                            }.with_timezone(&Utc),
-                            end: None,
-                            room: None,
-                        },
-                        draft: None,
-                        seed: seed::Data::default(),
-                        video_urls: if restream.is_empty() {
-                            HashMap::default()
-                        } else {
-                            collect![English => format!("https://twitch.tv/{restream}").parse()?]
-                        },
-                        restreamers: HashMap::default(),
-                        ignored: false,
-                        schedule_locked: false,
-                        id, entrants,
-                    }).await?;
-                },
+                "5" => {}
                 _ => unimplemented!(),
             },
             Series::SpeedGaming => match &*event.event {
