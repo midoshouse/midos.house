@@ -212,7 +212,7 @@ enum UserFromDiscordError {
     }
 }
 
-struct Series(event::Series);
+struct Series(crate::series::Series);
 
 #[Object] impl Series {
     /// Returns an event by its URL part.
@@ -460,7 +460,7 @@ impl<E: Into<CsvError>> From<E> for StatusOrError<CsvError> {
 }
 
 #[rocket::get("/api/v1/event/<series>/<event>/entrants.csv?<api_key>")]
-pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, config: &State<Config>, series: event::Series, event: &str, api_key: &str) -> Result<(ContentType, Vec<u8>), StatusOrError<CsvError>> {
+pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, config: &State<Config>, series: crate::series::Series, event: &str, api_key: &str) -> Result<(ContentType, Vec<u8>), StatusOrError<CsvError>> {
     let mut transaction = db_pool.begin().await?;
     let me = Scopes { entrants_read: true, ..Scopes::default() }.validate(&mut transaction, api_key).await?.ok_or(StatusOrError::Status(Status::Forbidden))?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;

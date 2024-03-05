@@ -172,7 +172,6 @@ pub(crate) use {
         event::{
             self,
             MatchSource,
-            Series,
             TeamConfig,
         },
         favicon::{
