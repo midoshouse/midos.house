@@ -2064,7 +2064,21 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                         min_by_key(&team1, &team2, |team| team.qualifier_rank).id,
                         max_by_key(&team1, &team2, |team| team.qualifier_rank).id,
                     ],
-                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => {
+                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => if phase.as_ref().is_some_and(|phase| phase == "Top 8") {
+                        let seeding = [
+                            Id::from(8429274534302278572_u64), // Anju's Secret
+                            Id::from(12142947927479333421_u64), // ADD
+                            Id::from(5548902498821246494_u64), // Donutdog!!! Wuff! Wuff!
+                            Id::from(7622448514297787774_u64), // Snack Pack
+                            Id::from(13644615382444869291_u64), // The Highest Gorons
+                            Id::from(4984265622447250649_u64), // Bongo Akimbo
+                            Id::from(592664405695569367_u64), // The Jhegsons
+                            Id::from(14405144517033747435_u64), // Pandora's Brot
+                        ];
+                        let mut team_ids = [team1.id, team2.id];
+                        team_ids.sort_unstable_by_key(|team| seeding.iter().position(|iter_team| iter_team == team));
+                        team_ids
+                    } else {
                         let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
                             show_times: event.show_qualifier_times && event.is_started(&mut *transaction).await?,
                         };
@@ -2073,7 +2087,7 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                         let SignupsTeam { members: members2, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team2)).expect("match with team that didn't sign up");
                         let avg1 = members1.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members1.len()).expect("too many team members"));
                         let avg2 = members2.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members2.len()).expect("too many team members"));
-                        match [avg1, avg2] { //TODO adjust for top 8
+                        match [avg1, avg2] {
                             [Some(_), None] => [team1.id, team2.id],
                             [None, Some(_)] => [team2.id, team1.id],
                             [Some(avg1), Some(avg2)] if avg1 < avg2 => [team1.id, team2.id],
@@ -2085,7 +2099,7 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                                 team_ids
                             }
                         }
-                    }
+                    },
                     draft::Kind::TournoiFrancoS3 => unreachable!("this event does not use start.gg"),
                 };
                 Some(Draft::new(&mut *transaction, draft_kind, high_seed, low_seed).await?)
