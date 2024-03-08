@@ -231,7 +231,7 @@ impl<'a> Data<'a> {
         //TODO parse weights at compile time
 
         match (self.series, &*self.event) {
-            (Series::BattleRoyale, "1") => from_file!("../../assets/event/s/chests-7-7.1.198.json"), //TODO
+            (Series::BattleRoyale, "1") => from_file!("../../assets/event/ohko/chests-1-8.0.json"), //TODO reroll with the plando
             (Series::BattleRoyale, _) => unimplemented!(),
             (Series::CopaDoBrasil, "1") => from_file!("../../assets/event/br/chests-1-7.1.143.json"),
             (Series::CopaDoBrasil, _) => unimplemented!(),
