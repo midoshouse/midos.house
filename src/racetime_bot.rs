@@ -3016,7 +3016,7 @@ impl RaceHandler<GlobalState> for Handler {
                     format!("Sorry {reply_to}, only one setting can be banned at a time. Use “!ban <setting>”")
                 }).await?,
             },
-            "breaks" => match args[..] {
+            "breaks" | "break" => match args[..] {
                 [] => if let Some(breaks) = self.breaks {
                     ctx.say(&if let French = goal.language() {
                         format!("Vous aurez une pause de {}. Vous pouvez les désactiver avec !breaks off.", breaks.format(French))
