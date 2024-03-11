@@ -498,7 +498,7 @@ impl Draft {
                                 let mut builder = MessageBuilder::default();
                                 builder.mention_team(transaction, Some(*guild_id), high_seed).await?;
                                 if game.is_some_and(|game| game > 1) {
-                                    builder.push(": as the loser of the previous race, please choose whether you want to go ");
+                                    builder.push(": as the losers of the previous race, please choose whether you want to go ");
                                 } else {
                                     builder.push(": you have the higher seed. Choose whether you want to go ");
                                 }
@@ -679,7 +679,7 @@ impl Draft {
                                 let mut builder = MessageBuilder::default();
                                 builder.mention_team(transaction, Some(*guild_id), high_seed).await?;
                                 if game.is_some_and(|game| game > 1) {
-                                    builder.push(": as the loser of the previous race, please choose whether you want to go ");
+                                    builder.push(": as the losers of the previous race, please choose whether you want to go ");
                                 } else {
                                     builder.push(": you have the higher seed. Choose whether you want to go ");
                                 }
