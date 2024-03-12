@@ -559,7 +559,36 @@ impl Race {
         }
         match event.series {
             Series::BattleRoyale => match &*event.event {
-                "1" => {} //TODO manually add scheduled/played races, allow archivists to add races?
+                "1" => for row in sheet_values(http_client.clone(), "1M_VtwoOEx3sZ7UsQ8Xfe2GFXFGIuhRgbcMiJZhYYgaM", "Form responses 1!B2:F").await? {
+                    let [p1, p2, round, date_utc, time_utc] = &*row else { continue };
+                    let id = Id::new(&mut *transaction).await?;
+                    add_or_update_race(&mut *transaction, &mut races, Self {
+                        series: event.series,
+                        event: event.event.to_string(),
+                        startgg_event: None,
+                        startgg_set: None,
+                        entrants: Entrants::Two([
+                            Entrant::Named(p1.clone()),
+                            Entrant::Named(p2.clone()),
+                        ]),
+                        phase: None,
+                        round: Some(round.clone()),
+                        game: None,
+                        scheduling_thread: None,
+                        schedule: RaceSchedule::Live {
+                            start: NaiveDateTime::parse_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S")?.and_utc(),
+                            end: None,
+                            room: None,
+                        },
+                        draft: None,
+                        seed: seed::Data::default(),
+                        video_urls: HashMap::default(),
+                        restreamers: HashMap::default(),
+                        ignored: false,
+                        schedule_locked: false,
+                        id,
+                    }).await?;
+                },
                 _ => unimplemented!(),
             },
             Series::CopaDoBrasil => match &*event.event {
