@@ -3,7 +3,7 @@ use crate::{
     prelude::*,
 };
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct Team {
     pub(crate) id: Id<Teams>,
     pub(crate) name: Option<String>,
