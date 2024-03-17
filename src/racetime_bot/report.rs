@@ -6,10 +6,68 @@ use {
     },
 };
 
-async fn report_1v1<'a>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, event: &event::Data<'_>, mut teams: [(Team, Option<Duration>, Url); 2]) -> Result<Transaction<'a, Postgres>, Error> {
-    teams.sort_unstable_by_key(|(_, time, _)| (time.is_none(), *time)); // sort DNF last
+trait Score {
+    type SortKey: Ord;
+
+    fn is_dnf(&self) -> bool;
+    fn sort_key(&self) -> Self::SortKey;
+    fn time_window(&self, other: &Self) -> Option<Duration>;
+    fn format(&self, language: Language) -> Cow<'_, str>;
+}
+
+impl Score for Option<Duration> {
+    type SortKey = (bool, Option<Duration>);
+
+    fn is_dnf(&self) -> bool {
+        self.is_none()
+    }
+
+    fn sort_key(&self) -> Self::SortKey {
+        (
+            self.is_none(), // sort DNF last
+            *self,
+        )
+    }
+
+    fn time_window(&self, other: &Self) -> Option<Duration> {
+        Some((*self)? - (*other)?)
+    }
+
+    fn format(&self, language: Language) -> Cow<'_, str> {
+        match language {
+            French => self.map_or(Cow::Borrowed("forfait"), |time| Cow::Owned(French.format_duration(time, false))),
+            _ => self.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))),
+        }
+    }
+}
+
+impl Score for tfb::Score {
+    type SortKey = (i8, Duration);
+
+    fn is_dnf(&self) -> bool {
+        self.pieces == 0
+    }
+
+    fn sort_key(&self) -> Self::SortKey {
+        (
+            -(self.pieces as i8), // most pieces first
+            self.last_collection_time,
+        )
+    }
+
+    fn time_window(&self, other: &Self) -> Option<Duration> {
+        (self.pieces == other.pieces).then(|| self.last_collection_time - other.last_collection_time)
+    }
+
+    fn format(&self, _: Language) -> Cow<'_, str> {
+        Cow::Owned(self.to_string())
+    }
+}
+
+async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, event: &event::Data<'_>, mut teams: [(Team, S, Url); 2]) -> Result<Transaction<'a, Postgres>, Error> {
+    teams.sort_unstable_by_key(|(_, time, _)| time.sort_key());
     let [(winner, winning_time, winning_room), (loser, losing_time, losing_room)] = teams;
-    if winning_time.is_none() && losing_time.is_none() {
+    if winning_time.is_dnf() && losing_time.is_dnf() {
         if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
             let msg = if_chain! {
                 if let French = event.language;
@@ -100,7 +158,7 @@ async fn report_1v1<'a>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceCo
             };
             results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
         }
-    } else if winning_time.is_some_and(|winning_time| losing_time.is_some_and(|losing_time| losing_time - winning_time <= event.retime_window)) {
+    } else if losing_time.time_window(&winning_time).is_some_and(|time_window| time_window <= event.retime_window) {
         if let Some(organizer_channel) = event.discord_organizer_channel {
             let mut msg = MessageBuilder::default();
             //TODO mention organizer role
@@ -150,7 +208,7 @@ async fn report_1v1<'a>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceCo
                     }
                     builder.mention_team(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
                     builder.push(" (");
-                    builder.push(winning_time.map_or(Cow::Borrowed("forfait"), |time| Cow::Owned(French.format_duration(time, false))));
+                    builder.push(winning_time.format(French));
                     builder.push(')');
                     if winning_room != losing_room {
                         builder.push(" [<");
@@ -160,7 +218,7 @@ async fn report_1v1<'a>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceCo
                     builder.push(if winner.name_is_plural() { " ont battu " } else { " a battu " });
                     builder.mention_team(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
                     builder.push(" (");
-                    builder.push(losing_time.map_or(Cow::Borrowed("forfait"), |time| Cow::Owned(French.format_duration(time, false))));
+                    builder.push(losing_time.format(French));
                     builder.push(if winning_room == losing_room { ") <" } else { ") [<" });
                     builder.push(losing_room.to_string());
                     builder.push(if winning_room == losing_room { ">" } else { ">]" });
@@ -193,7 +251,7 @@ async fn report_1v1<'a>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceCo
                     }
                     builder.mention_team(&mut transaction, event.discord_guild, &winner).await.to_racetime()?;
                     builder.push(" (");
-                    builder.push(winning_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))));
+                    builder.push(winning_time.format(English));
                     builder.push(')');
                     if winning_room != losing_room {
                         builder.push(" [<");
@@ -203,7 +261,7 @@ async fn report_1v1<'a>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceCo
                     builder.push(if winner.name_is_plural() { " defeat " } else { " defeats " });
                     builder.mention_team(&mut transaction, event.discord_guild, &loser).await.to_racetime()?;
                     builder.push(" (");
-                    builder.push(losing_time.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))));
+                    builder.push(losing_time.format(English));
                     builder.push(if winning_room == losing_room { ") <" } else { ") [<" });
                     builder.push(losing_room.to_string());
                     builder.push(if winning_room == losing_room { ">" } else { ">]" });
@@ -279,7 +337,7 @@ async fn report_1v1<'a>(mut transaction: Transaction<'a, Postgres>, ctx: &RaceCo
 }
 
 impl Handler {
-    pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool) -> Result<(), Error> {
+    pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, tfb_scores: Option<HashMap<String, tfb::Score>>) -> Result<(), Error> {
         if let Series::SpeedGaming = event.series {
             sleep(Duration::from_secs(15 * 60)).await;
         }
@@ -326,7 +384,16 @@ impl Handler {
                 TeamConfig::Solo => match cal_event.race.entrants {
                     Entrants::Open | Entrants::Count { .. } => {} //TODO post results (just finisher and total entrant counts?)
                     Entrants::Named(_) => unimplemented!(),
-                    Entrants::Two(_) => {
+                    Entrants::Two(_) => if let Some(mut tfb_scores) = tfb_scores {
+                        let mut teams = Vec::with_capacity(data.entrants.len());
+                        let room = Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?;
+                        for entrant in &data.entrants {
+                            let user = User::from_racetime(&mut *transaction, &entrant.user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                            let team = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                            teams.push((team, tfb_scores.remove(&entrant.user.id).expect("missing TFB score"), room.clone()));
+                        }
+                        transaction = report_1v1(transaction, ctx, cal_event, event, teams.try_into().expect("wrong number of times for 2 entrants")).await?;
+                    } else {
                         let mut teams = Vec::with_capacity(data.entrants.len());
                         let room = Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?;
                         for entrant in &data.entrants {
@@ -335,7 +402,7 @@ impl Handler {
                             teams.push((team, entrant.finish_time, room.clone()));
                         }
                         transaction = report_1v1(transaction, ctx, cal_event, event, teams.try_into().expect("wrong number of times for 2 entrants")).await?;
-                    }
+                    },
                     Entrants::Three(_) => unimplemented!(), //TODO
                 },
                 TeamConfig::Pictionary => unimplemented!(), //TODO calculate like solo but report as teams

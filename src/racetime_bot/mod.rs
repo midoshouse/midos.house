@@ -1993,6 +1993,7 @@ struct OfficialRaceData {
     restreams: HashMap<Url, RestreamState>,
     entrants: Vec<String>,
     fpa_invoked: bool,
+    scores: HashMap<String, Option<tfb::Score>>,
 }
 
 #[derive(Default, Clone)]
@@ -2016,11 +2017,19 @@ struct Handler {
 }
 
 impl Handler {
-    async fn should_handle_inner(race_data: &RaceData, global_state: Arc<GlobalState>, is_new: bool) -> bool {
+    /// For `existing_state`, `Some(None)` means this is an existing race room with unknown state, while `None` means this is a new race room.
+    async fn should_handle_inner(race_data: &RaceData, global_state: Arc<GlobalState>, existing_state: Option<Option<&Self>>) -> bool {
         let Ok(bot_goal) = race_data.goal.name.parse::<Goal>() else { return false };
         if race_data.goal.custom != bot_goal.is_custom() { return false }
-        if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
-        if is_new {
+        if let Some(existing_state) = existing_state {
+            if let Some(existing_state) = existing_state {
+                if let Some(ref official_data) = existing_state.official_data {
+                    if race_data.entrants.iter().any(|entrant| entrant.status.value == EntrantStatusValue::Done && official_data.scores.get(&entrant.user.id).is_some_and(|score| score.is_none())) {
+                        return true
+                    }
+                }
+            }
+        } else {
             lock!(clean_shutdown = global_state.clean_shutdown; {
                 if !clean_shutdown.should_handle_new() {
                     unlock!();
@@ -2029,6 +2038,7 @@ impl Handler {
                 assert!(clean_shutdown.open_rooms.insert(race_data.url.clone()));
             });
         }
+        if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
         true
     }
 
@@ -2256,11 +2266,11 @@ impl Handler {
 #[async_trait]
 impl RaceHandler<GlobalState> for Handler {
     async fn should_handle(race_data: &RaceData, global_state: Arc<GlobalState>) -> Result<bool, Error> {
-        Ok(Self::should_handle_inner(race_data, global_state, true).await)
+        Ok(Self::should_handle_inner(race_data, global_state, None).await)
     }
 
     async fn should_stop(&mut self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
-        Ok(!Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await)
+        Ok(!Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(Some(self))).await)
     }
 
     async fn task(global_state: Arc<GlobalState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
@@ -2414,7 +2424,7 @@ impl RaceHandler<GlobalState> for Handler {
                         let requires_emote_only = cal_event.race.phase.as_ref().map_or(false, |phase| phase == "Bracket");
                         tokio::spawn(async move {
                             sleep_until(Instant::now() + delay).await;
-                            if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
+                            if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
                             ctx.say(if requires_emote_only {
                                 "@entrants Remember to go live with a 15 minute (900 second) delay and set your chat to emote only!"
                             } else {
@@ -2422,7 +2432,7 @@ impl RaceHandler<GlobalState> for Handler {
                             }).await.expect("failed to send stream delay notice");
                             sleep(Duration::from_secs(15 * 60)).await;
                             let data = ctx.data().await;
-                            if !Self::should_handle_inner(&*data, ctx.global_state.clone(), false).await { return }
+                            if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await { return }
                             if let RaceStatusValue::Open = data.status.value {
                                 ctx.set_invitational().await.expect("failed to make the room invitational");
                             }
@@ -2445,6 +2455,7 @@ impl RaceHandler<GlobalState> for Handler {
                     cal_event.race.seed.clone(),
                     Some(OfficialRaceData {
                         fpa_invoked: false,
+                        scores: HashMap::default(),
                         cal_event, event, restreams, entrants,
                     }),
                     race_state,
@@ -3395,6 +3406,63 @@ impl RaceHandler<GlobalState> for Handler {
                     format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
                 }).await?;
             },
+            "score" => if_chain! {
+                if let Goal::TriforceBlitz = goal;
+                if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, ref mut scores, .. }) = self.official_data;
+                then {
+                    if let Some(UserData { ref id, .. }) = msg.user {
+                        if let Some(score) = scores.get_mut(id) {
+                            let old_score = *score;
+                            if_chain! {
+                                if let Some((pieces, duration)) = args.split_first();
+                                if let Ok(pieces) = pieces.parse();
+                                if pieces <= 3;
+                                then {
+                                    let new_score = tfb::Score {
+                                        last_collection_time: if pieces == 0 {
+                                            Duration::default()
+                                        } else {
+                                            let Some(last_collection_time) = parse_duration(&duration.join(" "), DurationUnit::Hours) else {
+                                                ctx.say(&format!("Sorry {reply_to}, I don't recognize that time format. Example format: 1h23m45s")).await?;
+                                                return Ok(())
+                                            };
+                                            last_collection_time
+                                        },
+                                        pieces,
+                                    };
+                                    *score = Some(new_score);
+                                    ctx.say(&if let Some(old_score) = old_score {
+                                        format!("Score edited: {new_score} (was: {old_score})")
+                                    } else {
+                                        format!("Score reported: {new_score}")
+                                    }).await?;
+                                    let data = ctx.data().await;
+                                    if let Some(scores) = data.entrants.iter().map(|entrant| match entrant.status.value {
+                                        EntrantStatusValue::Dnf => Some(tfb::Score::default()),
+                                        EntrantStatusValue::Done => scores.get(&entrant.user.id).and_then(|&score| score),
+                                        _ => None,
+                                    }.map(|score| (entrant.user.id.clone(), score))).collect() {
+                                        ctx.say("All scores received. Thank you for playing Triforce Blitz, see you next race!").await?;
+                                        self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, Some(scores)).await?;
+                                    }
+                                } else {
+                                    ctx.send_message(
+                                        &format!("Sorry {reply_to}, I didn't quite understand that. Please use this button to try again:"),
+                                        false,
+                                        vec![tfb::report_score_button(None)],
+                                    ).await?;
+                                }
+                            }
+                        } else {
+                            ctx.say(&format!("Sorry {reply_to}, only entrants who have already finished can do that.")).await?;
+                        }
+                    } else {
+                        ctx.say(&format!("Sorry {reply_to}, I was unable to read your user ID.")).await?;
+                    }
+                } else {
+                    ctx.say(&format!("Sorry {reply_to}, this command is only available for official Triforce Blitz races.")).await?;
+                }
+            },
             "second" => self.draft_action(ctx, reply_to, draft::Action::GoFirst(false)).await?,
             "seed" | "spoilerseed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 lock!(@write state = self.race_state; match *state {
@@ -3493,10 +3561,24 @@ impl RaceHandler<GlobalState> for Handler {
     async fn race_data(&mut self, ctx: &RaceContext<GlobalState>, _old_race_data: RaceData) -> Result<(), Error> {
         let data = ctx.data().await;
         let goal = self.goal(ctx).await.to_racetime()?;
-        if let Some(OfficialRaceData { ref entrants, .. }) = self.official_data {
+        if let Some(OfficialRaceData { ref entrants, ref mut scores, .. }) = self.official_data {
             for entrant in &data.entrants {
-                if entrant.status.value == EntrantStatusValue::Requested && entrants.contains(&entrant.user.id) {
-                    ctx.accept_request(&entrant.user.id).await?;
+                match entrant.status.value {
+                    EntrantStatusValue::Requested => if entrants.contains(&entrant.user.id) {
+                        ctx.accept_request(&entrant.user.id).await?;
+                    },
+                    EntrantStatusValue::Done => if let Goal::TriforceBlitz = goal {
+                        if let hash_map::Entry::Vacant(entry) = scores.entry(entrant.user.id.clone()) {
+                            let reply_to = &entrant.user.name;
+                            ctx.send_message(
+                                &format!("{reply_to}, please report your score:"),
+                                false,
+                                vec![tfb::report_score_button(entrant.finish_time)],
+                            ).await?;
+                            entry.insert(None);
+                        }
+                    },
+                    _ => {}
                 }
             }
         }
@@ -3513,7 +3595,7 @@ impl RaceHandler<GlobalState> for Handler {
                         let ctx = ctx.clone();
                         tokio::spawn(async move {
                             sleep(breaks.interval - Duration::from_secs(5 * 60)).await;
-                            while Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await {
+                            while Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await {
                                 let (_, ()) = tokio::join!(
                                     ctx.say(if let French = goal.language() {
                                         "@entrants Rappel : pause dans 5 minutes."
@@ -3522,7 +3604,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                     sleep(Duration::from_secs(5 * 60)),
                                 );
-                                if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
+                                if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { break }
                                 let msg = if let French = goal.language() {
                                     format!("@entrants C'est l'heure de la pause ! Elle durera {}.", French.format_duration(breaks.duration, true))
                                 } else {
@@ -3532,7 +3614,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     ctx.say(&msg),
                                     sleep(breaks.duration),
                                 );
-                                if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { break }
+                                if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { break }
                                 let (_, ()) = tokio::join!(
                                     ctx.say(if let French = goal.language() {
                                         "@entrants Fin de la pause. Vous pouvez recommencer à jouer."
@@ -3557,7 +3639,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 }) - Utc::now();
                                 if let Ok(initial_wait) = initial_wait.to_std() {
                                     sleep(initial_wait).await;
-                                    if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), false).await { return }
+                                    if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
                                     let (_, ()) = tokio::join!(
                                         ctx.say("@entrants Reminder: 5 minutes until you can start drawing/playing."),
                                         sleep(Duration::from_secs(5 * 60)),
@@ -3567,7 +3649,7 @@ impl RaceHandler<GlobalState> for Handler {
                             })
                         });
                     }
-                    Goal::TriforceBlitz => {
+                    Goal::TriforceBlitz => if ctx.data().await.time_limit > Duration::from_secs(2 * 60 * 60) {
                         self.goal_notifications.get_or_insert_with(|| {
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
@@ -3576,7 +3658,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     sleep(initial_wait).await;
                                     let is_1v1 = {
                                         let data = ctx.data().await;
-                                        if !Self::should_handle_inner(&*data, ctx.global_state.clone(), false).await { return }
+                                        if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await { return }
                                         data.entrants_count == 2
                                     };
                                     let _ = ctx.say(if is_1v1 {
@@ -3587,13 +3669,15 @@ impl RaceHandler<GlobalState> for Handler {
                                 }
                             })
                         });
-                    }
+                    },
                     Goal::Cc7 | Goal::CopaDoBrasil | Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::NineDaysOfSaws | Goal::Rsl | Goal::Sgl2023 | Goal::TournoiFrancoS3 | Goal::WeTryToBeBetter => {}
                 }
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx, goal).await? {
-                if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, .. }) = self.official_data {
-                    self.official_race_finished(ctx, data, cal_event, event, fpa_invoked).await?;
+                if !matches!(goal, Goal::TriforceBlitz) { // TFB races are reported once all entrants have reported scores
+                    if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, .. }) = self.official_data {
+                        self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, None).await?;
+                    }
                 }
             },
             RaceStatusValue::Cancelled => {

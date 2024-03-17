@@ -95,6 +95,31 @@ pub(crate) fn parse_duration(mut s: &str, default_unit: DurationUnit) -> Option<
     Some(duration)
 }
 
+pub(crate) fn unparse_duration(duration: Duration) -> String {
+    let mut buf = String::default();
+    let secs = duration.as_secs();
+    let hours = secs / 3600;
+    let mins = (secs % 3600) / 60;
+    let secs = secs % 60;
+    if hours > 0 {
+        buf.push_str(&format!("{hours}h"));
+        if mins > 0 || secs > 0 {
+            buf.push_str(&format!("{mins:02}m"));
+        }
+        if secs > 0 {
+            buf.push_str(&format!("{secs:02}m"));
+        }
+    } else if mins > 0 {
+        buf.push_str(&format!("{mins}m"));
+        if secs > 0 {
+            buf.push_str(&format!("{secs:02}m"));
+        }
+    } else {
+        buf.push_str(&format!("{secs}s"));
+    }
+    buf
+}
+
 pub(crate) struct DateTimeFormat {
     pub(crate) long: bool,
     pub(crate) running_text: bool,

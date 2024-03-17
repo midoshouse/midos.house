@@ -17,6 +17,7 @@ pub(crate) use self::{
         format_date_range,
         format_datetime,
         parse_duration,
+        unparse_duration,
     },
 };
 

@@ -1,12 +1,72 @@
-use crate::{
-    event::{
-        Data,
-        Error,
-        InfoError,
-        StatusContext,
+use {
+    racetime::model::*,
+    crate::{
+        event::{
+            Data,
+            Error,
+            InfoError,
+            StatusContext,
+        },
+        prelude::*,
     },
-    prelude::*,
 };
+
+#[derive(Default, Debug, Clone, Copy)]
+pub(crate) struct Score {
+    pub(crate) pieces: u8,
+    pub(crate) last_collection_time: Duration,
+}
+
+impl fmt::Display for Score {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.pieces == 0 {
+            write!(f, "0/3")
+        } else {
+            write!(f, "{}/3 in {}", self.pieces, English.format_duration(self.last_collection_time, false))
+        }
+    }
+}
+
+pub(crate) fn report_score_button(finish_time: Option<Duration>) -> (&'static str, ActionButton) {
+    ("Report score", ActionButton::Message {
+        message: format!("!score ${{pieces}} ${{last_collection_time}}"),
+        help_text: Some(format!("Report your Triforce Blitz score for this race.")),
+        survey: Some(vec![
+            SurveyQuestion {
+                name: format!("pieces"),
+                label: format!("Pieces found"),
+                default: Some(if let Some(finish_time) = finish_time {
+                    if finish_time < Duration::from_secs(2 * 60 * 60) {
+                        format!("3")
+                    } else {
+                        format!("1")
+                    }
+                } else {
+                    format!("0")
+                }),
+                help_text: None,
+                kind: SurveyQuestionKind::Radio,
+                placeholder: None,
+                options: vec![
+                    (format!("0"), format!("0")),
+                    (format!("1"), format!("1")),
+                    (format!("2"), format!("2")),
+                    (format!("3"), format!("3")),
+                ],
+            },
+            SurveyQuestion {
+                name: format!("last_collection_time"),
+                label: format!("Most recent collection time"),
+                default: finish_time.map(unparse_duration),
+                help_text: Some(format!("Leave blank if you didn't collect any pieces.")),
+                kind: SurveyQuestionKind::Input,
+                placeholder: Some(format!("e.g. 1h23m45s")),
+                options: Vec::default(),
+            },
+        ]),
+        submit: Some(format!("Submit")),
+    })
+}
 
 pub(crate) fn parse_seed_url(seed: &Url) -> Option<Uuid> {
     if_chain! {
