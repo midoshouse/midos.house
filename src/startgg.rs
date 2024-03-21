@@ -89,16 +89,6 @@ pub(crate) struct TeamEventSetsQuery;
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "assets/graphql/startgg-schema.json",
-    query_path = "assets/graphql/startgg-set-query.graphql",
-    skip_default_scalars, // workaround for https://github.com/smashgg/developer-portal/issues/171
-    variables_derives = "Clone, PartialEq, Eq, Hash",
-    response_derives = "Debug, Clone",
-)]
-pub(crate) struct SetQuery;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "assets/graphql/startgg-schema.json",
     query_path = "assets/graphql/startgg-report-one-game-result-mutation.graphql",
     skip_default_scalars, // workaround for https://github.com/smashgg/developer-portal/issues/171
     variables_derives = "Clone, PartialEq, Eq, Hash",

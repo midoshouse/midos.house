@@ -226,7 +226,7 @@ struct Event(event::Data<'static>);
 #[Object] impl Event {
     /// All past, upcoming, and unscheduled races for this event, sorted chronologically.
     async fn races(&self, ctx: &Context<'_>) -> Result<Vec<Race>, cal::Error> {
-        Ok(db!(db = ctx; cal::Race::for_event(&mut *db, ctx.data_unchecked(), *ctx.data_unchecked(), ctx.data_unchecked(), &self.0).await?).into_iter().map(Race).collect())
+        Ok(db!(db = ctx; cal::Race::for_event(&mut *db, ctx.data_unchecked(), ctx.data_unchecked(), &self.0).await?).into_iter().map(Race).collect())
     }
 }
 
@@ -470,7 +470,7 @@ pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<re
     let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
         show_times: event.show_qualifier_times && event.is_started(&mut transaction).await?,
     };
-    let signups = teams::signups_sorted(&mut transaction, http_client, **env, config, None, &event, qualifier_kind).await?;
+    let signups = teams::signups_sorted(&mut transaction, http_client, config, None, &event, qualifier_kind).await?;
     let mut csv = csv::Writer::from_writer(Vec::default());
     for (i, teams::SignupsTeam { team, .. }) in signups.into_iter().enumerate() {
         if let Some(team) = team {

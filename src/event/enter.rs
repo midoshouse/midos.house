@@ -145,7 +145,7 @@ impl Requirement {
         }
     }
 
-    async fn is_checked(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>) -> Result<Option<bool>, Error> {
+    async fn is_checked(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>) -> Result<Option<bool>, Error> {
         Ok(match self {
             Self::RaceTime => Some(me.map_or(false, |me| me.racetime.is_some())),
             Self::RaceTimeInvite { invites, .. } => Some(me.and_then(|me| me.racetime.as_ref()).map_or(false, |racetime| invites.contains(&racetime.id))),
@@ -168,9 +168,9 @@ impl Requirement {
             Self::QualifierPlacement { num_players, min_races } => Some(if_chain! {
                 // All qualifiers must be completed to ensure the qualifier placements are final.
                 //TODO This could be relaxed by calculating whether the player has secured a spot ahead of time.
-                if Race::for_event(&mut *transaction, http_client, env, config, data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.schedule.is_ended());
+                if Race::for_event(&mut *transaction, http_client, config, data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.schedule.is_ended());
                 if let Some(me) = me;
-                let teams = teams::signups_sorted(transaction, http_client, env, config, Some(me), data, teams::QualifierKind::Multiple).await?;
+                let teams = teams::signups_sorted(transaction, http_client, config, Some(me), data, teams::QualifierKind::Multiple).await?;
                 if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| match member.user {
                     teams::MemberUser::MidosHouse(ref user) => user == me,
                     teams::MemberUser::RaceTime { ref id, .. } => me.racetime.as_ref().map_or(false, |racetime| racetime.id == *id),
@@ -480,13 +480,13 @@ impl Requirement {
         })
     }
 
-    async fn check_form(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
+    async fn check_form(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, config: &Config, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
         match self {
-            Self::StartGG { optional: false } => if !self.is_checked(transaction, http_client, env, config, discord_ctx, Some(me), data).await?.unwrap_or(false) {
+            Self::StartGG { optional: false } => if !self.is_checked(transaction, http_client, config, discord_ctx, Some(me), data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation("A start.gg account is required to enter this event.")); //TODO link to /login/startgg
             },
             Self::StartGG { optional: true } => match value.startgg_radio {
-                Some(BoolRadio::Yes) => if !self.is_checked(transaction, http_client, env, config, discord_ctx, Some(me), data).await?.unwrap_or(false) {
+                Some(BoolRadio::Yes) => if !self.is_checked(transaction, http_client, config, discord_ctx, Some(me), data).await?.unwrap_or(false) {
                     form_ctx.push_error(form::Error::validation("Sign in with start.gg or opt out of start.gg integration.").with_name("startgg_radio")); //TODO link to /login/startgg
                 },
                 Some(BoolRadio::No) => {}
@@ -528,7 +528,7 @@ impl Requirement {
                 }
             }
             Self::External { .. } => form_ctx.push_error(form::Error::validation("Please complete event entry via the external method.")),
-            _ => if !self.is_checked(transaction, http_client, env, config, discord_ctx, Some(me), data).await?.unwrap_or(false) {
+            _ => if !self.is_checked(transaction, http_client, config, discord_ctx, Some(me), data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation(match self {
                     Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your Mido's House profile and select “Connect a racetime.gg account”.", //TODO direct link?
                     Self::RaceTimeInvite { .. } => if me.racetime.is_some() {
@@ -667,9 +667,9 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                             let mut can_submit = true;
                             let mut requirements_display = Vec::with_capacity(requirements.len());
                             for requirement in requirements {
-                                let status = requirement.check_get(&data, requirement.is_checked(&mut transaction, http_client, env, config, discord_ctx, me.as_ref(), &data).await?, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults)?;
+                                let status = requirement.check_get(&data, requirement.is_checked(&mut transaction, http_client, config, discord_ctx, me.as_ref(), &data).await?, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults)?;
                                 if status.blocks_submit { can_submit = false }
-                                requirements_display.push((requirement.is_checked(&mut transaction, http_client, env, config, discord_ctx, me.as_ref(), &data).await?, status.html_content));
+                                requirements_display.push((requirement.is_checked(&mut transaction, http_client, config, discord_ctx, me.as_ref(), &data).await?, status.html_content));
                             }
                             let preface = html! {
                                 @if data.show_opt_out {
@@ -860,7 +860,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                         }
                     } else {
                         for requirement in requirements {
-                            requirement.check_form(&mut transaction, http_client, **env, config, discord_ctx, &me, &data, &mut form.context, value).await?;
+                            requirement.check_form(&mut transaction, http_client, config, discord_ctx, &me, &data, &mut form.context, value).await?;
                             if let Requirement::Qualifier { .. } = requirement {
                                 request_qualifier = true;
                             }

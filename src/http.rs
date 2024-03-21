@@ -188,7 +188,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
     let mut races = Vec::default();
     for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE listed AND (end_time IS NULL OR end_time > NOW()) ORDER BY start ASC NULLS LAST"#).fetch_all(&mut *transaction).await? {
         let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction");
-        races.extend(Race::for_event(&mut transaction, http_client, **env, config, &event).await?.into_iter().filter(|race| match race.schedule {
+        races.extend(Race::for_event(&mut transaction, http_client, config, &event).await?.into_iter().filter(|race| match race.schedule {
             RaceSchedule::Unscheduled => false,
             RaceSchedule::Live { end, .. } => end.is_none(),
             RaceSchedule::Async { start1, start2, end1, end2, .. } => start1.is_some() && start2.is_some() && (end1.is_none() || end2.is_none()), // second half scheduled and not ended
@@ -211,7 +211,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
             .then_with(|| race1.event.cmp(&race2.event))
             .then_with(|| race1.phase.cmp(&race2.phase))
             .then_with(|| race1.round.cmp(&race2.round))
-            .then_with(|| race1.startgg_set.cmp(&race2.startgg_set))
+            .then_with(|| race1.source.cmp(&race2.source))
             .then_with(|| race1.game.cmp(&race2.game))
             .then_with(|| race1.id.cmp(&race2.id))
     });

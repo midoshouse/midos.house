@@ -165,15 +165,14 @@ impl GenericInteraction for ComponentInteraction {
 
 //TODO refactor (MH admins should have permissions, room already being open should not remove permissions but only remove the team from return)
 async fn check_scheduling_thread_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl GenericInteraction, game: Option<i16>) -> Result<Option<(Transaction<'a, Postgres>, Race, Option<Team>)>, Box<dyn std::error::Error + Send + Sync>> {
-    let (mut transaction, http_client, startgg_token) = {
+    let (mut transaction, http_client) = {
         let data = ctx.data.read().await;
         (
             data.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?,
             data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
-            data.get::<StartggToken>().expect("start.gg auth token missing from Discord context").clone(),
         )
     };
-    let mut applicable_races = Race::for_scheduling_channel(&mut transaction, &http_client, &startgg_token, interaction.channel_id(), game).await?;
+    let mut applicable_races = Race::for_scheduling_channel(&mut transaction, &http_client, interaction.channel_id(), game).await?;
     if let Some(Some(min_game)) = applicable_races.iter().map(|race| race.game).min() {
         // None < Some(_) so this code only runs if all applicable races are best-of-N
         applicable_races.retain(|race| race.game == Some(min_game));

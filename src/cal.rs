@@ -41,6 +41,18 @@ use {
     },
 };
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Source {
+    Manual,
+    Sheet {
+        timestamp: NaiveDateTime,
+    },
+    StartGG {
+        event: String,
+        set: startgg::ID,
+    },
+}
+
 #[derive(Clone)]
 pub(crate) enum Entrant {
     MidosHouseTeam(Team),
@@ -265,8 +277,7 @@ pub(crate) struct Race {
     pub(crate) id: Id<Races>,
     pub(crate) series: Series,
     pub(crate) event: String,
-    pub(crate) startgg_event: Option<String>,
-    pub(crate) startgg_set: Option<startgg::ID>,
+    pub(crate) source: Source,
     pub(crate) entrants: Entrants,
     pub(crate) phase: Option<String>,
     pub(crate) round: Option<String>,
@@ -282,10 +293,11 @@ pub(crate) struct Race {
 }
 
 impl Race {
-    pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, id: Id<Races>) -> Result<Self, Error> {
+    pub(crate) async fn from_id(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, id: Id<Races>) -> Result<Self, Error> {
         let row = sqlx::query!(r#"SELECT
             series AS "series: Series",
             event,
+            sheet_timestamp,
             startgg_event,
             startgg_set AS "startgg_set: startgg::ID",
             game,
@@ -335,34 +347,12 @@ impl Race {
             ignored,
             schedule_locked
         FROM races WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
-        let (startgg_event, startgg_set, phase, round, slots) = if let Some(startgg_set) = row.startgg_set {
-            if row.startgg_event.is_some() && row.phase.is_some() && row.round.is_some() && row.team1.is_some() && row.team2.is_some() {
-                (row.startgg_event, Some(startgg_set), row.phase, row.round, None)
-            } else if let startgg::set_query::ResponseData {
-                set: Some(startgg::set_query::SetQuerySet {
-                    full_round_text: Some(round),
-                    phase_group: Some(startgg::set_query::SetQuerySetPhaseGroup {
-                        phase: Some(startgg::set_query::SetQuerySetPhaseGroupPhase {
-                            event: Some(startgg::set_query::SetQuerySetPhaseGroupPhaseEvent {
-                                slug: Some(startgg_event),
-                            }),
-                            name: Some(phase),
-                        }),
-                    }),
-                    slots: Some(slots),
-                }),
-            } = startgg::query_cached::<startgg::SetQuery>(http_client, startgg_token, startgg::set_query::Variables { set_id: startgg_set.clone() }).await? {
-                sqlx::query!("UPDATE races SET
-                    startgg_event = $1,
-                    phase = $2,
-                    round = $3
-                WHERE id = $4", startgg_event, phase, round, id as _).execute(&mut **transaction).await?;
-                (Some(startgg_event), Some(startgg_set), Some(phase), Some(round), Some(slots))
-            } else {
-                (None, None, row.phase, row.round, None)
-            }
+        let source = if let (Some(event), Some(set)) = (row.startgg_event, row.startgg_set) {
+            Source::StartGG { event, set }
+        } else if let Some(timestamp) = row.sheet_timestamp {
+            Source::Sheet { timestamp }
         } else {
-            (None, None, row.phase, row.round, None)
+            Source::Manual
         };
         let entrants = {
             let p1 = if let Some(team1) = row.team1 {
@@ -394,20 +384,7 @@ impl Race {
                 [Some(p1), Some(p2), Some(p3)] => Entrants::Three([p1, p2, p3]),
                 [Some(p1), Some(p2), None] => Entrants::Two([p1, p2]),
                 [Some(Entrant::Named(p1)), None, None] => Entrants::Named(p1),
-                [None, None, None] => if let (Some(startgg_set), Some(slots)) = (&startgg_set, slots) {
-                    if let [
-                        Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(ref team1), on: _ }) }) }),
-                        Some(startgg::set_query::SetQuerySetSlots { entrant: Some(startgg::set_query::SetQuerySetSlotsEntrant { team: Some(startgg::set_query::SetQuerySetSlotsEntrantTeam { id: Some(ref team2), on: _ }) }) }),
-                    ] = *slots {
-                        let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?;
-                        let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
-                        sqlx::query!("UPDATE races SET team1 = $1 WHERE id = $2", team1.id as _, id as _).execute(&mut **transaction).await?;
-                        sqlx::query!("UPDATE races SET team2 = $1 WHERE id = $2", team2.id as _, id as _).execute(&mut **transaction).await?;
-                        Entrants::Two([Entrant::MidosHouseTeam(team1), Entrant::MidosHouseTeam(team2)])
-                    } else {
-                        return Err(Error::StartggTeams { startgg_set: startgg_set.clone() })
-                    }
-                } else if let (Some(total), Some(finished)) = (row.total, row.finished) {
+                [None, None, None] => if let (Some(total), Some(finished)) = (row.total, row.finished) {
                     Entrants::Count {
                         total: total as u32,
                         finished: finished as u32,
@@ -456,6 +433,8 @@ impl Race {
         Ok(Self {
             series: row.series,
             event: row.event,
+            phase: row.phase,
+            round: row.round,
             game: row.game,
             scheduling_thread: row.scheduling_thread.map(|PgSnowflake(id)| id),
             schedule: RaceSchedule::new(
@@ -486,11 +465,11 @@ impl Race {
             }.map(|restreamer| (language, restreamer))).collect(),
             ignored: row.ignored,
             schedule_locked: row.schedule_locked,
-            id, startgg_event, startgg_set, entrants, phase, round,
+            id, source, entrants,
         })
     }
 
-    pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
+    pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, config: &Config, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
         async fn update_race(transaction: &mut Transaction<'_, Postgres>, found_race: &mut Race, race: Race) -> sqlx::Result<()> {
             if !found_race.schedule.start_matches(&race.schedule) {
                 match race.schedule {
@@ -552,21 +531,19 @@ impl Race {
             Ok(())
         }
 
-        let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
         let mut races = Vec::default();
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut **transaction).await? {
-            races.push(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?);
+            races.push(Self::from_id(&mut *transaction, http_client, id).await?);
         }
         match event.series {
             Series::BattleRoyale => match &*event.event {
-                "1" => for row in sheet_values(http_client.clone(), "1M_VtwoOEx3sZ7UsQ8Xfe2GFXFGIuhRgbcMiJZhYYgaM", "Form responses 1!B2:F").await? {
-                    let [p1, p2, round, date_utc, time_utc] = &*row else { continue };
+                "1" => for row in sheet_values(http_client.clone(), "1M_VtwoOEx3sZ7UsQ8Xfe2GFXFGIuhRgbcMiJZhYYgaM", "Form responses 1!A2:F").await? {
+                    let [timestamp, p1, p2, round, date_utc, time_utc] = &*row else { continue };
                     let id = Id::new(&mut *transaction).await?;
                     add_or_update_race(&mut *transaction, &mut races, Self {
                         series: event.series,
                         event: event.event.to_string(),
-                        startgg_event: None,
-                        startgg_set: None,
+                        source: Source::Sheet { timestamp: NaiveDateTime::parse_from_str(timestamp, "%d/%m/%Y %H:%M:%S")? },
                         entrants: Entrants::Two([
                             Entrant::Named(p1.clone()),
                             Entrant::Named(p2.clone()),
@@ -629,8 +606,7 @@ impl Race {
                 add_or_update_race(&mut *transaction, &mut races, Self {
                     series: event.series,
                     event: event.event.to_string(),
-                    startgg_event: None,
-                    startgg_set: None,
+                    source: Source::Manual,
                     entrants: Entrants::Open,
                     phase: None,
                     round: None,
@@ -648,8 +624,8 @@ impl Race {
             Series::Rsl => match &*event.event {
                 "1" => {} // no match data available
                 "2" | "3" | "4" | "5" => {}
-                "6" => for row in sheet_values(http_client.clone(), "1ZC2PfHKK2uVYRCJSLjdO1M0P2D7Njvohg20T8p4Z0ro", "Form Responses 1!B2:F").await? {
-                    let [p1, p2, round, date_utc, time_utc] = &*row else { continue };
+                "6" => for row in sheet_values(http_client.clone(), "1ZC2PfHKK2uVYRCJSLjdO1M0P2D7Njvohg20T8p4Z0ro", "Form Responses 1!A2:F").await? {
+                    let [timestamp, p1, p2, round, date_utc, time_utc] = &*row else { continue };
                     let id = Id::new(&mut *transaction).await?;
                     let (phase, round, game) = if let Some(group) = round.strip_prefix("Group ") {
                         (format!("Group"), group.to_owned(), None)
@@ -661,8 +637,7 @@ impl Race {
                     add_or_update_race(&mut *transaction, &mut races, Self {
                         series: event.series,
                         event: event.event.to_string(),
-                        startgg_event: None,
-                        startgg_set: None,
+                        source: Source::Sheet { timestamp: NaiveDateTime::parse_from_str(timestamp, "%d/%m/%Y %H:%M:%S")? },
                         entrants: Entrants::Two([
                             Entrant::Named(p1.clone()),
                             Entrant::Named(p2.clone()),
@@ -697,48 +672,46 @@ impl Race {
             },
             Series::Standard => match &*event.event {
                 "6" => {}
-                "7" => for row in sheet_values(http_client.clone(), &config.zsr_volunteer_signups, "Scheduled Races!B2:D").await? {
-                    if let [datetime_et, matchup, round] = &*row {
-                        let start = NaiveDateTime::parse_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}")).and_local_timezone(America::New_York).single_ok()?;
-                        if start < America::New_York.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue }
-                        let id = Id::<Races>::new(&mut *transaction).await?;
-                        let (phase, round, game) = if let Some(group) = round.strip_prefix("Group ") {
-                            (format!("Group"), group.to_owned(), None)
-                        } else if let Some((round, game)) = round.split_once(" Game ").and_then(|(round, game)| Some((round, game.parse().ok()?))) {
-                            (format!("Bracket"), round.to_owned(), Some(game))
+                "7" => for row in sheet_values(http_client.clone(), &config.zsr_volunteer_signups, "Scheduled Races!A2:D").await? {
+                    let [timestamp, datetime_et, matchup, round] = &*row else { continue };
+                    let start = NaiveDateTime::parse_from_str(&datetime_et, "%d/%m/%Y %H:%M:%S").expect(&format!("failed to parse {datetime_et:?}")).and_local_timezone(America::New_York).single_ok()?;
+                    if start < America::New_York.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).single().expect("wrong hardcoded datetime") { continue }
+                    let id = Id::<Races>::new(&mut *transaction).await?;
+                    let (phase, round, game) = if let Some(group) = round.strip_prefix("Group ") {
+                        (format!("Group"), group.to_owned(), None)
+                    } else if let Some((round, game)) = round.split_once(" Game ").and_then(|(round, game)| Some((round, game.parse().ok()?))) {
+                        (format!("Bracket"), round.to_owned(), Some(game))
+                    } else {
+                        (format!("Bracket"), round.clone(), None)
+                    };
+                    add_or_update_race(&mut *transaction, &mut races, Self {
+                        series: event.series,
+                        event: event.event.to_string(),
+                        source: Source::Sheet { timestamp: NaiveDateTime::parse_from_str(timestamp, "%d/%m/%Y %H:%M:%S")? },
+                        entrants: if let Some((_, p1, p2)) = regex_captures!("^(.+) +(?i:vs?\\.?|x) +(.+)$", matchup) {
+                            Entrants::Two([
+                                Entrant::Named(p1.to_owned()),
+                                Entrant::Named(p2.to_owned()),
+                            ])
                         } else {
-                            (format!("Bracket"), round.clone(), None)
-                        };
-                        add_or_update_race(&mut *transaction, &mut races, Self {
-                            series: event.series,
-                            event: event.event.to_string(),
-                            startgg_event: None,
-                            startgg_set: None,
-                            entrants: if let Some((_, p1, p2)) = regex_captures!("^(.+) +(?i:vs?\\.?|x) +(.+)$", matchup) {
-                                Entrants::Two([
-                                    Entrant::Named(p1.to_owned()),
-                                    Entrant::Named(p2.to_owned()),
-                                ])
-                            } else {
-                                Entrants::Named(matchup.clone())
-                            },
-                            phase: Some(phase),
-                            round: Some(round),
-                            scheduling_thread: None,
-                            schedule: RaceSchedule::Live {
-                                start: start.with_timezone(&Utc),
-                                end: None,
-                                room: None,
-                            },
-                            draft: None,
-                            seed: seed::Data::default(),
-                            video_urls: HashMap::default(),
-                            restreamers: HashMap::default(),
-                            ignored: false,
-                            schedule_locked: false,
-                            id, game,
-                        }).await?;
-                    }
+                            Entrants::Named(matchup.clone())
+                        },
+                        phase: Some(phase),
+                        round: Some(round),
+                        scheduling_thread: None,
+                        schedule: RaceSchedule::Live {
+                            start: start.with_timezone(&Utc),
+                            end: None,
+                            room: None,
+                        },
+                        draft: None,
+                        seed: seed::Data::default(),
+                        video_urls: HashMap::default(),
+                        restreamers: HashMap::default(),
+                        ignored: false,
+                        schedule_locked: false,
+                        id, game,
+                    }).await?;
                 },
                 "7cc" => {} //TODO get from start.gg without manual confirmation (after testing best-of-3)
                 _ => unimplemented!(),
@@ -761,7 +734,7 @@ impl Race {
         Ok(races)
     }
 
-    pub(crate) async fn for_scheduling_channel(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, channel_id: ChannelId, game: Option<i16>) -> Result<Vec<Self>, Error> {
+    pub(crate) async fn for_scheduling_channel(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, channel_id: ChannelId, game: Option<i16>) -> Result<Vec<Self>, Error> {
         let mut races = Vec::default();
         let rows = if let Some(game) = game {
             sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW()) AND game = $2"#, i64::from(channel_id), game).fetch_all(&mut **transaction).await?
@@ -769,7 +742,7 @@ impl Race {
             sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW())"#, i64::from(channel_id)).fetch_all(&mut **transaction).await?
         };
         for id in rows {
-            races.push(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?);
+            races.push(Self::from_id(&mut *transaction, http_client, id).await?);
         }
         races.retain(|race| !race.ignored);
         races.sort_unstable();
@@ -817,7 +790,7 @@ impl Race {
         ).fetch_optional(&mut **transaction).await?.unwrap_or(1))
     }
 
-    pub(crate) async fn next_game(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str) -> Result<Option<Self>, Error> {
+    pub(crate) async fn next_game(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client) -> Result<Option<Self>, Error> {
         Ok(if_chain! {
             if let Some(game) = self.game;
             let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
@@ -859,7 +832,7 @@ impl Race {
                 finished.map(|finished| finished as i32),
             ).fetch_optional(&mut **transaction).await?;
             then {
-                Some(Self::from_id(&mut *transaction, http_client, startgg_token, id).await?)
+                Some(Self::from_id(&mut *transaction, http_client, id).await?)
             } else {
                 None
             }
@@ -871,7 +844,7 @@ impl Race {
     }
 
     pub(crate) fn startgg_set_url(&self) -> Result<Option<Url>, url::ParseError> {
-        Ok(if let Self { startgg_event: Some(event), startgg_set: Some(startgg::ID(set)), .. } = self {
+        Ok(if let Source::StartGG { ref event, set: startgg::ID(ref set), .. } = self.source {
             Some(format!("https://start.gg/{event}/set/{set}").parse()?)
         } else {
             None
@@ -1020,6 +993,11 @@ impl Race {
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE id = $1) AS "exists!""#, self.id as _).fetch_one(&mut **transaction).await? {
             unimplemented!("updating existing races not yet implemented") //TODO
         } else {
+            let (sheet_timestamp, startgg_event, startgg_set) = match self.source {
+                Source::Manual => (None, None, None),
+                Source::Sheet { timestamp } => (Some(timestamp), None, None),
+                Source::StartGG { ref event, ref set } => (None, Some(event), Some(set)),
+            };
             let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
             let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match self.schedule {
                 RaceSchedule::Unscheduled => (None, None, None, None, None, None, None, None, None),
@@ -1082,10 +1060,11 @@ impl Race {
                 p2_discord,
                 team3,
                 video_url_de,
-                restreamer_de
+                restreamer_de,
+                sheet_timestamp
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49)",
-                self.startgg_set as _,
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50)",
+                startgg_set as _,
                 start,
                 self.series as _,
                 self.event,
@@ -1116,7 +1095,7 @@ impl Race {
                 self.phase,
                 self.round,
                 p3,
-                self.startgg_event,
+                startgg_event,
                 self.scheduling_thread.map(|id| i64::from(id)),
                 total.map(|total| total as i32),
                 finished.map(|finished| finished as i32),
@@ -1134,6 +1113,7 @@ impl Race {
                 team3.map(|id| i64::from(id)),
                 self.video_urls.get(&German).map(|url| url.to_string()),
                 self.restreamers.get(&German),
+                sheet_timestamp,
             ).execute(&mut **transaction).await?;
         }
         Ok(())
@@ -1161,7 +1141,7 @@ impl Ord for Race {
             .then_with(|| self.event.cmp(&other.event))
             .then_with(|| self.phase.cmp(&other.phase))
             .then_with(|| self.round.cmp(&other.round))
-            .then_with(|| self.startgg_set.cmp(&other.startgg_set))
+            .then_with(|| self.source.cmp(&other.source))
             .then_with(|| self.game.cmp(&other.game))
             .then_with(|| self.id.cmp(&other.id))
     }
@@ -1181,39 +1161,39 @@ pub(crate) struct Event {
 }
 
 impl Event {
-    pub(crate) async fn from_room(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str, room: Url) -> Result<Option<Self>, Error> {
+    pub(crate) async fn from_room(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, room: Url) -> Result<Option<Self>, Error> {
         if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE room = $1 AND start IS NOT NULL"#, room.to_string()).fetch_optional(&mut **transaction).await? {
             return Ok(Some(Self {
-                race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
+                race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Normal,
             }))
         }
         if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room1 = $1 AND async_start1 IS NOT NULL"#, room.to_string()).fetch_optional(&mut **transaction).await? {
             return Ok(Some(Self {
-                race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
+                race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async1,
             }))
         }
         if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room2 = $1 AND async_start2 IS NOT NULL"#, room.to_string()).fetch_optional(&mut **transaction).await? {
             return Ok(Some(Self {
-                race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
+                race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async2,
             }))
         }
         Ok(None)
     }
 
-    pub(crate) async fn rooms_to_open(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, startgg_token: &str) -> Result<Vec<Self>, Error> {
+    pub(crate) async fn rooms_to_open(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client) -> Result<Vec<Self>, Error> {
         let mut events = Vec::default();
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE room IS NULL AND start IS NOT NULL AND start > NOW() AND (start <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND start <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
             events.push(Self {
-                race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
+                race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Normal,
             })
         }
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room1 IS NULL AND async_start1 IS NOT NULL AND async_start1 > NOW() AND (async_start1 <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND async_start1 <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
             let event = Self {
-                race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
+                race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async1,
             };
             if event.race.event(&mut *transaction).await?.team_config().is_racetime_team_format() { // racetime.gg doesn't support single-entrant races
@@ -1222,7 +1202,7 @@ impl Event {
         }
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room2 IS NULL AND async_start2 IS NOT NULL AND async_start2 > NOW() AND (async_start2 <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND async_start2 <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
             let event = Self {
-                race: Race::from_id(&mut *transaction, http_client, startgg_token, id).await?,
+                race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async2,
             };
             if event.race.event(&mut *transaction).await?.team_config().is_racetime_team_format() { // racetime.gg doesn't support single-entrant races
@@ -1328,10 +1308,6 @@ pub(crate) enum Error {
     #[error(transparent)] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
-    #[error("wrong number of teams in start.gg set {}", .startgg_set.0)]
-    StartggTeams {
-        startgg_set: startgg::ID,
-    },
     #[error("this start.gg team ID is not associated with a Mido's House team")]
     UnknownTeam,
 }
@@ -1436,8 +1412,8 @@ fn ics_datetime<Z: TimeZone>(datetime: DateTime<Z>) -> String {
     datetime.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string()
 }
 
-async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, http_client: &reqwest::Client, env: Environment, config: &Config, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
-    for race in Race::for_event(transaction, http_client, env, config, event).await?.into_iter() {
+async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, http_client: &reqwest::Client, config: &Config, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
+    for race in Race::for_event(transaction, http_client, config, event).await?.into_iter() {
         for race_event in race.cal_events() {
             if let Some(start) = race_event.start() {
                 let mut cal_event = ics::Event::new(format!("{}{}@midos.house",
@@ -1554,35 +1530,35 @@ pub(crate) async fn index_help(pool: &State<PgPool>, me: Option<User>, uri: Orig
 }
 
 #[rocket::get("/calendar.ics")]
-pub(crate) async fn index(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>) -> Result<Response<ICalendar<'static>>, Error> {
+pub(crate) async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>) -> Result<Response<ICalendar<'static>>, Error> {
     let mut transaction = pool.begin().await?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE listed"#).fetch_all(&mut *transaction).await? {
         let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, **env, config, &mut cal, &event).await?;
+        add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, config, &mut cal, &event).await?;
     }
     transaction.commit().await?;
     Ok(Response(cal))
 }
 
 #[rocket::get("/series/<series>/calendar.ics")]
-pub(crate) async fn for_series(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series) -> Result<Response<ICalendar<'static>>, Error> {
+pub(crate) async fn for_series(discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series) -> Result<Response<ICalendar<'static>>, Error> {
     let mut transaction = pool.begin().await?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
     for event in sqlx::query_scalar!(r#"SELECT event FROM events WHERE listed AND series = $1"#, series as _).fetch_all(&mut *transaction).await? {
         let event = event::Data::new(&mut transaction, series, event).await?.expect("event deleted during calendar load");
-        add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, **env, config, &mut cal, &event).await?;
+        add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, config, &mut cal, &event).await?;
     }
     transaction.commit().await?;
     Ok(Response(cal))
 }
 
 #[rocket::get("/event/<series>/<event>/calendar.ics")]
-pub(crate) async fn for_event(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series, event: &str) -> Result<Response<ICalendar<'static>>, StatusOrError<Error>> {
+pub(crate) async fn for_event(discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: Series, event: &str) -> Result<Response<ICalendar<'static>>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut cal = ICalendar::new("2.0", concat!("midos.house/", env!("CARGO_PKG_VERSION")));
-    add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, **env, config, &mut cal, &event).await?;
+    add_event_races(&mut transaction, &*discord_ctx.read().await, http_client, config, &mut cal, &event).await?;
     transaction.commit().await?;
     Ok(Response(cal))
 }
@@ -1807,8 +1783,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                     id: Id::<Races>::new(&mut transaction).await?,
                     series: event.series,
                     event: event.event.to_string(),
-                    startgg_event: None,
-                    startgg_set: None,
+                    source: Source::Manual,
                     entrants: if let Some(ref team3) = team3 {
                         Entrants::Three([
                             Entrant::MidosHouseTeam(team1.clone()),
@@ -2056,12 +2031,11 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
     async fn process_set(
         transaction: &mut Transaction<'_, Postgres>,
         http_client: &reqwest::Client,
-        env: Environment,
         config: &Config,
         event: &event::Data<'_>,
         races: &mut Vec<Race>,
         startgg_event: &str,
-        startgg_set: startgg::ID,
+        set: startgg::ID,
         phase: Option<String>,
         round: Option<String>,
         team1: Team,
@@ -2074,8 +2048,10 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
             id: Id::new(&mut *transaction).await?,
             series: event.series,
             event: event.event.to_string(),
-            startgg_event: Some(startgg_event.to_owned()),
-            startgg_set: Some(startgg_set),
+            source: Source::StartGG {
+                event: startgg_event.to_owned(),
+                set,
+            },
             entrants: Entrants::Two([
                 Entrant::MidosHouseTeam(team1.clone()),
                 Entrant::MidosHouseTeam(team2.clone()),
@@ -2111,7 +2087,7 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                         let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
                             show_times: event.show_qualifier_times && event.is_started(&mut *transaction).await?,
                         };
-                        let signups = teams::signups_sorted(&mut *transaction, http_client, env, config, None, event, qualifier_kind).await?;
+                        let signups = teams::signups_sorted(&mut *transaction, http_client, config, None, event, qualifier_kind).await?;
                         let SignupsTeam { members: members1, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team1)).expect("match with team that didn't sign up");
                         let SignupsTeam { members: members2, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team2)).expect("match with team that didn't sign up");
                         let avg1 = members1.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members1.len()).expect("too many team members"));
@@ -2177,7 +2153,7 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                             let phase = phase_group
                                 .and_then(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroup { phase, .. }| phase)
                                 .and_then(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroupPhase { name }| name);
-                            if let Some(reason) = process_set(&mut *transaction, http_client, env, config, event, races, event_slug, id.clone(), phase, full_round_text, team1, team2, set_games_type, total_games, best_of).await? {
+                            if let Some(reason) = process_set(&mut *transaction, http_client, config, event, races, event_slug, id.clone(), phase, full_round_text, team1, team2, set_games_type, total_games, best_of).await? {
                                 skips.push((id, reason));
                             }
                         } else {
@@ -2219,7 +2195,7 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                     let phase = phase_group
                         .and_then(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroup { phase, .. }| phase)
                         .and_then(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroupPhase { name }| name);
-                    if let Some(reason) = process_set(&mut *transaction, http_client, env, config, event, races, event_slug, id.clone(), phase, full_round_text, team1, team2, set_games_type, total_games, best_of).await? {
+                    if let Some(reason) = process_set(&mut *transaction, http_client, config, event, races, event_slug, id.clone(), phase, full_round_text, team1, team2, set_games_type, total_games, best_of).await? {
                         skips.push((id, reason));
                     }
                 } else {
@@ -2465,16 +2441,22 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
     let content = html! {
         : header;
         h2 : "Edit race";
-        @if let Some(startgg_event) = race.startgg_event {
-            p {
-                : "start.gg event: ";
-                : startgg_event;
+        @match race.source {
+            Source::Manual => p : "Source: Manually added";
+            Source::Sheet { timestamp } => p {
+                : "Google Form submission timestamp: ";
+                : timestamp.format("%d/%m/%Y %H:%M:%S").to_string();
+                : " (unknown time zone)";
             }
-        }
-        @if let Some(startgg::ID(startgg_set)) = race.startgg_set {
-            p {
-                : "start.gg match: ";
-                : startgg_set;
+            Source::StartGG { event, set: startgg::ID(set) } => {
+                p {
+                    : "start.gg event: ";
+                    : event;
+                }
+                p {
+                    : "start.gg match: ";
+                    : set;
+                }
             }
         }
         @match race.entrants {
@@ -2585,11 +2567,10 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit")]
-pub(crate) async fn edit_race(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+pub(crate) async fn edit_race(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let race = Race::from_id(&mut transaction, http_client, startgg_token, id).await?;
+    let race = Race::from_id(&mut transaction, http_client, id).await?;
     if race.series != event.series || race.event != event.event {
         return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(edit_race(race.series, race.event, id)))))
     }
@@ -2613,11 +2594,10 @@ pub(crate) struct EditRaceForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit", data = "<form>")]
-pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let race = Race::from_id(&mut transaction, http_client, startgg_token, id).await?;
+    let race = Race::from_id(&mut transaction, http_client, id).await?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if race.series != event.series || race.event != event.event {
@@ -2992,11 +2972,10 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit-hash")]
-pub(crate) async fn add_file_hash(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+pub(crate) async fn add_file_hash(env: &State<Environment>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let race = Race::from_id(&mut transaction, http_client, startgg_token, id).await?;
+    let race = Race::from_id(&mut transaction, http_client, id).await?;
     if race.series != event.series || race.event != event.event {
         return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(add_file_hash(race.series, race.event, id)))))
     }
@@ -3015,11 +2994,10 @@ pub(crate) struct AddFileHashForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit-hash", data = "<form>")]
-pub(crate) async fn add_file_hash_post(env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, AddFileHashForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+pub(crate) async fn add_file_hash_post(env: &State<Environment>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, AddFileHashForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let race = Race::from_id(&mut transaction, http_client, startgg_token, id).await?;
+    let race = Race::from_id(&mut transaction, http_client, id).await?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if race.series != event.series || race.event != event.event {

@@ -169,7 +169,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 msg.push(losing_room);
             }
             msg.push('>');
-            if event.discord_race_results_channel.is_some() || cal_event.race.startgg_set.is_some() {
+            if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. }) {
                 msg.push(" — please manually ");
                 if let Some(results_channel) = event.discord_race_results_channel {
                     msg.push("post the announcement in ");
@@ -306,7 +306,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
         */ //TODO debug errors returned from this mutation
         if_chain! {
             if let Some(draft_kind) = event.draft_kind();
-            if let Some(next_game) = cal_event.race.next_game(&mut transaction, &ctx.global_state.http_client, &ctx.global_state.startgg_token).await.to_racetime()?;
+            if let Some(next_game) = cal_event.race.next_game(&mut transaction, &ctx.global_state.http_client).await.to_racetime()?;
             then {
                 //TODO if this game decides the match, delete next game instead of initializing draft
                 let draft = Draft::new(&mut transaction, draft_kind, loser.id, winner.id).await.to_racetime()?;
@@ -362,7 +362,7 @@ impl Handler {
                 msg.push(ctx.global_state.env.racetime_host());
                 msg.push(&ctx.data().await.url);
                 msg.push('>');
-                if event.discord_race_results_channel.is_some() || cal_event.race.startgg_set.is_some() {
+                if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. }) {
                     msg.push(" — please manually ");
                     if let Some(results_channel) = event.discord_race_results_channel {
                         msg.push("post the announcement in ");
