@@ -44,6 +44,9 @@ use {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Source {
     Manual,
+    League {
+        id: i32,
+    },
     Sheet {
         timestamp: NaiveDateTime,
     },
@@ -56,44 +59,56 @@ pub(crate) enum Source {
 #[derive(Clone)]
 pub(crate) enum Entrant {
     MidosHouseTeam(Team),
-    Discord(UserId),
-    DiscordTwitch(UserId, String),
-    Named(String),
-    NamedWithTwitch(String, String),
+    Discord {
+        id: UserId,
+        racetime_id: Option<String>,
+        twitch_username: Option<String>,
+    },
+    Named {
+        name: String,
+        racetime_id: Option<String>,
+        twitch_username: Option<String>,
+    },
 }
 
 impl Entrant {
     pub(crate) async fn name(&self, transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx) -> Result<Option<Cow<'_, str>>, discord_bot::Error> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.name(transaction).await?,
-            Self::Discord(user_id) | Self::DiscordTwitch(user_id, _) => if let Some(user) = User::from_discord(&mut **transaction, *user_id).await? {
+            Self::Discord { id, .. } => if let Some(user) = User::from_discord(&mut **transaction, *id).await? {
                 Some(Cow::Owned(user.discord.unwrap().display_name))
             } else {
-                let user = user_id.to_user(discord_ctx).await?;
+                let user = id.to_user(discord_ctx).await?;
                 Some(Cow::Owned(user.global_name.unwrap_or(user.name)))
             },
-            Self::Named(name) | Self::NamedWithTwitch(name, _) => Some(Cow::Borrowed(name)),
+            Self::Named { name, .. } => Some(Cow::Borrowed(name)),
         })
     }
 
     pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, discord_ctx: &DiscordCtx, running_text: bool) -> Result<RawHtml<String>, discord_bot::Error> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.to_html(transaction, env, running_text).await?,
-            Self::Discord(user_id) | Self::DiscordTwitch(user_id, _) => if let Some(user) = User::from_discord(&mut **transaction, *user_id).await? {
-                html! {
-                    a(href = format!("https://discord.com/users/{user_id}")) {
-                        : user.discord.unwrap().display_name;
+            Self::Discord { id, racetime_id, .. } => {
+                let url = if let Some(racetime_id) = racetime_id {
+                    format!("https://racetime.gg/user/{racetime_id}")
+                } else {
+                    format!("https://discord.com/users/{id}")
+                };
+                if let Some(user) = User::from_discord(&mut **transaction, *id).await? {
+                    html! {
+                        a(href = url) : user.discord.unwrap().display_name;
+                    }
+                } else {
+                    let user = id.to_user(discord_ctx).await?;
+                    html! {
+                        a(href = url) : user.global_name.unwrap_or(user.name);
                     }
                 }
-            } else {
-                let user = user_id.to_user(discord_ctx).await?;
-                html! {
-                    a(href = format!("https://discord.com/users/{user_id}")) {
-                        : user.global_name.unwrap_or(user.name);
-                    }
-                }
+            }
+            Self::Named { name, racetime_id: Some(racetime_id), .. } => html! {
+                a(href = format!("https://racetime.gg/user/{racetime_id}")) : name;
             },
-            Self::Named(name) | Self::NamedWithTwitch(name, _) => name.to_html(),
+            Self::Named { name, racetime_id: None, .. } => name.to_html(),
         })
     }
 }
@@ -102,11 +117,11 @@ impl PartialEq for Entrant {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::MidosHouseTeam(lhs), Self::MidosHouseTeam(rhs)) => lhs == rhs,
-            (Self::Discord(lhs) | Self::DiscordTwitch(lhs, _), Self::Discord(rhs) | Self::DiscordTwitch(rhs, _)) => lhs == rhs,
-            (Self::Named(lhs) | Self::NamedWithTwitch(lhs, _), Self::Named(rhs) | Self::NamedWithTwitch(rhs, _)) => lhs == rhs,
-            (Self::MidosHouseTeam(_), Self::Discord(_) | Self::DiscordTwitch(_, _) | Self::Named(_) | Self::NamedWithTwitch(_, _)) |
-            (Self::Discord(_) | Self::DiscordTwitch(_, _), Self::MidosHouseTeam(_) | Self::Named(_) | Self::NamedWithTwitch(_, _)) |
-            (Self::Named(_) | Self::NamedWithTwitch(_, _), Self::MidosHouseTeam(_) | Self::Discord(_) | Self::DiscordTwitch(_, _)) => false,
+            (Self::Discord { id: lhs, .. }, Self::Discord { id: rhs, .. }) => lhs == rhs,
+            (Self::Named { name: lhs, .. }, Self::Named { name: rhs, .. }) => lhs == rhs,
+            (Self::MidosHouseTeam(_), Self::Discord { .. } | Self::Named { .. }) |
+            (Self::Discord { .. }, Self::MidosHouseTeam(_) | Self::Named { .. }) |
+            (Self::Named { .. }, Self::MidosHouseTeam(_) | Self::Discord { .. }) => false,
         }
     }
 }
@@ -126,45 +141,41 @@ pub(crate) enum Entrants {
 }
 
 impl Entrants {
-    fn to_db(&self) -> ([Option<Id<Teams>>; 3], [Option<&String>; 3], [Option<UserId>; 2], [Option<&String>; 2], [Option<u32>; 2]) {
+    fn to_db(&self) -> ([Option<Id<Teams>>; 3], [Option<&String>; 3], [Option<UserId>; 2], [Option<&String>; 2], [Option<&String>; 2], [Option<u32>; 2]) {
         match *self {
-            Entrants::Open => ([None; 3], [None; 3], [None; 2], [None; 2], [None; 2]),
-            Entrants::Count { total, finished } => ([None; 3], [None; 3], [None; 2], [None; 2], [Some(total), Some(finished)]),
-            Entrants::Named(ref entrants) => ([None; 3], [Some(entrants), None, None], [None; 2], [None; 2], [None; 2]),
+            Entrants::Open => ([None; 3], [None; 3], [None; 2], [None; 2], [None; 2], [None; 2]),
+            Entrants::Count { total, finished } => ([None; 3], [None; 3], [None; 2], [None; 2], [None; 2], [Some(total), Some(finished)]),
+            Entrants::Named(ref entrants) => ([None; 3], [Some(entrants), None, None], [None; 2], [None; 2], [None; 2], [None; 2]),
             Entrants::Two([ref p1, ref p2]) => {
-                let (team1, p1, p1_discord, p1_twitch) = match p1 {
-                    Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None),
-                    Entrant::Discord(discord_id) => (None, None, Some(*discord_id), None),
-                    Entrant::DiscordTwitch(discord_id, twitch) => (None, None, Some(*discord_id), Some(twitch)),
-                    Entrant::Named(name) => (None, Some(name), None, None),
-                    Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), None, Some(twitch)),
+                let (team1, p1, p1_discord, p1_racetime, p1_twitch) = match p1 {
+                    Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None, None),
+                    Entrant::Discord { id, racetime_id, twitch_username } => (None, None, Some(*id), racetime_id.as_ref(), twitch_username.as_ref()),
+                    Entrant::Named { name, racetime_id, twitch_username } => (None, Some(name), None, racetime_id.as_ref(), twitch_username.as_ref()),
                 };
-                let (team2, p2, p2_discord, p2_twitch) = match p2 {
-                    Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None),
-                    Entrant::Discord(discord_id) => (None, None, Some(*discord_id), None),
-                    Entrant::DiscordTwitch(discord_id, twitch) => (None, None, Some(*discord_id), Some(twitch)),
-                    Entrant::Named(name) => (None, Some(name), None, None),
-                    Entrant::NamedWithTwitch(name, twitch) => (None, Some(name), None, Some(twitch)),
+                let (team2, p2, p2_discord, p2_racetime, p2_twitch) = match p2 {
+                    Entrant::MidosHouseTeam(team) => (Some(team.id), None, None, None, None),
+                    Entrant::Discord { id, racetime_id, twitch_username } => (None, None, Some(*id), racetime_id.as_ref(), twitch_username.as_ref()),
+                    Entrant::Named { name, racetime_id, twitch_username } => (None, Some(name), None, racetime_id.as_ref(), twitch_username.as_ref()),
                 };
-                ([team1, team2, None], [p1, p2, None], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [None; 2])
+                ([team1, team2, None], [p1, p2, None], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [None; 2])
             }
             Entrants::Three([ref p1, ref p2, ref p3]) => {
                 let (team1, p1) = match p1 {
                     Entrant::MidosHouseTeam(team) => (Some(team.id), None),
-                    Entrant::Named(name) => (None, Some(name)),
+                    Entrant::Named { name, racetime_id: None, twitch_username: None } => (None, Some(name)),
                     _ => unimplemented!(), //TODO
                 };
                 let (team2, p2) = match p2 {
                     Entrant::MidosHouseTeam(team) => (Some(team.id), None),
-                    Entrant::Named(name) => (None, Some(name)),
+                    Entrant::Named { name, racetime_id: None, twitch_username: None } => (None, Some(name)),
                     _ => unimplemented!(), //TODO
                 };
                 let (team3, p3) = match p3 {
                     Entrant::MidosHouseTeam(team) => (Some(team.id), None),
-                    Entrant::Named(name) => (None, Some(name)),
+                    Entrant::Named { name, racetime_id: None, twitch_username: None } => (None, Some(name)),
                     _ => unimplemented!(), //TODO
                 };
-                ([team1, team2, team3], [p1, p2, p3], [None; 2], [None; 2], [None; 2])
+                ([team1, team2, team3], [p1, p2, p3], [None; 2], [None; 2], [None; 2], [None; 2])
             }
         }
     }
@@ -297,6 +308,7 @@ impl Race {
         let row = sqlx::query!(r#"SELECT
             series AS "series: Series",
             event,
+            league_id,
             sheet_timestamp,
             startgg_event,
             startgg_set AS "startgg_set: startgg::ID",
@@ -309,6 +321,8 @@ impl Race {
             p3,
             p1_discord AS "p1_discord: PgSnowflake<UserId>",
             p2_discord AS "p2_discord: PgSnowflake<UserId>",
+            p1_racetime,
+            p2_racetime,
             p1_twitch,
             p2_twitch,
             total,
@@ -347,43 +361,61 @@ impl Race {
             ignored,
             schedule_locked
         FROM races WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
-        let source = if let (Some(event), Some(set)) = (row.startgg_event, row.startgg_set) {
-            Source::StartGG { event, set }
+        let source = if let Some(id) = row.league_id {
+            Source::League { id }
         } else if let Some(timestamp) = row.sheet_timestamp {
             Source::Sheet { timestamp }
+        } else if let (Some(event), Some(set)) = (row.startgg_event, row.startgg_set) {
+            Source::StartGG { event, set }
         } else {
             Source::Manual
         };
         let entrants = {
             let p1 = if let Some(team1) = row.team1 {
                 Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?))
-            } else if let Some(PgSnowflake(p1_discord)) = row.p1_discord {
-                Some(if let Some(p1_twitch) = row.p1_twitch { Entrant::DiscordTwitch(p1_discord, p1_twitch) } else { Entrant::Discord(p1_discord) })
-            } else if let Some(p1) = row.p1 {
-                Some(if let Some(p1_twitch) = row.p1_twitch { Entrant::NamedWithTwitch(p1, p1_twitch) } else { Entrant::Named(p1) })
+            } else if let Some(PgSnowflake(id)) = row.p1_discord {
+                Some(Entrant::Discord {
+                    racetime_id: row.p1_racetime,
+                    twitch_username: row.p1_twitch,
+                    id,
+                })
+            } else if let Some(name) = row.p1 {
+                Some(Entrant::Named {
+                    racetime_id: row.p1_racetime,
+                    twitch_username: row.p1_twitch,
+                    name,
+                })
             } else {
                 None
             };
             let p2 = if let Some(team2) = row.team2 {
                 Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?))
-            } else if let Some(PgSnowflake(p2_discord)) = row.p2_discord {
-                Some(if let Some(p2_twitch) = row.p2_twitch { Entrant::DiscordTwitch(p2_discord, p2_twitch) } else { Entrant::Discord(p2_discord) })
-            } else if let Some(p2) = row.p2 {
-                Some(if let Some(p2_twitch) = row.p2_twitch { Entrant::NamedWithTwitch(p2, p2_twitch) } else { Entrant::Named(p2) })
+            } else if let Some(PgSnowflake(id)) = row.p2_discord {
+                Some(Entrant::Discord {
+                    racetime_id: row.p2_racetime,
+                    twitch_username: row.p2_twitch,
+                    id,
+                })
+            } else if let Some(name) = row.p2 {
+                Some(Entrant::Named {
+                    racetime_id: row.p2_racetime,
+                    twitch_username: row.p2_twitch,
+                    name,
+                })
             } else {
                 None
             };
             let p3 = if let Some(team3) = row.team3 {
                 Some(Entrant::MidosHouseTeam(Team::from_id(&mut *transaction, team3).await?.ok_or(Error::UnknownTeam)?))
-            } else if let Some(p3) = row.p3 {
-                Some(Entrant::Named(p3))
+            } else if let Some(name) = row.p3 {
+                Some(Entrant::Named { racetime_id: None, twitch_username: None, name })
             } else {
                 None
             };
             match [p1, p2, p3] {
                 [Some(p1), Some(p2), Some(p3)] => Entrants::Three([p1, p2, p3]),
                 [Some(p1), Some(p2), None] => Entrants::Two([p1, p2]),
-                [Some(Entrant::Named(p1)), None, None] => Entrants::Named(p1),
+                [Some(Entrant::Named { name, .. }), None, None] => Entrants::Named(name),
                 [None, None, None] => if let (Some(total), Some(finished)) = (row.total, row.finished) {
                     Entrants::Count {
                         total: total as u32,
@@ -545,8 +577,8 @@ impl Race {
                         event: event.event.to_string(),
                         source: Source::Sheet { timestamp: NaiveDateTime::parse_from_str(timestamp, "%d/%m/%Y %H:%M:%S")? },
                         entrants: Entrants::Two([
-                            Entrant::Named(p1.clone()),
-                            Entrant::Named(p2.clone()),
+                            Entrant::Named { name: p1.clone(), racetime_id: None, twitch_username: None },
+                            Entrant::Named { name: p2.clone(), racetime_id: None, twitch_username: None },
                         ]),
                         phase: None,
                         round: Some(round.clone()),
@@ -575,7 +607,49 @@ impl Race {
             Series::League => match &*event.event {
                 "4" => {}
                 "5" => {}
-                "6" => {} //TODO get from league.ootrandomizer.com
+                "6" => {
+                    let schedule = http_client.get("https://league.ootrandomizer.com/scheduleJson")
+                        .send().await?
+                        .detailed_error_for_status().await?
+                        .json_with_text_in_error::<league::Schedule>().await?;
+                    for race in schedule.matches {
+                        if race.id <= 270 { continue } // S5
+                        let id = Id::<Races>::new(&mut *transaction).await?;
+                        add_or_update_race(&mut *transaction, &mut races, Self {
+                            series: event.series,
+                            event: event.event.to_string(),
+                            source: Source::League { id: race.id },
+                            entrants: Entrants::Two([
+                                race.player_a.into_entrant(),
+                                race.player_b.into_entrant(),
+                            ]),
+                            phase: None,
+                            round: Some(race.division),
+                            game: None,
+                            scheduling_thread: None,
+                            schedule: RaceSchedule::Live {
+                                start: race.time_utc,
+                                end: None,
+                                room: None,
+                            },
+                            draft: None,
+                            seed: seed::Data::default(),
+                            video_urls: if let Some(twitch_username) = race.restreamers.into_iter().filter_map(|restreamer| restreamer.twitch_username).at_most_one().expect("multiple restreams for a League race") {
+                                //HACK: League schedule does not include language info, mark as English
+                                iter::once((English, Url::parse(&format!("https://twitch.tv/{twitch_username}"))?)).collect()
+                            } else {
+                                HashMap::default()
+                            },
+                            restreamers: HashMap::default(),
+                            ignored: match race.status {
+                                league::MatchStatus::Canceled => true,
+                                league::MatchStatus::Confirmed => false,
+                            },
+                            schedule_locked: false,
+                            id,
+                        }).await?;
+                    }
+                }
                 _ => unimplemented!(),
             },
             Series::MixedPools => match &*event.event {
@@ -639,8 +713,8 @@ impl Race {
                         event: event.event.to_string(),
                         source: Source::Sheet { timestamp: NaiveDateTime::parse_from_str(timestamp, "%d/%m/%Y %H:%M:%S")? },
                         entrants: Entrants::Two([
-                            Entrant::Named(p1.clone()),
-                            Entrant::Named(p2.clone()),
+                            Entrant::Named { name: p1.clone(), racetime_id: None, twitch_username: None },
+                            Entrant::Named { name: p2.clone(), racetime_id: None, twitch_username: None },
                         ]),
                         phase: Some(phase),
                         round: Some(round),
@@ -690,8 +764,8 @@ impl Race {
                         source: Source::Sheet { timestamp: NaiveDateTime::parse_from_str(timestamp, "%d/%m/%Y %H:%M:%S")? },
                         entrants: if let Some((_, p1, p2)) = regex_captures!("^(.+) +(?i:vs?\\.?|x) +(.+)$", matchup) {
                             Entrants::Two([
-                                Entrant::Named(p1.to_owned()),
-                                Entrant::Named(p2.to_owned()),
+                                Entrant::Named { name: p1.to_owned(), racetime_id: None, twitch_username: None },
+                                Entrant::Named { name: p2.to_owned(), racetime_id: None, twitch_username: None },
                             ])
                         } else {
                             Entrants::Named(matchup.clone())
@@ -750,7 +824,7 @@ impl Race {
     }
 
     pub(crate) async fn game_count(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<i16, Error> {
-        let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
+        let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
         Ok(sqlx::query_scalar!(r#"SELECT game AS "game!" FROM races WHERE
             series = $1
             AND event = $2
@@ -765,10 +839,12 @@ impl Race {
             AND p3 IS NOT DISTINCT FROM $10
             AND p1_discord IS NOT DISTINCT FROM $11
             AND p2_discord IS NOT DISTINCT FROM $12
-            AND p1_twitch IS NOT DISTINCT FROM $13
-            AND p2_twitch IS NOT DISTINCT FROM $14
-            AND total IS NOT DISTINCT FROM $15
-            AND finished IS NOT DISTINCT FROM $16
+            AND p1_racetime IS NOT DISTINCT FROM $13
+            AND p2_racetime IS NOT DISTINCT FROM $14
+            AND p1_twitch IS NOT DISTINCT FROM $15
+            AND p2_twitch IS NOT DISTINCT FROM $16
+            AND total IS NOT DISTINCT FROM $17
+            AND finished IS NOT DISTINCT FROM $18
             ORDER BY game DESC LIMIT 1
         "#,
             self.series as _,
@@ -783,6 +859,8 @@ impl Race {
             p3,
             p1_discord.map(|id| i64::from(id)),
             p2_discord.map(|id| i64::from(id)),
+            p1_racetime,
+            p2_racetime,
             p1_twitch,
             p2_twitch,
             total.map(|total| total as i32),
@@ -793,7 +871,7 @@ impl Race {
     pub(crate) async fn next_game(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client) -> Result<Option<Self>, Error> {
         Ok(if_chain! {
             if let Some(game) = self.game;
-            let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
+            let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
             if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE
                 series = $1
                 AND event = $2
@@ -808,10 +886,12 @@ impl Race {
                 AND p3 IS NOT DISTINCT FROM $11
                 AND p1_discord IS NOT DISTINCT FROM $12
                 AND p2_discord IS NOT DISTINCT FROM $13
-                AND p1_twitch IS NOT DISTINCT FROM $14
-                AND p2_twitch IS NOT DISTINCT FROM $15
-                AND total IS NOT DISTINCT FROM $16
-                AND finished IS NOT DISTINCT FROM $17
+                AND p1_racetime IS NOT DISTINCT FROM $14
+                AND p2_racetime IS NOT DISTINCT FROM $15
+                AND p1_twitch IS NOT DISTINCT FROM $16
+                AND p2_twitch IS NOT DISTINCT FROM $17
+                AND total IS NOT DISTINCT FROM $18
+                AND finished IS NOT DISTINCT FROM $19
             "#,
                 self.series as _,
                 self.event,
@@ -826,6 +906,8 @@ impl Race {
                 p3,
                 p1_discord.map(|id| i64::from(id)),
                 p2_discord.map(|id| i64::from(id)),
+                p1_racetime,
+                p2_racetime,
                 p1_twitch,
                 p2_twitch,
                 total.map(|total| total as i32),
@@ -895,9 +977,20 @@ impl Race {
                         }
                     }
                 },
-                Entrant::Named(_) => return Ok(None),
-                Entrant::Discord(user_id) => if_chain! {
-                    if let Some(user) = User::from_discord(&mut **transaction, *user_id).await?;
+                Entrant::Discord { twitch_username: Some(twitch_name), .. } | Entrant::Named { twitch_username: Some(twitch_name), .. } => channels.push(Cow::Borrowed(&**twitch_name)),
+                Entrant::Discord { twitch_username: None, racetime_id: Some(racetime_id), .. } | Entrant::Named { twitch_username: None, racetime_id: Some(racetime_id), .. } => {
+                    let racetime_user_data = http_client.get(format!("https://{}/user/{racetime_id}/data", env.racetime_host()))
+                        .send().await?
+                        .detailed_error_for_status().await?
+                        .json_with_text_in_error::<racetime::model::UserData>().await?;
+                    if let Some(twitch_name) = racetime_user_data.twitch_name {
+                        channels.push(Cow::Owned(twitch_name));
+                    } else {
+                        return Ok(None)
+                    }
+                }
+                Entrant::Discord { twitch_username: None, racetime_id: None, id } => if_chain! {
+                    if let Some(user) = User::from_discord(&mut **transaction, *id).await?;
                     if let Some(racetime_user_data) = user.racetime_user_data(env, http_client).await?;
                     if let Some(twitch_name) = racetime_user_data.twitch_name;
                     then {
@@ -906,7 +999,7 @@ impl Race {
                         return Ok(None)
                     }
                 },
-                Entrant::NamedWithTwitch(_, twitch_name) | Entrant::DiscordTwitch(_, twitch_name) => channels.push(Cow::Borrowed(&**twitch_name)),
+                Entrant::Named { twitch_username: None, racetime_id: None, .. } => return Ok(None),
             }
             Ok(Some(channels))
         }
@@ -993,12 +1086,13 @@ impl Race {
         if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE id = $1) AS "exists!""#, self.id as _).fetch_one(&mut **transaction).await? {
             unimplemented!("updating existing races not yet implemented") //TODO
         } else {
-            let (sheet_timestamp, startgg_event, startgg_set) = match self.source {
-                Source::Manual => (None, None, None),
-                Source::Sheet { timestamp } => (Some(timestamp), None, None),
-                Source::StartGG { ref event, ref set } => (None, Some(event), Some(set)),
+            let (league_id, sheet_timestamp, startgg_event, startgg_set) = match self.source {
+                Source::Manual => (None, None, None, None),
+                Source::League { id } => (Some(id), None, None, None),
+                Source::Sheet { timestamp } => (None, Some(timestamp), None, None),
+                Source::StartGG { ref event, ref set } => (None, None, Some(event), Some(set)),
             };
-            let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
+            let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
             let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match self.schedule {
                 RaceSchedule::Unscheduled => (None, None, None, None, None, None, None, None, None),
                 RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
@@ -1061,9 +1155,12 @@ impl Race {
                 team3,
                 video_url_de,
                 restreamer_de,
-                sheet_timestamp
+                sheet_timestamp,
+                league_id,
+                p1_racetime,
+                p2_racetime
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50)",
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53)",
                 startgg_set as _,
                 start,
                 self.series as _,
@@ -1114,6 +1211,9 @@ impl Race {
                 self.video_urls.get(&German).map(|url| url.to_string()),
                 self.restreamers.get(&German),
                 sheet_timestamp,
+                league_id,
+                p1_racetime,
+                p2_racetime,
             ).execute(&mut **transaction).await?;
         }
         Ok(())
@@ -2443,6 +2543,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
         h2 : "Edit race";
         @match race.source {
             Source::Manual => p : "Source: Manually added";
+            Source::League { id: _ } => p: "Source: league.ootrandomizer.com";
             Source::Sheet { timestamp } => p {
                 : "Google Form submission timestamp: ";
                 : timestamp.format("%d/%m/%Y %H:%M:%S").to_string();
