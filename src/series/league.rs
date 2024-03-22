@@ -75,7 +75,8 @@ pub(crate) struct Match {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct User {
     pub(crate) discord_id: Option<UserId>,
-    pub(crate) racetime_url: Option<Url>,
+    /// Not deserialized as a URL since the League API may return strings that aren't valid URLs
+    pub(crate) racetime_url: Option<String>,
     pub(crate) username: String,
     pub(crate) twitch_username: Option<String>,
 }
@@ -83,7 +84,7 @@ pub(crate) struct User {
 impl User {
     pub(crate) fn into_entrant(self) -> Entrant {
         let racetime_id = self.racetime_url.and_then(|url| {
-            let (_, id) = regex_captures!("^https://racetime.gg/user/([0-9A-Za-z]+)$", url.as_str())?;
+            let (_, id) = regex_captures!("^https://racetime.gg/user/([0-9A-Za-z]+)$", &url)?;
             Some(id.to_owned())
         });
         if let Some(id) = self.discord_id {
