@@ -503,6 +503,21 @@ impl Race {
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, config: &Config, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
         async fn update_race(transaction: &mut Transaction<'_, Postgres>, found_race: &mut Race, race: Race) -> sqlx::Result<()> {
+            if found_race.source != race.source { //TODO temporary code to add source data to existing races, remove once this has been applied
+                let (league_id, sheet_timestamp, startgg_event, startgg_set) = match race.source {
+                    Source::Manual => (None, None, None, None),
+                    Source::League { id } => (Some(id), None, None, None),
+                    Source::Sheet { timestamp } => (None, Some(timestamp), None, None),
+                    Source::StartGG { ref event, ref set } => (None, None, Some(event), Some(set)),
+                };
+                sqlx::query!("UPDATE races SET league_id = $1, sheet_timestamp = $2, startgg_event = $3, startgg_set = $4 WHERE id = $5",
+                    league_id,
+                    sheet_timestamp,
+                    startgg_event,
+                    startgg_set as _,
+                    found_race.id as _,
+                ).execute(&mut **transaction).await?;
+            }
             if !found_race.schedule.start_matches(&race.schedule) {
                 match race.schedule {
                     RaceSchedule::Unscheduled => {
