@@ -129,7 +129,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
             .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION")))
             .timeout(Duration::from_secs(30))
             .use_rustls_tls()
-            .trust_dns(true)
+            .hickory_dns(true)
             .https_only(true)
             .build()?;
         let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };

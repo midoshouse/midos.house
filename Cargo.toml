@@ -25,7 +25,7 @@ anyhow = "1"
 async-graphql = "7"
 async-graphql-rocket = "7"
 async-trait = "0.1"
-base64 = "0.21"
+base64 = "0.22"
 chrono-tz = "0.8"
 collect-mac = "0.1"
 convert_case = "0.6"
@@ -74,7 +74,7 @@ git = "https://github.com/fenhl/graphql-client"
 branch = "skip-default-scalars"
 
 [dependencies.image]
-version = "0.24"
+version = "0.25"
 default-features = false
 features = ["png"]
 
@@ -88,9 +88,9 @@ branch = "main"
 features = ["sqlx"]
 
 [dependencies.reqwest]
-version = "0.11"
+version = "0.12"
 default-features = false
-features = ["json", "rustls-tls", "trust-dns"]
+features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls", "stream"]
 
 [dependencies.rocket_csrf]
 git = "https://github.com/fenhl/rocket_csrf"
@@ -148,7 +148,7 @@ features = ["chrono", "reqwest", "rocket", "serde", "serde_json"]
 xdg = "2"
 
 [target.'cfg(unix)'.dependencies.async-proto]
-version = "0.18"
+version = "0.19"
 features = ["chrono", "serde_json", "uuid"]
 
 [target.'cfg(unix)'.dependencies.openssl]
