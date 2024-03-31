@@ -2117,8 +2117,9 @@ impl Handler {
         Ok(())
     }
 
-    async fn draft_action(&self, ctx: &RaceContext<GlobalState>, reply_to: &str, action: draft::Action) -> Result<(), Error> {
+    async fn draft_action(&self, ctx: &RaceContext<GlobalState>, sender: Option<&UserData>, action: draft::Action) -> Result<(), Error> {
         let goal = self.goal(ctx).await.to_racetime()?;
+        let reply_to = sender.map_or("friend", |user| &user.name);
         if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
             lock!(@write state = self.race_state; if let Some(draft_kind) = goal.draft_kind() {
                 match *state {
@@ -2126,14 +2127,40 @@ impl Handler {
                         draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => ctx.say(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
                         draft::Kind::TournoiFrancoS3 => ctx.say(&format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
                     },
-                    RaceState::Draft { state: ref mut draft, .. } => match draft.apply(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }, action).await.to_racetime()? {
-                        Ok(_) => self.advance_draft(ctx, &state).await?,
-                        Err(error_msg) => {
-                            unlock!();
-                            ctx.say(&error_msg).await?;
-                            return Ok(())
+                    RaceState::Draft { state: ref mut draft, .. } => {
+                        let is_active_team = if let Some(OfficialRaceData { ref cal_event, ref event, .. }) = self.official_data {
+                            let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
+                            let is_active_team = if_chain! {
+                                if let Some(sender) = sender;
+                                if let Some(user) = User::from_racetime(&mut *transaction, &sender.id).await.to_racetime()?;
+                                if let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?;
+                                then {
+                                    draft.is_active_team(draft_kind, cal_event.race.game, team.id).await.to_racetime()?
+                                } else {
+                                    false
+                                }
+                            };
+                            transaction.commit().await.to_racetime()?;
+                            is_active_team
+                        } else {
+                            true
+                        };
+                        if is_active_team {
+                            match draft.apply(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }, action).await.to_racetime()? {
+                                Ok(_) => self.advance_draft(ctx, &state).await?,
+                                Err(error_msg) => {
+                                    unlock!();
+                                    ctx.say(&error_msg).await?;
+                                    return Ok(())
+                                }
+                            }
+                        } else {
+                            match draft_kind {
+                                draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => ctx.say(&format!("Sorry {reply_to}, it's not your turn in the settings draft.")).await?,
+                                draft::Kind::TournoiFrancoS3 => ctx.say(&format!("Désolé {reply_to}, mais ce n'est pas votre tour.")).await?,
+                            }
                         }
-                    },
+                    }
                     RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => match goal.language() {
                         French => ctx.say(&format!("Désolé {reply_to}, mais il n'y a pas de draft, ou la phase de pick&ban est terminée.")).await?,
                         _ => ctx.say(&format!("Sorry {reply_to}, there is no settings draft this race or the draft is already completed.")).await?,
@@ -2407,7 +2434,6 @@ impl RaceHandler<GlobalState> for Handler {
                     };
                     (RaceState::Draft {
                         unlock_spoiler_log: goal.unlock_spoiler_log(true, false),
-                        //TODO restrict draft picks
                         state,
                     }, high_seed_name, low_seed_name)
                 } else {
@@ -3023,7 +3049,7 @@ impl RaceHandler<GlobalState> for Handler {
                 } else {
                     format!("Sorry {reply_to}, the setting is required. Use one of the following:")
                 }, reply_to).await?,
-                [ref setting] => self.draft_action(ctx, reply_to, draft::Action::Ban { setting: setting.clone() }).await?,
+                [ref setting] => self.draft_action(ctx, msg.user.as_ref(), draft::Action::Ban { setting: setting.clone() }).await?,
                 [..] => ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, seul un setting peut être ban à la fois. Veuillez seulement utiliser “!ban <setting>”")
                 } else {
@@ -3104,14 +3130,14 @@ impl RaceHandler<GlobalState> for Handler {
                 } else {
                     format!("Sorry {reply_to}, the value is required.")
                 }).await?, //TODO list available values
-                [ref setting, ref value] => self.draft_action(ctx, reply_to, draft::Action::Pick { setting: setting.clone(), value: value.clone() }).await?,
+                [ref setting, ref value] => self.draft_action(ctx, msg.user.as_ref(), draft::Action::Pick { setting: setting.clone(), value: value.clone() }).await?,
                 [..] => ctx.say(&if let French = goal.language() {
                     format!("Désolé {reply_to}, vous ne pouvez pick qu'un setting à la fois. Veuillez seulement utiliser “!draft <setting> <configuration>”")
                 } else {
                     format!("Sorry {reply_to}, only one setting can be drafted at a time. Use “!draft <setting> <value>”")
                 }).await?,
             },
-            "first" => self.draft_action(ctx, reply_to, draft::Action::GoFirst(true)).await?,
+            "first" => self.draft_action(ctx, msg.user.as_ref(), draft::Action::GoFirst(true)).await?,
             "fpa" => match args[..] {
                 [] => if self.fpa_enabled {
                     if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
@@ -3289,7 +3315,7 @@ impl RaceHandler<GlobalState> for Handler {
                     format!("Sorry {reply_to}, this command is only available for official races.")
                 }).await?;
             },
-            "no" => self.draft_action(ctx, reply_to, draft::Action::BooleanChoice(false)).await?,
+            "no" => self.draft_action(ctx, msg.user.as_ref(), draft::Action::BooleanChoice(false)).await?,
             "presets" => goal.send_presets(ctx).await?,
             "ready" => if let Some(OfficialRaceData { ref mut restreams, ref cal_event, ref event, .. }) = self.official_data {
                 if let Some(state) = restreams.values_mut().find(|state| state.restreamer_racetime_id.as_ref() == Some(&msg.user.as_ref().expect("received !ready command from bot").id)) {
@@ -3464,7 +3490,7 @@ impl RaceHandler<GlobalState> for Handler {
                     ctx.say(&format!("Sorry {reply_to}, this command is only available for official Triforce Blitz races.")).await?;
                 }
             },
-            "second" => self.draft_action(ctx, reply_to, draft::Action::GoFirst(false)).await?,
+            "second" => self.draft_action(ctx, msg.user.as_ref(), draft::Action::GoFirst(false)).await?,
             "seed" | "spoilerseed" => if let RaceStatusValue::Open | RaceStatusValue::Invitational = ctx.data().await.status.value {
                 lock!(@write state = self.race_state; match *state {
                     RaceState::Init => if self.locked && !self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
@@ -3534,7 +3560,7 @@ impl RaceHandler<GlobalState> for Handler {
                     "Draftable settings:"
                 }
             }, reply_to).await?),
-            "skip" => self.draft_action(ctx, reply_to, draft::Action::Skip).await?,
+            "skip" => self.draft_action(ctx, msg.user.as_ref(), draft::Action::Skip).await?,
             "unlock" => if self.can_monitor(ctx, is_monitor, msg).await.to_racetime()? {
                 self.locked = false;
                 ctx.say(if let French = goal.language() {
@@ -3549,7 +3575,7 @@ impl RaceHandler<GlobalState> for Handler {
                     format!("Sorry {reply_to}, only {} can do that.", if self.is_official() { "race monitors and tournament organizers" } else { "race monitors" })
                 }).await?;
             },
-            "yes" => self.draft_action(ctx, reply_to, draft::Action::BooleanChoice(true)).await?,
+            "yes" => self.draft_action(ctx, msg.user.as_ref(), draft::Action::BooleanChoice(true)).await?,
             _ => ctx.say(&if let French = goal.language() {
                 format!("Désolé {reply_to}, je ne reconnais pas cette commande.")
             } else {
