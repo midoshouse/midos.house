@@ -28,6 +28,7 @@ use {
     },
     semver::Version,
     serde_json::Value as Json,
+    serde_plain::derive_deserialize_from_fromstr,
     serde_with::{
         DisplayFromStr,
         json::JsonString,
@@ -64,15 +65,8 @@ mod report;
 
 pub(crate) const CATEGORY: &str = "ootr";
 
-/// Randomizer versions that are known to exist on the ootrandomizer.com API. Hardcoded because the API doesn't have a “does version x exist?” endpoint.
-const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 11] = [
-    rando::Version::from_dev(6, 2, 181),
-    rando::Version::from_dev(6, 2, 205),
-    rando::Version::from_dev(7, 1, 143),
-    rando::Version::from_dev(7, 1, 181),
-    rando::Version::from_dev(7, 1, 191),
-    rando::Version::from_dev(7, 1, 199),
-    rando::Version::from_dev(8, 0, 0),
+/// Randomizer versions that are known to exist on the ootrandomizer.com API despite not being listed by the version endpoint since supplementary versions weren't tracked at the time.
+const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 4] = [
     rando::Version::from_branch(rando::Branch::DevR, 6, 2, 238, 1),
     rando::Version::from_branch(rando::Branch::DevR, 7, 1, 83, 1), // commit 578a64f4c78a831cde4215e0ac31565d3bf9bc46
     rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1), // commit 06390ece7e38fce1dd02ca60a28a7b1ff9fceb10
@@ -1070,14 +1064,7 @@ impl GlobalState {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
-            let web_version = match self.ootr_api_client.can_roll_on_web(None, &version, world_count).await {
-                Ok(web_version) => web_version,
-                Err(e) => {
-                    update_tx.send(SeedRollUpdate::Error(e)).await?;
-                    return Ok(())
-                }
-            };
-            if let (Some(web_version), Some(branch)) = (web_version, version.branch()) {
+            if let Some(web_version) = self.ootr_api_client.can_roll_on_web(None, &version, world_count).await {
                 // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
                 // This is especially true for open races, whose rooms are opened an entire hour before start.
                 // To make this a bit more difficult, we delay the start of seed rolling depending on the goal.
@@ -1100,7 +1087,7 @@ impl GlobalState {
                         sleep(sleep_duration).await;
                     },
                 }
-                match self.ootr_api_client.roll_seed_web(update_tx.clone(), delay_until, branch, web_version, false, unlock_spoiler_log, settings).await {
+                match self.ootr_api_client.roll_seed_web(update_tx.clone(), delay_until, web_version, false, unlock_spoiler_log, settings).await {
                     Ok((id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
                             file_hash: Some(file_hash),
@@ -1164,7 +1151,7 @@ impl GlobalState {
                     break local_version.parse::<rando::Version>()?
                 }
             };
-            let web_version = self.ootr_api_client.can_roll_on_web(Some(&preset), &VersionedBranch::Pinned(version.clone()), world_count).await?;
+            let web_version = self.ootr_api_client.can_roll_on_web(Some(&preset), &VersionedBranch::Pinned(version.clone()), world_count).await;
             // run the RSL script
             let _ = update_tx.send(SeedRollUpdate::Started).await;
             let outer_tries = if web_version.is_some() { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script
@@ -1221,7 +1208,7 @@ impl GlobalState {
                         let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
                         sleep(sleep_duration).await;
                     }
-                    let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), None /* always limit to 3 tries per settings */, version.branch(), web_version, true, unlock_spoiler_log, settings).await {
+                    let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), None /* always limit to 3 tries per settings */, web_version, true, unlock_spoiler_log, settings).await {
                         Ok(data) => data,
                         Err(RollError::Retries { .. }) => continue,
                         Err(e) => return Err(e), //TODO fall back to rolling locally for network errors
@@ -1734,6 +1721,11 @@ struct OotrApiClient {
     waiting: Mutex<Vec<mpsc::UnboundedSender<()>>>,
 }
 
+struct VersionsResponse {
+    currently_active_version: Option<rando::Version>,
+    available_versions: Vec<rando::Version>,
+}
+
 impl OotrApiClient {
     pub fn new(http_client: reqwest::Client, api_key: String, api_key_encryption: String) -> Self {
         Self {
@@ -1773,50 +1765,98 @@ impl OotrApiClient {
         })
     }
 
-    async fn get_version(&self, branch: rando::Branch, random_settings: bool) -> Result<Version, RollError> {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct VersionResponse {
-            currently_active_version: Version,
+    async fn get_versions(&self, branch: Option<rando::Branch>, random_settings: bool) -> Result<VersionsResponse, RollError> {
+        struct VersionsResponseVersion {
+            major: u8,
+            minor: u8,
+            patch: u8,
+            supplementary: Option<u8>,
         }
 
-        Ok(self.get("https://ootrandomizer.com/api/version", Some(&[("key", &*self.api_key), ("branch", branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?)])).await?
-            .detailed_error_for_status().await?
-            .json_with_text_in_error::<VersionResponse>().await?
-            .currently_active_version)
-    }
+        #[derive(Debug, thiserror::Error)]
+        enum VersionsResponseVersionParseError {
+            #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
+            #[error("ootrandomizer.com API returned randomizer version in unexpected format")]
+            Format,
+        }
 
-    async fn can_roll_on_web(&self, rsl_preset: Option<&VersionedRslPreset>, version: &VersionedBranch, world_count: u8) -> Result<Option<Version>, RollError> {
-        if world_count > 3 { return Ok(None) }
-        if rsl_preset.is_some() && version.branch().map_or(true, |branch| branch.web_name_random_settings().is_none()) { return Ok(None) }
-        // check if randomizer version is available on web
-        Ok(match version {
-            VersionedBranch::Pinned(version) => {
-                if !KNOWN_GOOD_WEB_VERSIONS.contains(&version) {
-                    if version.supplementary().is_some() && !matches!(rsl_preset, Some(VersionedRslPreset::Xopar { .. })) {
-                        // The version API endpoint does not return the supplementary version number, so we can't be sure we have the right version unless it was manually checked and added to KNOWN_GOOD_WEB_VERSIONS.
-                        // For the RSL script's main branch, we assume the supplementary version number is correct since we dynamically get the version from the RSL script.
-                        // The dev-fenhl branch of the RSL script can point to versions not available on web, so we can't make this assumption there.
-                        return Ok(None)
-                    }
-                    if let Ok(latest_web_version) = self.get_version(version.branch(), rsl_preset.is_some()).await {
-                        if latest_web_version != *version.base() { // there is no endpoint for checking whether a given version is available on the website, so for now we assume that if the required version isn't the current one, it's not available
-                            println!("web version mismatch on {} branch: we need {} but latest is {latest_web_version}", version.branch().web_name(rsl_preset.is_some()).expect("checked above"), version.base());
-                            return Ok(None)
-                        }
-                    } else {
-                        // the version API endpoint sometimes returns HTML instead of the expected JSON, fallback to generating locally when that happens
-                        return Ok(None)
-                    }
+        impl FromStr for VersionsResponseVersion {
+            type Err = VersionsResponseVersionParseError;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                if let Some((_, major, minor, patch, supplementary)) = regex_captures!("^([0-9]+)\\.([0-9]+)\\.([0-9]+)-([0-9]+)$", s) {
+                    Ok(Self { major: major.parse()?, minor: minor.parse()?, patch: patch.parse()?, supplementary: Some(supplementary.parse()?) })
+                } else if let Some((_, major, minor, patch)) = regex_captures!("^([0-9]+)\\.([0-9]+)\\.([0-9]+)$", s) {
+                    Ok(Self { major: major.parse()?, minor: minor.parse()?, patch: patch.parse()?, supplementary: None })
+                } else {
+                    Err(VersionsResponseVersionParseError::Format)
                 }
-                Some(version.base().clone())
             }
-            VersionedBranch::Latest(branch) => self.get_version(*branch, rsl_preset.is_some()).await.ok(),
-            VersionedBranch::Custom { .. } => None,
+        }
+
+        derive_deserialize_from_fromstr!(VersionsResponseVersion, "randomizer version in ootrandomizer.com API format");
+
+        impl VersionsResponseVersion {
+            fn normalize(self, branch: Option<rando::Branch>) -> Option<rando::Version> {
+                if let Some(supplementary) = self.supplementary.filter(|&supplementary| supplementary != 0) {
+                    Some(rando::Version::from_branch(branch?, self.major, self.minor, self.patch, supplementary))
+                } else if branch.map_or(true, |branch| branch == rando::Branch::Dev) {
+                    Some(rando::Version::from_dev(self.major, self.minor, self.patch))
+                } else {
+                    None
+                }
+            }
+        }
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RawVersionsResponse {
+            currently_active_version: VersionsResponseVersion,
+            available_versions: Vec<VersionsResponseVersion>,
+        }
+
+        let web_branch = if let Some(branch) = branch {
+            branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?
+        } else {
+            // API lists releases under the “master” branch
+            "master"
+        };
+        let RawVersionsResponse { currently_active_version, available_versions } = self.get("https://ootrandomizer.com/api/version", Some(&[("key", &*self.api_key), ("branch", web_branch)])).await?
+            .detailed_error_for_status().await?
+            .json_with_text_in_error().await?;
+        Ok(VersionsResponse {
+            currently_active_version: currently_active_version.normalize(branch),
+            available_versions: available_versions.into_iter().filter_map(|ver| ver.normalize(branch)).collect(),
         })
     }
 
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, branch: rando::Branch, version: Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, settings: serde_json::Map<String, Json>) -> Result<(i64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
+    /// Checks if the given randomizer branch/version is available on web, and if so, which version to use.
+    async fn can_roll_on_web(&self, rsl_preset: Option<&VersionedRslPreset>, version: &VersionedBranch, world_count: u8) -> Option<rando::Version> {
+        if world_count > 3 { return None }
+        if rsl_preset.is_some() && version.branch().map_or(true, |branch| branch.web_name_random_settings().is_none()) { return None }
+        match version {
+            VersionedBranch::Pinned(version) => {
+                if matches!(rsl_preset, Some(VersionedRslPreset::Xopar { .. })) && *version == rando::Version::from_branch(rando::Branch::DevR, 7, 1, 181, 1) || *version == rando::Version::from_branch(rando::Branch::DevR, 8, 0, 1, 1) {
+                    return Some(rando::Version::from_branch(
+                        version.branch(),
+                        version.base().major.try_into().expect("taken from existing rando::Version"),
+                        version.base().minor.try_into().expect("taken from existing rando::Version"),
+                        version.base().patch.try_into().expect("taken from existing rando::Version"),
+                        0, // legacy devR/devRSL version which was not yet tagged with its supplementary version number but is only available in random settings mode (devRSL), not regularly (devR)
+                    ))
+                }
+                let is_available = KNOWN_GOOD_WEB_VERSIONS.contains(version)
+                    || self.get_versions((!version.is_release()).then(|| version.branch()), rsl_preset.is_some()).await
+                        // the version API endpoint sometimes returns HTML instead of the expected JSON, fallback to generating locally when that happens
+                        .is_ok_and(|VersionsResponse { available_versions, .. }| available_versions.contains(version));
+                is_available.then(|| version.clone())
+            }
+            VersionedBranch::Latest(branch) => self.get_versions(Some(*branch), rsl_preset.is_some()).await.ok().and_then(|response| response.currently_active_version),
+            VersionedBranch::Custom { .. } => None,
+        }
+    }
+
+    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, version: rando::Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, settings: serde_json::Map<String, Json>) -> Result<(i64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
         #[serde_as]
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -1844,7 +1884,7 @@ impl OotrApiClient {
             settings_log: SettingsLog,
         }
 
-        let encrypt = branch == rando::Branch::Dev && version.patch == 0 && unlock_spoiler_log == UnlockSpoilerLog::Never;
+        let encrypt = version.is_release() && unlock_spoiler_log == UnlockSpoilerLog::Never;
         let api_key = if encrypt { &*self.api_key_encryption } else { &*self.api_key };
         let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
         let mw_permit = if is_mw {
@@ -1891,11 +1931,7 @@ impl OotrApiClient {
             }
             let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[
                 ("key", api_key),
-                ("version", &*if branch == rando::Branch::Dev && version.patch == 0 {
-                    version.to_string()
-                } else {
-                    format!("{}_{}", branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?, version)
-                }),
+                ("version", &*version.to_string_web(random_settings).ok_or(RollError::RandomSettingsWeb)?),
                 if encrypt {
                     ("encrypt", "1")
                 } else {
