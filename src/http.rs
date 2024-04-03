@@ -333,13 +333,18 @@ async fn mw(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResu
             a(class = "button", href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") {
                 : "Download for Windows";
                 br;
-                small : "supports BizHawk and Project64";
+                small : "supports EverDrive*, BizHawk, and Project64";
             }
             a(class = "button", href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer-linux") {
                 : "Download for Linux";
                 br;
-                small : "supports BizHawk";
+                small : "supports EverDrive* and BizHawk";
             }
+        }
+        p {
+            : "*EverDrive support is currently experimental and requires ";
+            a(href = "https://ootrandomizer.com/generatorDev?version=devFenhl_") : "Fenhl's branch of the randomizer";
+            : ".";
         }
         p {
             : "If you need help, please ask in ";
@@ -369,8 +374,18 @@ async fn mw_platforms(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -
             }
             tr {
                 th : "EverDrive";
-                td(colspan = "3") {
-                    a(href = "https://github.com/midoshouse/ootr-multiworld/issues/23") : "Planned";
+                td {
+                    : "✓ (";
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "download";
+                    : ") *";
+                }
+                td {
+                    : "✓ (";
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer-linux") : "download";
+                    : ") *";
+                }
+                td {
+                    a(href = "https://github.com/midoshouse/ootr-multiworld/issues/41") : "Planned";
                 }
             }
             tr {
@@ -418,6 +433,11 @@ async fn mw_platforms(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -
                     a(href = "https://github.com/midoshouse/ootr-multiworld/issues/25") : "Planned";
                 }
             }
+        }
+        p {
+            : "*EverDrive support is currently experimental and requires ";
+            a(href = "https://ootrandomizer.com/generatorDev?version=devFenhl_") : "Fenhl's branch of the randomizer";
+            : ".";
         }
         p {
             : "If your operating system, console, or emulator is not listed here, please ";
