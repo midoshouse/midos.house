@@ -449,7 +449,7 @@ impl Goal {
 
     pub(crate) fn rando_version(&self) -> VersionedBranch {
         match self {
-            Self::Cc7 => VersionedBranch::Pinned(rando::Version::from_dev(8, 0, 0)),
+            Self::Cc7 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
