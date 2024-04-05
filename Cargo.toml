@@ -26,134 +26,59 @@ async-graphql = "7"
 async-graphql-rocket = "7"
 async-trait = "0.1"
 base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 chrono-tz = "0.8"
+clap = { version = "4", features = ["derive"] }
 collect-mac = "0.1"
 convert_case = "0.6"
 csv = "1"
 derivative = "2"
+derive_more = { version = "0.99", default-features = false, features = ["from"] }
 either = "1"
 enum-iterator = "2"
 futures = "0.3"
 git2 = "0.18"
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
+graphql_client = { git = "https://github.com/fenhl/graphql-client", branch = "skip-default-scalars" }
 if_chain = "1"
 ics = "0.5"
+image = { version = "0.25", default-features = false, features = ["png"] }
 itertools = "0.12"
 kuchiki = "0.8"
 lazy-regex = "3"
 log = "0.4"
+log-lock = { git = "https://github.com/fenhl/log-lock", branch = "main" }
 noisy_float = "0.2"
 once_cell = "1"
+ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", branch = "main", features = ["sqlx"] }
 racetime = "0.21"
 rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls", "stream"] }
 rocket = "0.5"
+rocket-util = { git = "https://github.com/fenhl/rocket-util", branch = "main", features = ["ics", "image", "rocket_csrf"] }
+rocket_csrf = { git = "https://github.com/fenhl/rocket_csrf", branch = "rocket05" } # waiting for a release with rocket 0.5 support
 rocket_oauth2 = "0.5.0-rc.3"
+semver = { version = "1", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_plain = "1"
+serde_with = { version = "3", features = ["json"] }
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "rustls_backend", "temp_cache"] }
+serenity-utils = { git = "https://github.com/fenhl/serenity-utils", branch = "main" }
+sqlx = { version = "0.7", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio-rustls", "uuid"] }
 thiserror = "1"
+tokio = { version = "1", features = ["fs", "net", "parking_lot", "process", "sync", "time"] }
+tokio-util = { version = "0.7", features = ["io"] }
 typemap_rev = "0.3"
+url = { version = "2", features = ["serde"] }
 uuid = "1"
+wheel = { git = "https://github.com/fenhl/wheel", branch = "main", features = ["chrono", "reqwest", "rocket", "serde", "serde_json"] }
 yup-oauth2 = "8"
 
-[dependencies.chrono]
-version = "0.4"
-default-features = false
-features = ["clock", "serde", "std"]
-
-[dependencies.clap]
-version = "4"
-features = ["derive"]
-
-[dependencies.derive_more]
-version = "0.99"
-default-features = false
-features = ["from"]
-
-[dependencies.graphql_client]
-git = "https://github.com/fenhl/graphql-client"
-branch = "skip-default-scalars"
-
-[dependencies.image]
-version = "0.25"
-default-features = false
-features = ["png"]
-
-[dependencies.log-lock]
-git = "https://github.com/fenhl/log-lock"
-branch = "main"
-
-[dependencies.ootr-utils]
-git = "https://github.com/midoshouse/rust-ootr-utils"
-branch = "main"
-features = ["sqlx"]
-
-[dependencies.reqwest]
-version = "0.12"
-default-features = false
-features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls", "stream"]
-
-[dependencies.rocket_csrf]
-git = "https://github.com/fenhl/rocket_csrf"
-branch = "rocket05"
-
-[dependencies.rocket-util]
-git = "https://github.com/fenhl/rocket-util"
-branch = "main"
-features = ["ics", "image", "rocket_csrf"]
-
-[dependencies.semver]
-version = "1"
-features = ["serde"]
-
-[dependencies.serde]
-version = "1"
-features = ["derive"]
-
-[dependencies.serde_with]
-version = "3"
-features = ["json"]
-
-[dependencies.serenity]
-version = "0.12"
-default-features = false
-features = ["client", "gateway", "model", "rustls_backend", "temp_cache"]
-
-[dependencies.serenity-utils]
-git = "https://github.com/fenhl/serenity-utils"
-branch = "main"
-
-[dependencies.sqlx]
-version = "0.7"
-default-features = false
-features = ["chrono", "json", "macros", "postgres", "runtime-tokio-rustls", "uuid"]
-
-[dependencies.tokio]
-version = "1"
-features = ["fs", "net", "parking_lot", "process", "sync", "time"]
-
-[dependencies.tokio-util]
-version = "0.7"
-features = ["io"]
-
-[dependencies.url]
-version = "2"
-features = ["serde"]
-
-[dependencies.wheel]
-git = "https://github.com/fenhl/wheel"
-branch = "main"
-features = ["chrono", "reqwest", "rocket", "serde", "serde_json"]
-
 [target.'cfg(unix)'.dependencies]
+async-proto = { version = "0.19", features = ["chrono", "serde_json", "uuid"] }
+openssl = { version = "0.10", features = ["vendored"] }
 xdg = "2"
-
-[target.'cfg(unix)'.dependencies.async-proto]
-version = "0.19"
-features = ["chrono", "serde_json", "uuid"]
-
-[target.'cfg(unix)'.dependencies.openssl]
-version = "0.10"
-features = ["vendored"]
 
 [target.'cfg(windows)'.dependencies]
 directories = "5"
