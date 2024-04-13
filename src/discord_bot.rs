@@ -1740,6 +1740,7 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
                 transaction, guild_id, command_ids,
             };
             content.push_line("");
+            content.push_line("");
             content.push(draft.next_step(draft_kind, race.game, &mut msg_ctx).await?.message);
             transaction = msg_ctx.into_transaction();
         }
