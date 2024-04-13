@@ -33,7 +33,11 @@ use {
         DisplayFromStr,
         json::JsonString,
     },
-    serenity::all::UserId,
+    serenity::all::{
+        CreateAllowedMentions,
+        CreateMessage,
+        UserId,
+    },
     tokio::{
         io::{
             AsyncBufReadExt as _,
@@ -4023,9 +4027,11 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                 }
                             } else {
                                 if let Some(channel) = event.discord_race_room_channel {
-                                    channel.say(&*ctx, &msg).await.to_racetime()?;
                                     if let Some(thread) = cal_event.race.scheduling_thread {
-                                        thread.say(&*ctx, msg).await.to_racetime()?; //TODO only ping once?
+                                        thread.say(&*ctx, &msg).await.to_racetime()?;
+                                        channel.send_message(&*ctx, CreateMessage::default().content(msg).allowed_mentions(CreateAllowedMentions::default())).await.to_racetime()?;
+                                    } else {
+                                        channel.say(&*ctx, msg).await.to_racetime()?;
                                     }
                                 } else if let Some(thread) = cal_event.race.scheduling_thread {
                                     thread.say(&*ctx, msg).await.to_racetime()?;

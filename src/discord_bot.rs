@@ -2,6 +2,7 @@ use {
     std::num::NonZeroU64,
     serenity::all::{
         CacheHttp,
+        CreateAllowedMentions,
         CreateButton,
         CreateCommand,
         CreateCommandOption,
@@ -1152,7 +1153,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             }
                                                         } else {
                                                             if let Some(channel) = event.discord_race_room_channel {
-                                                                channel.say(ctx, &msg).await?; //TODO only ping once?
+                                                                channel.send_message(ctx, CreateMessage::default().content(&msg).allowed_mentions(CreateAllowedMentions::default())).await?;
                                                             }
                                                         }
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
