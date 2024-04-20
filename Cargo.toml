@@ -27,7 +27,7 @@ async-graphql-rocket = "7"
 async-trait = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
-chrono-tz = "0.8"
+chrono-tz = "0.9"
 clap = { version = "4", features = ["derive"] }
 collect-mac = "0.1"
 convert_case = "0.6"
