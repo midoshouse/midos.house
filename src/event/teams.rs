@@ -21,7 +21,8 @@ pub(crate) enum QualifierKind {
     Single {
         show_times: bool,
     },
-    Multiple,
+    SglOnline,
+    SongsOfHope,
 }
 
 pub(crate) enum MemberUser {
@@ -109,140 +110,237 @@ pub(crate) struct SignupsTeam {
 }
 
 pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, config: &Config, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind) -> Result<Vec<SignupsTeam>, cal::Error> {
-    let mut signups = if let QualifierKind::Multiple = qualifier_kind {
-        let mut scores = HashMap::<_, Vec<_>>::default();
-        for race in Race::for_event(transaction, http_client, config, data).await? {
-            if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
-            let Ok(room) = race.rooms().exactly_one() else { continue };
-            let room_data = http_client.get(format!("{room}/data"))
-                .send().await?
-                .detailed_error_for_status().await?
-                .json_with_text_in_error::<RaceData>().await?;
-            if room_data.status.value != RaceStatusValue::Finished { continue }
-            let mut entrants = room_data.entrants;
-            entrants.retain(|entrant| entrant.user.id != "yMewn83Vj3405Jv7"); // user was banned
-            if race.id == Id::from(17171498007470059483_u64) {
-                entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
+    let mut signups = match qualifier_kind {
+        QualifierKind::SglOnline => {
+            let mut scores = HashMap::<_, Vec<_>>::default();
+            for race in Race::for_event(transaction, http_client, config, data).await? {
+                if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
+                let Ok(room) = race.rooms().exactly_one() else { continue };
+                let room_data = http_client.get(format!("{room}/data"))
+                    .send().await?
+                    .detailed_error_for_status().await?
+                    .json_with_text_in_error::<RaceData>().await?;
+                if room_data.status.value != RaceStatusValue::Finished { continue }
+                let mut entrants = room_data.entrants;
+                entrants.retain(|entrant| entrant.user.id != "yMewn83Vj3405Jv7"); // user was banned
+                if race.id == Id::from(17171498007470059483_u64) {
+                    entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
+                }
+                entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
+                let par_cutoff = if entrants.len() < 20 { 3 } else { 4 };
+                let par_time = entrants[0..par_cutoff].iter().map(|entrant| entrant.finish_time.expect("not enough finishers to calculate par")).sum::<Duration>() / par_cutoff as u32;
+                for entrant in entrants {
+                    scores.entry(MemberUser::RaceTime {
+                        id: entrant.user.id,
+                        url: entrant.user.url,
+                        name: entrant.user.name,
+                    }).or_default().push(r64(if let Some(finish_time) = entrant.finish_time {
+                        (100.0 * (2.0 - (finish_time.as_secs_f64() / par_time.as_secs_f64()))).clamp(10.0, 110.0)
+                    } else {
+                        0.0
+                    }));
+                }
             }
-            entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
-            let par_cutoff = if entrants.len() < 20 { 3 } else { 4 };
-            let par_time = entrants[0..par_cutoff].iter().map(|entrant| entrant.finish_time.expect("not enough finishers to calculate par")).sum::<Duration>() / par_cutoff as u32;
-            for entrant in entrants {
-                scores.entry(MemberUser::RaceTime {
-                    id: entrant.user.id,
-                    url: entrant.user.url,
-                    name: entrant.user.name,
-                }).or_default().push(r64(if let Some(finish_time) = entrant.finish_time {
-                    (100.0 * (2.0 - (finish_time.as_secs_f64() / par_time.as_secs_f64()))).clamp(10.0, 110.0)
-                } else {
-                    0.0
-                }));
-            }
+            let scores = if data.is_started(&mut *transaction).await? {
+                let teams = Team::for_event(&mut *transaction, data.series, &data.event).await?;
+                let mut entrant_scores = Vec::with_capacity(teams.len());
+                for team in teams {
+                    let user = team.members(&mut *transaction).await?.into_iter().exactly_one().expect("QualifierKind::Multiple in team-based event");
+                    let id = user.racetime.as_ref().expect("QualifierKind::Multiple with entrant without racetime.gg account").id.clone();
+                    entrant_scores.push((MemberUser::MidosHouse(user), scores.remove(&MemberUser::RaceTime { id, url: String::default(), name: String::default() }).expect("Unqualified QualifierKind::Multiple entrant")));
+                }
+                Either::Left(entrant_scores.into_iter())
+            } else {
+                let opt_outs = sqlx::query_scalar!("SELECT racetime_id FROM opt_outs WHERE series = $1 AND event = $2", data.series as _, &data.event).fetch_all(&mut **transaction).await?;
+                Either::Right(
+                    scores.into_iter()
+                        .filter(move |(user, _)| match user {
+                            MemberUser::RaceTime { id, .. } => !opt_outs.contains(id),
+                            MemberUser::MidosHouse(_) => true,
+                        })
+                )
+            };
+            scores.map(|(user, mut scores)| SignupsTeam {
+                team: None, //TODO
+                members: vec![SignupsMember {
+                    role: Role::None,
+                    is_confirmed: false, //TODO
+                    qualifier_time: None,
+                    qualifier_vod: None,
+                    user,
+                }],
+                qualification: {
+                    let num_qualifiers = scores.len();
+                    scores.truncate(5); // only count the first 5 qualifiers chronologically
+                    scores.sort_unstable();
+                    if num_qualifiers >= 4 {
+                        // remove best score
+                        scores.pop();
+                    }
+                    if num_qualifiers >= 5 {
+                        // remove worst score
+                        scores.swap_remove(0);
+                    }
+                    Qualification::Multiple {
+                        num_qualifiers,
+                        score: scores.iter().copied().sum::<R64>() / r64(scores.len().max(3) as f64),
+                    }
+                },
+                hard_settings_ok: false,
+                mq_ok: false,
+            }).collect()
         }
-        let scores = if data.is_started(&mut *transaction).await? {
-            let teams = Team::for_event(&mut *transaction, data.series, &data.event).await?;
-            let mut entrant_scores = Vec::with_capacity(teams.len());
-            for team in teams {
-                let user = team.members(&mut *transaction).await?.into_iter().exactly_one().expect("QualifierKind::Multiple in team-based event");
-                let id = user.racetime.as_ref().expect("QualifierKind::Multiple with entrant without racetime.gg account").id.clone();
-                entrant_scores.push((MemberUser::MidosHouse(user), scores.remove(&MemberUser::RaceTime { id, url: String::default(), name: String::default() }).expect("Unqualified QualifierKind::Multiple entrant")));
+        QualifierKind::SongsOfHope => {
+            #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+            enum QualificationLevel {
+                Qualified,
+                ChoppinBlock,
+                #[default]
+                None,
             }
-            Either::Left(entrant_scores.into_iter())
-        } else {
-            let opt_outs = sqlx::query_scalar!("SELECT racetime_id FROM opt_outs WHERE series = $1 AND event = $2", data.series as _, &data.event).fetch_all(&mut **transaction).await?;
-            Either::Right(
-                scores.into_iter()
-                    .filter(move |(user, _)| match user {
-                        MemberUser::RaceTime { id, .. } => !opt_outs.contains(id),
-                        MemberUser::MidosHouse(_) => true,
-                    })
-            )
-        };
-        scores.map(|(user, mut scores)| SignupsTeam {
-            team: None, //TODO
-            members: vec![SignupsMember {
-                role: Role::None,
-                is_confirmed: false, //TODO
-                qualifier_time: None,
-                qualifier_vod: None,
-                user,
-            }],
-            qualification: {
-                let num_qualifiers = scores.len();
-                scores.truncate(5); // only count the first 5 qualifiers chronologically
-                scores.sort_unstable();
-                if num_qualifiers >= 4 {
-                    // remove best score
-                    scores.pop();
+
+            let mut entrant_data = HashMap::<_, (u8, _)>::default();
+            for race in Race::for_event(transaction, http_client, config, data).await? {
+                if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
+                let Ok(room) = race.rooms().exactly_one() else { continue };
+                let room_data = http_client.get(format!("{room}/data"))
+                    .send().await?
+                    .detailed_error_for_status().await?
+                    .json_with_text_in_error::<RaceData>().await?;
+                if room_data.status.value != RaceStatusValue::Finished { continue }
+                let mut entrants = room_data.entrants;
+                entrants.retain(|entrant| entrant_data.entry(MemberUser::RaceTime {
+                    id: entrant.user.id.clone(),
+                    url: entrant.user.url.clone(),
+                    name: entrant.user.name.clone(),
+                }).or_default().0 < 2);
+                let num_entrants = entrants.len();
+                entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
+                for (placement, entrant) in entrants.into_iter().enumerate() {
+                    let (num_qualifiers, qualification_level) = entrant_data.entry(MemberUser::RaceTime {
+                        id: entrant.user.id,
+                        url: entrant.user.url,
+                        name: entrant.user.name,
+                    }).or_default();
+                    if *num_qualifiers < 2 {
+                        *num_qualifiers += 1;
+                        *qualification_level = if placement < 3 {
+                            QualificationLevel::Qualified
+                        } else if placement < num_entrants / 2 {
+                            QualificationLevel::ChoppinBlock
+                        } else {
+                            QualificationLevel::None
+                        }.min(*qualification_level);
+                    }
                 }
-                if num_qualifiers >= 5 {
-                    // remove worst score
-                    scores.swap_remove(0);
+            }
+            let num_qualified = entrant_data.values().filter(|(_, qualification_level)| *qualification_level == QualificationLevel::Qualified).count();
+            let choppin_block_finished = if_chain! {
+                if let Ok(race) = Race::for_event(transaction, http_client, config, data).await?.into_iter()
+                    .filter(|race| race.phase.as_ref().is_some_and(|phase| phase == "Choppin Block"))
+                    .exactly_one();
+                if let Ok(room) = race.rooms().exactly_one();
+                let room_data = http_client.get(format!("{room}/data"))
+                    .send().await?
+                    .detailed_error_for_status().await?
+                    .json_with_text_in_error::<RaceData>().await?;
+                if room_data.status.value == RaceStatusValue::Finished;
+                then {
+                    let mut entrants = room_data.entrants;
+                    entrants.retain(|entrant| entrant_data.entry(MemberUser::RaceTime {
+                        id: entrant.user.id.clone(),
+                        url: entrant.user.url.clone(),
+                        name: entrant.user.name.clone(),
+                    }).or_default().1 == QualificationLevel::ChoppinBlock);
+                    entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
+                    for entrant in entrants.drain(..entrants.len().min(32 - num_qualified)) {
+                        entrant_data.entry(MemberUser::RaceTime {
+                            id: entrant.user.id,
+                            url: entrant.user.url,
+                            name: entrant.user.name,
+                        }).or_default().1 = QualificationLevel::Qualified;
+                    }
+                    true
+                } else {
+                    false
                 }
-                Qualification::Multiple {
-                    num_qualifiers,
-                    score: scores.iter().copied().sum::<R64>() / r64(scores.len().max(3) as f64),
+            };
+            entrant_data.into_iter()
+                .filter(|(_, (_, qualification_level))|
+                    *qualification_level == QualificationLevel::Qualified
+                    || !choppin_block_finished && *qualification_level == QualificationLevel::ChoppinBlock
+                )
+                .map(|(user, (_, qualification_level))| SignupsTeam {
+                    team: None, //TODO
+                    members: vec![SignupsMember {
+                        role: Role::None,
+                        is_confirmed: false, //TODO
+                        qualifier_time: None,
+                        qualifier_vod: None,
+                        user,
+                    }],
+                    qualification: Qualification::Single { qualified: qualification_level == QualificationLevel::Qualified },
+                    hard_settings_ok: false,
+                    mq_ok: false,
+                }).collect()
+        }
+        QualifierKind::None | QualifierKind::Rank | QualifierKind::Single { .. } => {
+            let teams = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+                series = $1
+                AND event = $2
+                AND NOT resigned
+                AND (
+                    EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
+                    OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+                )
+                AND (kind = 'qualifier' OR kind IS NULL)
+            "#, data.series as _, &data.event, me.as_ref().map(|me| i64::from(me.id))).fetch_all(&mut **transaction).await?;
+            let roles = data.team_config().roles();
+            let mut signups = Vec::with_capacity(teams.len());
+            for team in teams {
+                let mut members = Vec::with_capacity(roles.len());
+                for &(role, _) in roles {
+                    let row = sqlx::query!(r#"
+                        SELECT member AS "id: Id<Users>", status AS "status: SignupStatus", time, vod
+                        FROM team_members LEFT OUTER JOIN async_players ON (member = player AND series = $1 AND event = $2 AND kind = 'qualifier')
+                        WHERE team = $3 AND role = $4
+                    "#, data.series as _, &data.event, team.id as _, role as _).fetch_one(&mut **transaction).await?;
+                    let is_confirmed = row.status.is_confirmed();
+                    let user = User::from_id(&mut **transaction, row.id).await?.ok_or(DataError::NonexistentUser)?;
+                    members.push(SignupsMember {
+                        user: MemberUser::MidosHouse(user),
+                        qualifier_time: row.time.map(decode_pginterval).transpose().map_err(DataError::PgInterval)?,
+                        qualifier_vod: row.vod,
+                        role, is_confirmed,
+                    });
                 }
-            },
-            hard_settings_ok: false,
-            mq_ok: false,
-        }).collect()
-    } else {
-        let teams = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
-            series = $1
-            AND event = $2
-            AND NOT resigned
-            AND (
-                EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
-                OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-            )
-            AND (kind = 'qualifier' OR kind IS NULL)
-        "#, data.series as _, &data.event, me.as_ref().map(|me| i64::from(me.id))).fetch_all(&mut **transaction).await?;
-        let roles = data.team_config().roles();
-        let mut signups = Vec::with_capacity(teams.len());
-        for team in teams {
-            let mut members = Vec::with_capacity(roles.len());
-            for &(role, _) in roles {
-                let row = sqlx::query!(r#"
-                    SELECT member AS "id: Id<Users>", status AS "status: SignupStatus", time, vod
-                    FROM team_members LEFT OUTER JOIN async_players ON (member = player AND series = $1 AND event = $2 AND kind = 'qualifier')
-                    WHERE team = $3 AND role = $4
-                "#, data.series as _, &data.event, team.id as _, role as _).fetch_one(&mut **transaction).await?;
-                let is_confirmed = row.status.is_confirmed();
-                let user = User::from_id(&mut **transaction, row.id).await?.ok_or(DataError::NonexistentUser)?;
-                members.push(SignupsMember {
-                    user: MemberUser::MidosHouse(user),
-                    qualifier_time: row.time.map(decode_pginterval).transpose().map_err(DataError::PgInterval)?,
-                    qualifier_vod: row.vod,
-                    role, is_confirmed,
+                signups.push(SignupsTeam {
+                    team: Some(Team {
+                        id: team.id,
+                        name: team.name,
+                        racetime_slug: team.racetime_slug,
+                        startgg_id: team.startgg_id,
+                        plural_name: team.plural_name,
+                        restream_consent: team.restream_consent,
+                        mw_impl: team.mw_impl,
+                        qualifier_rank: team.qualifier_rank,
+                    }),
+                    qualification: if let Some(pieces) = team.pieces {
+                        Qualification::TriforceBlitz { qualified: team.qualified, pieces }
+                    } else {
+                        Qualification::Single { qualified: team.qualified }
+                    },
+                    hard_settings_ok: team.hard_settings_ok,
+                    mq_ok: team.mq_ok,
+                    members,
                 });
             }
-            signups.push(SignupsTeam {
-                team: Some(Team {
-                    id: team.id,
-                    name: team.name,
-                    racetime_slug: team.racetime_slug,
-                    startgg_id: team.startgg_id,
-                    plural_name: team.plural_name,
-                    restream_consent: team.restream_consent,
-                    mw_impl: team.mw_impl,
-                    qualifier_rank: team.qualifier_rank,
-                }),
-                qualification: if let Some(pieces) = team.pieces {
-                    Qualification::TriforceBlitz { qualified: team.qualified, pieces }
-                } else {
-                    Qualification::Single { qualified: team.qualified }
-                },
-                hard_settings_ok: team.hard_settings_ok,
-                mq_ok: team.mq_ok,
-                members,
-            });
+            signups
         }
-        signups
     };
     signups.sort_unstable_by(|SignupsTeam { team: team1, members: members1, qualification: qualification1, .. }, SignupsTeam { team: team2, members: members2, qualification: qualification2, .. }| {
         match qualifier_kind {
-            QualifierKind::None | QualifierKind::Single { show_times: false } => {
+            QualifierKind::None | QualifierKind::Single { show_times: false } | QualifierKind::SongsOfHope => {
                 let qualified1 = match qualification1 {
                     Qualification::Single { qualified } | Qualification::TriforceBlitz { qualified, .. } => qualified,
                     Qualification::Multiple { .. } => unreachable!("Qualification::Multiple in QualifierKind::{{None, Single}}"),
@@ -292,7 +390,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 QualificationOrder::new(*qualification1, members1).cmp(&QualificationOrder::new(*qualification2, members2))
                 .then_with(|| team1.cmp(&team2))
             }
-            QualifierKind::Multiple => {
+            QualifierKind::SglOnline => {
                 let (num1, score1) = match *qualification1 {
                     Qualification::Multiple { num_qualifiers, score } => (num_qualifiers, score),
                     _ => unreachable!("QualifierKind::Multiple must use Qualification::Multiple"),
@@ -332,7 +430,9 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Teams, false).await?;
     let qualifier_kind = if data.series == Series::SpeedGaming && data.event == "2023onl" {
-        QualifierKind::Multiple
+        QualifierKind::SglOnline
+    } else if data.series == Series::SongsOfHope && data.event == "1" {
+        QualifierKind::SongsOfHope
     } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE series = $1 AND event = $2 AND qualifier_rank IS NOT NULL) AS "exists!""#, series as _, event).fetch_one(&mut *transaction).await? {
         QualifierKind::Rank
     } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier') AS "exists!""#, series as _, event).fetch_one(&mut *transaction).await? {
@@ -372,7 +472,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     }
     match qualifier_kind {
         QualifierKind::None | QualifierKind::Rank => {}
-        QualifierKind::Single { show_times: false } => column_headers.push(html! {
+        QualifierKind::Single { show_times: false } | QualifierKind::SongsOfHope => column_headers.push(html! {
             th : "Qualified";
         }),
         QualifierKind::Single { show_times: true } => if series == Series::TriforceBlitz {
@@ -380,7 +480,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                 th : "Pieces Found";
             });
         }
-        QualifierKind::Multiple => {
+        QualifierKind::SglOnline => {
             column_headers.push(html! {
                 th : "# Qualifiers";
             });
@@ -507,13 +607,13 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                             }
                             @match (qualifier_kind, qualification) {
                                 (QualifierKind::None, _) | (QualifierKind::Rank, _) | (QualifierKind::Single { show_times: true }, Qualification::Single { .. }) => {}
-                                (QualifierKind::Single { show_times: false }, Qualification::Single { qualified } | Qualification::TriforceBlitz { qualified, .. }) => td {
+                                (QualifierKind::Single { show_times: false } | QualifierKind::SongsOfHope, Qualification::Single { qualified } | Qualification::TriforceBlitz { qualified, .. }) => td {
                                     @if qualified {
                                         : "✓";
                                     }
                                 }
                                 (QualifierKind::Single { show_times: true }, Qualification::TriforceBlitz { pieces, .. }) => td : pieces;
-                                (QualifierKind::Multiple, Qualification::Multiple { num_qualifiers, score }) => {
+                                (QualifierKind::SglOnline, Qualification::Multiple { num_qualifiers, score }) => {
                                     td(style = "text-align: right;") : num_qualifiers;
                                     td(style = "text-align: right;") : format!("{score:.2}");
                                 }
