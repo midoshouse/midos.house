@@ -267,6 +267,8 @@ impl<'a> Data<'a> {
             (Series::Rsl, _) => unimplemented!(),
             (Series::Scrubs, "5") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
             (Series::Scrubs, _) => unimplemented!(),
+            (Series::SongsOfHope, "1") => from_file!("../../assets/event/soh/chests-1-8.1.json"),
+            (Series::SongsOfHope, _) => unimplemented!(),
             (Series::SpeedGaming, "2023onl" | "2023live") => from_file!("../../assets/event/sgl/chests-2023-42da4aa.json"),
             (Series::SpeedGaming, _) => unimplemented!(),
             (Series::Standard, "6") => from_file!("../../assets/event/s/chests-6-6.9.10.json"),
@@ -299,6 +301,7 @@ impl<'a> Data<'a> {
             Series::Pictionary => true,
             Series::Rsl => false,
             Series::Scrubs => false,
+            Series::SongsOfHope => false,
             Series::SpeedGaming => false,
             Series::Standard => false,
             Series::TournoiFrancophone => false,
@@ -329,6 +332,7 @@ impl<'a> Data<'a> {
             Series::Pictionary => TeamConfig::Pictionary,
             Series::Rsl => TeamConfig::Solo,
             Series::Scrubs => TeamConfig::Solo,
+            Series::SongsOfHope => TeamConfig::Solo,
             Series::SpeedGaming => TeamConfig::Solo,
             Series::Standard => TeamConfig::Solo,
             Series::TournoiFrancophone => TeamConfig::Solo,
@@ -632,6 +636,7 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
         Series::Pictionary => pic::info(&mut transaction, &data).await?,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
         Series::Scrubs => scrubs::info(&mut transaction, &data).await?,
+        Series::SongsOfHope => soh::info(&mut transaction, &data).await?,
         Series::SpeedGaming => sgl::info(&mut transaction, &data).await?,
         Series::Standard => s::info(event),
         Series::TournoiFrancophone => fr::info(&mut transaction, &data).await?,
@@ -826,6 +831,15 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                         }
                         Series::Rsl => @unimplemented // no signups on Mido's House
                         Series::Scrubs => @unimplemented // no signups on Mido's House
+                        Series::SongsOfHope => @if data.is_started(&mut transaction).await? {
+                            p : "Please schedule your matches using Discord threads in the scheduling channel.";
+                        } else {
+                            p { //TODO indicate whether qualified?
+                                : "Please see the rules document for how to qualify, and "; //TODO linkify
+                                a(href = uri!(races(data.series, &*data.event)).to_string()) : "the race schedule";
+                                : " for upcoming qualifiers.";
+                            }
+                        }
                         Series::SpeedGaming => p { //TODO indicate whether qualified?
                             : "Please see the rules document for how to qualify, and "; //TODO linkify
                             a(href = uri!(races(data.series, &*data.event)).to_string()) : "the race schedule";

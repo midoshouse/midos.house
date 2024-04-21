@@ -34,6 +34,7 @@ pub(crate) mod rsl;
 pub(crate) mod s;
 pub(crate) mod scrubs;
 pub(crate) mod sgl;
+pub(crate) mod soh;
 pub(crate) mod tfb;
 pub(crate) mod wttbb;
 
@@ -48,6 +49,7 @@ pub(crate) enum Series {
     Pictionary,
     Rsl,
     Scrubs,
+    SongsOfHope,
     SpeedGaming,
     Standard,
     TournoiFrancophone,
@@ -67,6 +69,7 @@ impl Series {
             Self::Pictionary => "pic",
             Self::Rsl => "rsl",
             Self::Scrubs => "scrubs",
+            Self::SongsOfHope => "soh",
             Self::SpeedGaming => "sgl",
             Self::Standard => "s",
             Self::TournoiFrancophone => "fr",

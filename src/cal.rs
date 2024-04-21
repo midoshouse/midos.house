@@ -754,6 +754,10 @@ impl Race {
                 "5" => {}
                 _ => unimplemented!(),
             },
+            Series::SongsOfHope => match &*event.event {
+                "1" => {}
+                _ => unimplemented!(),
+            },
             Series::SpeedGaming => match &*event.event {
                 "2023onl" => {}
                 "2023live" => {}
@@ -1588,7 +1592,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                     Series::TriforceBlitz => TimeDelta::hours(2),
                     Series::BattleRoyale => TimeDelta::hours(2) + TimeDelta::minutes(30),
                     Series::MixedPools | Series::Scrubs | Series::SpeedGaming | Series::WeTryToBeBetter => TimeDelta::hours(3),
-                    Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::Standard | Series::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
+                    Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::SongsOfHope | Series::Standard | Series::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
                     Series::Multiworld | Series::Pictionary => TimeDelta::hours(4),
                     Series::Rsl => TimeDelta::hours(4) + TimeDelta::minutes(30),
                 })))); //TODO better fallback duration estimates depending on participants

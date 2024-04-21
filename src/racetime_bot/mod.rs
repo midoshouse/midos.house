@@ -303,6 +303,7 @@ pub(crate) enum Goal {
     PicRs2,
     Rsl,
     Sgl2023,
+    SongsOfHope,
     TournoiFrancoS3,
     TriforceBlitz,
     WeTryToBeBetter,
@@ -329,6 +330,7 @@ impl Goal {
             Self::PicRs2 => series == Series::Pictionary && event == "rs2",
             Self::Rsl => series == Series::Rsl,
             Self::Sgl2023 => series == Series::SpeedGaming && matches!(event, "2023onl" | "2023live"),
+            Self::SongsOfHope => series == Series::SongsOfHope && event == "1",
             Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
             Self::TriforceBlitz => series == Series::TriforceBlitz,
             Self::WeTryToBeBetter => series == Series::WeTryToBeBetter && event == "1",
@@ -349,6 +351,7 @@ impl Goal {
             | Self::Pic7
             | Self::PicRs2
             | Self::Sgl2023
+            | Self::SongsOfHope
             | Self::TournoiFrancoS3
             | Self::WeTryToBeBetter
                 => true,
@@ -367,6 +370,7 @@ impl Goal {
             Self::PicRs2 => "2nd Random Settings Pictionary Spoiler Log Race",
             Self::Rsl => "Random settings league",
             Self::Sgl2023 => "SGL 2023",
+            Self::SongsOfHope => "Songs of Hope",
             Self::TournoiFrancoS3 => "Tournoi Francophone Saison 3",
             Self::TriforceBlitz => "Triforce Blitz",
             Self::WeTryToBeBetter => "WeTryToBeBetter",
@@ -384,6 +388,7 @@ impl Goal {
             | Self::PicRs2
             | Self::Rsl
             | Self::Sgl2023
+            | Self::SongsOfHope
             | Self::TriforceBlitz
                 => English,
             | Self::TournoiFrancoS3
@@ -400,7 +405,17 @@ impl Goal {
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
             Self::MultiworldS4 => Some(draft::Kind::MultiworldS4),
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
-            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::NineDaysOfSaws | Self::Pic7 | Self::PicRs2 | Self::Rsl | Self::Sgl2023 | Self::TriforceBlitz | Self::WeTryToBeBetter => None,
+            | Self::CopaDoBrasil
+            | Self::MixedPoolsS2
+            | Self::NineDaysOfSaws
+            | Self::Pic7
+            | Self::PicRs2
+            | Self::Rsl
+            | Self::Sgl2023
+            | Self::SongsOfHope
+            | Self::TriforceBlitz
+            | Self::WeTryToBeBetter
+                => None,
         }
     }
 
@@ -420,6 +435,7 @@ impl Goal {
             | Self::Pic7
             | Self::PicRs2
             | Self::Rsl
+            | Self::SongsOfHope
             | Self::TournoiFrancoS3
             | Self::WeTryToBeBetter
                 => PrerollMode::Medium,
@@ -441,6 +457,7 @@ impl Goal {
                 | Self::NineDaysOfSaws
                 | Self::Rsl
                 | Self::Sgl2023
+                | Self::SongsOfHope
                 | Self::TournoiFrancoS3
                 | Self::TriforceBlitz
                 | Self::WeTryToBeBetter
@@ -461,6 +478,7 @@ impl Goal {
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
             Self::Pic7 => VersionedBranch::Custom { github_username: "fenhl", branch: "frogs2-melody" },
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl),
+            Self::SongsOfHope => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
             Self::WeTryToBeBetter => VersionedBranch::Latest(rando::Branch::Dev),
@@ -481,6 +499,7 @@ impl Goal {
             | Self::Pic7
             | Self::PicRs2
             | Self::Sgl2023
+            | Self::SongsOfHope
             | Self::TournoiFrancoS3
             | Self::TriforceBlitz
             | Self::WeTryToBeBetter
@@ -498,7 +517,7 @@ impl Goal {
             }
             Self::Pic7 => ctx.say("!seed: The settings used for the race").await?,
             Self::PicRs2 => ctx.say("!seed: The weights used for the race").await?,
-            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::Sgl2023 => ctx.say("!seed: The settings used for the tournament").await?,
+            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::Sgl2023 | Self::SongsOfHope => ctx.say("!seed: The settings used for the tournament").await?,
             Self::WeTryToBeBetter => ctx.say("!seed : Les settings utilisés pour le tournoi").await?,
             Self::MultiworldS3 => {
                 ctx.say("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
@@ -854,6 +873,7 @@ impl Goal {
                 SeedCommandParseResult::Rsl { preset: VersionedRslPreset::Xopar { version: None, preset }, world_count, spoiler_log, language: English, article, description }
             }
             Self::Sgl2023 => SeedCommandParseResult::Regular { settings: sgl::settings_2023(), spoiler_log, language: English, article: "a", description: format!("seed") },
+            Self::SongsOfHope => SeedCommandParseResult::Regular { settings: soh::settings(), spoiler_log, language: English, article: "a", description: format!("seed") },
             Self::TournoiFrancoS3 => {
                 let mut args = args.to_owned();
                 let mut mq_dungeons_count = None::<u8>;
@@ -2824,6 +2844,18 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::SongsOfHope => ctx.send_message(
+                                "Welcome! This is a practice room for Songs of Hope, a charity tournament for the Autism of Society of America. Learn more about the tournament at https://midos.house/event/soh/1",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::TournoiFrancoS3 => ctx.send_message(
                                 "Bienvenue ! Ceci est une practice room pour le tournoi francophone saison 3. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/fr/3",
                                 true,
@@ -3067,6 +3099,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 preset: RslDevFenhlPreset::Pictionary,
                             }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("random settings Pictionary seed")).await,
                             Goal::Sgl2023 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), sgl::settings_2023(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                            Goal::SongsOfHope => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), soh::settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                             Goal::TriforceBlitz => this.roll_tfb_seed(ctx, "LATEST", goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S2 seed")).await,
                             Goal::WeTryToBeBetter => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), wttbb::settings(), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
                         },
@@ -3737,7 +3770,18 @@ impl RaceHandler<GlobalState> for Handler {
                             })
                         });
                     },
-                    Goal::Cc7 | Goal::CopaDoBrasil | Goal::MixedPoolsS2 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::NineDaysOfSaws | Goal::Rsl | Goal::Sgl2023 | Goal::TournoiFrancoS3 | Goal::WeTryToBeBetter => {}
+                    | Goal::Cc7
+                    | Goal::CopaDoBrasil
+                    | Goal::MixedPoolsS2
+                    | Goal::MultiworldS3
+                    | Goal::MultiworldS4
+                    | Goal::NineDaysOfSaws
+                    | Goal::Rsl
+                    | Goal::Sgl2023
+                    | Goal::SongsOfHope
+                    | Goal::TournoiFrancoS3
+                    | Goal::WeTryToBeBetter
+                        => {}
                 }
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx, goal).await? {
