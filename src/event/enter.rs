@@ -89,6 +89,11 @@ enum Requirement {
         regex_error_messages: Vec<(Regex, String)>,
         fallback_error_message: String,
     },
+    /// Must answer a custom yes/no question
+    YesNo {
+        #[serde_as(as = "DeserializeRawHtml")]
+        label: RawHtml<String>,
+    },
     /// Must agree to the event rules
     Rules {
         document: Option<Url>,
@@ -137,6 +142,7 @@ impl Requirement {
             Self::StartGG { .. } => true,
             Self::TextField { .. } => true,
             Self::TextField2 { .. } => true,
+            Self::YesNo { .. } => true,
             Self::Rules { .. } => true,
             Self::RestreamConsent { .. } => true,
             Self::Qualifier { .. } => true,
@@ -162,6 +168,7 @@ impl Requirement {
             Self::StartGG { .. } => Some(me.map_or(false, |me| me.startgg_id.is_some())),
             Self::TextField { .. } => Some(false),
             Self::TextField2 { .. } => Some(false),
+            Self::YesNo { .. } => Some(false),
             Self::Rules { .. } => Some(false),
             Self::RestreamConsent { .. } => Some(false),
             Self::Qualifier { .. } => Some(false),
@@ -337,6 +344,24 @@ impl Requirement {
                     }),
                 }
             }
+            Self::YesNo { label } => {
+                let label = label.clone();
+                let yes_checked = defaults.field_value("yes_no").is_some_and(|value| value == "yes");
+                let no_checked = defaults.field_value("yes_no").is_some_and(|value| value == "no");
+                RequirementStatus {
+                    blocks_submit: false,
+                    html_content: Box::new(move |errors| html! {
+                        : form_field("yes_no", errors, html! {
+                            label(for = "yes_no") : label;
+                            br;
+                            input(id = "yes_no-yes", type = "radio", name = "yes_no", value = "yes", checked? = yes_checked);
+                            label(for = "yes_no-yes") : "Yes";
+                            input(id = "yes_no-no", type = "radio", name = "yes_no", value = "no", checked? = no_checked);
+                            label(for = "yes_no-no") : "No";
+                        });
+                    }),
+                }
+            }
             Self::Rules { document } => {
                 let checked = defaults.field_value("confirm").is_some_and(|value| value == "on");
                 let team_config = data.team_config();
@@ -508,6 +533,9 @@ impl Requirement {
                 };
                 form_ctx.push_error(form::Error::validation(error_message).with_name("text_field2"));
             },
+            Self::YesNo { .. } => if value.yes_no.is_none() {
+                form_ctx.push_error(form::Error::validation("Please select one of the options.").with_name("yes_no"));
+            },
             Self::Rules { .. } => if !value.confirm {
                 form_ctx.push_error(form::Error::validation("This field is required.").with_name("confirm"));
             },
@@ -540,7 +568,15 @@ impl Requirement {
                     Self::DiscordGuild { .. } => "You must join the event's Discord server to enter.", //TODO invite link?
                     Self::Challonge => "A Challonge account is required to enter this event.", //TODO link to /login/challonge
                     Self::QualifierPlacement { .. } => "You have not secured a qualifying placement.",
-                    Self::StartGG { .. } | Self::TextField { .. } | Self::TextField2 { .. } | Self::Rules { .. } | Self::RestreamConsent { .. } | Self::Qualifier { .. } | Self::External { .. } => unreachable!(),
+                    | Self::StartGG { .. }
+                    | Self::TextField { .. }
+                    | Self::TextField2 { .. }
+                    | Self::YesNo { .. }
+                    | Self::Rules { .. }
+                    | Self::RestreamConsent { .. }
+                    | Self::Qualifier { .. }
+                    | Self::External { .. }
+                        => unreachable!(),
                 }));
             }
         }
@@ -592,6 +628,7 @@ pub(crate) struct EnterForm {
     startgg_radio: Option<BoolRadio>,
     restream_consent: bool,
     restream_consent_radio: Option<BoolRadio>,
+    yes_no: Option<BoolRadio>,
     #[field(default = String::new())]
     text_field: String,
     #[field(default = String::new())]
@@ -881,13 +918,14 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                 if form.context.errors().next().is_none() {
                     let id = Id::<Teams>::new(&mut transaction).await?;
                     sqlx::query!(
-                        "INSERT INTO teams (id, series, event, plural_name, restream_consent, text_field, text_field2, mw_impl) VALUES ($1, $2, $3, FALSE, $4, $5, $6, $7)",
+                        "INSERT INTO teams (id, series, event, plural_name, restream_consent, text_field, text_field2, yes_no, mw_impl) VALUES ($1, $2, $3, FALSE, $4, $5, $6, $7, $8)",
                         id as _,
                         series as _,
                         event,
                         value.restream_consent || value.restream_consent_radio == Some(BoolRadio::Yes),
                         value.text_field,
                         value.text_field2,
+                        value.yes_no == Some(BoolRadio::Yes),
                         value.mw_impl as _,
                     ).execute(&mut *transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', 'none')", id as _, me.id as _).execute(&mut *transaction).await?;
@@ -973,7 +1011,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                 if form.context.errors().next().is_none() {
                     let id = Id::<Teams>::new(&mut transaction).await?;
                     sqlx::query!(
-                        "INSERT INTO teams (id, series, event, name, restream_consent, text_field, text_field2, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                        "INSERT INTO teams (id, series, event, name, restream_consent, text_field, text_field2, yes_no, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
                         id as _,
                         series as _,
                         event,
@@ -981,6 +1019,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                         value.restream_consent || value.restream_consent_radio == Some(BoolRadio::Yes),
                         value.text_field,
                         value.text_field2,
+                        value.yes_no == Some(BoolRadio::Yes),
                         value.mw_impl as _,
                     ).execute(&mut *transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, Role::from(my_role.expect("validated")) as _).execute(&mut *transaction).await?;
@@ -1120,7 +1159,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                     return Ok(if value.step2 {
                         let id = Id::<Teams>::new(&mut transaction).await?;
                         sqlx::query!(
-                            "INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent, text_field, text_field2, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+                            "INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent, text_field, text_field2, yes_no, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
                             id as _,
                             series as _,
                             event,
@@ -1129,6 +1168,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                             value.restream_consent || value.restream_consent_radio == Some(BoolRadio::Yes),
                             value.text_field,
                             value.text_field2,
+                            value.yes_no == Some(BoolRadio::Yes),
                             value.mw_impl as _,
                         ).execute(&mut *transaction).await?;
                         for ((user, role), startgg_id) in users.into_iter().zip_eq(roles).zip_eq(startgg_ids) {
