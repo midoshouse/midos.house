@@ -431,7 +431,7 @@ impl<'a> Data<'a> {
     pub(crate) async fn active_async(&self, transaction: &mut Transaction<'_, Postgres>, team_id: Option<Id<Teams>>) -> Result<Option<AsyncKind>, DataError> {
         for kind in sqlx::query_scalar!(r#"SELECT kind AS "kind: AsyncKind" FROM asyncs WHERE series = $1 AND event = $2"#, self.series as _, &self.event).fetch_all(&mut **transaction).await? {
             match kind {
-                AsyncKind::Qualifier => if !self.is_started(&mut *transaction).await? {
+                AsyncKind::Qualifier1 | AsyncKind::Qualifier2 | AsyncKind::Qualifier3 => if !self.is_started(&mut *transaction).await? {
                     return Ok(Some(kind))
                 },
                 AsyncKind::Tiebreaker1 | AsyncKind::Tiebreaker2 => if let Some(team_id) = team_id {
@@ -1319,7 +1319,10 @@ pub(crate) async fn opt_out_post(pool: &State<PgPool>, discord_ctx: &State<RwFut
 #[derive(sqlx::Type)]
 #[sqlx(type_name = "async_kind", rename_all = "lowercase")]
 pub(crate) enum AsyncKind {
-    Qualifier,
+    #[sqlx(rename = "qualifier")]
+    Qualifier1,
+    Qualifier2,
+    Qualifier3,
     /// The tiebreaker for the highest Swiss points group with more than one team.
     Tiebreaker1,
     /// The tiebreaker for the 2nd-highest Swiss points group with more than one team.

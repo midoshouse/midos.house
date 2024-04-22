@@ -105,7 +105,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
             html! {
                 div(class = "info") {
                     @match async_kind {
-                        AsyncKind::Qualifier => p : "Play the qualifier async to qualify for the tournament.";
+                        AsyncKind::Qualifier1 | AsyncKind::Qualifier2 | AsyncKind::Qualifier3 => p : "Play the qualifier async to qualify for the tournament.";
                         AsyncKind::Tiebreaker1 | AsyncKind::Tiebreaker2 => p : "Play the tiebreaker async to qualify for the bracket stage of the tournament.";
                     }
                     : full_form(uri!(event::request_async(data.series, &*data.event)), csrf, html! {
