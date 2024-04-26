@@ -34,6 +34,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
 
 pub(crate) fn settings() -> serde_json::Map<String, Json> {
     collect![
+        format!("user_message") => json!("Songs of Hope Charity Tournament"),
         format!("trials") => json!(0),
         format!("shuffle_ganon_bosskey") => json!("on_lacs"),
         format!("shuffle_mapcompass") => json!("startwith"),

@@ -294,6 +294,7 @@ pub(crate) enum UnlockSpoilerLog {
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum Goal {
     Cc7,
+    CoOpS3,
     CopaDoBrasil,
     MixedPoolsS2,
     MultiworldS3,
@@ -321,6 +322,7 @@ impl Goal {
     fn matches_event(&self, series: Series, event: &str) -> bool {
         match self {
             Self::Cc7 => series == Series::Standard && event == "7cc",
+            Self::CoOpS3 => series == Series::CoOp && event == "3",
             Self::CopaDoBrasil => series == Series::CopaDoBrasil && event == "1",
             Self::MixedPoolsS2 => series == Series::MixedPools && event == "2",
             Self::MultiworldS3 => series == Series::Multiworld && event == "3",
@@ -343,6 +345,7 @@ impl Goal {
             | Self::TriforceBlitz
                 => false,
             | Self::Cc7
+            | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
             | Self::MultiworldS3
@@ -361,6 +364,7 @@ impl Goal {
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Self::Cc7 => "Standard Tournament Season 7 Challenge Cup",
+            Self::CoOpS3 => "Co-op Tournament Season 3",
             Self::CopaDoBrasil => "Copa do Brasil",
             Self::MixedPoolsS2 => "2nd Mixed Pools Tournament",
             Self::MultiworldS3 => "3rd Multiworld Tournament",
@@ -380,6 +384,7 @@ impl Goal {
     fn language(&self) -> Language {
         match self {
             | Self::Cc7
+            | Self::CoOpS3
             | Self::MixedPoolsS2
             | Self::MultiworldS3
             | Self::MultiworldS4
@@ -405,6 +410,7 @@ impl Goal {
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
             Self::MultiworldS4 => Some(draft::Kind::MultiworldS4),
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
+            | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
             | Self::NineDaysOfSaws
@@ -427,6 +433,7 @@ impl Goal {
                 => PrerollMode::None,
             | Self::Cc7
                 => PrerollMode::Short,
+            | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
             | Self::MultiworldS3
@@ -450,6 +457,7 @@ impl Goal {
                 | Self::Pic7
                 | Self::PicRs2
                     => UnlockSpoilerLog::Now,
+                | Self::CoOpS3
                 | Self::CopaDoBrasil
                 | Self::MixedPoolsS2
                 | Self::MultiworldS3
@@ -471,6 +479,7 @@ impl Goal {
     pub(crate) fn rando_version(&self) -> VersionedBranch {
         match self {
             Self::Cc7 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
+            Self::CoOpS3 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
@@ -493,6 +502,7 @@ impl Goal {
             | Self::Rsl
                 => false,
             | Self::Cc7
+            | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::MultiworldS3
             | Self::MultiworldS4
@@ -517,7 +527,7 @@ impl Goal {
             }
             Self::Pic7 => ctx.say("!seed: The settings used for the race").await?,
             Self::PicRs2 => ctx.say("!seed: The weights used for the race").await?,
-            Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::Sgl2023 | Self::SongsOfHope => ctx.say("!seed: The settings used for the tournament").await?,
+            Self::CoOpS3 | Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::Sgl2023 | Self::SongsOfHope => ctx.say("!seed: The settings used for the tournament").await?,
             Self::WeTryToBeBetter => ctx.say("!seed : Les settings utilisés pour le tournoi").await?,
             Self::MultiworldS3 => {
                 ctx.say("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
@@ -626,6 +636,7 @@ impl Goal {
                 };
                 SeedCommandParseResult::Regular { settings: s::resolve_s7_draft_settings(&settings), spoiler_log, language: English, article: "a", description: format!("seed with {}", s::display_s7_draft_picks(&settings)) }
             }
+            Self::CoOpS3 => SeedCommandParseResult::Regular { settings: coop::s3_settings(), spoiler_log, language: English, article: "a", description: format!("co-op seed") },
             Self::CopaDoBrasil => SeedCommandParseResult::Regular { settings: br::s1_settings(), spoiler_log, language: English, article: "a", description: format!("seed") },
             Self::MixedPoolsS2 => SeedCommandParseResult::Regular { settings: mp::s2_settings(), spoiler_log, language: English, article: "a", description: format!("mixed pools seed") },
             Self::MultiworldS3 => {
@@ -824,7 +835,7 @@ impl Goal {
                 },
                 [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
             }
-            Self::Pic7 => SeedCommandParseResult::Regular { settings: pic::race7_settings(), spoiler_log: true, language: English, article: "a", description: format!("seed") },
+            Self::Pic7 => SeedCommandParseResult::Regular { settings: pic::race7_settings(), spoiler_log: true, language: English, article: "a", description: format!("Pictionary seed") },
             Self::PicRs2 => SeedCommandParseResult::Rsl { preset: VersionedRslPreset::Fenhl {
                 version: Some((Version::new(2, 3, 8), 10)),
                 preset: RslDevFenhlPreset::Pictionary,
@@ -2625,6 +2636,18 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::CoOpS3 => ctx.send_message(
+                                "Welcome! This is a practice room for the 3rd co-op tournament. Learn more about the tournament at https://midos.house/event/coop/3",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::CopaDoBrasil => ctx.send_message(
                                 "Welcome! This is a practice room for the Copa do Brasil. Learn more about the tournament at https://midos.house/event/br/1",
                                 true,
@@ -3092,8 +3115,9 @@ impl RaceHandler<GlobalState> for Handler {
                             Goal::MixedPoolsS2 | Goal::Rsl => unreachable!("no official race rooms"),
                             Goal::Cc7 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::TournoiFrancoS3 => unreachable!("should have draft state set"),
                             Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
+                            Goal::CoOpS3 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), coop::s3_settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("co-op seed")).await,
                             Goal::CopaDoBrasil => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), br::s1_settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
-                            Goal::Pic7 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), pic::race7_settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                            Goal::Pic7 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), pic::race7_settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("Pictionary seed")).await,
                             Goal::PicRs2 => this.roll_rsl_seed(ctx, VersionedRslPreset::Fenhl {
                                 version: Some((Version::new(2, 3, 8), 10)),
                                 preset: RslDevFenhlPreset::Pictionary,
@@ -3771,6 +3795,7 @@ impl RaceHandler<GlobalState> for Handler {
                         });
                     },
                     | Goal::Cc7
+                    | Goal::CoOpS3
                     | Goal::CopaDoBrasil
                     | Goal::MixedPoolsS2
                     | Goal::MultiworldS3
