@@ -615,6 +615,10 @@ impl Race {
                 },
                 _ => unimplemented!(),
             },
+            Series::CoOp => match &*event.event {
+                "3" => {}
+                _ => unimplemented!(),
+            },
             Series::CopaDoBrasil => match &*event.event {
                 "1" => {}
                 _ => unimplemented!(),
@@ -1591,7 +1595,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                 cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + match event.series {
                     Series::TriforceBlitz => TimeDelta::hours(2),
                     Series::BattleRoyale => TimeDelta::hours(2) + TimeDelta::minutes(30),
-                    Series::MixedPools | Series::Scrubs | Series::SpeedGaming | Series::WeTryToBeBetter => TimeDelta::hours(3),
+                    Series::CoOp | Series::MixedPools | Series::Scrubs | Series::SpeedGaming | Series::WeTryToBeBetter => TimeDelta::hours(3),
                     Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::SongsOfHope | Series::Standard | Series::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
                     Series::Multiworld | Series::Pictionary => TimeDelta::hours(4),
                     Series::Rsl => TimeDelta::hours(4) + TimeDelta::minutes(30),

@@ -1180,6 +1180,13 @@ impl<'v> EnterFormStep2Defaults<'v> {
         }
     }
 
+    pub(crate) fn field_value(&self, field_name: &str) -> Option<&str> {
+        match self {
+            Self::Context(ctx) => ctx.field_value(field_name),
+            Self::Values { .. } => None,
+        }
+    }
+
     pub(crate) fn racetime_team_name(&self) -> Option<&str> {
         match self {
             Self::Context(ctx) => ctx.field_value("racetime_team_name"),
@@ -1224,7 +1231,7 @@ impl<'v> EnterFormStep2Defaults<'v> {
     pub(crate) fn startgg_id(&self, racetime_id: &str) -> Option<&str> {
         match self {
             Self::Context(ctx) => ctx.field_value(&*format!("startgg_id[{racetime_id}]")),
-            Self::Values { .. } => None,
+            Self::Values { .. } => None, //TODO get default from MH user?
         }
     }
 
@@ -1239,10 +1246,14 @@ impl<'v> EnterFormStep2Defaults<'v> {
         }
     }
 
-    pub(crate) fn restream_consent(&self) -> bool {
+    pub(crate) fn restream_consent(&self) -> Option<bool> {
         match self {
-            Self::Context(ctx) => ctx.field_value("restream_consent") == Some("on"),
-            Self::Values { .. } => false,
+            Self::Context(ctx) => match ctx.field_value("restream_consent_radio") {
+                Some("yes") => Some(true),
+                Some("no") => Some(false),
+                _ => None,
+            },
+            Self::Values { .. } => None,
         }
     }
 }

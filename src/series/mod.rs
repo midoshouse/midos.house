@@ -23,6 +23,7 @@ use {
 };
 
 pub(crate) mod br;
+pub(crate) mod coop;
 pub(crate) mod fr;
 pub(crate) mod league;
 pub(crate) mod mp;
@@ -41,6 +42,7 @@ pub(crate) mod wttbb;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Sequence)]
 pub(crate) enum Series {
     BattleRoyale,
+    CoOp,
     CopaDoBrasil,
     League,
     MixedPools,
@@ -61,6 +63,7 @@ impl Series {
     pub(crate) fn to_str(&self) -> &'static str {
         match self {
             Self::BattleRoyale => "ohko",
+            Self::CoOp => "coop",
             Self::CopaDoBrasil => "br",
             Self::League => "league",
             Self::MixedPools => "mp",

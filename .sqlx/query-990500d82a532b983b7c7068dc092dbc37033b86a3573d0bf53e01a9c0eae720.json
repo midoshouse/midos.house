@@ -244,6 +244,8 @@
             "kind": {
               "Enum": [
                 "qualifier",
+                "qualifier2",
+                "qualifier3",
                 "tiebreaker1",
                 "tiebreaker2"
               ]

@@ -838,6 +838,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
     Box::pin(async move {
         let header = data.header(&mut transaction, env, me.as_ref(), Tab::Enter, true).await?;
         let page_content = {
+            let team_config = data.team_config();
             let team_members = team_members.await?;
             let mut errors = defaults.errors();
             html! {
@@ -854,17 +855,23 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                         input(type = "hidden", name = "racetime_team", value = defaults.racetime_team_slug());
                         input(type = "hidden", name = "racetime_team_name", value = defaults.racetime_team_name());
                     });
-                    @for team_member in team_members {
-                        : form_field(&format!("roles[{}]", team_member.id), &mut errors, html! {
-                            label(for = &format!("roles[{}]", team_member.id)) : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
-                            @for (role, display_name) in data.team_config().roles() {
-                                @let css_class = role.css_class().expect("tried to render enter_form_step2 for a solo event");
-                                input(id = &format!("roles[{}]-{css_class}", team_member.id), class = css_class, type = "radio", name = &format!("roles[{}]", team_member.id), value = css_class, checked? = defaults.role(&team_member.id) == Some(*role));
-                                label(class = css_class, for = &format!("roles[{}]-{css_class}", team_member.id)) : display_name;
-                            }
-                        });
+                    @for (member_idx, team_member) in team_members.into_iter().enumerate() {
+                        @if team_config.has_distinct_roles() {
+                            : form_field(&format!("roles[{}]", team_member.id), &mut errors, html! {
+                                label(for = &format!("roles[{}]", team_member.id)) : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
+                                @for (role, display_name) in team_config.roles() {
+                                    @let css_class = role.css_class().expect("tried to render enter_form_step2 for a solo event");
+                                    input(id = &format!("roles[{}]-{css_class}", team_member.id), class = css_class, type = "radio", name = &format!("roles[{}]", team_member.id), value = css_class, checked? = defaults.role(&team_member.id) == Some(*role));
+                                    label(class = css_class, for = &format!("roles[{}]-{css_class}", team_member.id)) : display_name;
+                                }
+                            });
+                        }
                         : form_field(&format!("startgg_id[{}]", team_member.id), &mut errors, html! {
-                            label(for = &format!("startgg_id[{}]", team_member.id)) : "start.gg User ID:";
+                            label(for = &format!("startgg_id[{}]", team_member.id)) {
+                                : "start.gg User ID (";
+                                : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
+                                : "):";
+                            }
                             input(type = "text", name = &format!("startgg_id[{}]", team_member.id), value? = defaults.startgg_id(&team_member.id));
                             label(class = "help") {
                                 : "(Optional. Can be found by going to your ";
@@ -872,8 +879,23 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                                 : " profile and clicking your name.)";
                             }
                         });
+                        @if let Series::CoOp = data.series {
+                            @let field_name = match member_idx {
+                                0 => "text_field",
+                                1 => "text_field2",
+                                _ => unreachable!("co-op event with team size > 2"),
+                            };
+                            : form_field(field_name, &mut errors, html! {
+                                label(for = field_name) {
+                                    : "Nationality (";
+                                    : &team_member.name; //TODO Mido's House display name, falling back to racetime display name if no Mido's House account
+                                    : "):";
+                                }
+                                input(type = "text", name = field_name, value? = defaults.field_value(field_name));
+                            });
+                        }
                     }
-                    @if let TeamConfig::Multiworld = data.team_config() {
+                    @if let TeamConfig::Multiworld = team_config {
                         : form_field("mw_impl", &mut errors, html! {
                             label(for = "mw_impl") : "Multiworld plugin:";
                             input(id = "mw_impl-bizhawk_co_op", type = "radio", name = "mw_impl", value = "bizhawk_co_op", checked? = defaults.mw_impl() == Some(mw::Impl::BizHawkCoOp));
@@ -882,17 +904,27 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                             label(for = "mw_impl-midos_house") : "Mido's House Multiworld";
                         });
                     }
-                    : form_field("restream_consent", &mut errors, html! {
-                        input(type = "checkbox", id = "restream_consent", name = "restream_consent", checked? = defaults.restream_consent());
-                        label(for = "restream_consent") {
-                            @if data.is_single_race() {
-                                : "We are okay with being restreamed. (Optional. Can be changed later.)";
-                            } else {
-                                //TODO allow changing on Status page during Swiss, except revoking while a restream is planned
-                                //TODO change text depending on tournament structure
-                                : "We are okay with being restreamed. (Optional for Swiss, required for top 8. Can be changed later.)";
+                    : form_field("restream_consent_radio", &mut errors, html! {
+                        label(for = "restream_consent_radio") {
+                            @match data.series {
+                                Series::CoOp => {
+                                    : "Do you consent to your matches being restreamed by our restream partners (see ";
+                                    a(href = "https://zsr.link/coops3rules") : "rules document";
+                                    : ")? If you change your mind later, please let organizers know.";
+                                }
+                                Series::Multiworld => {
+                                    //TODO allow changing on Status page during Swiss, except revoking while a restream is planned
+                                    //TODO change text depending on tournament structure
+                                    : "We are okay with being restreamed. (Optional for Swiss, required for top 8. Can be changed later.)";
+                                }
+                                _ => : "We are okay with being restreamed. (Optional. Can be changed later.)";
                             }
                         }
+                        br;
+                        input(id = "restream_consent_radio-yes", type = "radio", name = "restream_consent_radio", value = "yes", checked? = defaults.restream_consent() == Some(true));
+                        label(for = "restream_consent_radio-yes") : "Yes";
+                        input(id = "restream_consent_radio-no", type = "radio", name = "restream_consent_radio", value = "no", checked? = defaults.restream_consent() == Some(false));
+                        label(for = "restream_consent_radio-no") : "No";
                     });
                 }, errors, "Enter");
             }
@@ -1059,7 +1091,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                     return Ok(RedirectOrContent::Redirect(Redirect::to(uri!(super::status(series, event)))))
                 }
             }
-            _ => {
+            team_config => {
                 let racetime_team = if let Some(ref racetime_team) = value.racetime_team {
                     if let Some(ref racetime) = me.racetime {
                         let user = client.get(format!("https://racetime.gg/user/{}/data", racetime.id))
@@ -1071,7 +1103,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                                 .send().await?
                                 .detailed_error_for_status().await?
                                 .json_with_text_in_error::<mw::RaceTimeTeamData>().await?;
-                            let expected_size = data.team_config().roles().len();
+                            let expected_size = team_config.roles().len();
                             if team.members.len() != expected_size {
                                 form.context.push_error(form::Error::validation(format!("Teams for this event must have exactly {expected_size} members, but this team has {}", team.members.len())))
                             }
@@ -1093,7 +1125,11 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                     if let Some(ref racetime_team) = racetime_team {
                         let mut all_accounts_exist = true;
                         let mut users = Vec::default();
-                        let mut roles = Vec::default();
+                        let mut roles = if team_config.has_distinct_roles() {
+                            Vec::default()
+                        } else {
+                            team_config.roles().iter().map(|&(role, _)| role).collect()
+                        };
                         let mut startgg_ids = Vec::default();
                         for member in &racetime_team.members {
                             if let Some(user) = User::from_racetime(&mut *transaction, &member.id).await? {
@@ -1122,10 +1158,12 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                                 form.context.push_error(form::Error::validation("This racetime.gg account is not associated with a Mido's House account.").with_name(format!("roles[{}]", member.id)));
                                 all_accounts_exist = false;
                             }
-                            if let Some(&role) = value.roles.get(&member.id) {
-                                roles.push(role);
-                            } else {
-                                form.context.push_error(form::Error::validation("This field is required.").with_name(format!("roles[{}]", member.id)));
+                            if team_config.has_distinct_roles() {
+                                if let Some(&role) = value.roles.get(&member.id) {
+                                    roles.push(role);
+                                } else {
+                                    form.context.push_error(form::Error::validation("This field is required.").with_name(format!("roles[{}]", member.id)));
+                                }
                             }
                             if let Some(id) = value.startgg_id.get(&member.id) {
                                 if id.is_empty() {
@@ -1161,7 +1199,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                                 _ => unimplemented!("exact proposed team check for {} members", users.len()),
                             }
                         }
-                        for (required_role, label) in data.team_config().roles() {
+                        for (required_role, label) in team_config.roles() {
                             let mut found = false;
                             for (member_id, role) in &value.roles {
                                 if role == required_role {
@@ -1176,8 +1214,19 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                                 form.context.push_error(form::Error::validation(format!("No team member is assigned as {label}.")));
                             }
                         }
-                        if let (TeamConfig::Multiworld, None) = (data.team_config(), value.mw_impl) {
-                            form.context.push_error(form::Error::validation("This field is required.").with_name("mw_impl"));
+                        match team_config {
+                            TeamConfig::CoOp => {
+                                if value.text_field.is_empty() {
+                                    form.context.push_error(form::Error::validation("This field is required.").with_name("text_field"));
+                                }
+                                if value.text_field2.is_empty() {
+                                    form.context.push_error(form::Error::validation("This field is required.").with_name("text_field2"));
+                                }
+                            }
+                            TeamConfig::Multiworld => if value.mw_impl.is_none() {
+                                form.context.push_error(form::Error::validation("This field is required.").with_name("mw_impl"));
+                            },
+                            _ => {}
                         }
                         (racetime_team.slug.clone(), racetime_team.name.clone(), users, roles, startgg_ids)
                     } else {

@@ -116,6 +116,17 @@ impl TeamConfig {
     pub(crate) fn is_racetime_team_format(&self) -> bool {
         self.roles().iter().filter(|&&(role, _)| self.role_is_racing(role)).count() > 1
     }
+
+    pub(crate) fn has_distinct_roles(&self) -> bool {
+        match self {
+            | Self::Solo
+            | Self::CoOp
+                => false,
+            | Self::Pictionary
+            | Self::Multiworld
+                => true,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -233,6 +244,8 @@ impl<'a> Data<'a> {
         match (self.series, &*self.event) {
             (Series::BattleRoyale, "1") => from_file!("../../assets/event/ohko/chests-1-8.0.json"), //TODO reroll with the plando
             (Series::BattleRoyale, _) => unimplemented!(),
+            (Series::CoOp, "3") => ChestAppearances::VANILLA,
+            (Series::CoOp, _) => unimplemented!(),
             (Series::CopaDoBrasil, "1") => from_file!("../../assets/event/br/chests-1-7.1.143.json"),
             (Series::CopaDoBrasil, _) => unimplemented!(),
             (Series::League, "4") => from_file!("../../assets/event/league/chests-4-7.1.94.json"),
@@ -293,6 +306,7 @@ impl<'a> Data<'a> {
     pub(crate) fn is_single_race(&self) -> bool {
         match self.series {
             Series::BattleRoyale => false,
+            Series::CoOp => false,
             Series::CopaDoBrasil => false,
             Series::League => false,
             Series::MixedPools => false,
@@ -313,6 +327,7 @@ impl<'a> Data<'a> {
     pub(crate) fn team_config(&self) -> TeamConfig {
         match self.series {
             Series::BattleRoyale => TeamConfig::Solo,
+            Series::CoOp => TeamConfig::CoOp,
             Series::CopaDoBrasil => TeamConfig::Solo,
             Series::League => TeamConfig::Solo,
             Series::MixedPools => TeamConfig::Solo,
@@ -628,6 +643,7 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Info, false).await?;
     let content = match data.series {
         Series::BattleRoyale => ohko::info(&mut transaction, &data).await?,
+        Series::CoOp => coop::info(&mut transaction, &data).await?,
         Series::CopaDoBrasil => br::info(&mut transaction, &data).await?,
         Series::League => league::info(&mut transaction, &data).await?,
         Series::MixedPools => mp::info(&mut transaction, &data).await?,
@@ -796,6 +812,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                     //TODO deduplicate async handling code
                     @match data.series {
                         Series::BattleRoyale => @unimplemented // no signups on Mido's House
+                        Series::CoOp => p : "Please schedule your matches using the Discord scheduling threads.";
                         Series::CopaDoBrasil => : br::status(&mut transaction, csrf, &data, row.id, &mut ctx).await?;
                         Series::League => @unimplemented // no signups on Mido's House
                         Series::MixedPools => @unimplemented // no signups on Mido's House
@@ -971,9 +988,8 @@ async fn find_team_form(mut transaction: Transaction<'_, Postgres>, env: Environ
                 : "This is a solo event.";
             }).await?
         }
-        TeamConfig::CoOp => ndos::coop_find_team_form(transaction, env, me, uri, csrf, data, ctx).await?,
         TeamConfig::Pictionary => pic::find_team_form(transaction, env, me, uri, csrf, data, ctx).await?,
-        TeamConfig::Multiworld => mw::find_team_form(transaction, env, me, uri, csrf, data, ctx).await?,
+        TeamConfig::CoOp | TeamConfig::Multiworld => mw::find_team_form(transaction, env, me, uri, csrf, data, ctx).await?,
     })
 }
 

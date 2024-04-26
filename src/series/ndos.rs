@@ -3,9 +3,7 @@ use {
     crate::{
         event::{
             Data,
-            FindTeamError,
             InfoError,
-            Tab,
         },
         prelude::*,
     },
@@ -122,79 +120,6 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             }
         }
     })
-}
-
-#[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
-pub(crate) async fn coop_find_team_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
-    let header = data.header(&mut transaction, env, me.as_ref(), Tab::FindTeam, false).await?;
-    let mut me_listed = false;
-    let mut looking_for_team = Vec::default();
-    for row in sqlx::query!(r#"SELECT user_id AS "user: Id<Users>" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {
-        let user = User::from_id(&mut *transaction, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
-        if me.as_ref().map_or(false, |me| user.id == me.id) { me_listed = true }
-        looking_for_team.push(user);
-    }
-    let form = if me.is_some() {
-        let mut errors = ctx.errors().collect_vec();
-        if me_listed {
-            None
-        } else {
-            Some(full_form(uri!(event::find_team_post(data.series, &*data.event)), csrf, html! {
-                @if data.is_single_race() {
-                    legend {
-                        : "Click this button to add yourself to the list below.";
-                    }
-                } else {
-                    legend {
-                        : "Fill out this form to add yourself to the list below.";
-                    }
-                    : form_field("availability", &mut errors, html! {
-                        label(for = "availability") : "Timezone/Availability/Commitment:";
-                        input(type = "text", name = "availability", value? = ctx.field_value("availability"));
-                    });
-                    : form_field("notes", &mut errors, html! {
-                        label(for = "notes") : "Any Other Notes?";
-                        input(type = "text", name = "notes", value? = ctx.field_value("notes"));
-                    });
-                }
-            }, errors, if data.is_single_race() { "Looking for Team" } else { "Submit" }))
-        }
-    } else {
-        Some(html! {
-            article {
-                p {
-                    a(href = uri!(auth::login(Some(uri!(event::find_team(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
-                    : " to add yourself to this list.";
-                }
-            }
-        })
-    };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
-        : header;
-        : form;
-        table {
-            thead {
-                tr {
-                    th : "User";
-                }
-            }
-            tbody {
-                @if looking_for_team.is_empty() {
-                    tr {
-                        td {
-                            i : "(no one currently looking for teammates)";
-                        }
-                    }
-                } else {
-                    @for user in looking_for_team {
-                        tr {
-                            td : user;
-                        }
-                    }
-                }
-            }
-        }
-    }).await?)
 }
 
 pub(crate) fn beginner_preset() -> serde_json::Map<String, Json> {
