@@ -432,8 +432,8 @@ impl Goal {
             | Self::TriforceBlitz
                 => PrerollMode::None,
             | Self::Cc7
-                => PrerollMode::Short,
             | Self::CoOpS3
+                => PrerollMode::Short,
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
             | Self::MultiworldS3
@@ -457,7 +457,6 @@ impl Goal {
                 | Self::Pic7
                 | Self::PicRs2
                     => UnlockSpoilerLog::Now,
-                | Self::CoOpS3
                 | Self::CopaDoBrasil
                 | Self::MixedPoolsS2
                 | Self::MultiworldS3
@@ -471,6 +470,7 @@ impl Goal {
                 | Self::WeTryToBeBetter
                     => UnlockSpoilerLog::After,
                 | Self::Cc7
+                | Self::CoOpS3
                     => if official_race { UnlockSpoilerLog::Never } else { UnlockSpoilerLog::After },
             }
         }
