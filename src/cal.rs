@@ -2360,7 +2360,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
         MatchSource::StartGG(event_slug) => if event.auto_import {
             html! {
                 article {
-                    p : "Races for this event are imported automatically every 10 minutes.";
+                    p : "Races for this event are imported automatically every 5 minutes.";
                 }
             }
         } else if me.is_some() {
@@ -2431,7 +2431,7 @@ pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>,
     let mut form = form.into_inner();
     form.verify(&csrf);
     if !event.organizers(&mut transaction).await?.contains(&me) {
-        form.context.push_error(form::Error::validation("You must be an organizer to ipmort races."));
+        form.context.push_error(form::Error::validation("You must be an organizer to import races."));
     }
     let races = match event.match_source() {
         MatchSource::Manual => {
@@ -2503,7 +2503,7 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
         transaction.commit().await?;
         select! {
             () = &mut shutdown => break,
-            () = sleep(Duration::from_secs(10 * 60)) => {}
+            () = sleep(Duration::from_secs(5 * 60)) => {}
         }
     }
     Ok(())

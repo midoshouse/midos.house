@@ -14,6 +14,7 @@ use {
     },
 };
 
+pub(crate) mod configure;
 pub(crate) mod enter;
 pub(crate) mod teams;
 
@@ -513,7 +514,7 @@ impl<'a> Data<'a> {
                     } else {
                         a(class = "button", href = uri!(status(self.series, &*self.event)).to_string()) : "My Status";
                     }
-                } else if !self.is_started(transaction).await? {
+                } else if !self.is_started(&mut *transaction).await? {
                     @if let Tab::Enter = tab {
                         a(class = "button selected", href? = is_subpage.then(|| uri!(enter::get(self.series, &*self.event, _, _)).to_string())) : "Enter";
                     } else if let Some(ref enter_url) = self.enter_url {
@@ -576,6 +577,15 @@ impl<'a> Data<'a> {
                         : "Discord Server";
                     }
                 }
+                @if let (MatchSource::StartGG(_), Some(me)) = (self.match_source(), me) {
+                    @if !self.is_ended() && self.organizers(transaction).await?.contains(me) {
+                        @if let Tab::Configure = tab {
+                            a(class = "button selected", href? = is_subpage.then(|| uri!(configure::get(self.series, &*self.event)).to_string())) : "Configure";
+                        } else {
+                            a(class = "button", href = uri!(configure::get(self.series, &*self.event)).to_string()) : "Configure";
+                        }
+                    }
+                }
             }
         })
     }
@@ -597,6 +607,7 @@ pub(crate) enum Tab {
     Enter,
     FindTeam,
     Volunteer,
+    Configure,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
