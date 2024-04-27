@@ -50,7 +50,6 @@ use {
             TryAcquireError,
             mpsc,
         },
-        time::sleep,
     },
     wheel::traits::AsyncCommandOutputExt as _,
     crate::{

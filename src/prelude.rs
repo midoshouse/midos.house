@@ -132,6 +132,7 @@ pub(crate) use {
         sync::mpsc,
         time::{
             Instant,
+            sleep,
             sleep_until,
         },
     },

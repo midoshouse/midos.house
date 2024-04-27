@@ -156,6 +156,7 @@ pub(crate) struct Data<'a> {
     pub(crate) default_game_count: i16,
     pub(crate) min_schedule_notice: Duration,
     pub(crate) retime_window: Duration,
+    pub(crate) auto_import: bool,
     pub(crate) language: Language,
 }
 
@@ -196,6 +197,7 @@ impl<'a> Data<'a> {
             default_game_count,
             min_schedule_notice,
             retime_window,
+            auto_import,
             language AS "language: Language"
         FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(&mut **transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
@@ -221,6 +223,7 @@ impl<'a> Data<'a> {
                 default_game_count: row.default_game_count,
                 min_schedule_notice: decode_pginterval(row.min_schedule_notice)?,
                 retime_window: decode_pginterval(row.retime_window)?,
+                auto_import: row.auto_import,
                 language: row.language,
                 series, event,
             }))
@@ -725,7 +728,9 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
                 @match data.match_source() {
                     MatchSource::Manual => a(class = "button", href = uri!(crate::cal::create_race(series, event, _)).to_string()) : "New Race";
                     MatchSource::League => {}
-                    MatchSource::StartGG(_) => a(class = "button", href = uri!(crate::cal::import_races(series, event)).to_string()) : "Import";
+                    MatchSource::StartGG(_) => @if !data.auto_import {
+                        a(class = "button", href = uri!(crate::cal::import_races(series, event)).to_string()) : "Import";
+                    }
                 }
             }
         }

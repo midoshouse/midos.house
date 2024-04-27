@@ -2017,7 +2017,9 @@ pub(crate) async fn race_table(
                                     @match event.match_source() {
                                         MatchSource::Manual => a(class = "button", href = uri!(create_race(races[0].series, &*races[0].event, _)).to_string()) : "New Race";
                                         MatchSource::League => {}
-                                        MatchSource::StartGG(_) => a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event)).to_string()) : "Import";
+                                        MatchSource::StartGG(_) => @if !event.auto_import {
+                                            a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event)).to_string()) : "Import";
+                                        }
                                     }
                                 }
                             }
@@ -2355,7 +2357,13 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                 }
             }
         },
-        MatchSource::StartGG(event_slug) => if me.is_some() {
+        MatchSource::StartGG(event_slug) => if event.auto_import {
+            html! {
+                article {
+                    p : "Races for this event are imported automatically every 10 minutes.";
+                }
+            }
+        } else if me.is_some() {
             let (races, skips) = startgg_races_to_import(&mut transaction, http_client, env, config, &event, event_slug).await?;
             if races.is_empty() {
                 html! {
@@ -2450,25 +2458,55 @@ pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>,
         RedirectOrContent::Content(import_races_form(transaction, http_client, &*discord_ctx.read().await, **env, config, Some(me), uri, csrf.as_ref(), event, form.context).await?)
     } else {
         for race in races {
-            let game_count = race.game.unwrap_or(1);
-            let mut scheduling_thread = None;
-            for game in 1..=game_count {
-                let mut race = Race {
-                    id: Id::<Races>::new(&mut transaction).await?,
-                    game: (game_count > 1).then_some(game),
-                    scheduling_thread,
-                    ..race.clone()
-                };
-                if game == 1 {
-                    transaction = discord_bot::create_scheduling_thread(&*discord_ctx.read().await, transaction, &mut race, game_count).await?;
-                    scheduling_thread = race.scheduling_thread;
-                }
-                race.save(&mut transaction).await?;
-            }
+            transaction = import_race(transaction, &*discord_ctx.read().await, race).await?;
         }
         transaction.commit().await?;
         RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
     })
+}
+
+async fn import_race<'a>(mut transaction: Transaction<'a, Postgres>, discord_ctx: &DiscordCtx, race: Race) -> Result<Transaction<'a, Postgres>, event::Error> {
+    let game_count = race.game.unwrap_or(1);
+    let mut scheduling_thread = None;
+    for game in 1..=game_count {
+        let mut race = Race {
+            id: Id::<Races>::new(&mut transaction).await?,
+            game: (game_count > 1).then_some(game),
+            scheduling_thread,
+            ..race.clone()
+        };
+        if game == 1 {
+            transaction = discord_bot::create_scheduling_thread(discord_ctx, transaction, &mut race, game_count).await?;
+            scheduling_thread = race.scheduling_thread;
+        }
+        race.save(&mut transaction).await?;
+    }
+    Ok(transaction)
+}
+
+pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Client, env: Environment, config: Config, mut shutdown: rocket::Shutdown, discord_ctx: RwFuture<DiscordCtx>) -> Result<(), event::Error> {
+    loop {
+        let mut transaction = db_pool.begin().await?;
+        for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE auto_import AND start IS NOT NULL AND start <= NOW() AND (end_time IS NULL OR end_time > NOW())"#).fetch_all(&mut *transaction).await? {
+            let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction");
+            match event.match_source() {
+                MatchSource::Manual => {}
+                MatchSource::League => {}
+                MatchSource::StartGG(event_slug) => {
+                    let (races, _) = startgg_races_to_import(&mut transaction, &http_client, env, &config, &event, event_slug).await?;
+                    for race in races {
+                        transaction = import_race(transaction, &*discord_ctx.read().await, race).await?;
+                    }
+                }
+            }
+        }
+        transaction.commit().await?;
+        select! {
+            () = &mut shutdown => break,
+            () = sleep(Duration::from_secs(10 * 60)) => {}
+        }
+    }
+    Ok(())
 }
 
 pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {

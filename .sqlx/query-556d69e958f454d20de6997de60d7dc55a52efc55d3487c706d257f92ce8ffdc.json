@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            display_name,\n            short_name,\n            start,\n            end_time,\n            url,\n            hide_races_tab,\n            hide_teams_tab,\n            teams_url,\n            enter_url,\n            video_url,\n            discord_guild AS \"discord_guild: PgSnowflake<GuildId>\",\n            discord_invite_url,\n            discord_race_room_channel AS \"discord_race_room_channel: PgSnowflake<ChannelId>\",\n            discord_race_results_channel AS \"discord_race_results_channel: PgSnowflake<ChannelId>\",\n            discord_organizer_channel AS \"discord_organizer_channel: PgSnowflake<ChannelId>\",\n            discord_scheduling_channel AS \"discord_scheduling_channel: PgSnowflake<ChannelId>\",\n            enter_flow AS \"enter_flow: Json<enter::Flow>\",\n            show_opt_out,\n            show_qualifier_times,\n            default_game_count,\n            min_schedule_notice,\n            retime_window,\n            language AS \"language: Language\"\n        FROM events WHERE series = $1 AND event = $2",
+  "query": "SELECT\n            display_name,\n            short_name,\n            start,\n            end_time,\n            url,\n            hide_races_tab,\n            hide_teams_tab,\n            teams_url,\n            enter_url,\n            video_url,\n            discord_guild AS \"discord_guild: PgSnowflake<GuildId>\",\n            discord_invite_url,\n            discord_race_room_channel AS \"discord_race_room_channel: PgSnowflake<ChannelId>\",\n            discord_race_results_channel AS \"discord_race_results_channel: PgSnowflake<ChannelId>\",\n            discord_organizer_channel AS \"discord_organizer_channel: PgSnowflake<ChannelId>\",\n            discord_scheduling_channel AS \"discord_scheduling_channel: PgSnowflake<ChannelId>\",\n            enter_flow AS \"enter_flow: Json<enter::Flow>\",\n            show_opt_out,\n            show_qualifier_times,\n            default_game_count,\n            min_schedule_notice,\n            retime_window,\n            auto_import,\n            language AS \"language: Language\"\n        FROM events WHERE series = $1 AND event = $2",
   "describe": {
     "columns": [
       {
@@ -115,6 +115,11 @@
       },
       {
         "ordinal": 22,
+        "name": "auto_import",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 23,
         "name": "language: Language",
         "type_info": {
           "Custom": {
@@ -160,8 +165,9 @@
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "686bb760a45758c61620e0768c38865af450f26ae4662075dd97ea8a400ac8d3"
+  "hash": "556d69e958f454d20de6997de60d7dc55a52efc55d3487c706d257f92ce8ffdc"
 }
