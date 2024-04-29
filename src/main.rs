@@ -116,6 +116,11 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
             #[cfg(unix)] Subcommand::Roll { .. } | Subcommand::RollRsl { .. } | Subcommand::Seed { .. } => while let Some(update) = Option::<SeedRollUpdate>::read(&mut sock).await? {
                 println!("{update:#?}");
             },
+            #[cfg(unix)] Subcommand::UpdateRegionalVc { .. } => {
+                println!("Mido's House: updating regional voice chat");
+                u8::read(&mut sock).await?;
+                println!("Mido's House: done updating regional voice chat");
+            }
         }
     } else {
         let default_panic_hook = std::panic::take_hook();

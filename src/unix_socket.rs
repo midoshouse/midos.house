@@ -56,6 +56,10 @@ pub(crate) enum ClientMessage {
         goal: Goal,
         args: Vec<String>,
     },
+    UpdateRegionalVc {
+        user_id: Id<Users>,
+        scene: u8,
+    },
 }
 
 pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<Mutex<racetime_bot::CleanShutdown>>, global_state: Arc<racetime_bot::GlobalState>) -> wheel::Result<()> {
@@ -168,6 +172,11 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                     update.write(&mut sock).await.expect("error writing to UNIX socket");
                                     if update.is_none() { break }
                                 }
+                            }
+                            Ok(ClientMessage::UpdateRegionalVc { user_id: _, scene: _ }) => {
+                                //TODO
+                                0u8.write(&mut sock).await.expect("error writing to UNIX socket");
+                                break
                             }
                             Err(ReadError { kind: ReadErrorKind::Io(e), .. }) if e.kind() == io::ErrorKind::UnexpectedEof => break,
                             Err(e) => panic!("error reading from UNIX socket: {e} ({e:?})"),

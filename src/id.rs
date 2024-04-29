@@ -57,6 +57,7 @@ impl Table for Users {
 }
 
 #[derive(Derivative, Deserialize, Serialize)]
+#[cfg_attr(unix, derive(Protocol), async_proto(where(T: Sync)))]
 #[derivative(Debug(bound = ""), Clone(bound = ""), Copy(bound = ""), PartialEq(bound = ""), Eq(bound = ""), Hash(bound = ""), PartialOrd(bound = ""), Ord(bound = ""))]
 #[serde(from = "u64", into = "u64")]
 pub(crate) struct Id<T: Table> {
