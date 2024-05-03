@@ -818,7 +818,7 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::TriforceBlitz => match &*event.event {
-                "2" => {}
+                "2" | "3" => {}
                 _ => unimplemented!(),
             },
             Series::WeTryToBeBetter => match &*event.event {

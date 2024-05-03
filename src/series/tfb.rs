@@ -97,6 +97,17 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
             }
         }),
+        "3" => Some(html! {
+            article {
+                p {
+                    : "This is the 3rd season of the Triforce Blitz tournament, organized by ";
+                    : English.join_html(data.organizers(transaction).await?);
+                    : ". See ";
+                    a(href = "https://docs.google.com/document/d/1p8HAwWsjsLW7tjfDl2SK-yQ35pVqbAS9GB72bkOIDFI/edit") : "the official document";
+                    : " for details.";
+                }
+            }
+        }),
         _ => None,
     })
 }
@@ -110,7 +121,7 @@ pub(crate) fn qualifier_async_rules() -> RawHtml<String> {
             li {
                 : "Requesting the seed for async will make you ";
                 strong : "ineligible";
-                : " to participate in the live qualifier on April 8th.";
+                : " to participate in the live qualifier on April 8th."; //TODO adjust for S3
             }
             li {
                 : "To avoid accidental spoilers, the qualifier async ";

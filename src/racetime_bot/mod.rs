@@ -3123,7 +3123,7 @@ impl RaceHandler<GlobalState> for Handler {
                             }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("random settings Pictionary seed")).await,
                             Goal::Sgl2023 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), sgl::settings_2023(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                             Goal::SongsOfHope => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), soh::settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
-                            Goal::TriforceBlitz => this.roll_tfb_seed(ctx, "LATEST", goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S2 seed")).await,
+                            Goal::TriforceBlitz => this.roll_tfb_seed(ctx, "LATEST", goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S3 seed")).await,
                             Goal::WeTryToBeBetter => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), wttbb::settings(), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
                         },
                         RaceState::Draft { .. } => this.advance_draft(ctx, &state).await?,
