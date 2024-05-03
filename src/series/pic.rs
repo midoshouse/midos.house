@@ -382,19 +382,19 @@ impl ToHtml for Role {
     }
 }
 
-impl TryFrom<crate::event::Role> for Role {
+impl TryFrom<event::Role> for Role {
     type Error = ();
 
-    fn try_from(role: crate::event::Role) -> Result<Self, ()> {
+    fn try_from(role: event::Role) -> Result<Self, ()> {
         match role {
-            crate::event::Role::Sheikah => Ok(Self::Sheikah),
-            crate::event::Role::Gerudo => Ok(Self::Gerudo),
+            event::Role::Sheikah => Ok(Self::Sheikah),
+            event::Role::Gerudo => Ok(Self::Gerudo),
             _ => Err(()),
         }
     }
 }
 
-impl From<Role> for crate::event::Role {
+impl From<Role> for event::Role {
     fn from(role: Role) -> Self {
         match role {
             Role::Sheikah => Self::Sheikah,

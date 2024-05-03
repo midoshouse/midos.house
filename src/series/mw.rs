@@ -1054,20 +1054,20 @@ impl ToHtml for Role {
     }
 }
 
-impl TryFrom<crate::event::Role> for Role {
+impl TryFrom<event::Role> for Role {
     type Error = ();
 
-    fn try_from(role: crate::event::Role) -> Result<Self, ()> {
+    fn try_from(role: event::Role) -> Result<Self, ()> {
         match role {
-            crate::event::Role::Power => Ok(Self::Power),
-            crate::event::Role::Wisdom => Ok(Self::Wisdom),
-            crate::event::Role::Courage => Ok(Self::Courage),
+            event::Role::Power => Ok(Self::Power),
+            event::Role::Wisdom => Ok(Self::Wisdom),
+            event::Role::Courage => Ok(Self::Courage),
             _ => Err(()),
         }
     }
 }
 
-impl From<Role> for crate::event::Role {
+impl From<Role> for event::Role {
     fn from(role: Role) -> Self {
         match role {
             Role::Power => Self::Power,
@@ -1221,9 +1221,9 @@ impl<'v> EnterFormStep2Defaults<'v> {
         }
     }
 
-    pub(crate) fn role(&self, racetime_id: &str) -> Option<crate::event::Role> {
+    pub(crate) fn role(&self, racetime_id: &str) -> Option<event::Role> {
         match self {
-            Self::Context(ctx) => ctx.field_value(&*format!("roles[{racetime_id}]")).and_then(crate::event::Role::from_css_class),
+            Self::Context(ctx) => ctx.field_value(&*format!("roles[{racetime_id}]")).and_then(event::Role::from_css_class),
             Self::Values { .. } => None,
         }
     }

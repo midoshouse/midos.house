@@ -115,7 +115,7 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
             .detailed_error_for_status().await
         {
             Ok(_) => Ok(id_or_url.to_owned()),
-            Err(wheel::Error::ResponseStatus { inner, .. }) if inner.status() == Some(reqwest::StatusCode::NOT_FOUND) => Err(ParseUserError::IdNotFound),
+            Err(wheel::Error::ResponseStatus { inner, .. }) if inner.status() == Some(StatusCode::NOT_FOUND) => Err(ParseUserError::IdNotFound),
             Err(e) => Err(e.into()),
         }
     }
@@ -132,7 +132,7 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
                     .detailed_error_for_status().await
                 {
                     Ok(response) => Ok(response.json_with_text_in_error::<UserData>().await?.id),
-                    Err(wheel::Error::ResponseStatus { inner, .. }) if inner.status() == Some(reqwest::StatusCode::NOT_FOUND) => Err(ParseUserError::UrlNotFound),
+                    Err(wheel::Error::ResponseStatus { inner, .. }) if inner.status() == Some(StatusCode::NOT_FOUND) => Err(ParseUserError::UrlNotFound),
                     Err(e) => Err(e.into()),
                 }
             } else {

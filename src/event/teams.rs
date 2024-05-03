@@ -412,7 +412,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
 pub(crate) enum Error {
     #[error(transparent)] Cal(#[from] cal::Error),
     #[error(transparent)] Data(#[from] DataError),
-    #[error(transparent)] Event(#[from] crate::event::Error),
+    #[error(transparent)] Event(#[from] event::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] PgInterval(#[from] PgIntervalDecodeError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
