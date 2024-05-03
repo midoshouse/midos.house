@@ -172,6 +172,7 @@ pub(crate) use {
         },
         event::{
             self,
+            AsyncKind,
             MatchSource,
             TeamConfig,
         },

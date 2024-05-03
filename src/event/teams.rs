@@ -109,11 +109,11 @@ pub(crate) struct SignupsTeam {
     mq_ok: bool,
 }
 
-pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, config: &Config, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind) -> Result<Vec<SignupsTeam>, cal::Error> {
+pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind) -> Result<Vec<SignupsTeam>, cal::Error> {
     let mut signups = match qualifier_kind {
         QualifierKind::SglOnline => {
             let mut scores = HashMap::<_, Vec<_>>::default();
-            for race in Race::for_event(transaction, http_client, config, data).await? {
+            for race in Race::for_event(transaction, http_client, data).await? {
                 if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
                 let Ok(room) = race.rooms().exactly_one() else { continue };
                 let room_data = http_client.get(format!("{room}/data"))
@@ -200,7 +200,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             }
 
             let mut entrant_data = HashMap::<_, (u8, _)>::default();
-            for race in Race::for_event(transaction, http_client, config, data).await? {
+            for race in Race::for_event(transaction, http_client, data).await? {
                 if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
                 let Ok(room) = race.rooms().exactly_one() else { continue };
                 let room_data = http_client.get(format!("{room}/data"))
@@ -236,7 +236,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             }
             let num_qualified = entrant_data.values().filter(|(_, qualification_level)| *qualification_level == QualificationLevel::Qualified).count();
             let choppin_block_finished = if_chain! {
-                if let Ok(race) = Race::for_event(transaction, http_client, config, data).await?.into_iter()
+                if let Ok(race) = Race::for_event(transaction, http_client, data).await?.into_iter()
                     .filter(|race| race.phase.as_ref().is_some_and(|phase| phase == "Choppin Block"))
                     .exactly_one();
                 if let Ok(room) = race.rooms().exactly_one();
@@ -425,7 +425,7 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
 }
 
 #[rocket::get("/event/<series>/<event>/teams")]
-pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, config: &State<Config>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Teams, false).await?;
@@ -451,7 +451,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
         false
     };
     let roles = data.team_config().roles();
-    let signups = signups_sorted(&mut transaction, http_client, config, me.as_ref(), &data, qualifier_kind).await?;
+    let signups = signups_sorted(&mut transaction, http_client, me.as_ref(), &data, qualifier_kind).await?;
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config() { "Entrants" } else { "Teams" };
     let mut column_headers = Vec::default();

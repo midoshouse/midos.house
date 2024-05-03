@@ -2,7 +2,6 @@ use {
     serde_json::Value as Json,
     crate::{
         event::{
-            AsyncKind,
             Data,
             Error,
             InfoError,
