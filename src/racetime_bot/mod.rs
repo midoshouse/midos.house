@@ -213,7 +213,7 @@ impl VersionedRslPreset {
 
     #[cfg(unix)] pub(crate) fn new_versioned(version: rando::Version, preset: Option<&str>) -> Result<Self, ()> {
         Ok(match version.branch() {
-            rando::Branch::DevR => Self::Xopar { version: Some(version.base().clone()), preset: preset.map(rsl::Preset::from_str).transpose()?.unwrap_or_default() },
+            rando::Branch::DevR | rando::Branch::DevRob => Self::Xopar { version: Some(version.base().clone()), preset: preset.map(rsl::Preset::from_str).transpose()?.unwrap_or_default() },
             rando::Branch::DevFenhl => Self::Fenhl { version: Some((version.base().clone(), version.supplementary().unwrap())), preset: preset.map(RslDevFenhlPreset::from_str).transpose()?.unwrap_or_default() },
             _ => return Err(()),
         })
@@ -1172,8 +1172,12 @@ impl GlobalState {
             if !preset.is_version_locked() {
                 let repo = Repository::open(&rsl_script_path)?;
                 let mut origin = repo.find_remote("origin")?;
-                origin.fetch(&["master"], None, None)?;
-                repo.reset(&repo.find_branch("origin/master", BranchType::Remote)?.into_reference().peel_to_commit()?.into_object(), ResetType::Hard, None)?;
+                let branch_name = match preset {
+                    VersionedRslPreset::Xopar { .. } => "release",
+                    VersionedRslPreset::Fenhl { .. } => "dev-fenhl",
+                };
+                origin.fetch(&[branch_name], None, None)?;
+                repo.reset(&repo.find_branch(&format!("origin/{branch_name}"), BranchType::Remote)?.into_reference().peel_to_commit()?.into_object(), ResetType::Hard, None)?;
             }
             // check required randomizer version
             let local_version_path = rsl_script_path.join("rslversion.py");
@@ -1850,7 +1854,7 @@ impl OotrApiClient {
         }
 
         let web_branch = if let Some(branch) = branch {
-            branch.web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?
+            branch.latest_web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?
         } else {
             // API lists releases under the “master” branch
             "master"
@@ -1867,7 +1871,7 @@ impl OotrApiClient {
     /// Checks if the given randomizer branch/version is available on web, and if so, which version to use.
     async fn can_roll_on_web(&self, rsl_preset: Option<&VersionedRslPreset>, version: &VersionedBranch, world_count: u8) -> Option<rando::Version> {
         if world_count > 3 { return None }
-        if rsl_preset.is_some() && version.branch().map_or(true, |branch| branch.web_name_random_settings().is_none()) { return None }
+        if rsl_preset.is_some() && version.branch().map_or(true, |branch| branch.latest_web_name_random_settings().is_none()) { return None }
         match version {
             VersionedBranch::Pinned(version) => {
                 if matches!(rsl_preset, Some(VersionedRslPreset::Xopar { .. })) && *version == rando::Version::from_branch(rando::Branch::DevR, 7, 1, 181, 1) || *version == rando::Version::from_branch(rando::Branch::DevR, 8, 0, 1, 1) {
