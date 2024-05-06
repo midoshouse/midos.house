@@ -270,26 +270,13 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
             };
             results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
         }
-        /*
         if cal_event.race.game.is_none() { //TODO also auto-report multi-game matches (report all games but the last as match progress)
-            if let Some(ref set_id) = cal_event.race.startgg_set {
-                if let Some(winning_team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, winner.id).await.to_racetime()? {
-                    if let Some(winner_entrant_id) = winning_team.startgg_id {
-                        startgg::query_uncached::<startgg::ReportOneGameResultMutation>(&ctx.global_state.http_client, &ctx.global_state.startgg_token, startgg::report_one_game_result_mutation::Variables {
-                            set_id: set_id.clone(),
-                            winner_entrant_id,
-                        }).await.to_racetime()?;
-                    } else {
-                        if let Some(organizer_channel) = event.discord_organizer_channel {
-                            let mut msg = MessageBuilder::default();
-                            //TODO mention organizer role
-                            msg.push("failed to report race result to start.gg: <https://");
-                            msg.push(ctx.global_state.env.racetime_host());
-                            msg.push(&ctx.data().await.url);
-                            msg.push("> (winner has no start.gg entrant ID)");
-                            organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
-                        }
-                    }
+            if let cal::Source::StartGG { ref set, .. } = cal_event.race.source {
+                if let Some(winner_entrant_id) = winner.startgg_id {
+                    startgg::query_uncached::<startgg::ReportOneGameResultMutation>(&ctx.global_state.http_client, &ctx.global_state.startgg_token, startgg::report_one_game_result_mutation::Variables {
+                        set_id: set.clone(),
+                        winner_entrant_id,
+                    }).await.to_racetime()?;
                 } else {
                     if let Some(organizer_channel) = event.discord_organizer_channel {
                         let mut msg = MessageBuilder::default();
@@ -297,13 +284,12 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                         msg.push("failed to report race result to start.gg: <https://");
                         msg.push(ctx.global_state.env.racetime_host());
                         msg.push(&ctx.data().await.url);
-                        msg.push("> (winner is not an event entrant)");
+                        msg.push("> (winner has no start.gg entrant ID)");
                         organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
                     }
                 }
             }
-        }
-        */ //TODO debug errors returned from this mutation
+        } //TODO debug errors returned from this mutation
         if_chain! {
             if let Some(draft_kind) = event.draft_kind();
             if let Some(next_game) = cal_event.race.next_game(&mut transaction, &ctx.global_state.http_client).await.to_racetime()?;

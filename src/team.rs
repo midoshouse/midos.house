@@ -8,7 +8,6 @@ pub(crate) struct Team {
     pub(crate) id: Id<Teams>,
     pub(crate) name: Option<String>,
     pub(crate) racetime_slug: Option<String>,
-    #[allow(unused)] //TODO reenable start.gg result reporting
     pub(crate) startgg_id: Option<startgg::ID>,
     pub(crate) plural_name: Option<bool>,
     pub(crate) restream_consent: bool,
