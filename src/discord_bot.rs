@@ -2,6 +2,7 @@ use {
     std::num::NonZeroU64,
     serenity::all::{
         CacheHttp,
+        Content,
         CreateAllowedMentions,
         CreateButton,
         CreateCommand,
@@ -71,6 +72,71 @@ where i64: sqlx::Type<DB> {
 
     fn compatible(ty: &<DB as Database>::TypeInfo) -> bool {
         i64::compatible(ty)
+    }
+}
+
+#[async_trait]
+pub(crate) trait MessageBuilderExt {
+    async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self>;
+    async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, team: &Team) -> sqlx::Result<&mut Self>;
+    fn mention_user(&mut self, user: &User) -> &mut Self;
+    fn push_named_link_no_preview(&mut self, name: impl Into<Content>, url: impl Into<Content>) -> &mut Self;
+    fn push_named_link_safe_no_preview(&mut self, name: impl Into<Content>, url: impl Into<Content>) -> &mut Self;
+}
+
+#[async_trait]
+impl MessageBuilderExt for MessageBuilder {
+    async fn mention_entrant(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, entrant: &Entrant) -> sqlx::Result<&mut Self> {
+        match entrant {
+            Entrant::MidosHouseTeam(team) => { self.mention_team(transaction, guild, team).await?; }
+            Entrant::Discord { id,  .. } => { self.mention(id); }
+            Entrant::Named { name, .. } => { self.push_safe(name); }
+        }
+        Ok(self)
+    }
+
+    async fn mention_team(&mut self, transaction: &mut Transaction<'_, Postgres>, guild: Option<GuildId>, team: &Team) -> sqlx::Result<&mut Self> {
+        if let Ok(member) = team.members(&mut *transaction).await?.into_iter().exactly_one() {
+            self.mention_user(&member);
+        } else {
+            let team_role = if let (Some(guild), Some(racetime_slug)) = (guild, &team.racetime_slug) {
+                sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(guild), racetime_slug).fetch_optional(&mut **transaction).await?
+            } else {
+                None
+            };
+            if let Some(PgSnowflake(team_role)) = team_role {
+                self.role(team_role);
+            } else if let Some(team_name) = team.name(transaction).await? {
+                if let Some(ref racetime_slug) = team.racetime_slug {
+                    self.push_named_link_safe_no_preview(team_name, format!("https://racetime.gg/team/{racetime_slug}"));
+                } else {
+                    self.push_italic_safe(team_name);
+                }
+            } else {
+                if let Some(ref racetime_slug) = team.racetime_slug {
+                    self.push_named_link_safe_no_preview("an unnamed team", format!("https://racetime.gg/team/{racetime_slug}"));
+                } else {
+                    self.push("an unnamed team");
+                }
+            }
+        }
+        Ok(self)
+    }
+
+    fn mention_user(&mut self, user: &User) -> &mut Self {
+        if let Some(ref discord) = user.discord {
+            self.mention(&discord.id)
+        } else {
+            self.push_safe(user.display_name())
+        }
+    }
+
+    fn push_named_link_no_preview(&mut self, name: impl Into<Content>, url: impl Into<Content>) -> &mut Self {
+        self.push_named_link(name, format!("<{}>", url.into()))
+    }
+
+    fn push_named_link_safe_no_preview(&mut self, name: impl Into<Content>, url: impl Into<Content>) -> &mut Self {
+        self.push_named_link_safe(name, format!("<{}>", url.into()))
     }
 }
 

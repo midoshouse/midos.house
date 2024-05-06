@@ -28,6 +28,71 @@ include!(concat!(env!("OUT_DIR"), "/static_files.rs"));
 
 pub(crate) use static_url;
 
+#[derive(Responder)]
+pub(crate) enum RedirectOrContent {
+    Redirect(Redirect),
+    Content(RawHtml<String>),
+}
+
+#[derive(Responder)]
+pub(crate) enum StatusOrError<E> {
+    Status(Status),
+    Err(E),
+}
+
+pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
+    match url.host_str() {
+        Some("multistre.am") => html! {
+            img(class = "favicon", alt = "external link (multistre.am)", src = static_url!("multistream-favicon.jpg"));
+        },
+        Some("youtu.be") => html! {
+            img(class = "favicon", alt = "external link (youtu.be)", srcset = "https://www.youtube.com/s/desktop/435d54f2/img/favicon.ico 16w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_32x32.png 32w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_48x48.png 48w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_96x96.png 96w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_144x144.png 144w");
+        },
+        Some("challonge.com" | "www.challonge.com") => html! {
+            img(class = "favicon", alt = "external link (challonge.com)", srcset = "https://assets.challonge.com/favicon-16x16.png 16w, https://assets.challonge.com/favicon-32x32.png 32w");
+        },
+        Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("document") => html! {
+            img(class = "favicon", alt = "external link (docs.google.com/document)", src = "https://ssl.gstatic.com/docs/documents/images/kix-favicon7.ico");
+        },
+        Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("forms") => html! {
+            img(class = "favicon", alt = "external link (docs.google.com/forms)", srcset = "https://ssl.gstatic.com/docs/spreadsheets/forms/favicon_qp2.png 16w, https://ssl.gstatic.com/docs/forms/device_home/android_192.png 192w");
+        },
+        Some("docs.google.com") if url.path_segments().into_iter().flatten().next() == Some("spreadsheets") => html! {
+            img(class = "favicon", alt = "external link (docs.google.com/spreadsheets)", src = "https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico");
+        },
+        Some("drive.google.com") => html! {
+            img(class = "favicon", alt = "external link (drive.google.com)", src = "https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png");
+        },
+        Some("ootrandomizer.com" | "league.ootrandomizer.com") => html! {
+            img(class = "favicon", alt = "external link (ootrandomizer.com)", srcset = "https://ootrandomizer.com/img/favicon-16x16.png 16w, https://ootrandomizer.com/img/favicon-32x32.png 32w");
+        },
+        Some("tiltify.com") => html! {
+            img(class = "favicon", alt = "external link (tiltify.com)", srcset = "https://assets.tiltify.com/favicons/favicon-16x16.png 16w, https://assets.tiltify.com/favicons/favicon-32x32.png 32w, https://assets.tiltify.com/favicons/favicon-48x48.png 48w, https://assets.tiltify.com/favicons/favicon-64x64.png 64w, https://assets.tiltify.com/favicons/favicon-96x96.png 96w, https://assets.tiltify.com/favicons/favicon-128x128.png 128w, https://assets.tiltify.com/favicons/favicon-256x256.png 256w");
+        },
+        Some("youtube.com" | "www.youtube.com") => html! {
+            img(class = "favicon", alt = "external link (youtube.com)", srcset = "https://www.youtube.com/s/desktop/435d54f2/img/favicon.ico 16w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_32x32.png 32w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_48x48.png 48w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_96x96.png 96w, https://www.youtube.com/s/desktop/435d54f2/img/favicon_144x144.png 144w");
+        },
+        Some("zeldaspeedruns.com" | "www.zeldaspeedruns.com") => html! {
+            img(class = "favicon", alt = "external link (zeldaspeedruns.com)", srcset = "https://www.zeldaspeedruns.com/favicon-16x16.png 16w, https://www.zeldaspeedruns.com/favicon-32x32.png 32w, https://www.zeldaspeedruns.com/favicon-96x96.png 96w, https://www.zeldaspeedruns.com/android-chrome-192x192.png 192w, https://www.zeldaspeedruns.com/favicon-194x194.png 194w");
+        },
+        Some("discord.gg") => html! {
+            img(class = "favicon", alt = "external link (discord.gg)", src = static_url!("discord-favicon.ico"));
+        },
+        Some("racetime.gg") => html! {
+            img(class = "favicon", alt = "external link (racetime.gg)", src = static_url!("racetimeGG-favicon.svg"));
+        },
+        Some("start.gg" | "www.start.gg") => html! {
+            img(class = "favicon", alt = "external link (start.gg)", src = "https://www.start.gg/__static/images/favicon/favicon.ico");
+        },
+        Some("twitch.tv" | "www.twitch.tv") => html! {
+            img(class = "favicon", alt = "external link (twitch.tv)", srcset = "https://static.twitchcdn.net/assets/favicon-16-52e571ffea063af7a7f4.png 16w, https://static.twitchcdn.net/assets/favicon-32-e29e246c157142c94346.png 32w");
+        },
+        _ => html! {
+            : "🌐";
+        },
+    }
+}
+
 pub(crate) enum PageKind {
     Index,
     Banner,

@@ -26,9 +26,11 @@ mod discord_bot;
 mod draft;
 mod event;
 mod favicon;
+mod form;
 #[macro_use] mod http;
 mod id;
 mod lang;
+#[macro_use] mod macros;
 mod notification;
 mod prelude;
 mod racetime_bot;
@@ -36,9 +38,9 @@ mod seed;
 mod series;
 mod startgg;
 mod team;
+mod time;
 #[cfg(unix)] mod unix_socket;
 mod user;
-mod util;
 
 #[derive(Default, Clone, Copy, clap::ValueEnum)]
 enum Environment {

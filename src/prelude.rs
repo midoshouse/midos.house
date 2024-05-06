@@ -165,6 +165,7 @@ pub(crate) use {
         config::Config,
         discord_bot::{
             CommandIds,
+            MessageBuilderExt as _,
             PgSnowflake,
         },
         draft::{
@@ -182,11 +183,15 @@ pub(crate) use {
             ChestAppearances,
             ChestTextures,
         },
+        form::*,
         http::{
             PageError,
             PageKind,
             PageResult,
             PageStyle,
+            RedirectOrContent,
+            StatusOrError,
+            favicon,
             page,
             static_url,
         },
@@ -201,6 +206,7 @@ pub(crate) use {
             self,
             *,
         },
+        macros::*,
         racetime_bot,
         seed,
         series::*,
@@ -209,11 +215,11 @@ pub(crate) use {
             self,
             Team,
         },
+        time::*,
         user::{
             self,
             User,
         },
-        util::*,
     },
 };
 #[cfg(unix)] pub(crate) use {
