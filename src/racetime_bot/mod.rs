@@ -2390,7 +2390,10 @@ impl RaceHandler<GlobalState> for Handler {
                 if let Ok(()) = res {
                     println!("race handler for https://{}{} stopped", global_state.env.racetime_host(), data.url);
                 } else {
-                    println!("race handler for https://{}{} panicked", global_state.env.racetime_host(), data.url);
+                    eprintln!("race handler for https://{}{} panicked", global_state.env.racetime_host(), data.url);
+                    if let Environment::Production = global_state.env {
+                        let _ = wheel::night_report("/net/midoshouse/error", Some(&format!("race handler for https://{}{} panicked", global_state.env.racetime_host(), data.url))).await;
+                    }
                 }
             });
         });
