@@ -2875,6 +2875,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                                             } else {
                                                 form.context.push_error(form::Error::validation("Couldn't parse patch file name from room data").with_name(field_name));
                                             }
+                                            Err(wheel::Error::ResponseStatus { inner, text, .. }) if inner.status() == Some(StatusCode::NOT_FOUND) && text.as_ref().is_ok_and(|text| text == "The indicated id is either invalid or has expired") => continue,
                                             Err(e) => form.context.push_error(form::Error::validation(format!("Error getting patch file from room data: {e}")).with_name(field_name)),
                                         },
                                         Err(e) => form.context.push_error(form::Error::validation(format!("Error getting patch file from room data: {e}")).with_name(field_name)),
