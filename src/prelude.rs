@@ -148,6 +148,7 @@ pub(crate) use {
         io_error_from_reqwest,
         traits::{
             IoResultExt as _,
+            IsNetworkError,
             ReqwestResponseExt as _,
         },
     },

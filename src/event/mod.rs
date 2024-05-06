@@ -636,6 +636,26 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     }
 }
 
+impl IsNetworkError for Error {
+    fn is_network_error(&self) -> bool {
+        match self {
+            Self::Calendar(e) => e.is_network_error(),
+            Self::Data(_) => false,
+            Self::Discord(_) => false,
+            Self::Io(e) => e.is_network_error(),
+            Self::Page(e) => e.is_network_error(),
+            Self::Reqwest(e) => e.is_network_error(),
+            Self::SeedData(e) => e.is_network_error(),
+            Self::Serenity(_) => false,
+            Self::Sql(_) => false,
+            Self::Url(_) => false,
+            Self::Wheel(e) => e.is_network_error(),
+            Self::OrganizerUserData => false,
+            Self::RestreamerUserData => false,
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum InfoError {
     #[error(transparent)] Data(#[from] DataError),

@@ -164,6 +164,15 @@ pub(crate) enum ExtraDataError {
     #[error(transparent)] Wheel(#[from] wheel::Error),
 }
 
+impl IsNetworkError for ExtraDataError {
+    fn is_network_error(&self) -> bool {
+        match self {
+            Self::Json(_) => false,
+            Self::Wheel(e) => e.is_network_error(),
+        }
+    }
+}
+
 pub(crate) struct ExtraData {
     spoiler_status: SpoilerStatus,
     pub(crate) file_hash: Option<[HashIcon; 5]>,

@@ -4137,18 +4137,23 @@ async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRa
                 let () = bot.run_until::<Handler, _, _>(shutdown).await?;
                 break Ok(())
             }
-            Err(Error::Reqwest(e)) if e.status().map_or(false, |status| status.is_server_error()) => {
+            Err(e) if e.is_network_error() => {
                 if last_crash.elapsed() >= Duration::from_secs(60 * 60 * 24) {
                     wait_time = Duration::from_secs(1); // reset wait time after no crash for a day
                 } else {
                     wait_time *= 2; // exponential backoff
                 }
                 eprintln!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
-                //TODO notify if wait_time >= Duration::from_secs(2)
+                if wait_time >= Duration::from_secs(16) {
+                    wheel::night_report("/net/midoshouse/error", Some(&format!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await.to_racetime()?;
+                }
                 sleep(wait_time).await;
                 last_crash = Instant::now();
             }
-            Err(e) => break Err(e),
+            Err(e) => {
+                wheel::night_report("/net/midoshouse/error", Some(&format!("error handling racetime.gg rooms: {e} ({e:?})"))).await.to_racetime()?;
+                break Err(e)
+            }
         }
     }
 }

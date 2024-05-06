@@ -25,6 +25,17 @@ pub(crate) enum Error {
     NoDataNoErrors,
 }
 
+impl IsNetworkError for Error {
+    fn is_network_error(&self) -> bool {
+        match self {
+            Self::Reqwest(e) => e.is_network_error(),
+            Self::Wheel(e) => e.is_network_error(),
+            Self::GraphQL(_) => false,
+            Self::NoDataNoErrors => false,
+        }
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum IdInner {

@@ -69,6 +69,18 @@ impl<E: Into<PageError>> From<E> for StatusOrError<PageError> {
     }
 }
 
+impl IsNetworkError for PageError {
+    fn is_network_error(&self) -> bool {
+        match self {
+            Self::Event(_) => false,
+            Self::Sql(_) => false,
+            Self::Wheel(e) => e.is_network_error(),
+            Self::FenhlUserData => false,
+            Self::XoparUserData => false,
+        }
+    }
+}
+
 pub(crate) type PageResult = Result<RawHtml<String>, PageError>;
 
 pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option<User>, uri: &Origin<'_>, style: PageStyle, title: &str, content: impl ToHtml) -> PageResult {

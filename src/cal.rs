@@ -17,7 +17,6 @@ use {
     reqwest::StatusCode,
     rocket_util::Response,
     sqlx::types::Json,
-    wheel::traits::IsNetworkError,
     yup_oauth2::{
         ServiceAccountAuthenticator,
         read_service_account_key,
@@ -1357,6 +1356,26 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     }
 }
 
+impl IsNetworkError for Error {
+    fn is_network_error(&self) -> bool {
+        match self {
+            Self::ChronoParse(_) => false,
+            Self::Discord(_) => false,
+            Self::Event(_) => false,
+            Self::ParseInt(_) => false,
+            Self::Reqwest(e) => e.is_network_error(),
+            Self::SeedData(e) => e.is_network_error(),
+            Self::Sheets(e) => e.is_network_error(),
+            Self::Sql(_) => false,
+            Self::StartGG(e) => e.is_network_error(),
+            Self::TimeFromLocal(_) => false,
+            Self::Url(_) => false,
+            Self::Wheel(e) => e.is_network_error(),
+            Self::UnknownTeam => false,
+        }
+    }
+}
+
 static SHEETS_CACHE: Lazy<Mutex<HashMap<(String, String), (Instant, Vec<Vec<String>>)>>> = Lazy::new(|| Mutex::default());
 
 #[derive(Debug, thiserror::Error)]
@@ -1387,6 +1406,12 @@ impl IsNetworkError for SheetsUncachedError {
 pub(crate) struct SheetsError {
     source: SheetsUncachedError,
     cache: SheetsCacheMissReason,
+}
+
+impl IsNetworkError for SheetsError {
+    fn is_network_error(&self) -> bool {
+        self.source.is_network_error()
+    }
 }
 
 #[derive(Debug)]
@@ -2399,7 +2424,7 @@ async fn import_race<'a>(mut transaction: Transaction<'a, Postgres>, discord_ctx
     Ok(transaction)
 }
 
-pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Client, env: Environment, config: Config, mut shutdown: rocket::Shutdown, discord_ctx: RwFuture<DiscordCtx>) -> Result<(), event::Error> {
+async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, env: Environment, config: Config, mut shutdown: rocket::Shutdown, discord_ctx: RwFuture<DiscordCtx>) -> Result<(), event::Error> {
     loop {
         let mut transaction = db_pool.begin().await?;
         for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE auto_import AND start IS NOT NULL AND start <= NOW() AND (end_time IS NULL OR end_time > NOW())"#).fetch_all(&mut *transaction).await? {
@@ -2422,6 +2447,33 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
         }
     }
     Ok(())
+}
+
+pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Client, env: Environment, config: Config, shutdown: rocket::Shutdown, discord_ctx: RwFuture<DiscordCtx>) -> Result<(), event::Error> {
+    let mut last_crash = Instant::now();
+    let mut wait_time = Duration::from_secs(1);
+    loop {
+        match auto_import_races_inner(db_pool.clone(), http_client.clone(), env, config.clone(), shutdown.clone(), discord_ctx.clone()).await {
+            Ok(()) => break Ok(()),
+            Err(e) if e.is_network_error() => {
+                if last_crash.elapsed() >= Duration::from_secs(60 * 60 * 24) {
+                    wait_time = Duration::from_secs(1); // reset wait time after no crash for a day
+                } else {
+                    wait_time *= 2; // exponential backoff
+                }
+                eprintln!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
+                if wait_time >= Duration::from_secs(16) {
+                    wheel::night_report("/net/midoshouse/error", Some(&format!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await?;
+                }
+                sleep(wait_time).await;
+                last_crash = Instant::now();
+            }
+            Err(e) => {
+                wheel::night_report("/net/midoshouse/error", Some(&format!("failed to auto-import races: {e} ({e:?})"))).await?;
+                break Err(e)
+            }
+        }
+    }
 }
 
 pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
