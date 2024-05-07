@@ -2459,6 +2459,8 @@ impl RaceHandler<GlobalState> for Handler {
                                 format!("the {}", event.display_name) //TODO remove “the” depending on event name
                             } else if let (Some("Qualifier"), Some(round)) = (cal_event.race.phase.as_deref(), cal_event.race.round.as_ref()) {
                                 format!("qualifier {round}")
+                            } else if let (Some("Live Qualifier"), Some(round)) = (cal_event.race.phase.as_deref(), cal_event.race.round.as_ref()) {
+                                format!("live qualifier {round}")
                             } else {
                                 format!("this {} race", match (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref()) {
                                     (Some(phase), Some(round)) => format!("{phase} {round}"),
