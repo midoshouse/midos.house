@@ -467,7 +467,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     }
     for &(role, display_name) in roles {
         column_headers.push(html! {
-            th(class = role.css_class()) : display_name;
+            th(class? = role.css_class().filter(|_| data.team_config().has_distinct_roles())) : display_name;
         });
     }
     match qualifier_kind {
@@ -543,7 +543,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                 }
                             }
                             @for SignupsMember { role, user, is_confirmed, qualifier_time, qualifier_vod } in &members {
-                                td(class? = role.css_class()) {
+                                td(class? = role.css_class().filter(|_| data.team_config().has_distinct_roles())) {
                                     @match user {
                                         MemberUser::MidosHouse(user) => {
                                             : user;
