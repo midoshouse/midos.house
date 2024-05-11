@@ -553,8 +553,6 @@ async fn not_found(request: &Request<'_>) -> PageResult {
     }).await
 }
 
-//TODO catcher for 422 Unprocessable Entity (thrown when a submitted form does not match the required type, treat as a server error)
-
 #[rocket::catch(500)]
 async fn internal_server_error(request: &Request<'_>) -> PageResult {
     if request.guard::<&State<Environment>>().await.succeeded().map_or(true, |env| matches!(**env, Environment::Production)) {
@@ -565,6 +563,25 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
     page(pool.begin().await?, &me, &uri, PageStyle { chests: ChestAppearances::TOKENS, ..PageStyle::default() }, "Internal Server Error — Mido's House", html! {
         h1 : "Error 500: Internal Server Error";
+        p : "Sorry, something went wrong. Please notify Fenhl on Discord.";
+    }).await
+}
+
+#[rocket::catch(default)]
+async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
+    if request.guard::<&State<Environment>>().await.succeeded().map_or(true, |env| matches!(**env, Environment::Production)) {
+        wheel::night_report("/net/midoshouse/error", Some("responding with unexpected HTTP status code")).await?;
+    }
+    let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
+    let me = request.guard::<User>().await.succeeded();
+    let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
+    page(pool.begin().await?, &me, &uri, PageStyle { chests: ChestAppearances::TOKENS, ..PageStyle::default() }, &format!("{} — Mido's House", status.reason_lossy()), html! {
+        h1 {
+            : "Error ";
+            : status.code;
+            : ": ";
+            : status.reason_lossy();
+        }
         p : "Sorry, something went wrong. Please notify Fenhl on Discord.";
     }).await
 }
@@ -643,9 +660,9 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
     .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))
     .register("/", rocket::catchers![
         bad_request,
-        //TODO 403 Forbidden
         not_found,
         internal_server_error,
+        fallback_catcher,
     ])
     .attach(rocket_csrf::Fairing::default())
     .attach(OAuth2::<auth::RaceTime>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
