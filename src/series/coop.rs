@@ -63,6 +63,7 @@ pub(crate) fn s3_settings() -> serde_json::Map<String, Json> {
             "logic_child_deadhand",
             "logic_man_on_roof",
             "logic_dc_jump",
+            "logic_dc_scarecrow_gs",
             "logic_rusted_switches",
             "logic_windmill_poh",
             "logic_crater_bean_poh_with_hovers",
