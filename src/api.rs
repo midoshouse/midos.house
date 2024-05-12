@@ -301,7 +301,7 @@ struct Team {
 
     /// Members are guaranteed to be listed in a consistent order depending on the team configuration of the event, e.g. pictionary events will always list the runner first and the pilot second.
     async fn members(&self, ctx: &Context<'_>) -> sqlx::Result<Vec<TeamMember>> {
-        let team_config = self.event.team_config();
+        let team_config = self.event.team_config;
         let members = db!(db = ctx; self.inner.members(&mut *db).await?);
         let roles = team_config.roles();
         Ok(

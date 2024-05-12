@@ -366,7 +366,7 @@ impl Handler {
                 organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
             }
         } else {
-            match event.team_config() {
+            match event.team_config {
                 TeamConfig::Solo => match cal_event.race.entrants {
                     Entrants::Open | Entrants::Count { .. } => {} //TODO post results (just finisher and total entrant counts?)
                     Entrants::Named(_) => unimplemented!(),

@@ -295,7 +295,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 )
                 AND (kind = 'qualifier' OR kind IS NULL)
             "#, data.series as _, &data.event, me.as_ref().map(|me| i64::from(me.id))).fetch_all(&mut **transaction).await?;
-            let roles = data.team_config().roles();
+            let roles = data.team_config.roles();
             let mut signups = Vec::with_capacity(teams.len());
             for team in teams {
                 let mut members = Vec::with_capacity(roles.len());
@@ -450,24 +450,24 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     } else {
         false
     };
-    let roles = data.team_config().roles();
+    let roles = data.team_config.roles();
     let signups = signups_sorted(&mut transaction, http_client, me.as_ref(), &data, qualifier_kind).await?;
     let mut footnotes = Vec::default();
-    let teams_label = if let TeamConfig::Solo = data.team_config() { "Entrants" } else { "Teams" };
+    let teams_label = if let TeamConfig::Solo = data.team_config { "Entrants" } else { "Teams" };
     let mut column_headers = Vec::default();
     if let QualifierKind::Rank = qualifier_kind {
         column_headers.push(html! {
             th : "Qualifier Rank";
         });
     }
-    if !matches!(data.team_config(), TeamConfig::Solo) {
+    if !matches!(data.team_config, TeamConfig::Solo) {
         column_headers.push(html! {
             th : "Team Name";
         });
     }
     for &(role, display_name) in roles {
         column_headers.push(html! {
-            th(class? = role.css_class().filter(|_| data.team_config().has_distinct_roles())) : display_name;
+            th(class? = role.css_class().filter(|_| data.team_config.has_distinct_roles())) : display_name;
         });
     }
     match qualifier_kind {
@@ -525,7 +525,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                             @if let QualifierKind::Rank = qualifier_kind {
                                 td : team.as_ref().and_then(|team| team.qualifier_rank);
                             }
-                            @if !matches!(data.team_config(), TeamConfig::Solo) {
+                            @if !matches!(data.team_config, TeamConfig::Solo) {
                                 td {
                                     @if let Some(ref team) = team {
                                         : team.to_html(&mut transaction, **env, false).await?;
@@ -543,7 +543,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                 }
                             }
                             @for SignupsMember { role, user, is_confirmed, qualifier_time, qualifier_vod } in &members {
-                                td(class? = role.css_class().filter(|_| data.team_config().has_distinct_roles())) {
+                                td(class? = role.css_class().filter(|_| data.team_config.has_distinct_roles())) {
                                     @match user {
                                         MemberUser::MidosHouse(user) => {
                                             : user;

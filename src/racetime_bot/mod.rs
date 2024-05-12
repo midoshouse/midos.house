@@ -1658,7 +1658,7 @@ impl SeedRollUpdate {
                             let members = team.members_roles(&mut transaction).await.to_racetime()?;
                             let mut reply_to = String::default();
                             for (member, role) in &members {
-                                if event.team_config().role_is_racing(*role) {
+                                if event.team_config.role_is_racing(*role) {
                                     if let Some(ref racetime) = member.racetime {
                                         if !reply_to.is_empty() {
                                             reply_to.push_str(", ");
@@ -1705,7 +1705,7 @@ impl SeedRollUpdate {
                                 cmd.arg(hash4.to_string());
                                 cmd.arg(hash5.to_string());
                                 for (member, role) in members {
-                                    if event.team_config().role_is_racing(role) {
+                                    if event.team_config.role_is_racing(role) {
                                         cmd.arg(member.id.to_string());
                                     }
                                 }
@@ -2410,7 +2410,7 @@ impl RaceHandler<GlobalState> for Handler {
                 let mut entrants = Vec::default();
                 for team in cal_event.active_teams() {
                     for (member, role) in team.members_roles(&mut transaction).await.to_racetime()? {
-                        if event.team_config().role_is_racing(role) {
+                        if event.team_config.role_is_racing(role) {
                             if let Some(member) = member.racetime {
                                 if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member.id) {
                                     match entrant.status.value {
@@ -3257,7 +3257,7 @@ impl RaceHandler<GlobalState> for Handler {
                             if restreams.is_empty() {
                                 ctx.say(&if_chain! {
                                     if let French = goal.language();
-                                    if let TeamConfig::Solo = event.team_config();
+                                    if let TeamConfig::Solo = event.team_config;
                                     then {
                                         format!(
                                             "@everyone Le FPA a été appelé par {reply_to}.{} La race sera re-timée après le fin de celle-ci.",
@@ -3271,7 +3271,7 @@ impl RaceHandler<GlobalState> for Handler {
                                             } else {
                                                 format!(
                                                     "he {player_team} that did not call FPA can continue playing; t",
-                                                    player_team = if let TeamConfig::Solo = event.team_config() { "player" } else { "team" },
+                                                    player_team = if let TeamConfig::Solo = event.team_config { "player" } else { "team" },
                                                 )
                                             },
                                         )
@@ -3448,7 +3448,7 @@ impl RaceHandler<GlobalState> for Handler {
                     racetime::StartRace {
                         goal: goal.as_str().to_owned(),
                         goal_is_custom: goal.is_custom(),
-                        team_race: event.team_config().is_racetime_team_format(),
+                        team_race: event.team_config.is_racetime_team_format(),
                         invitational: !matches!(cal_event.race.entrants, Entrants::Open),
                         unlisted: cal_event.is_first_async_half(),
                         info_user: ctx.data().await.info_user.clone().unwrap_or_default(),
@@ -3493,7 +3493,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         racetime::StartRace {
                                             goal: goal.as_str().to_owned(),
                                             goal_is_custom: goal.is_custom(),
-                                            team_race: event.team_config().is_racetime_team_format(),
+                                            team_race: event.team_config.is_racetime_team_format(),
                                             invitational: !matches!(cal_event.race.entrants, Entrants::Open),
                                             unlisted: cal_event.is_first_async_half(),
                                             info_user: ctx.data().await.info_user.clone().unwrap_or_default(),
@@ -3941,7 +3941,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             let race_slug = racetime::StartRace {
                 goal: goal.as_str().to_owned(),
                 goal_is_custom: goal.is_custom(),
-                team_race: event.team_config().is_racetime_team_format() && matches!(cal_event.kind, cal::EventKind::Normal),
+                team_race: event.team_config.is_racetime_team_format() && matches!(cal_event.kind, cal::EventKind::Normal),
                 invitational: !matches!(cal_event.race.entrants, Entrants::Open),
                 unlisted: cal_event.is_first_async_half(),
                 info_bot: String::default(),

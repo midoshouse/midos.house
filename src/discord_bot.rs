@@ -306,7 +306,7 @@ async fn check_draft_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl Gen
                     let response_content = if let French = event.language {
                         format!("Désolé, mais ce n'est pas votre tour.")
                     } else {
-                        format!("Sorry, it's not {} turn in the settings draft.", if let TeamConfig::Solo = event.team_config() { "your" } else { "your team's" })
+                        format!("Sorry, it's not {} turn in the settings draft.", if let TeamConfig::Solo = event.team_config { "your" } else { "your team's" })
                     };
                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                         .ephemeral(true)
@@ -1196,7 +1196,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 _ => panic!("tried to schedule race with not two MH teams as async"),
                                             };
                                             let cal_event = cal::Event { race, kind };
-                                            if cal_event.should_create_room(&mut transaction, &event).await? && event.team_config().is_racetime_team_format() && start - Utc::now() < TimeDelta::minutes(30) {
+                                            if cal_event.should_create_room(&mut transaction, &event).await? && event.team_config.is_racetime_team_format() && start - Utc::now() < TimeDelta::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
                                                     let data = ctx.data.read().await;
                                                     (

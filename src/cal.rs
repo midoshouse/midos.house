@@ -907,7 +907,7 @@ impl Race {
             let mut channels = Vec::default();
             match entrant {
                 Entrant::MidosHouseTeam(team) => for (member, role) in team.members_roles(&mut *transaction).await? {
-                    if event.team_config().role_is_racing(role) {
+                    if event.team_config.role_is_racing(role) {
                         if let Some(twitch_name) = member.racetime_user_data(env, http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_name) {
                             channels.push(Cow::Owned(twitch_name));
                         } else {
@@ -1234,7 +1234,7 @@ impl Event {
                 race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async1,
             };
-            if event.race.event(&mut *transaction).await?.team_config().is_racetime_team_format() { // racetime.gg doesn't support single-entrant races
+            if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() { // racetime.gg doesn't support single-entrant races
                 events.push(event);
             }
         }
@@ -1243,7 +1243,7 @@ impl Event {
                 race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async2,
             };
-            if event.race.event(&mut *transaction).await?.team_config().is_racetime_team_format() { // racetime.gg doesn't support single-entrant races
+            if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() { // racetime.gg doesn't support single-entrant races
                 events.push(event);
             }
         }
@@ -1645,7 +1645,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
         full_form(uri!(create_race_post(event.series, &*event.event)), csrf, html! {
             : form_field("team1", &mut errors, html! {
                 label(for = "team1") {
-                    @if let TeamConfig::Solo = event.team_config() {
+                    @if let TeamConfig::Solo = event.team_config {
                         : "Player A:";
                     } else {
                         : "Team A:";
@@ -1659,7 +1659,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
             });
             : form_field("team2", &mut errors, html! {
                 label(for = "team2") {
-                    @if let TeamConfig::Solo = event.team_config() {
+                    @if let TeamConfig::Solo = event.team_config {
                         : "Player B:";
                     } else {
                         : "Team B:";
@@ -1674,7 +1674,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
             @if is_3p {
                 : form_field("team3", &mut errors, html! {
                     label(for = "team3") {
-                        @if let TeamConfig::Solo = event.team_config() {
+                        @if let TeamConfig::Solo = event.team_config {
                             : "Player C:";
                         } else {
                             : "Team C:";
@@ -2188,7 +2188,7 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
 
     async fn process_page(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, event_slug: &str, page: i64, races: &mut Vec<Race>, skips: &mut Vec<(startgg::ID, ImportSkipReason)>) -> Result<i64, Error> {
         let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
-        if let TeamConfig::Solo = event.team_config() {
+        if let TeamConfig::Solo = event.team_config {
             let startgg::solo_event_sets_query::ResponseData {
                 event: Some(startgg::solo_event_sets_query::SoloEventSetsQueryEvent {
                     sets: Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSets {

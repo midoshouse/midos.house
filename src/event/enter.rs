@@ -403,7 +403,7 @@ impl Requirement {
             }
             Self::Rules { document } => {
                 let checked = defaults.field_value("confirm").is_some_and(|value| value == "on");
-                let team_config = data.team_config();
+                let team_config = data.team_config;
                 let rules_url = if let Some(document) = document {
                     document.to_string()
                 } else {
@@ -429,7 +429,7 @@ impl Requirement {
             }
             Self::RestreamConsent { optional: false, note } => {
                 let checked = defaults.field_value("restream_consent").is_some_and(|value| value == "on");
-                let team_config = data.team_config();
+                let team_config = data.team_config;
                 let note = note.clone();
                 RequirementStatus {
                     blocks_submit: false,
@@ -741,7 +741,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
         match (data.series, &*data.event) {
             (Series::BattleRoyale, "1") => ohko::enter_form(),
             (Series::Standard, "7") => s::enter_form(),
-            _ => match data.team_config() {
+            _ => match data.team_config {
                 TeamConfig::Solo => {
                     if let Some(Flow { ref requirements }) = data.enter_flow {
                         let opted_out = if let Some(racetime) = me.as_ref().and_then(|me| me.racetime.as_ref()) {
@@ -896,7 +896,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
     Box::pin(async move {
         let header = data.header(&mut transaction, env, me.as_ref(), Tab::Enter, true).await?;
         let page_content = {
-            let team_config = data.team_config();
+            let team_config = data.team_config;
             let team_members = team_members.await?;
             let mut errors = defaults.errors();
             html! {
@@ -1008,7 +1008,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
         if data.is_started(&mut transaction).await? {
             form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
         }
-        match data.team_config() {
+        match data.team_config {
             TeamConfig::Solo => {
                 let mut request_qualifier = None;
                 if let Some(Flow { ref requirements }) = data.enter_flow {

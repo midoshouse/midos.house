@@ -80,6 +80,8 @@ pub(crate) enum MatchSource<'a> {
     StartGG(&'a str), //TODO automatically scan for new matches and create scheduling threads
 }
 
+#[derive(Debug, Clone, Copy, sqlx::Type)]
+#[sqlx(type_name = "team_config", rename_all = "lowercase")]
 pub(crate) enum TeamConfig {
     Solo,
     CoOp,
@@ -151,6 +153,7 @@ pub(crate) struct Data<'a> {
     pub(crate) discord_race_results_channel: Option<ChannelId>,
     pub(crate) discord_organizer_channel: Option<ChannelId>,
     pub(crate) discord_scheduling_channel: Option<ChannelId>,
+    pub(crate) team_config: TeamConfig,
     enter_flow: Option<enter::Flow>,
     show_opt_out: bool,
     pub(crate) show_qualifier_times: bool,
@@ -192,6 +195,7 @@ impl<'a> Data<'a> {
             discord_race_results_channel AS "discord_race_results_channel: PgSnowflake<ChannelId>",
             discord_organizer_channel AS "discord_organizer_channel: PgSnowflake<ChannelId>",
             discord_scheduling_channel AS "discord_scheduling_channel: PgSnowflake<ChannelId>",
+            team_config AS "team_config: TeamConfig",
             enter_flow AS "enter_flow: Json<enter::Flow>",
             show_opt_out,
             show_qualifier_times,
@@ -218,6 +222,7 @@ impl<'a> Data<'a> {
                 discord_race_results_channel: row.discord_race_results_channel.map(|PgSnowflake(id)| id),
                 discord_organizer_channel: row.discord_organizer_channel.map(|PgSnowflake(id)| id),
                 discord_scheduling_channel: row.discord_scheduling_channel.map(|PgSnowflake(id)| id),
+                team_config: row.team_config,
                 enter_flow: row.enter_flow.map(|Json(flow)| flow),
                 show_opt_out: row.show_opt_out,
                 show_qualifier_times: row.show_qualifier_times,
@@ -326,38 +331,6 @@ impl<'a> Data<'a> {
             Series::TournoiFrancophone => false,
             Series::TriforceBlitz => false,
             Series::WeTryToBeBetter => false,
-        }
-    }
-
-    pub(crate) fn team_config(&self) -> TeamConfig {
-        match self.series {
-            Series::BattleRoyale => TeamConfig::Solo,
-            Series::CoOp => TeamConfig::CoOp,
-            Series::CopaDoBrasil => TeamConfig::Solo,
-            Series::League => TeamConfig::Solo,
-            Series::MixedPools => TeamConfig::Solo,
-            Series::Multiworld => TeamConfig::Multiworld,
-            Series::NineDaysOfSaws => match &*self.event {
-                "1" => TeamConfig::Solo,
-                "2" => TeamConfig::CoOp,
-                "3" => TeamConfig::Solo,
-                "4" => TeamConfig::Solo,
-                "5" => TeamConfig::Solo,
-                "6" => TeamConfig::Multiworld,
-                "7" => TeamConfig::Solo,
-                "8" => TeamConfig::CoOp,
-                "9" => TeamConfig::Solo,
-                _ => unimplemented!(),
-            },
-            Series::Pictionary => TeamConfig::Pictionary,
-            Series::Rsl => TeamConfig::Solo,
-            Series::Scrubs => TeamConfig::Solo,
-            Series::SongsOfHope => TeamConfig::Solo,
-            Series::SpeedGaming => TeamConfig::Solo,
-            Series::Standard => TeamConfig::Solo,
-            Series::TournoiFrancophone => TeamConfig::Solo,
-            Series::TriforceBlitz => TeamConfig::Solo,
-            Series::WeTryToBeBetter => TeamConfig::Solo,
         }
     }
 
@@ -489,7 +462,7 @@ impl<'a> Data<'a> {
                 } else {
                     a(class = "button", href = uri!(info(self.series, &*self.event)).to_string()) : "Info";
                 }
-                @let teams_label = if let TeamConfig::Solo = self.team_config() { "Entrants" } else { "Teams" };
+                @let teams_label = if let TeamConfig::Solo = self.team_config { "Entrants" } else { "Teams" };
                 @if !self.hide_teams_tab {
                     @if let Tab::Teams = tab {
                         a(class = "button selected", href? = is_subpage.then(|| uri!(teams::get(self.series, &*self.event)).to_string())) : teams_label;
@@ -526,7 +499,7 @@ impl<'a> Data<'a> {
                     } else {
                         a(class = "button", href = uri!(enter::get(self.series, &*self.event, _, _)).to_string()) : "Enter";
                     }
-                    @if !matches!(self.team_config(), TeamConfig::Solo) {
+                    @if !matches!(self.team_config, TeamConfig::Solo) {
                         @if let Tab::FindTeam = tab {
                             a(class = "button selected", href? = is_subpage.then(|| uri!(find_team(self.series, &*self.event)).to_string())) : "Find Teammates";
                         } else {
@@ -540,7 +513,7 @@ impl<'a> Data<'a> {
                         @let practice_url = practice_url
                             .query_pairs_mut()
                             .append_pair(if goal.is_custom() { "custom_goal" } else { "goal" }, goal.as_str())
-                            .extend_pairs(self.team_config().is_racetime_team_format().then_some([("team_race", "1"), ("require_even_teams", "1")]).into_iter().flatten())
+                            .extend_pairs(self.team_config.is_racetime_team_format().then_some([("team_race", "1"), ("require_even_teams", "1")]).into_iter().flatten())
                             .append_pair("hide_comments", "1")
                             .finish();
                         a(class = "button", href = practice_url.to_string()) {
@@ -820,7 +793,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
         "#, data.series as _, &data.event, me.id as _).fetch_optional(&mut *transaction).await? {
             html! {
                 : header;
-                @if !matches!(data.team_config(), TeamConfig::Solo) {
+                @if !matches!(data.team_config, TeamConfig::Solo) {
                     p {
                         : "You are signed up as part of ";
                         //TODO use Team type
@@ -912,7 +885,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                             : form_field("restream_consent", &mut errors, html! {
                                 input(type = "checkbox", id = "restream_consent", name = "restream_consent", checked? = ctx.field_value("restream_consent").map_or(row.restream_consent, |value| value == "on"));
                                 label(for = "restream_consent") {
-                                    @if let TeamConfig::Solo = data.team_config() {
+                                    @if let TeamConfig::Solo = data.team_config {
                                         : "I am okay with being restreamed.";
                                     } else {
                                         : "We are okay with being restreamed.";
@@ -1017,7 +990,7 @@ impl<E: Into<FindTeamError>> From<E> for StatusOrError<FindTeamError> {
 }
 
 async fn find_team_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
-    Ok(match data.team_config() {
+    Ok(match data.team_config {
         TeamConfig::Solo => {
             let header = data.header(&mut transaction, env, me.as_ref(), Tab::FindTeam, false).await?;
             page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
@@ -1199,7 +1172,7 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
         p {
             @if is_started {
-                @if let TeamConfig::Solo = data.team_config() {
+                @if let TeamConfig::Solo = data.team_config {
                     : "Are you sure you want to resign from ";
                     : data;
                     : "?";
@@ -1209,7 +1182,7 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
                     : "?";
                 }
             } else {
-                @if let TeamConfig::Solo = data.team_config() {
+                @if let TeamConfig::Solo = data.team_config {
                     : "Are you sure you want to retract your registration from ";
                     : data;
                     : "?";
@@ -1541,7 +1514,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
             let async_kind = async_kind.expect("validated");
             sqlx::query!("UPDATE async_teams SET submitted = NOW(), pieces = $1, fpa = $2 WHERE team = $3 AND kind = $4", value.pieces, (!value.fpa.is_empty()).then(|| &value.fpa), team.id as _, async_kind as _).execute(&mut *transaction).await?;
             let mut players = Vec::default();
-            for (((role, _), time), vod) in data.team_config().roles().iter().zip(&times).zip(&vods) {
+            for (((role, _), time), vod) in data.team_config.roles().iter().zip(&times).zip(&vods) {
                 let player = sqlx::query_scalar!(r#"SELECT member AS "member: Id<Users>" FROM team_members WHERE team = $1 AND role = $2"#, team.id as _, role as _).fetch_one(&mut *transaction).await?;
                 sqlx::query!("INSERT INTO async_players (series, event, player, kind, time, vod) VALUES ($1, $2, $3, $4, $5, $6)", series as _, event, player as _, async_kind as _, time as _, (!vod.is_empty()).then_some(vod)).execute(&mut *transaction).await?;
                 players.push(player);

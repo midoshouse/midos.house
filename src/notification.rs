@@ -122,7 +122,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, env
             teammates.push(html! {
                 : user;
                 : " (";
-                @match event.team_config() {
+                @match event.team_config {
                     TeamConfig::Solo => @unreachable // team invite for solo event
                     TeamConfig::CoOp => {}
                     TeamConfig::Pictionary => {
@@ -144,7 +144,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, env
     }
     let my_role = my_role.ok_or(Error::UnknownUser)?;
     Ok(html! {
-        @match event.team_config() {
+        @match event.team_config {
             TeamConfig::Solo => {
                 : "You have been invited to enter ";
                 : event;
@@ -211,7 +211,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, env
             }
         }
         div(class = "button-row") {
-            @if matches!(event.team_config(), TeamConfig::Pictionary) && my_role == Role::Sheikah && me.racetime.is_none() {
+            @if matches!(event.team_config, TeamConfig::Pictionary) && my_role == Role::Sheikah && me.racetime.is_none() {
                 a(class = "button", href = uri!(crate::auth::racetime_login(Some(uri!(notifications)))).to_string()) : "Connect racetime.gg Account to Accept";
             } else {
                 form(action = uri!(crate::event::confirm_signup(event.series, &*event.event, team_id)).to_string(), method = "post") {
