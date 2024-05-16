@@ -240,6 +240,7 @@ impl<'a> Data<'a> {
         self.short_name.as_deref().unwrap_or(&self.display_name)
     }
 
+    /// Weights for chest appearances in Mido's house in this event, generated using <https://github.com/fenhl/ootrstats>
     pub(crate) async fn chests(&self) -> ChestAppearances {
         macro_rules! from_file {
             ($path:literal) => {{
