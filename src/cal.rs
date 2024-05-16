@@ -879,6 +879,12 @@ impl Race {
         }
     }
 
+    /// The seed remains hidden until it's posted in the last calendar event of this race.
+    pub(crate) fn show_seed(&self) -> bool {
+        let now = Utc::now();
+        self.cal_events().all(|event| event.is_first_async_half() || event.start().is_some_and(|start| start <= now + TimeDelta::minutes(15)) || event.end().is_some())
+    }
+
     pub(crate) fn rooms(&self) -> impl Iterator<Item = Url> + Send {
         // hide room of 1st async half until 2nd half finished
         //TODO show to the team that played the 1st async half
@@ -1921,10 +1927,7 @@ pub(crate) async fn race_table(
     races: &[Race],
 ) -> Result<RawHtml<String>, Error> {
     let has_games = game_count || races.iter().any(|race| race.game.is_some());
-    let has_seeds = races.iter().any(|race|
-        (race.seed.file_hash.is_some() || race.seed.files.is_some())
-        && (race.cal_events().all(|event| event.end().is_some()) || !race.cal_events().any(|event| event.is_first_async_half()))
-    );
+    let has_seeds = races.iter().any(|race| (race.seed.file_hash.is_some() || race.seed.files.is_some()) && race.show_seed());
     let has_buttons = can_create || can_edit;
     let now = Utc::now();
     Ok(html! {
@@ -2058,7 +2061,7 @@ pub(crate) async fn race_table(
                             }
                         }
                         @if has_seeds {
-                            @if race.cal_events().all(|event| event.end().is_some()) || !race.cal_events().any(|event| event.is_first_async_half()) {
+                            @if race.show_seed() {
                                 : seed::table_cells(now, &race.seed, true, can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
                             } else {
                                 // hide seed if unfinished async
