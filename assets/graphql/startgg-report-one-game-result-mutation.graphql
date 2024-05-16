@@ -1,7 +1,5 @@
 mutation ReportOneGameResultMutation($setID: ID!, $winnerEntrantID: ID!) {
-  reportBracketSet(setId: $setID, winnerId: $winnerEntrantID, gameData: [
-    {gameNum: 1, winnerId: $winnerEntrantID},
-  ]) {
+  reportBracketSet(setId: $setID, winnerId: $winnerEntrantID) {
     id
   }
 }
