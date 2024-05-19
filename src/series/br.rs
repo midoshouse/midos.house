@@ -47,22 +47,21 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                     p : "Please schedule your races using the Discord threads.";
                 }
             } else {
-                let seed = seed::Data {
-                    file_hash: match (async_row.hash1, async_row.hash2, async_row.hash3, async_row.hash4, async_row.hash5) {
-                        (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
-                        (None, None, None, None, None) => None,
-                        _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
-                    },
-                    files: Some(match (async_row.tfb_uuid, async_row.web_id, async_row.web_gen_time, async_row.file_stem.as_ref()) {
-                        (Some(uuid), _, _, _) => seed::Files::TriforceBlitz { uuid },
-                        (None, Some(id), Some(gen_time), Some(file_stem)) => seed::Files::OotrWeb {
-                            file_stem: Cow::Owned(file_stem.clone()),
-                            id, gen_time,
-                        },
-                        (None, None, None, Some(file_stem)) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem.clone()), locked_spoiler_log_path: None },
-                        _ => unreachable!("only some web data present, should be prevented by SQL constraint"),
-                    }),
-                };
+                let seed = seed::Data::from_db(
+                    None,
+                    None,
+                    None,
+                    async_row.file_stem,
+                    None,
+                    async_row.web_id,
+                    async_row.web_gen_time,
+                    async_row.tfb_uuid,
+                    async_row.hash1,
+                    async_row.hash2,
+                    async_row.hash3,
+                    async_row.hash4,
+                    async_row.hash5,
+                );
                 let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
                 let ctx = ctx.take_submit_async();
                 let mut errors = ctx.errors().collect_vec();

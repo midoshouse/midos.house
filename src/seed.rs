@@ -96,6 +96,41 @@ pub(crate) enum Files {
 }
 
 impl Data {
+    pub(crate) fn from_db(
+        start: Option<DateTime<Utc>>,
+        async_start1: Option<DateTime<Utc>>,
+        async_start2: Option<DateTime<Utc>>,
+        file_stem: Option<String>,
+        locked_spoiler_log_path: Option<String>,
+        web_id: Option<i64>,
+        web_gen_time: Option<DateTime<Utc>>,
+        tfb_uuid: Option<Uuid>,
+        hash1: Option<HashIcon>,
+        hash2: Option<HashIcon>,
+        hash3: Option<HashIcon>,
+        hash4: Option<HashIcon>,
+        hash5: Option<HashIcon>,
+    ) -> Self {
+        Self {
+            file_hash: match (hash1, hash2, hash3, hash4, hash5) {
+                (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
+                (None, None, None, None, None) => None,
+                _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
+            },
+            files: match (file_stem, locked_spoiler_log_path, web_id, web_gen_time, tfb_uuid) {
+                (_, _, _, _, Some(uuid)) => Some(Files::TriforceBlitz { uuid }),
+                (Some(file_stem), _, Some(id), Some(gen_time), None) => Some(Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
+                (Some(file_stem), locked_spoiler_log_path, Some(id), None, None) => Some(match (start, async_start1, async_start2) {
+                    (Some(start), None, None) | (None, Some(start), None) | (None, None, Some(start)) => Files::OotrWeb { id, gen_time: start - TimeDelta::days(1), file_stem: Cow::Owned(file_stem) },
+                    (None, Some(async_start1), Some(async_start2)) => Files::OotrWeb { id, gen_time: async_start1.min(async_start2) - TimeDelta::days(1), file_stem: Cow::Owned(file_stem) },
+                    (_, _, _) => Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path },
+                }),
+                (Some(file_stem), locked_spoiler_log_path, None, _, None) => Some(Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path }),
+                (None, _, _, _, None) => None,
+            },
+        }
+    }
+
     pub(crate) async fn extra(&self, now: DateTime<Utc>) -> Result<ExtraData, ExtraDataError> {
         /// If some other part of the log like settings or version number can't be parsed, we may still be able to read the file hash from the log
         #[derive(Deserialize)]

@@ -50,6 +50,7 @@ use {
             TryAcquireError,
             mpsc,
         },
+        time::timeout,
     },
     wheel::traits::AsyncCommandOutputExt as _,
     crate::{
@@ -278,7 +279,8 @@ pub(crate) enum PrerollMode {
     Short,
     /// Start prerolling seeds between the time the room is opened and 15 minutes before the deadline.
     Medium,
-    // Long is reserved for the behavior from mp/2, where seed rolling starts immediately as the room is opened and one seed is always kept in reserve.
+    /// Always keep one seed in reserve until the end of the event. Fetch that seed or start rolling a new one immediately as the room is opened.
+    Long,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -296,6 +298,7 @@ pub(crate) enum Goal {
     CoOpS3,
     CopaDoBrasil,
     MixedPoolsS2,
+    MixedPoolsS3,
     MultiworldS3,
     MultiworldS4,
     NineDaysOfSaws,
@@ -324,6 +327,7 @@ impl Goal {
             Self::CoOpS3 => series == Series::CoOp && event == "3",
             Self::CopaDoBrasil => series == Series::CopaDoBrasil && event == "1",
             Self::MixedPoolsS2 => series == Series::MixedPools && event == "2",
+            Self::MixedPoolsS3 => series == Series::MixedPools && event == "3",
             Self::MultiworldS3 => series == Series::Multiworld && event == "3",
             Self::MultiworldS4 => series == Series::Multiworld && event == "4",
             Self::NineDaysOfSaws => series == Series::NineDaysOfSaws,
@@ -347,6 +351,7 @@ impl Goal {
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
+            | Self::MixedPoolsS3
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::NineDaysOfSaws
@@ -366,6 +371,7 @@ impl Goal {
             Self::CoOpS3 => "Co-op Tournament Season 3",
             Self::CopaDoBrasil => "Copa do Brasil",
             Self::MixedPoolsS2 => "2nd Mixed Pools Tournament",
+            Self::MixedPoolsS3 => "3rd Mixed Pools Tournament",
             Self::MultiworldS3 => "3rd Multiworld Tournament",
             Self::MultiworldS4 => "4th Multiworld Tournament",
             Self::NineDaysOfSaws => "9 Days of SAWS",
@@ -385,6 +391,7 @@ impl Goal {
             | Self::Cc7
             | Self::CoOpS3
             | Self::MixedPoolsS2
+            | Self::MixedPoolsS3
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::NineDaysOfSaws
@@ -412,6 +419,7 @@ impl Goal {
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
+            | Self::MixedPoolsS3
             | Self::NineDaysOfSaws
             | Self::Pic7
             | Self::PicRs2
@@ -434,7 +442,6 @@ impl Goal {
             | Self::CoOpS3
                 => PrerollMode::Short,
             | Self::CopaDoBrasil
-            | Self::MixedPoolsS2
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::NineDaysOfSaws
@@ -445,6 +452,9 @@ impl Goal {
             | Self::TournoiFrancoS3
             | Self::WeTryToBeBetter
                 => PrerollMode::Medium,
+            | Self::MixedPoolsS2
+            | Self::MixedPoolsS3
+                => PrerollMode::Long,
         }
     }
 
@@ -458,6 +468,7 @@ impl Goal {
                     => UnlockSpoilerLog::Now,
                 | Self::CopaDoBrasil
                 | Self::MixedPoolsS2
+                | Self::MixedPoolsS3
                 | Self::MultiworldS3
                 | Self::MultiworldS4
                 | Self::NineDaysOfSaws
@@ -481,6 +492,7 @@ impl Goal {
             Self::CoOpS3 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
+            Self::MixedPoolsS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 8, 1, 36, 6)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
             Self::MultiworldS4 => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 199)),
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
@@ -494,9 +506,32 @@ impl Goal {
         }
     }
 
+    /// Only returns a value for goals that only have one possible set of settings.
+    fn single_settings(&self) -> Option<serde_json::Map<String, Json>> {
+        match self {
+            Self::Cc7 => None, // settings draft
+            Self::CoOpS3 => Some(coop::s3_settings()),
+            Self::CopaDoBrasil => Some(br::s1_settings()),
+            Self::MixedPoolsS2 => Some(mp::s2_settings()),
+            Self::MixedPoolsS3 => Some(mp::s3_settings()),
+            Self::MultiworldS3 => None, // settings draft
+            Self::MultiworldS4 => None, // settings draft
+            Self::NineDaysOfSaws => None, // per-event settings
+            Self::Pic7 => Some(pic::race7_settings()),
+            Self::PicRs2 => None, // random settings
+            Self::Rsl => None, // random settings
+            Self::Sgl2023 => Some(sgl::settings_2023()),
+            Self::SongsOfHope => Some(soh::settings()),
+            Self::TournoiFrancoS3 => None, // settings draft
+            Self::TriforceBlitz => None, // per-event settings
+            Self::WeTryToBeBetter => Some(wttbb::settings()),
+        }
+    }
+
     pub(crate) fn should_create_rooms(&self) -> bool {
         match self {
             | Self::MixedPoolsS2
+            | Self::MixedPoolsS3
             | Self::NineDaysOfSaws
             | Self::Rsl
                 => false,
@@ -526,7 +561,7 @@ impl Goal {
             }
             Self::Pic7 => ctx.say("!seed: The settings used for the race").await?,
             Self::PicRs2 => ctx.say("!seed: The weights used for the race").await?,
-            Self::CoOpS3 | Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::Sgl2023 | Self::SongsOfHope => ctx.say("!seed: The settings used for the tournament").await?,
+            Self::CoOpS3 | Self::CopaDoBrasil | Self::MixedPoolsS2 | Self::MixedPoolsS3 | Self::Sgl2023 | Self::SongsOfHope => ctx.say("!seed: The settings used for the tournament").await?,
             Self::WeTryToBeBetter => ctx.say("!seed : Les settings utilisés pour le tournoi").await?,
             Self::MultiworldS3 => {
                 ctx.say("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
@@ -583,8 +618,56 @@ impl Goal {
         Ok(())
     }
 
-    pub(crate) async fn parse_seed_command(&self, http_client: &reqwest::Client, spoiler_log: bool, args: &[String]) -> Result<SeedCommandParseResult, Error> {
+    pub(crate) async fn parse_seed_command(&self, transaction: &mut Transaction<'_, Postgres>, global_state: &GlobalState, is_official: bool, spoiler_seed: bool, args: &[String]) -> Result<SeedCommandParseResult, Error> {
+        let unlock_spoiler_log = self.unlock_spoiler_log(is_official, spoiler_seed);
         Ok(match self {
+            | Self::CoOpS3
+            | Self::CopaDoBrasil
+            | Self::MixedPoolsS2
+            | Self::MixedPoolsS3
+            | Self::Pic7
+            | Self::Sgl2023
+            | Self::SongsOfHope
+            | Self::WeTryToBeBetter
+                => {
+                    let (article, description) = match self.language() {
+                        French => ("une", format!("seed")),
+                        _ => ("a", format!("seed")),
+                    };
+                    if let Some(row) = sqlx::query!(r#"DELETE FROM prerolled_seeds WHERE ctid IN (SELECT ctid FROM prerolled_seeds WHERE goal_name = $1 LIMIT 1) RETURNING
+                        goal_name,
+                        file_stem,
+                        locked_spoiler_log_path,
+                        hash1 AS "hash1: HashIcon",
+                        hash2 AS "hash2: HashIcon",
+                        hash3 AS "hash3: HashIcon",
+                        hash4 AS "hash4: HashIcon",
+                        hash5 AS "hash5: HashIcon"
+                    "#, self.as_str()).fetch_optional(&mut **transaction).await.to_racetime()? {
+                        let _ = global_state.seed_cache_tx.send(());
+                        SeedCommandParseResult::QueueExisting {
+                            data: seed::Data::from_db(
+                                None,
+                                None,
+                                None,
+                                row.file_stem,
+                                row.locked_spoiler_log_path,
+                                None,
+                                None,
+                                None,
+                                row.hash1,
+                                row.hash2,
+                                row.hash3,
+                                row.hash4,
+                                row.hash5,
+                            ),
+                            language: self.language(),
+                            article, description,
+                        }
+                    } else {
+                        SeedCommandParseResult::Regular { settings: self.single_settings().expect("goal has no single settings"), unlock_spoiler_log, language: self.language(), article, description }
+                    }
+                }
             Self::Cc7 => {
                 let settings = match args {
                     [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
@@ -602,7 +685,7 @@ impl Goal {
                             skipped_bans: 0,
                             settings: HashMap::default(),
                         },
-                        spoiler_log,
+                        unlock_spoiler_log,
                     }),
                     [arg] if s::S7_SETTINGS.into_iter().any(|s::Setting { name, .. }| name == arg) => {
                         return Ok(SeedCommandParseResult::SendSettings { language: English, msg: "you need to pair each setting with a value.".into() })
@@ -633,11 +716,8 @@ impl Goal {
                         }
                     }
                 };
-                SeedCommandParseResult::Regular { settings: s::resolve_s7_draft_settings(&settings), spoiler_log, language: English, article: "a", description: format!("seed with {}", s::display_s7_draft_picks(&settings)) }
+                SeedCommandParseResult::Regular { settings: s::resolve_s7_draft_settings(&settings), unlock_spoiler_log, language: English, article: "a", description: format!("seed with {}", s::display_s7_draft_picks(&settings)) }
             }
-            Self::CoOpS3 => SeedCommandParseResult::Regular { settings: coop::s3_settings(), spoiler_log, language: English, article: "a", description: format!("co-op seed") },
-            Self::CopaDoBrasil => SeedCommandParseResult::Regular { settings: br::s1_settings(), spoiler_log, language: English, article: "a", description: format!("seed") },
-            Self::MixedPoolsS2 => SeedCommandParseResult::Regular { settings: mp::s2_settings(), spoiler_log, language: English, article: "a", description: format!("mixed pools seed") },
             Self::MultiworldS3 => {
                 let settings = match args {
                     [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
@@ -655,7 +735,7 @@ impl Goal {
                             skipped_bans: 0,
                             settings: HashMap::default(),
                         },
-                        spoiler_log,
+                        unlock_spoiler_log,
                     }),
                     [arg] if mw::S3_SETTINGS.into_iter().any(|mw::Setting { name, .. }| name == arg) => {
                         return Ok(SeedCommandParseResult::SendSettings { language: English, msg: "you need to pair each setting with a value.".into() })
@@ -686,7 +766,7 @@ impl Goal {
                         }
                     }
                 };
-                SeedCommandParseResult::Regular { settings: mw::resolve_s3_draft_settings(&settings), spoiler_log, language: English, article: "a", description: format!("seed with {}", mw::display_s3_draft_picks(&settings)) }
+                SeedCommandParseResult::Regular { settings: mw::resolve_s3_draft_settings(&settings), unlock_spoiler_log, language: English, article: "a", description: format!("seed with {}", mw::display_s3_draft_picks(&settings)) }
             }
             Self::MultiworldS4 => {
                 let settings = match args {
@@ -705,7 +785,7 @@ impl Goal {
                             skipped_bans: 0,
                             settings: HashMap::default(),
                         },
-                        spoiler_log,
+                        unlock_spoiler_log,
                     }),
                     [arg] if mw::S4_SETTINGS.into_iter().any(|mw::Setting { name, .. }| name == arg) => {
                         return Ok(SeedCommandParseResult::SendSettings { language: English, msg: "you need to pair each setting with a value.".into() })
@@ -736,7 +816,7 @@ impl Goal {
                         }
                     }
                 };
-                SeedCommandParseResult::Regular { settings: mw::resolve_s4_draft_settings(&settings), spoiler_log, language: English, article: "a", description: format!("seed with {}", mw::display_s4_draft_picks(&settings)) }
+                SeedCommandParseResult::Regular { settings: mw::resolve_s4_draft_settings(&settings), unlock_spoiler_log, language: English, article: "a", description: format!("seed with {}", mw::display_s4_draft_picks(&settings)) }
             }
             Self::NineDaysOfSaws => match args {
                 [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
@@ -828,17 +908,16 @@ impl Goal {
                     _ => None,
                 } {
                     settings.insert(format!("user_message"), json!(format!("9 Days of SAWS: day {}", &arg[3..])));
-                    SeedCommandParseResult::Regular { settings, spoiler_log, language: English, article: "a", description: format!("{description} seed") }
+                    SeedCommandParseResult::Regular { settings, unlock_spoiler_log, language: English, article: "a", description: format!("{description} seed") }
                 } else {
                     SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" }
                 },
                 [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
             }
-            Self::Pic7 => SeedCommandParseResult::Regular { settings: pic::race7_settings(), spoiler_log: true, language: English, article: "a", description: format!("Pictionary seed") },
             Self::PicRs2 => SeedCommandParseResult::Rsl { preset: VersionedRslPreset::Fenhl {
                 version: Some((Version::new(2, 3, 8), 10)),
                 preset: RslDevFenhlPreset::Pictionary,
-            }, world_count: 1, spoiler_log: true, language: English, article: "a", description: format!("random settings Pictionary seed") },
+            }, world_count: 1, unlock_spoiler_log, language: English, article: "a", description: format!("seed") },
             Self::Rsl => {
                 let (preset, world_count) = match args {
                     [] => (rsl::Preset::League, 1),
@@ -880,10 +959,8 @@ impl Goal {
                     rsl::Preset::CoOp => ("a", format!("random settings co-op seed")),
                     rsl::Preset::Multiworld => ("a", format!("random settings multiworld seed for {world_count} players")),
                 };
-                SeedCommandParseResult::Rsl { preset: VersionedRslPreset::Xopar { version: None, preset }, world_count, spoiler_log, language: English, article, description }
+                SeedCommandParseResult::Rsl { preset: VersionedRslPreset::Xopar { version: None, preset }, world_count, unlock_spoiler_log, language: English, article, description }
             }
-            Self::Sgl2023 => SeedCommandParseResult::Regular { settings: sgl::settings_2023(), spoiler_log, language: English, article: "a", description: format!("seed") },
-            Self::SongsOfHope => SeedCommandParseResult::Regular { settings: soh::settings(), spoiler_log, language: English, article: "a", description: format!("seed") },
             Self::TournoiFrancoS3 => {
                 let mut args = args.to_owned();
                 let mut mq_dungeons_count = None::<u8>;
@@ -921,7 +998,7 @@ impl Goal {
                                 Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
                             ],
                         },
-                        spoiler_log,
+                        unlock_spoiler_log,
                     }),
                     [arg] if fr::S3_SETTINGS.into_iter().any(|fr::S3Setting { name, .. }| name == arg) => return Ok(SeedCommandParseResult::SendSettings { language: French, msg: "vous devez associer un setting avec une configuration.".into() }),
                     [_] => return Ok(SeedCommandParseResult::SendPresets { language: French, msg: "je ne reconnais pas ce preset" }),
@@ -953,13 +1030,13 @@ impl Goal {
                         }
                     }
                 };
-                SeedCommandParseResult::Regular { settings: fr::resolve_draft_settings(&settings), spoiler_log, language: French, article: "une", description: format!("seed avec {}", fr::display_draft_picks(&settings)) }
+                SeedCommandParseResult::Regular { settings: fr::resolve_draft_settings(&settings), unlock_spoiler_log, language: French, article: "une", description: format!("seed avec {}", fr::display_draft_picks(&settings)) }
             }
             Self::TriforceBlitz => match args {
                 [] => SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" },
                 [arg] if arg == "daily" => {
                     let (date, ordinal, file_hash) = {
-                        let response = http_client
+                        let response = global_state.http_client
                             .get("https://www.triforceblitz.com/seed/daily/all")
                             .send().await?
                             .detailed_error_for_status().await.to_racetime()?;
@@ -987,12 +1064,11 @@ impl Goal {
                         files: Some(seed::Files::TfbSotd { date, ordinal }),
                     }, language: English, article: "the", description: format!("Triforce Blitz seed of the day") }
                 }
-                [arg] if arg == "jr" => SeedCommandParseResult::Tfb { version: "v7.1.143-blitz-0.43", spoiler_log, language: English, article: "a", description: format!("Triforce Blitz: Jabu's Revenge seed") },
-                [arg] if arg == "s2" => SeedCommandParseResult::Tfb { version: "v7.1.3-blitz-0.42", spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S2 seed") },
-                [arg] if arg == "s3" => SeedCommandParseResult::Tfb { version: "LATEST", spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S3 seed") },
+                [arg] if arg == "jr" => SeedCommandParseResult::Tfb { version: "v7.1.143-blitz-0.43", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz: Jabu's Revenge seed") },
+                [arg] if arg == "s2" => SeedCommandParseResult::Tfb { version: "v7.1.3-blitz-0.42", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S2 seed") },
+                [arg] if arg == "s3" => SeedCommandParseResult::Tfb { version: "LATEST", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S3 seed") },
                 [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
             },
-            Self::WeTryToBeBetter => SeedCommandParseResult::Regular { settings: wttbb::settings(), spoiler_log, language: French, article: "une", description: format!("seed") },
         })
     }
 }
@@ -1000,7 +1076,7 @@ impl Goal {
 pub(crate) enum SeedCommandParseResult {
     Regular {
         settings: serde_json::Map<String, Json>,
-        spoiler_log: bool,
+        unlock_spoiler_log: UnlockSpoilerLog,
         language: Language,
         article: &'static str,
         description: String,
@@ -1008,14 +1084,14 @@ pub(crate) enum SeedCommandParseResult {
     Rsl {
         preset: VersionedRslPreset,
         world_count: u8,
-        spoiler_log: bool,
+        unlock_spoiler_log: UnlockSpoilerLog,
         language: Language,
         article: &'static str,
         description: String,
     },
     Tfb {
         version: &'static str,
-        spoiler_log: bool,
+        unlock_spoiler_log: UnlockSpoilerLog,
         language: Language,
         article: &'static str,
         description: String,
@@ -1036,7 +1112,7 @@ pub(crate) enum SeedCommandParseResult {
     },
     StartDraft {
         new_state: Draft,
-        spoiler_log: bool,
+        unlock_spoiler_log: UnlockSpoilerLog,
     },
     Error {
         language: Language,
@@ -1073,89 +1149,110 @@ pub(crate) struct GlobalState {
     host_info: racetime::HostInfo,
     racetime_config: ConfigRaceTime,
     extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>,
-    db_pool: PgPool,
+    pub(crate) db_pool: PgPool,
     pub(crate) http_client: reqwest::Client,
     #[allow(unused)] //TODO use for set reporting
     startgg_token: String,
     ootr_api_client: OotrApiClient,
     discord_ctx: RwFuture<DiscordCtx>,
     clean_shutdown: Arc<Mutex<CleanShutdown>>,
+    seed_cache_tx: watch::Sender<()>,
 }
 
 impl GlobalState {
-    pub(crate) async fn new(new_room_lock: Arc<Mutex<()>>, racetime_config: ConfigRaceTime, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, db_pool: PgPool, http_client: reqwest::Client, ootr_api_key: String, ootr_api_key_encryption: String, startgg_token: String, env: Environment, discord_ctx: RwFuture<DiscordCtx>, clean_shutdown: Arc<Mutex<CleanShutdown>>) -> Self {
+    pub(crate) async fn new(
+        new_room_lock: Arc<Mutex<()>>,
+        racetime_config: ConfigRaceTime,
+        extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>,
+        db_pool: PgPool,
+        http_client: reqwest::Client,
+        ootr_api_key: String,
+        ootr_api_key_encryption: String,
+        startgg_token: String,
+        env: Environment,
+        discord_ctx: RwFuture<DiscordCtx>,
+        clean_shutdown: Arc<Mutex<CleanShutdown>>,
+        seed_cache_tx: watch::Sender<()>,
+    ) -> Self {
         Self {
             host_info: racetime::HostInfo {
                 hostname: Cow::Borrowed(env.racetime_host()),
                 ..racetime::HostInfo::default()
             },
             ootr_api_client: OotrApiClient::new(http_client.clone(), ootr_api_key, ootr_api_key_encryption),
-            new_room_lock, env, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown,
+            new_room_lock, env, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown, seed_cache_tx,
         }
     }
 
-    pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, settings: serde_json::Map<String, Json>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, allow_web: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, settings: serde_json::Map<String, Json>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
-            if let Some(web_version) = self.ootr_api_client.can_roll_on_web(None, &version, world_count).await {
-                // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
-                // This is especially true for open races, whose rooms are opened an entire hour before start.
-                // To make this a bit more difficult, we delay the start of seed rolling depending on the goal.
-                match preroll {
-                    // The type of seed being rolled is unlikely to require a long time or multiple attempts to generate,
-                    // so we avoid the issue with sequential IDs by simply not rolling ahead of time.
-                    PrerollMode::None => if let Some(sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
-                        sleep(sleep_duration).await;
-                    },
-                    // Middle-ground option. Start rolling the seed at a random point between 20 and 15 minutes before start.
-                    PrerollMode::Short => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
-                        let min_sleep_duration = max_sleep_duration.saturating_sub(Duration::from_secs(5 * 60));
-                        let sleep_duration = thread_rng().gen_range(min_sleep_duration..max_sleep_duration);
-                        sleep(sleep_duration).await;
-                    },
-                    // The type of seed being rolled is fairly likely to require a long time and/or multiple attempts to generate.
-                    // Start rolling the seed at a random point between the room being opened and 30 minutes before start.
-                    PrerollMode::Medium => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
-                        let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
-                        sleep(sleep_duration).await;
-                    },
-                }
-                match self.ootr_api_client.roll_seed_web(update_tx.clone(), delay_until, web_version, false, unlock_spoiler_log, settings).await {
-                    Ok((id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::Done {
-                        seed: seed::Data {
-                            file_hash: Some(file_hash),
-                            files: Some(seed::Files::OotrWeb {
-                                file_stem: Cow::Owned(file_stem),
-                                id, gen_time,
-                            }),
+            if_chain! {
+                if allow_web;
+                if let Some(web_version) = self.ootr_api_client.can_roll_on_web(None, &version, world_count).await;
+                then {
+                    // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
+                    // This is especially true for open races, whose rooms are opened an entire hour before start.
+                    // To make this a bit more difficult, we delay the start of seed rolling depending on the goal.
+                    match preroll {
+                        // The type of seed being rolled is unlikely to require a long time or multiple attempts to generate,
+                        // so we avoid the issue with sequential IDs by simply not rolling ahead of time.
+                        PrerollMode::None => if let Some(sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
+                            sleep(sleep_duration).await;
                         },
-                        rsl_preset: None,
-                        unlock_spoiler_log,
-                    }).await?,
-                    Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?, //TODO fall back to rolling locally for network errors
-                }
-            } else {
-                update_tx.send(SeedRollUpdate::Started).await?;
-                match roll_seed_locally(delay_until, version, settings).await {
-                    Ok((patch_filename, spoiler_log_path)) => update_tx.send(match spoiler_log_path.into_os_string().into_string() {
-                        Ok(spoiler_log_path) => match regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) {
-                            Some((_, file_stem)) => SeedRollUpdate::Done {
-                                seed: seed::Data {
-                                    file_hash: None,
-                                    files: Some(seed::Files::MidosHouse {
-                                        file_stem: Cow::Owned(file_stem.to_owned()),
-                                        locked_spoiler_log_path: Some(spoiler_log_path),
-                                    }),
-                                },
-                                rsl_preset: None,
-                                unlock_spoiler_log,
+                        // Middle-ground option. Start rolling the seed at a random point between 20 and 15 minutes before start.
+                        PrerollMode::Short => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
+                            let min_sleep_duration = max_sleep_duration.saturating_sub(Duration::from_secs(5 * 60));
+                            let sleep_duration = thread_rng().gen_range(min_sleep_duration..max_sleep_duration);
+                            sleep(sleep_duration).await;
+                        },
+                        // The type of seed being rolled is fairly likely to require a long time and/or multiple attempts to generate.
+                        // Start rolling the seed at a random point between the room being opened and 30 minutes before start.
+                        PrerollMode::Medium => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
+                            let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
+                            sleep(sleep_duration).await;
+                        },
+                        // The type of seed being rolled is extremely likely to require a very long time and/or a large number of attempts to generate.
+                        // Start rolling the seed immediately upon the room being opened.
+                        PrerollMode::Long => {}
+                    }
+                    match self.ootr_api_client.roll_seed_web(update_tx.clone(), delay_until, web_version, false, unlock_spoiler_log, settings).await {
+                        Ok((id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::Done {
+                            seed: seed::Data {
+                                file_hash: Some(file_hash),
+                                files: Some(seed::Files::OotrWeb {
+                                    file_stem: Cow::Owned(file_stem),
+                                    id, gen_time,
+                                }),
                             },
-                            None => SeedRollUpdate::Error(RollError::PatchPath),
-                        },
-                        Err(e) => SeedRollUpdate::Error(e.into())
-                    }).await?,
-                    Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
+                            rsl_preset: None,
+                            unlock_spoiler_log,
+                        }).await?,
+                        Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?, //TODO fall back to rolling locally for network errors
+                    }
+                } else {
+                    update_tx.send(SeedRollUpdate::Started).await?;
+                    match roll_seed_locally(delay_until, version, settings).await {
+                        Ok((patch_filename, spoiler_log_path)) => update_tx.send(match spoiler_log_path.into_os_string().into_string() {
+                            Ok(spoiler_log_path) => match regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) {
+                                Some((_, file_stem)) => SeedRollUpdate::Done {
+                                    seed: seed::Data {
+                                        file_hash: None,
+                                        files: Some(seed::Files::MidosHouse {
+                                            file_stem: Cow::Owned(file_stem.to_owned()),
+                                            locked_spoiler_log_path: Some(spoiler_log_path),
+                                        }),
+                                    },
+                                    rsl_preset: None,
+                                    unlock_spoiler_log,
+                                },
+                                None => SeedRollUpdate::Error(RollError::PatchPath),
+                            },
+                            Err(e) => SeedRollUpdate::Error(e.into())
+                        }).await?,
+                        Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?,
+                    }
                 }
             }
             Ok::<_, mpsc::error::SendError<_>>(())
@@ -1452,6 +1549,7 @@ pub(crate) enum RollError {
     #[error(transparent)] RaceTime(#[from] Error),
     #[error(transparent)] RandoVersion(#[from] rando::VersionParseError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[cfg(unix)] #[error(transparent)] Xdg(#[from] xdg::BaseDirectoriesError),
     #[error("{display}")]
@@ -2301,7 +2399,7 @@ impl Handler {
     async fn roll_seed(&self, ctx: &RaceContext<GlobalState>, preroll: PrerollMode, version: VersionedBranch, settings: serde_json::Map<String, Json>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
-        self.roll_seed_inner(ctx, delay_until, Arc::clone(&ctx.global_state).roll_seed(preroll, delay_until, version, settings, unlock_spoiler_log), language, article, description).await;
+        self.roll_seed_inner(ctx, delay_until, Arc::clone(&ctx.global_state).roll_seed(preroll, true, delay_until, version, settings, unlock_spoiler_log), language, article, description).await;
     }
 
     async fn roll_rsl_seed(&self, ctx: &RaceContext<GlobalState>, preset: VersionedRslPreset, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
@@ -2670,6 +2768,18 @@ impl RaceHandler<GlobalState> for Handler {
                             ).await?,
                             Goal::MixedPoolsS2 => ctx.send_message(
                                 "Welcome! This is a practice room for the 2nd Mixed Pools Tournament. Learn more about the tournament at https://midos.house/event/mp/2",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
+                            Goal::MixedPoolsS3 => ctx.send_message(
+                                "Welcome! This is a practice room for the 3rd Mixed Pools Tournament. Learn more about the tournament at https://midos.house/event/mp/3",
                                 true,
                                 vec![
                                     ("Roll seed", ActionButton::Message {
@@ -3120,20 +3230,24 @@ impl RaceHandler<GlobalState> for Handler {
                 } else {
                     match *state {
                         RaceState::Init => match goal {
-                            Goal::MixedPoolsS2 | Goal::Rsl => unreachable!("no official race rooms"),
+                            | Goal::CoOpS3
+                            | Goal::CopaDoBrasil
+                            | Goal::MixedPoolsS2
+                            | Goal::MixedPoolsS3
+                            | Goal::Pic7
+                            | Goal::Sgl2023
+                            | Goal::SongsOfHope
+                               => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                            | Goal::WeTryToBeBetter
+                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
+                            Goal::Rsl => unreachable!("no official race rooms"),
                             Goal::Cc7 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::TournoiFrancoS3 => unreachable!("should have draft state set"),
                             Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
-                            Goal::CoOpS3 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), coop::s3_settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("co-op seed")).await,
-                            Goal::CopaDoBrasil => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), br::s1_settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
-                            Goal::Pic7 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), pic::race7_settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("Pictionary seed")).await,
                             Goal::PicRs2 => this.roll_rsl_seed(ctx, VersionedRslPreset::Fenhl {
                                 version: Some((Version::new(2, 3, 8), 10)),
                                 preset: RslDevFenhlPreset::Pictionary,
-                            }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("random settings Pictionary seed")).await,
-                            Goal::Sgl2023 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), sgl::settings_2023(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
-                            Goal::SongsOfHope => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), soh::settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                            }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                             Goal::TriforceBlitz => this.roll_tfb_seed(ctx, "LATEST", goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S3 seed")).await,
-                            Goal::WeTryToBeBetter => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), wttbb::settings(), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
                         },
                         RaceState::Draft { .. } => this.advance_draft(ctx, &state).await?,
                         RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => {}
@@ -3605,10 +3719,11 @@ impl RaceHandler<GlobalState> for Handler {
                             format!("Sorry {reply_to}, seed rolling is locked. Only {} may roll a seed for this race.", if self.is_official() { "race monitors or tournament organizers" } else { "race monitors" })
                         }).await?;
                     } else {
-                        match goal.parse_seed_command(&ctx.global_state.http_client, cmd_name.to_ascii_lowercase() == "spoilerseed", &args).await.to_racetime()? {
-                            SeedCommandParseResult::Regular { settings, spoiler_log, language, article, description } => self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), settings, goal.unlock_spoiler_log(self.is_official(), spoiler_log), language, article, description).await,
-                            SeedCommandParseResult::Rsl { preset, world_count, spoiler_log, language, article, description } => self.roll_rsl_seed(ctx, preset, world_count, goal.unlock_spoiler_log(self.is_official(), spoiler_log), language, article, description).await,
-                            SeedCommandParseResult::Tfb { version, spoiler_log, language, article, description } => self.roll_tfb_seed(ctx, version, goal.unlock_spoiler_log(self.is_official(), spoiler_log), language, article, description).await,
+                        let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
+                        match goal.parse_seed_command(&mut transaction, &ctx.global_state, self.is_official(), cmd_name.to_ascii_lowercase() == "spoilerseed", &args).await.to_racetime()? {
+                            SeedCommandParseResult::Regular { settings, unlock_spoiler_log, language, article, description } => self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), settings, unlock_spoiler_log, language, article, description).await,
+                            SeedCommandParseResult::Rsl { preset, world_count, unlock_spoiler_log, language, article, description } => self.roll_rsl_seed(ctx, preset, world_count, unlock_spoiler_log, language, article, description).await,
+                            SeedCommandParseResult::Tfb { version, unlock_spoiler_log, language, article, description } => self.roll_tfb_seed(ctx, version, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::QueueExisting { data, language, article, description } => self.queue_existing_seed(ctx, data, language, article, description).await,
                             SeedCommandParseResult::SendPresets { language, msg } => {
                                 ctx.say(&if let French = language {
@@ -3627,10 +3742,10 @@ impl RaceHandler<GlobalState> for Handler {
                                 }, reply_to).await?;
                                 return Ok(())
                             }
-                            SeedCommandParseResult::StartDraft { new_state, spoiler_log } => {
+                            SeedCommandParseResult::StartDraft { new_state, unlock_spoiler_log } => {
                                 *state = RaceState::Draft {
                                     state: new_state,
-                                    unlock_spoiler_log: goal.unlock_spoiler_log(self.is_official(), spoiler_log),
+                                    unlock_spoiler_log,
                                 };
                                 self.advance_draft(ctx, &state).await?;
                             }
@@ -3640,6 +3755,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 format!("Sorry {reply_to}, {msg}")
                             }).await?,
                         }
+                        transaction.commit().await.to_racetime()?;
                     },
                     RaceState::Draft { .. } => ctx.say(&format!("Sorry {reply_to}, settings are already being drafted.")).await?,
                     RaceState::Rolling => ctx.say(&format!("Sorry {reply_to}, but I'm already rolling a seed for this room. Please wait.")).await?,
@@ -3806,6 +3922,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::CoOpS3
                     | Goal::CopaDoBrasil
                     | Goal::MixedPoolsS2
+                    | Goal::MixedPoolsS3
                     | Goal::MultiworldS3
                     | Goal::MultiworldS4
                     | Goal::NineDaysOfSaws
@@ -4074,6 +4191,74 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
     }
 }
 
+async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch::Receiver<()>, mut shutdown: rocket::Shutdown) -> Result<(), Error> {
+    'outer: loop {
+        select! {
+            () = &mut shutdown => break,
+            res = timeout(Duration::from_secs(24 * 60 * 60), seed_cache_rx.changed().then(|res| if let Ok(()) = res { Either::Left(future::ready(())) } else { Either::Right(future::pending()) })) => {
+                let (Ok(()) | Err(_)) = res;
+                let event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&global_state.db_pool).await.to_racetime()?;
+                for goal in all::<Goal>() {
+                    if let Some(settings) = goal.single_settings() {
+                        if goal.preroll_seeds() == PrerollMode::Long && event_rows.iter().any(|row| goal.matches_event(row.series, &row.event)) {
+                            if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM prerolled_seeds WHERE goal_name = $1) AS "exists!""#, goal.as_str()).fetch_one(&global_state.db_pool).await.to_racetime()? {
+                                'seed: loop {
+                                    let mut seed_rx = global_state.clone().roll_seed(
+                                        PrerollMode::Long,
+                                        false,
+                                        None,
+                                        goal.rando_version(),
+                                        settings.clone(),
+                                        UnlockSpoilerLog::After,
+                                    );
+                                    loop {
+                                        select! {
+                                            () = &mut shutdown => break 'outer,
+                                            Some(update) = seed_rx.recv() => match update {
+                                                SeedRollUpdate::Queued(_) |
+                                                SeedRollUpdate::MovedForward(_) |
+                                                SeedRollUpdate::Started => {}
+                                                SeedRollUpdate::Done { seed, rsl_preset: _, unlock_spoiler_log: _ } => {
+                                                    let [hash1, hash2, hash3, hash4, hash5] = match seed.file_hash {
+                                                        Some(hash) => hash.map(Some),
+                                                        None => [None; 5],
+                                                    };
+                                                    match seed.files {
+                                                        Some(seed::Files::MidosHouse { file_stem, locked_spoiler_log_path }) => {
+                                                            sqlx::query!("INSERT INTO prerolled_seeds
+                                                                (goal_name, file_stem, locked_spoiler_log_path, hash1, hash2, hash3, hash4, hash5)
+                                                            VALUES
+                                                                ($1, $2, $3, $4, $5, $6, $7, $8)
+                                                            ", goal.as_str(), &file_stem, locked_spoiler_log_path, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _).execute(&global_state.db_pool).await.to_racetime()?;
+                                                        }
+                                                        _ => unimplemented!("unexpected seed files in prerolled seed"),
+                                                    }
+                                                    break 'seed
+                                                }
+                                                SeedRollUpdate::Error(RollError::Retries { num_retries, last_error }) => {
+                                                    if let Some(last_error) = last_error {
+                                                        eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
+                                                    } else {
+                                                        eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
+                                                    }
+                                                    continue 'seed
+                                                }
+                                                SeedRollUpdate::Error(e) => return Err(e).to_racetime(),
+                                                #[cfg(unix)] SeedRollUpdate::Message(_) => {}
+                                            },
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shutdown) -> Result<(), Error> {
     loop {
         select! {
@@ -4160,8 +4345,9 @@ async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRa
     }
 }
 
-pub(crate) async fn main(env: Environment, config: Config, shutdown: rocket::Shutdown, global_state: Arc<GlobalState>) -> Result<(), Error> {
-    let ((), ()) = tokio::try_join!(
+pub(crate) async fn main(env: Environment, config: Config, shutdown: rocket::Shutdown, global_state: Arc<GlobalState>, seed_cache_rx: watch::Receiver<()>) -> Result<(), Error> {
+    let ((), (), ()) = tokio::try_join!(
+        prepare_seeds(global_state.clone(), seed_cache_rx, shutdown.clone()),
         create_rooms(global_state.clone(), shutdown.clone()),
         handle_rooms(global_state, if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }, shutdown),
     )?;

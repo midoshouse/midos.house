@@ -51,8 +51,10 @@ pub(crate) enum ClientMessage {
         spoiler_log: bool,
     },
     Seed {
-        #[clap(short = 'l', long)]
-        spoiler_log: bool,
+        #[clap(long = "official")]
+        is_official: bool,
+        #[clap(short = 'l', long, alias = "spoiler-log")]
+        spoiler_seed: bool,
         goal: Goal,
         args: Vec<String>,
     },
@@ -100,7 +102,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                 break
                             }
                             Ok(ClientMessage::Roll { version, settings, spoiler_log }) => if let Json::Object(settings) = settings {
-                                let mut rx = global_state.clone().roll_seed(PrerollMode::Medium, None, VersionedBranch::Pinned(version), settings, if spoiler_log { UnlockSpoilerLog::Now } else { UnlockSpoilerLog::Never });
+                                let mut rx = global_state.clone().roll_seed(PrerollMode::Medium, true, None, VersionedBranch::Pinned(version), settings, if spoiler_log { UnlockSpoilerLog::Now } else { UnlockSpoilerLog::Never });
                                 loop {
                                     let update = rx.recv().await;
                                     update.write(&mut sock).await.expect("error writing to UNIX socket");
@@ -130,19 +132,27 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                     break
                                 }
                             }
-                            Ok(ClientMessage::Seed { goal, spoiler_log, args }) => {
-                                let mut rx = match goal.parse_seed_command(&global_state.http_client, spoiler_log, &args).await {
-                                    Ok(SeedCommandParseResult::Regular { settings, spoiler_log, description, .. }) => {
-                                        Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
-                                        global_state.clone().roll_seed(goal.preroll_seeds(), None, goal.rando_version(), settings, goal.unlock_spoiler_log(false, spoiler_log))
+                            Ok(ClientMessage::Seed { goal, is_official, spoiler_seed, args }) => {
+                                let mut transaction = match global_state.db_pool.begin().await {
+                                    Ok(transaction) => transaction,
+                                    Err(e) => {
+                                        Some(SeedRollUpdate::Error(e.into())).write(&mut sock).await.expect("error writing to UNIX socket");
+                                        None::<SeedRollUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
+                                        break
                                     }
-                                    Ok(SeedCommandParseResult::Rsl { preset, world_count, spoiler_log, description, .. }) => {
+                                };
+                                let mut rx = match goal.parse_seed_command(&mut transaction, &global_state, is_official, spoiler_seed, &args).await {
+                                    Ok(SeedCommandParseResult::Regular { settings, unlock_spoiler_log, description, .. }) => {
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
-                                        global_state.clone().roll_rsl_seed(None, preset, world_count, goal.unlock_spoiler_log(false, spoiler_log))
+                                        global_state.clone().roll_seed(goal.preroll_seeds(), true, None, goal.rando_version(), settings, unlock_spoiler_log)
                                     }
-                                    Ok(SeedCommandParseResult::Tfb { version, spoiler_log, description, .. }) => {
+                                    Ok(SeedCommandParseResult::Rsl { preset, world_count, unlock_spoiler_log, description, .. }) => {
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
-                                        global_state.clone().roll_tfb_seed(None, version, None, goal.unlock_spoiler_log(false, spoiler_log))
+                                        global_state.clone().roll_rsl_seed(None, preset, world_count, unlock_spoiler_log)
+                                    }
+                                    Ok(SeedCommandParseResult::Tfb { version, unlock_spoiler_log, description, .. }) => {
+                                        Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
+                                        global_state.clone().roll_tfb_seed(None, version, None, unlock_spoiler_log)
                                     }
                                     Ok(SeedCommandParseResult::QueueExisting { data, description, .. }) => {
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
@@ -167,6 +177,14 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                         break
                                     }
                                 };
+                                match transaction.commit().await {
+                                    Ok(()) => {}
+                                    Err(e) => {
+                                        Some(SeedRollUpdate::Error(e.into())).write(&mut sock).await.expect("error writing to UNIX socket");
+                                        None::<SeedRollUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
+                                        break
+                                    }
+                                }
                                 loop {
                                     let update = rx.recv().await;
                                     update.write(&mut sock).await.expect("error writing to UNIX socket");

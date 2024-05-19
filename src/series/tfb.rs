@@ -139,7 +139,7 @@ pub(crate) fn qualifier_async_rules() -> RawHtml<String> {
 
 pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Option<&CsrfToken>, data: &Data<'_>, team_id: Option<Id<Teams>>, ctx: &mut StatusContext<'_>) -> Result<RawHtml<String>, Error> {
     Ok(if let Some(async_kind) = data.active_async(&mut *transaction, team_id).await? {
-        let async_row = sqlx::query!(r#"SELECT file_stem AS "file_stem!", hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut **transaction).await?;
+        let async_row = sqlx::query!(r#"SELECT tfb_uuid, web_id, web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut **transaction).await?;
         let team_row = if let Some(team_id) = team_id {
             sqlx::query!(r#"SELECT requested AS "requested!", submitted FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL"#, team_id as _, async_kind as _).fetch_optional(&mut **transaction).await?
         } else {
@@ -159,14 +159,21 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                     }
                 }
             } else {
-                let seed = seed::Data {
-                    file_hash: match (async_row.hash1, async_row.hash2, async_row.hash3, async_row.hash4, async_row.hash5) {
-                        (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
-                        (None, None, None, None, None) => None,
-                        _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
-                    },
-                    files: Some(seed::Files::MidosHouse { file_stem: Cow::Owned(async_row.file_stem), locked_spoiler_log_path: None }),
-                };
+                let seed = seed::Data::from_db(
+                    None,
+                    None,
+                    None,
+                    async_row.file_stem,
+                    None,
+                    async_row.web_id,
+                    async_row.web_gen_time,
+                    async_row.tfb_uuid,
+                    async_row.hash1,
+                    async_row.hash2,
+                    async_row.hash3,
+                    async_row.hash4,
+                    async_row.hash5,
+                );
                 let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
                 let ctx = ctx.take_submit_async();
                 let mut errors = ctx.errors().collect_vec();

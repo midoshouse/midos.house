@@ -129,7 +129,10 @@ pub(crate) use {
         io,
         process::Command,
         select,
-        sync::mpsc,
+        sync::{
+            mpsc,
+            watch,
+        },
         time::{
             Instant,
             sleep,

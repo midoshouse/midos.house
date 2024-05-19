@@ -155,6 +155,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
         let clean_shutdown = Arc::default();
         let racetime_config = if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone();
         let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+        let (seed_cache_tx, seed_cache_rx) = watch::channel(());
         let global_state = Arc::new(racetime_bot::GlobalState::new(
             new_room_lock,
             racetime_config,
@@ -167,9 +168,10 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
             env,
             discord_builder.ctx_fut.clone(),
             Arc::clone(&clean_shutdown),
+            seed_cache_tx,
         ).await);
         #[cfg(unix)] let unix_listener = unix_socket::listen(rocket.shutdown(), clean_shutdown, Arc::clone(&global_state));
-        let racetime_task = tokio::spawn(racetime_bot::main(env, config.clone(), rocket.shutdown(), global_state)).map(|res| {
+        let racetime_task = tokio::spawn(racetime_bot::main(env, config.clone(), rocket.shutdown(), global_state, seed_cache_rx)).map(|res| {
             println!("racetime.gg task stopped");
             match res {
                 Ok(Ok(())) => Ok(()),

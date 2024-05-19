@@ -444,17 +444,6 @@ impl Race {
         update_end!(end_time, room, "UPDATE races SET end_time = $1 WHERE id = $2");
         update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE id = $2");
         update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE id = $2");
-        let seed_files = match (row.file_stem, row.locked_spoiler_log_path, row.web_id, row.web_gen_time, row.tfb_uuid) {
-            (_, _, _, _, Some(uuid)) => Some(seed::Files::TriforceBlitz { uuid }),
-            (Some(file_stem), _, Some(id), Some(gen_time), None) => Some(seed::Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
-            (Some(file_stem), locked_spoiler_log_path, Some(id), None, None) => Some(match (row.start, row.async_start1, row.async_start2) {
-                (Some(start), None, None) | (None, Some(start), None) | (None, None, Some(start)) => seed::Files::OotrWeb { id, gen_time: start - TimeDelta::days(1), file_stem: Cow::Owned(file_stem) },
-                (None, Some(async_start1), Some(async_start2)) => seed::Files::OotrWeb { id, gen_time: async_start1.min(async_start2) - TimeDelta::days(1), file_stem: Cow::Owned(file_stem) },
-                (_, _, _) => seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path },
-            }),
-            (Some(file_stem), locked_spoiler_log_path, None, _, None) => Some(seed::Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path }),
-            (None, _, _, _, None) => None,
-        };
         Ok(Self {
             series: row.series,
             event: row.event,
@@ -468,14 +457,21 @@ impl Race {
                 row.room.map(|room| room.parse()).transpose()?, row.async_room1.map(|room| room.parse()).transpose()?, row.async_room2.map(|room| room.parse()).transpose()?,
             ),
             draft: row.draft_state.map(|Json(draft)| draft),
-            seed: seed::Data {
-                file_hash: match (row.hash1, row.hash2, row.hash3, row.hash4, row.hash5) {
-                    (Some(hash1), Some(hash2), Some(hash3), Some(hash4), Some(hash5)) => Some([hash1, hash2, hash3, hash4, hash5]),
-                    (None, None, None, None, None) => None,
-                    _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
-                },
-                files: seed_files,
-            },
+            seed: seed::Data::from_db(
+                row.start,
+                row.async_start1,
+                row.async_start2,
+                row.file_stem,
+                row.locked_spoiler_log_path,
+                row.web_id,
+                row.web_gen_time,
+                row.tfb_uuid,
+                row.hash1,
+                row.hash2,
+                row.hash3,
+                row.hash4,
+                row.hash5,
+            ),
             video_urls: all().filter_map(|language| match language {
                 English => row.video_url.clone(),
                 French => row.video_url_fr.clone(),
@@ -666,6 +662,7 @@ impl Race {
             },
             Series::MixedPools => match &*event.event {
                 "1" | "2" => {}
+                "3" => {} //TODO request access to schedule sheet from organizers
                 _ => unimplemented!(),
             },
             Series::Multiworld => match &*event.event {
