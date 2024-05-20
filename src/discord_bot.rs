@@ -186,6 +186,7 @@ pub(crate) struct CommandIds {
     post_status: CommandId,
     pronoun_roles: CommandId,
     racing_role: CommandId,
+    reset_race: CommandId,
     pub(crate) schedule: CommandId,
     pub(crate) schedule_async: CommandId,
     pub(crate) schedule_remove: CommandId,
@@ -239,20 +240,32 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a DiscordCtx, interactio
             data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
         )
     };
-    let mut applicable_races = Race::for_scheduling_channel(&mut transaction, &http_client, interaction.channel_id(), game).await?;
+    let mut applicable_races = Race::for_scheduling_channel(&mut transaction, &http_client, interaction.channel_id(), game, false).await?;
     if let Some(Some(min_game)) = applicable_races.iter().map(|race| race.game).min() {
         // None < Some(_) so this code only runs if all applicable races are best-of-N
         applicable_races.retain(|race| race.game == Some(min_game));
     }
     Ok(match applicable_races.into_iter().at_most_one() {
         Ok(None) => {
+            let command_ids = *ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&interaction.guild_id()?)).expect("interaction called from outside registered guild");
+            let mut content = MessageBuilder::default();
+            match (Race::for_scheduling_channel(&mut transaction, &http_client, interaction.channel_id(), game, true).await?.is_empty(), game.is_some()) {
+                (false, false) => {
+                    content.push("Sorry, this thread is not associated with any upcoming races. Tournament organizers can use ");
+                    content.mention_command(command_ids.reset_race, "reset-race");
+                    content.push(" if necessary.");
+                }
+                (false, true) => {
+                    content.push("Sorry, there don't seem to be any upcoming races with that game number associated with this thread. Tournament organizers can use ");
+                    content.mention_command(command_ids.reset_race, "reset-race");
+                    content.push(" if necessary.");
+                }
+                (true, false) => { content.push("Sorry, this thread is not associated with any upcoming races. Please contact a tournament organizer to fix this."); }
+                (true, true) => { content.push("Sorry, there don't seem to be any upcoming races with that game number associated with this thread. If this seems wrong, please contact a tournament organizer to fix this."); }
+            }
             interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                 .ephemeral(true)
-                .content(if game.is_some() {
-                    "Sorry, there don't seem to be any upcoming races with that game number associated with this thread. If this seems wrong, please contact a tournament organizer to fix this."
-                } else {
-                    "Sorry, this thread is not associated with any upcoming races. Please contact a tournament organizer to fix this."
-                })
+                .content(content.build())
             )).await?;
             transaction.rollback().await?;
             None
@@ -633,6 +646,24 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 );
                 idx
             };
+            let reset_race = {
+                let idx = commands.len();
+                commands.push(CreateCommand::new("reset-race")
+                    .kind(CommandType::ChatInput)
+                    .dm_permission(false)
+                    .description("Deletes selected data from a race.")
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::Integer,
+                        "game",
+                        "The game number within the match.",
+                    )
+                        .min_int_value(1)
+                        .max_int_value(255)
+                        .required(false)
+                    )
+                );
+                idx
+            };
             let schedule = {
                 let idx = commands.len();
                 commands.push(CreateCommand::new("schedule")
@@ -808,6 +839,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 post_status: commands[post_status].id,
                 pronoun_roles: commands[pronoun_roles].id,
                 racing_role: commands[racing_role].id,
+                reset_race: commands[reset_race].id,
                 schedule: commands[schedule].id,
                 schedule_async: commands[schedule_async].id,
                 schedule_remove: commands[schedule_remove].id,
@@ -1005,6 +1037,78 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 )
                                 .button(CreateButton::new("racingrole").label("racing"))
                             )).await?;
+                        } else if interaction.data.id == command_ids.reset_race {
+                            let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
+                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut *transaction).await? {
+                                let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
+                                if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
+                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                        .ephemeral(true)
+                                        .content("Sorry, only event organizers can use this command.")
+                                    )).await?;
+                                    return Ok(())
+                                }
+                                let game = interaction.data.options.get(1).map(|option| match option.value {
+                                    CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
+                                    _ => panic!("unexpected slash command option type"),
+                                });
+                                let http_client = {
+                                    let data = ctx.data.read().await;
+                                    data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone()
+                                };
+                                match Race::for_scheduling_channel(&mut transaction, &http_client, interaction.channel_id(), game, true).await?.into_iter().at_most_one() {
+                                    Ok(None) => {
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content(if game.is_some() {
+                                                "Sorry, there don't seem to be any races with that game number associated with this thread."
+                                            } else {
+                                                "Sorry, this thread is not associated with any races."
+                                            })
+                                        )).await?;
+                                        transaction.rollback().await?;
+                                    }
+                                    Ok(Some(race)) => {
+                                        let mut race = Race {
+                                            // explicitly listing fields here instead of using `..race` so if the fields change they're kept/reset correctly
+                                            id: race.id,
+                                            series: race.series,
+                                            event: race.event,
+                                            source: race.source,
+                                            entrants: race.entrants,
+                                            phase: race.phase,
+                                            round: race.round,
+                                            game: race.game,
+                                            scheduling_thread: race.scheduling_thread,
+                                            schedule: RaceSchedule::Unscheduled, //TODO add command parameter that needs to be specified to reset this
+                                            draft: race.draft, //TODO add command parameter to reset the draft state
+                                            seed: seed::Data::default(), //TODO keep if schedule is kept
+                                            video_urls: race.video_urls,
+                                            restreamers: race.restreamers,
+                                            ignored: race.ignored,
+                                            schedule_locked: race.schedule_locked,
+                                        };
+                                        race.save(&mut transaction).await?;
+                                        transaction.commit().await?;
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content("done")
+                                        )).await?;
+                                    }
+                                    Err(_) => {
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content("Sorry, this thread is associated with multiple races. Please specify the game number.")
+                                        )).await?;
+                                        transaction.rollback().await?;
+                                    }
+                                }
+                            } else {
+                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                    .ephemeral(true)
+                                    .content("Sorry, this Discord server is not associated with an ongoing Mido's House event.")
+                                )).await?;
+                            }
                         } else if interaction.data.id == command_ids.schedule {
                             let game = interaction.data.options.get(1).map(|option| match option.value {
                                 CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),

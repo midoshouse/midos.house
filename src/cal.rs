@@ -743,12 +743,13 @@ impl Race {
         Ok(races)
     }
 
-    pub(crate) async fn for_scheduling_channel(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, channel_id: ChannelId, game: Option<i16>) -> Result<Vec<Self>, Error> {
+    pub(crate) async fn for_scheduling_channel(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, channel_id: ChannelId, game: Option<i16>, include_started: bool) -> Result<Vec<Self>, Error> {
         let mut races = Vec::default();
-        let rows = if let Some(game) = game {
-            sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW()) AND game = $2"#, i64::from(channel_id), game).fetch_all(&mut **transaction).await?
-        } else {
-            sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW())"#, i64::from(channel_id)).fetch_all(&mut **transaction).await?
+        let rows = match (game, include_started) {
+            (None, false) => sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE scheduling_thread = $1 AND (start IS NULL OR start > NOW())"#, i64::from(channel_id)).fetch_all(&mut **transaction).await?,
+            (None, true) => sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE scheduling_thread = $1"#, i64::from(channel_id)).fetch_all(&mut **transaction).await?,
+            (Some(game), false) => sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE scheduling_thread = $1 AND game = $2 AND (start IS NULL OR start > NOW())"#, i64::from(channel_id), game).fetch_all(&mut **transaction).await?,
+            (Some(game), true) => sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE scheduling_thread = $1 AND game = $2"#, i64::from(channel_id), game).fetch_all(&mut **transaction).await?,
         };
         for id in rows {
             races.push(Self::from_id(&mut *transaction, http_client, id).await?);
@@ -1024,139 +1025,85 @@ impl Race {
     }
 
     pub(crate) async fn save(&mut self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE id = $1) AS "exists!""#, self.id as _).fetch_one(&mut **transaction).await? {
-            unimplemented!("updating existing races not yet implemented") //TODO
-        } else {
-            let (league_id, sheet_timestamp, startgg_event, startgg_set) = match self.source {
-                Source::Manual => (None, None, None, None),
-                Source::League { id } => (Some(id), None, None, None),
-                Source::Sheet { timestamp } => (None, Some(timestamp), None, None),
-                Source::StartGG { ref event, ref set } => (None, None, Some(event), Some(set)),
-            };
-            let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
-            let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match self.schedule {
-                RaceSchedule::Unscheduled => (None, None, None, None, None, None, None, None, None),
-                RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
-                RaceSchedule::Async { start1, start2, end1, end2, ref room1, ref room2 } => (None, start1, start2, None, end1, end2, None, room1.as_ref(), room2.as_ref()),
-            };
-            let (web_id, web_gen_time, file_stem, locked_spoiler_log_path, tfb_uuid) = match self.seed.files {
-                Some(seed::Files::MidosHouse { ref file_stem, ref locked_spoiler_log_path }) => (None, None, Some(file_stem), locked_spoiler_log_path.as_ref(), None),
-                Some(seed::Files::OotrWeb { id, gen_time, ref file_stem }) => (Some(id), Some(gen_time), Some(file_stem), None, None),
-                Some(seed::Files::TriforceBlitz { uuid }) => (None, None, None, None, Some(uuid)),
-                Some(seed::Files::TfbSotd { .. }) => unimplemented!("Triforce Blitz seed of the day not supported for official races"),
-                None => (None, None, None, None, None),
-            };
-            sqlx::query!("INSERT INTO races (
-                startgg_set,
-                start,
-                series,
-                event,
-                async_start2,
-                async_start1,
-                room,
-                async_room1,
-                async_room2,
-                draft_state,
-                async_end1,
-                async_end2,
-                end_time,
-                team1,
-                team2,
-                web_id,
-                web_gen_time,
-                file_stem,
-                hash1,
-                hash2,
-                hash3,
-                hash4,
-                hash5,
-                game,
-                id,
-                p1,
-                p2,
-                video_url,
-                phase,
-                round,
-                p3,
-                startgg_event,
-                scheduling_thread,
-                total,
-                finished,
-                tfb_uuid,
-                video_url_fr,
-                restreamer,
-                restreamer_fr,
-                locked_spoiler_log_path,
-                video_url_pt,
-                restreamer_pt,
-                p1_twitch,
-                p2_twitch,
-                p1_discord,
-                p2_discord,
-                team3,
-                video_url_de,
-                restreamer_de,
-                sheet_timestamp,
-                league_id,
-                p1_racetime,
-                p2_racetime
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53)",
-                startgg_set as _,
-                start,
-                self.series as _,
-                self.event,
-                async_start2,
-                async_start1,
-                room.map(|url| url.to_string()),
-                async_room1.map(|url| url.to_string()),
-                async_room2.map(|url| url.to_string()),
-                self.draft.as_ref().map(Json) as _,
-                async_end1,
-                async_end2,
-                end,
-                team1.map(|id| i64::from(id)),
-                team2.map(|id| i64::from(id)),
-                web_id.map(|web_id| web_id as i64),
-                web_gen_time,
-                file_stem.map(|file_stem| &**file_stem),
-                self.seed.file_hash.map(|[hash1, _, _, _, _]| hash1) as _,
-                self.seed.file_hash.map(|[_, hash2, _, _, _]| hash2) as _,
-                self.seed.file_hash.map(|[_, _, hash3, _, _]| hash3) as _,
-                self.seed.file_hash.map(|[_, _, _, hash4, _]| hash4) as _,
-                self.seed.file_hash.map(|[_, _, _, _, hash5]| hash5) as _,
-                self.game,
-                self.id as _,
-                p1,
-                p2,
-                self.video_urls.get(&English).map(|url| url.to_string()),
-                self.phase,
-                self.round,
-                p3,
-                startgg_event,
-                self.scheduling_thread.map(|id| i64::from(id)),
-                total.map(|total| total as i32),
-                finished.map(|finished| finished as i32),
-                tfb_uuid,
-                self.video_urls.get(&French).map(|url| url.to_string()),
-                self.restreamers.get(&English),
-                self.restreamers.get(&French),
-                locked_spoiler_log_path,
-                self.video_urls.get(&Portuguese).map(|url| url.to_string()),
-                self.restreamers.get(&Portuguese),
-                p1_twitch,
-                p2_twitch,
-                p1_discord.map(|id| i64::from(id)),
-                p2_discord.map(|id| i64::from(id)),
-                team3.map(|id| i64::from(id)),
-                self.video_urls.get(&German).map(|url| url.to_string()),
-                self.restreamers.get(&German),
-                sheet_timestamp,
-                league_id,
-                p1_racetime,
-                p2_racetime,
-            ).execute(&mut **transaction).await?;
-        }
+        let (league_id, sheet_timestamp, startgg_event, startgg_set) = match self.source {
+            Source::Manual => (None, None, None, None),
+            Source::League { id } => (Some(id), None, None, None),
+            Source::Sheet { timestamp } => (None, Some(timestamp), None, None),
+            Source::StartGG { ref event, ref set } => (None, None, Some(event), Some(set)),
+        };
+        let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
+        let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match self.schedule {
+            RaceSchedule::Unscheduled => (None, None, None, None, None, None, None, None, None),
+            RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
+            RaceSchedule::Async { start1, start2, end1, end2, ref room1, ref room2 } => (None, start1, start2, None, end1, end2, None, room1.as_ref(), room2.as_ref()),
+        };
+        let (web_id, web_gen_time, file_stem, locked_spoiler_log_path, tfb_uuid) = match self.seed.files {
+            Some(seed::Files::MidosHouse { ref file_stem, ref locked_spoiler_log_path }) => (None, None, Some(file_stem), locked_spoiler_log_path.as_ref(), None),
+            Some(seed::Files::OotrWeb { id, gen_time, ref file_stem }) => (Some(id), Some(gen_time), Some(file_stem), None, None),
+            Some(seed::Files::TriforceBlitz { uuid }) => (None, None, None, None, Some(uuid)),
+            Some(seed::Files::TfbSotd { .. }) => unimplemented!("Triforce Blitz seed of the day not supported for official races"),
+            None => (None, None, None, None, None),
+        };
+        sqlx::query!("
+            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime)
+            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,       $29,   $30,   $31, $32,           $33,               $34,   $35,      $36,      $37,          $38,        $39,           $40,                     $41,          $42,           $43,       $44,       $45,        $46,        $47,   $48,          $49,           $50,             $51,       $52,         $53        )
+            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime)
+            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,       $29,   $30,   $31, $32,           $33,               $34,   $35,      $36,      $37,          $38,        $39,           $40,                     $41,          $42,           $43,       $44,       $45,        $46,        $47,   $48,          $49,           $50,             $51,       $52,         $53        )
+        ",
+            startgg_set as _,
+            start,
+            self.series as _,
+            self.event,
+            async_start2,
+            async_start1,
+            room.map(|url| url.to_string()),
+            async_room1.map(|url| url.to_string()),
+            async_room2.map(|url| url.to_string()),
+            self.draft.as_ref().map(Json) as _,
+            async_end1,
+            async_end2,
+            end,
+            team1.map(|id| i64::from(id)),
+            team2.map(|id| i64::from(id)),
+            web_id.map(|web_id| web_id as i64),
+            web_gen_time,
+            file_stem.map(|file_stem| &**file_stem),
+            self.seed.file_hash.map(|[hash1, _, _, _, _]| hash1) as _,
+            self.seed.file_hash.map(|[_, hash2, _, _, _]| hash2) as _,
+            self.seed.file_hash.map(|[_, _, hash3, _, _]| hash3) as _,
+            self.seed.file_hash.map(|[_, _, _, hash4, _]| hash4) as _,
+            self.seed.file_hash.map(|[_, _, _, _, hash5]| hash5) as _,
+            self.game,
+            self.id as _,
+            p1,
+            p2,
+            self.video_urls.get(&English).map(|url| url.to_string()),
+            self.phase,
+            self.round,
+            p3,
+            startgg_event,
+            self.scheduling_thread.map(|id| i64::from(id)),
+            total.map(|total| total as i32),
+            finished.map(|finished| finished as i32),
+            tfb_uuid,
+            self.video_urls.get(&French).map(|url| url.to_string()),
+            self.restreamers.get(&English),
+            self.restreamers.get(&French),
+            locked_spoiler_log_path,
+            self.video_urls.get(&Portuguese).map(|url| url.to_string()),
+            self.restreamers.get(&Portuguese),
+            p1_twitch,
+            p2_twitch,
+            p1_discord.map(|id| i64::from(id)),
+            p2_discord.map(|id| i64::from(id)),
+            team3.map(|id| i64::from(id)),
+            self.video_urls.get(&German).map(|url| url.to_string()),
+            self.restreamers.get(&German),
+            sheet_timestamp,
+            league_id,
+            p1_racetime,
+            p2_racetime,
+        ).execute(&mut **transaction).await?;
         Ok(())
     }
 }
