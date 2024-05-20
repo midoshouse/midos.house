@@ -2461,9 +2461,11 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
                 } else {
                     wait_time *= 2; // exponential backoff
                 }
-                eprintln!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
                 if wait_time >= Duration::from_secs(2 * 60) {
-                    wheel::night_report("/net/midoshouse/error", Some(&format!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await?;
+                    eprintln!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
+                    if wait_time >= Duration::from_secs(10 * 60) {
+                        wheel::night_report("/net/midoshouse/error", Some(&format!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await?;
+                    }
                 }
                 sleep(wait_time).await;
                 last_crash = Instant::now();
