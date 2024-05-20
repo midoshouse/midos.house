@@ -171,45 +171,30 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
             seed_cache_tx,
         ).await);
         #[cfg(unix)] let unix_listener = unix_socket::listen(rocket.shutdown(), clean_shutdown, Arc::clone(&global_state));
-        let racetime_task = tokio::spawn(racetime_bot::main(env, config.clone(), rocket.shutdown(), global_state, seed_cache_rx)).map(|res| {
-            println!("racetime.gg task stopped");
-            match res {
-                Ok(Ok(())) => Ok(()),
-                Ok(Err(e)) => Err(Error::from(e)),
-                Err(e) => Err(Error::from(e)),
-            }
+        let racetime_task = tokio::spawn(racetime_bot::main(env, config.clone(), rocket.shutdown(), global_state, seed_cache_rx)).map(|res| match res {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(Error::from(e)),
+            Err(e) => Err(Error::from(e)),
         });
-        let import_task = tokio::spawn(cal::auto_import_races(db_pool, http_client, env, config, rocket.shutdown(), discord_builder.ctx_fut.clone())).map(|res| {
-            println!("race importer task stopped");
-            match res {
-                Ok(Ok(())) => Ok(()),
-                Ok(Err(e)) => Err(Error::from(e)),
-                Err(e) => Err(Error::from(e)),
-            }
+        let import_task = tokio::spawn(cal::auto_import_races(db_pool, http_client, env, config, rocket.shutdown(), discord_builder.ctx_fut.clone())).map(|res| match res {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(Error::from(e)),
+            Err(e) => Err(Error::from(e)),
         });
-        let rocket_task = tokio::spawn(rocket.launch()).map(|res| {
-            println!("Rocket task stopped");
-            match res {
-                Ok(Ok(Rocket { .. })) => Ok(()),
-                Ok(Err(e)) => Err(Error::from(e)),
-                Err(e) => Err(Error::from(e)),
-            }
+        let rocket_task = tokio::spawn(rocket.launch()).map(|res| match res {
+            Ok(Ok(Rocket { .. })) => Ok(()),
+            Ok(Err(e)) => Err(Error::from(e)),
+            Err(e) => Err(Error::from(e)),
         });
-        let discord_task = tokio::spawn(discord_builder.run()).map(|res| {
-            println!("Discord task stopped");
-            match res {
-                Ok(Ok(())) => Ok(()),
-                Ok(Err(e)) => Err(Error::from(e)),
-                Err(e) => Err(Error::from(e)),
-            }
+        let discord_task = tokio::spawn(discord_builder.run()).map(|res| match res {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(Error::from(e)),
+            Err(e) => Err(Error::from(e)),
         });
-        #[cfg(unix)] let unix_socket_task = tokio::spawn(unix_listener).map(|res| {
-            println!("UNIX listener task stopped");
-            match res {
-                Ok(Ok(())) => Ok(()),
-                Ok(Err(e)) => Err(Error::from(e)),
-                Err(e) => Err(Error::from(e)),
-            }
+        #[cfg(unix)] let unix_socket_task = tokio::spawn(unix_listener).map(|res| match res {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(Error::from(e)),
+            Err(e) => Err(Error::from(e)),
         });
         #[cfg(not(unix))] let unix_socket_task = future::ok(());
         let ((), (), (), (), ()) = tokio::try_join!(discord_task, import_task, racetime_task, rocket_task, unix_socket_task)?;
