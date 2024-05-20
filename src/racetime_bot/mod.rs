@@ -1526,7 +1526,10 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let patch_path_prefix = if world_count > 1 { "Created patch file archive at: " } else { "Creating Patch File: " };
         let patch_path = rando_path.join("Output").join(stderr.iter().rev().find_map(|line| line.strip_prefix(patch_path_prefix)).ok_or(RollError::PatchPath)?);
-        let spoiler_log_path = rando_path.join("Output").join(stderr.iter().rev().find_map(|line| line.strip_prefix("Created spoiler log at: ")).ok_or(RollError::SpoilerLogPath)?);
+        let spoiler_log_path = rando_path.join("Output").join(stderr.iter().rev().find_map(|line| line.strip_prefix("Created spoiler log at: ")).ok_or_else(|| RollError::SpoilerLogPath {
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        })?);
         let patch_filename = patch_path.file_name().expect("patch file path with no file name");
         fs::rename(&patch_path, Path::new(seed::DIR).join(patch_filename)).await?;
         return Ok((
@@ -1584,7 +1587,10 @@ pub(crate) enum RollError {
     #[error("failed to parse randomizer version from RSL script")]
     RslVersion,
     #[error("randomizer did not report spoiler log location")]
-    SpoilerLogPath,
+    SpoilerLogPath {
+        stdout: String,
+        stderr: String,
+    },
     #[error("didn't find 5 hash icons on Triforce Blitz seed page")]
     TfbHash,
     #[error("failed to parse Triforce Blitz seed page")]
