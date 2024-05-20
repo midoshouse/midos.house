@@ -4231,7 +4231,8 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                                         SeedRollUpdate::MovedForward(_) |
                                         SeedRollUpdate::Started => {}
                                         SeedRollUpdate::Done { seed, rsl_preset: _, unlock_spoiler_log: _ } => {
-                                            let [hash1, hash2, hash3, hash4, hash5] = match seed.file_hash {
+                                            let extra = seed.extra(Utc::now()).await.to_racetime()?;
+                                            let [hash1, hash2, hash3, hash4, hash5] = match extra.file_hash {
                                                 Some(hash) => hash.map(Some),
                                                 None => [None; 5],
                                             };
