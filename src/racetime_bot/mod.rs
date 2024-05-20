@@ -492,7 +492,7 @@ impl Goal {
             Self::CoOpS3 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
-            Self::MixedPoolsS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 8, 1, 36, 6)),
+            Self::MixedPoolsS3 => VersionedBranch::Latest(rando::Branch::DevFenhl),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
             Self::MultiworldS4 => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 199)),
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
@@ -4193,66 +4193,66 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
 
 async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch::Receiver<()>, mut shutdown: rocket::Shutdown) -> Result<(), Error> {
     'outer: loop {
-        select! {
-            () = &mut shutdown => break,
-            res = timeout(Duration::from_secs(24 * 60 * 60), seed_cache_rx.changed().then(|res| if let Ok(()) = res { Either::Left(future::ready(())) } else { Either::Right(future::pending()) })) => {
-                let (Ok(()) | Err(_)) = res;
-                let event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&global_state.db_pool).await.to_racetime()?;
-                for goal in all::<Goal>() {
-                    if let Some(settings) = goal.single_settings() {
-                        if goal.preroll_seeds() == PrerollMode::Long && event_rows.iter().any(|row| goal.matches_event(row.series, &row.event)) {
-                            if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM prerolled_seeds WHERE goal_name = $1) AS "exists!""#, goal.as_str()).fetch_one(&global_state.db_pool).await.to_racetime()? {
-                                'seed: loop {
-                                    let mut seed_rx = global_state.clone().roll_seed(
-                                        PrerollMode::Long,
-                                        false,
-                                        None,
-                                        goal.rando_version(),
-                                        settings.clone(),
-                                        UnlockSpoilerLog::After,
-                                    );
-                                    loop {
-                                        select! {
-                                            () = &mut shutdown => break 'outer,
-                                            Some(update) = seed_rx.recv() => match update {
-                                                SeedRollUpdate::Queued(_) |
-                                                SeedRollUpdate::MovedForward(_) |
-                                                SeedRollUpdate::Started => {}
-                                                SeedRollUpdate::Done { seed, rsl_preset: _, unlock_spoiler_log: _ } => {
-                                                    let [hash1, hash2, hash3, hash4, hash5] = match seed.file_hash {
-                                                        Some(hash) => hash.map(Some),
-                                                        None => [None; 5],
-                                                    };
-                                                    match seed.files {
-                                                        Some(seed::Files::MidosHouse { file_stem, locked_spoiler_log_path }) => {
-                                                            sqlx::query!("INSERT INTO prerolled_seeds
-                                                                (goal_name, file_stem, locked_spoiler_log_path, hash1, hash2, hash3, hash4, hash5)
-                                                            VALUES
-                                                                ($1, $2, $3, $4, $5, $6, $7, $8)
-                                                            ", goal.as_str(), &file_stem, locked_spoiler_log_path, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _).execute(&global_state.db_pool).await.to_racetime()?;
-                                                        }
-                                                        _ => unimplemented!("unexpected seed files in prerolled seed"),
-                                                    }
-                                                    break 'seed
+        let event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&global_state.db_pool).await.to_racetime()?;
+        for goal in all::<Goal>() {
+            if let Some(settings) = goal.single_settings() {
+                if goal.preroll_seeds() == PrerollMode::Long && event_rows.iter().any(|row| goal.matches_event(row.series, &row.event)) {
+                    if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM prerolled_seeds WHERE goal_name = $1) AS "exists!""#, goal.as_str()).fetch_one(&global_state.db_pool).await.to_racetime()? {
+                        'seed: loop {
+                            let mut seed_rx = global_state.clone().roll_seed(
+                                PrerollMode::Long,
+                                false,
+                                None,
+                                goal.rando_version(),
+                                settings.clone(),
+                                UnlockSpoilerLog::After,
+                            );
+                            loop {
+                                select! {
+                                    () = &mut shutdown => break 'outer,
+                                    Some(update) = seed_rx.recv() => match update {
+                                        SeedRollUpdate::Queued(_) |
+                                        SeedRollUpdate::MovedForward(_) |
+                                        SeedRollUpdate::Started => {}
+                                        SeedRollUpdate::Done { seed, rsl_preset: _, unlock_spoiler_log: _ } => {
+                                            let [hash1, hash2, hash3, hash4, hash5] = match seed.file_hash {
+                                                Some(hash) => hash.map(Some),
+                                                None => [None; 5],
+                                            };
+                                            match seed.files {
+                                                Some(seed::Files::MidosHouse { file_stem, locked_spoiler_log_path }) => {
+                                                    sqlx::query!("INSERT INTO prerolled_seeds
+                                                        (goal_name, file_stem, locked_spoiler_log_path, hash1, hash2, hash3, hash4, hash5)
+                                                    VALUES
+                                                        ($1, $2, $3, $4, $5, $6, $7, $8)
+                                                    ", goal.as_str(), &file_stem, locked_spoiler_log_path, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _).execute(&global_state.db_pool).await.to_racetime()?;
                                                 }
-                                                SeedRollUpdate::Error(RollError::Retries { num_retries, last_error }) => {
-                                                    if let Some(last_error) = last_error {
-                                                        eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
-                                                    } else {
-                                                        eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
-                                                    }
-                                                    continue 'seed
-                                                }
-                                                SeedRollUpdate::Error(e) => return Err(e).to_racetime(),
-                                                #[cfg(unix)] SeedRollUpdate::Message(_) => {}
-                                            },
+                                                _ => unimplemented!("unexpected seed files in prerolled seed"),
+                                            }
+                                            break 'seed
                                         }
-                                    }
+                                        SeedRollUpdate::Error(RollError::Retries { num_retries, last_error }) => {
+                                            if let Some(last_error) = last_error {
+                                                eprintln!("seed rolling failed {num_retries} times, sample error:\n{last_error}");
+                                            } else {
+                                                eprintln!("seed rolling failed {num_retries} times, no sample error recorded");
+                                            }
+                                            continue 'seed
+                                        }
+                                        SeedRollUpdate::Error(e) => return Err(e).to_racetime(),
+                                        #[cfg(unix)] SeedRollUpdate::Message(_) => {}
+                                    },
                                 }
                             }
                         }
                     }
                 }
+            }
+        }
+        select! {
+            () = &mut shutdown => break,
+            res = timeout(Duration::from_secs(24 * 60 * 60), seed_cache_rx.changed().then(|res| if let Ok(()) = res { Either::Left(future::ready(())) } else { Either::Right(future::pending()) })) => {
+                let (Ok(()) | Err(_)) = res;
             }
         }
     }
