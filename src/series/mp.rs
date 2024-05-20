@@ -156,7 +156,6 @@ pub(crate) fn s2_settings() -> serde_json::Map<String, Json> {
 pub(crate) fn s3_settings() -> serde_json::Map<String, Json> {
     collect![
         format!("user_message") => json!("3rd Mixed Pools Tournament"),
-        format!("create_spoiler") => json!(false),
         format!("bridge") => json!("open"),
         format!("bridge_medallions") => json!(2),
         format!("trials") => json!(0),

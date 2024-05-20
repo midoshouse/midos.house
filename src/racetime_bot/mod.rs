@@ -1233,15 +1233,15 @@ impl GlobalState {
                     }
                 } else {
                     update_tx.send(SeedRollUpdate::Started).await?;
-                    match roll_seed_locally(delay_until, version, settings).await {
-                        Ok((patch_filename, spoiler_log_path)) => update_tx.send(match spoiler_log_path.into_os_string().into_string() {
-                            Ok(spoiler_log_path) => match regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) {
+                    match roll_seed_locally(delay_until, version, unlock_spoiler_log, settings).await {
+                        Ok((patch_filename, spoiler_log_path)) => update_tx.send(match spoiler_log_path.map(|spoiler_log_path| spoiler_log_path.into_os_string().into_string()).transpose() {
+                            Ok(locked_spoiler_log_path) => match regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) {
                                 Some((_, file_stem)) => SeedRollUpdate::Done {
                                     seed: seed::Data {
                                         file_hash: None,
                                         files: Some(seed::Files::MidosHouse {
                                             file_stem: Cow::Owned(file_stem.to_owned()),
-                                            locked_spoiler_log_path: Some(spoiler_log_path),
+                                            locked_spoiler_log_path,
                                         }),
                                     },
                                     rsl_preset: None,
@@ -1467,7 +1467,7 @@ impl GlobalState {
     }
 }
 
-async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: VersionedBranch, mut settings: serde_json::Map<String, Json>) -> Result<(String, PathBuf), RollError> {
+async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: VersionedBranch, unlock_spoiler_log: UnlockSpoilerLog, mut settings: serde_json::Map<String, Json>) -> Result<(String, Option<PathBuf>), RollError> {
     let rando_path = match version {
         VersionedBranch::Pinned(version) => {
             version.clone_repo().await?;
@@ -1508,6 +1508,13 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
     }
     settings.insert(format!("create_patch_file"), json!(true));
     settings.insert(format!("create_compressed_rom"), json!(false));
+    if settings.insert(format!("create_spoiler"), json!(match unlock_spoiler_log {
+        UnlockSpoilerLog::Now | UnlockSpoilerLog::After => true,
+        UnlockSpoilerLog::Never => false,
+    })).is_some() {
+        eprintln!("warning: overriding create_spoiler setting");
+        wheel::night_report("/net/midoshouse/error", Some("warning: overriding create_spoiler setting")).await?;
+    };
     let mut last_error = None;
     for attempt in 0.. {
         if attempt >= 3 && delay_until.map_or(true, |delay_until| Utc::now() >= delay_until) {
@@ -1526,15 +1533,18 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let patch_path_prefix = if world_count > 1 { "Created patch file archive at: " } else { "Creating Patch File: " };
         let patch_path = rando_path.join("Output").join(stderr.iter().rev().find_map(|line| line.strip_prefix(patch_path_prefix)).ok_or(RollError::PatchPath)?);
-        let spoiler_log_path = rando_path.join("Output").join(stderr.iter().rev().find_map(|line| line.strip_prefix("Created spoiler log at: ")).ok_or_else(|| RollError::SpoilerLogPath {
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        })?);
+        let spoiler_log_path = match unlock_spoiler_log {
+            UnlockSpoilerLog::Now | UnlockSpoilerLog::After => Some(rando_path.join("Output").join(stderr.iter().rev().find_map(|line| line.strip_prefix("Created spoiler log at: ")).ok_or_else(|| RollError::SpoilerLogPath {
+                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+            })?).to_owned()),
+            UnlockSpoilerLog::Never => None,
+        };
         let patch_filename = patch_path.file_name().expect("patch file path with no file name");
         fs::rename(&patch_path, Path::new(seed::DIR).join(patch_filename)).await?;
         return Ok((
             patch_filename.to_str().expect("non-UTF-8 patch filename").to_owned(),
-            spoiler_log_path.to_owned(),
+            spoiler_log_path,
         ))
     }
     unreachable!()
