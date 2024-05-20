@@ -1985,22 +1985,22 @@ pub(crate) async fn race_table(
                         }
                         td {
                             div(class = "favicon-container") {
-                                @for video_url in race.video_urls.values() {
-                                    a(class = "favicon", href = video_url.to_string()) : favicon(video_url);
+                                @for (language, video_url) in &race.video_urls {
+                                    a(class = "favicon", title = format!("{language} restream"), href = video_url.to_string()) : favicon(video_url);
                                 }
                                 @if show_multistreams && race.video_urls.is_empty() {
                                     @if let Some(multistream_url) = race.multistream_url(&mut *transaction, env, http_client, &event).await? {
-                                        a(class = "favicon", href = multistream_url.to_string()) : favicon(&multistream_url);
+                                        a(class = "favicon", title = "multistream", href = multistream_url.to_string()) : favicon(&multistream_url);
                                     }
                                 }
-                                @for (_, video_url) in race.player_video_urls(&mut *transaction).await? {
-                                    a(class = "favicon", href = video_url.to_string()) : favicon(&video_url);
+                                @for (user, video_url) in race.player_video_urls(&mut *transaction).await? {
+                                    a(class = "favicon", title = format!("{user}'s vod"), href = video_url.to_string()) : favicon(&video_url);
                                 }
                                 @if let Some(startgg_url) = race.startgg_set_url()? {
-                                    a(class = "favicon", href = startgg_url.to_string()) : favicon(&startgg_url);
+                                    a(class = "favicon", title = "start.gg set", href = startgg_url.to_string()) : favicon(&startgg_url);
                                 }
                                 @for room in race.rooms() {
-                                    a(class = "favicon", href = room.to_string()) : favicon(&room);
+                                    a(class = "favicon", title = "race room", href = room.to_string()) : favicon(&room);
                                 }
                             }
                         }
