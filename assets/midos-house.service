@@ -10,7 +10,6 @@ ExecStart=/usr/local/share/midos-house/bin/midos-house
 User=mido
 Group=nogroup
 WorkingDirectory=/opt/git/github.com/midoshouse/midos.house/main
-Environment="PATH=/home/fenhl/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 [Install]
 WantedBy=multi-user.target
