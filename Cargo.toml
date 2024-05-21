@@ -43,7 +43,7 @@ graphql_client = { git = "https://github.com/fenhl/graphql-client", branch = "sk
 if_chain = "1"
 ics = "0.5"
 image = { version = "0.25", default-features = false, features = ["png"] }
-itertools = "0.12"
+itertools = "0.13"
 kuchiki = "0.8"
 lazy-regex = "3"
 log = "0.4"

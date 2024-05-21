@@ -1474,8 +1474,8 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
             version.dir()?
         }
         VersionedBranch::Latest(branch) => {
-            branch.clone_repo().await?;
-            branch.dir()?
+            branch.clone_repo(true).await?;
+            branch.dir(true)?
         }
         VersionedBranch::Custom { github_username, branch } => {
             let parent = {
