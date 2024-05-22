@@ -1154,7 +1154,7 @@ pub(crate) struct GlobalState {
     #[allow(unused)] //TODO use for set reporting
     startgg_token: String,
     ootr_api_client: OotrApiClient,
-    discord_ctx: RwFuture<DiscordCtx>,
+    pub(crate) discord_ctx: RwFuture<DiscordCtx>,
     clean_shutdown: Arc<Mutex<CleanShutdown>>,
     seed_cache_tx: watch::Sender<()>,
 }

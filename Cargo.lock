@@ -270,9 +270,9 @@ dependencies = [
 
 [[package]]
 name = "async-proto"
-version = "0.21.1"
+version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9249b0551dafc2c1ef4d0de6ee114e3903db191d540322a2845c700b1ef92c4"
+checksum = "3d734b3448cd29fe05bdbc4d76e9193ed3c4b27ba318446ebe785d57af90b0a7"
 dependencies = [
  "async-proto-derive",
  "byteorder",
@@ -280,6 +280,7 @@ dependencies = [
  "fallible_collections",
  "semver",
  "serde_json",
+ "serenity",
  "thiserror",
  "tokio",
  "tungstenite 0.20.1",
@@ -288,9 +289,9 @@ dependencies = [
 
 [[package]]
 name = "async-proto-derive"
-version = "0.21.1"
+version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80e28a2e253e4d4f7fd8cce25a0f8611803b2cba81cd7603932f99e1cce2d98f"
+checksum = "3c72ff3a0a9f503b0df11c6e047894bfdb426792797dd4d266c7e3f1090b6cc1"
 dependencies = [
  "itertools 0.13.0",
  "proc-macro2",
@@ -2780,9 +2781,9 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "openssl-src"
-version = "300.2.3+3.2.1"
+version = "300.3.0+3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cff92b6f71555b61bb9315f7c64da3ca43d87531622120fea0195fc761b4843"
+checksum = "eba8804a1c5765b18c4b3f907e6897ebabeedebc9830e1a0046c4a4cf44663e1"
 dependencies = [
  "cc",
 ]

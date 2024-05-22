@@ -110,6 +110,9 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
         #[cfg(unix)] let mut sock = UnixStream::connect(unix_socket::PATH).await?;
         #[cfg(unix)] subcommand.write(&mut sock).await?;
         match subcommand {
+            #[cfg(unix)] Subcommand::CleanupRoles { .. } => {
+                u8::read(&mut sock).await?;
+            }
             #[cfg(unix)] Subcommand::PrepareStop { .. } => {
                 println!("preparing to stop Mido's House: waiting for reply");
                 u8::read(&mut sock).await?;

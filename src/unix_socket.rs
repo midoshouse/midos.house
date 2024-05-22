@@ -28,6 +28,9 @@ fn json_arg(arg: &str) -> serde_json::Result<Json> {
 
 #[derive(clap::Subcommand, Protocol)]
 pub(crate) enum ClientMessage {
+    CleanupRoles {
+        guild_id: GuildId,
+    },
     PrepareStop {
         #[clap(long)]
         no_new_rooms: bool,
@@ -77,6 +80,28 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                 tokio::spawn(async move {
                     loop {
                         match ClientMessage::read(&mut sock).await {
+                            Ok(ClientMessage::CleanupRoles { guild_id }) => {
+                                let discord_ctx = global_state.discord_ctx.read().await;
+                                let mut transaction = global_state.db_pool.begin().await.expect("error cleaning up Discord roles");
+                                let mut roles_to_remove = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND role IS NOT NULL"#, PgSnowflake(guild_id) as _).fetch(&mut *transaction)
+                                    .map_ok(|PgSnowflake(role)| role)
+                                    .try_collect::<Vec<_>>().await.expect("error cleaning up Discord roles");
+                                roles_to_remove.extend(
+                                    sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND racetime_team IS NOT NULL"#, PgSnowflake(guild_id) as _).fetch(&mut *transaction)
+                                        .map_ok(|PgSnowflake(role)| role)
+                                        .try_collect::<Vec<_>>().await.expect("error cleaning up Discord roles")
+                                );
+                                let mut members = pin!(guild_id.members_iter(&*discord_ctx));
+                                while let Some(member) = members.try_next().await.expect("error cleaning up Discord roles") {
+                                    for role in &member.roles {
+                                        if roles_to_remove.contains(role) {
+                                            member.remove_role(&*discord_ctx, role).await.expect("error cleaning up Discord roles");
+                                        }
+                                    }
+                                }
+                                transaction.commit().await.expect("error cleaning up Discord roles");
+                                0u8.write(&mut sock).await.expect("error writing to UNIX socket");
+                            }
                             Ok(ClientMessage::PrepareStop { no_new_rooms }) => {
                                 println!("preparing to stop Mido's House: acquiring clean shutdown mutex");
                                 lock!(clean_shutdown = clean_shutdown; {
