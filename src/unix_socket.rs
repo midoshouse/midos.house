@@ -6,6 +6,10 @@ use {
     serde_json::Value as Json,
     tokio::net::UnixListener,
     crate::{
+        discord_bot::{
+            Element,
+            MULTIWORLD_GUILD,
+        },
         prelude::*,
         racetime_bot::{
             Goal,
@@ -216,8 +220,69 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                     if update.is_none() { break }
                                 }
                             }
-                            Ok(ClientMessage::UpdateRegionalVc { user_id: _, scene: _ }) => {
-                                //TODO
+                            Ok(ClientMessage::UpdateRegionalVc { user_id, scene }) => {
+                                if let Some(user) = User::from_id(&global_state.db_pool, user_id).await.expect("error updating regional voice") {
+                                    if let Some(discord_user) = user.discord {
+                                        let element = match scene { //FROM https://wiki.cloudmodding.com/oot/Scene_Table/NTSC_1.0
+                                            0x00 => Some(Element::Forest), // Inside the Deku Tree
+                                            0x01 => Some(Element::Fire), // Dodongo's Cavern
+                                            0x02 => Some(Element::Water), // Inside Jabu-Jabu's Belly
+                                            0x03 => Some(Element::Forest), // Forest Temple
+                                            0x04 => Some(Element::Fire), // Fire Temple
+                                            0x05 => Some(Element::Water), // Water Temple
+                                            0x06 => Some(Element::Spirit), // Spirit Temple
+                                            0x07 => Some(Element::Shadow), // Shadow Temple
+                                            0x08 => Some(Element::Shadow), // Bottom of the Well
+                                            0x09 => Some(Element::Water), // Ice Cavern
+                                            0x0B => Some(Element::Spirit), // Gerudo Training Ground
+                                            0x0C => Some(Element::Spirit), // Thieves' Hideout
+                                            0x0D => Some(Element::Light), // Inside Ganon's Castle
+                                            0x1B => Some(Element::Light), // Market Entrance (Child - Day)
+                                            0x1C => Some(Element::Light), // Market Entrance (Child - Night)
+                                            0x1D => Some(Element::Light), // Market Entrance (Ruins)
+                                            0x1E => Some(Element::Light), // Back Alley (Child - Day)
+                                            0x1F => Some(Element::Light), // Back Alley (Child - Night)
+                                            0x20 => Some(Element::Light), // Market (Child - Day)
+                                            0x21 => Some(Element::Light), // Market (Child - Night)
+                                            0x22 => Some(Element::Light), // Market (Ruins)
+                                            0x23 => Some(Element::Light), // Temple of Time Exterior (Child - Day)
+                                            0x24 => Some(Element::Light), // Temple of Time Exterior (Child - Night)
+                                            0x25 => Some(Element::Light), // Temple of Time Exterior (Ruins)
+                                            0x34 => Some(Element::Forest), // Link's House, HACK to make child spawn set region, only works if child spawn ER and special interior ER are both off
+                                            0x43 => Some(Element::Light), // Temple of Time
+                                            0x45 => Some(Element::Light), // Castle Hedge Maze (Day)
+                                            0x46 => Some(Element::Light), // Castle Hedge Maze (Night)
+                                            0x4A => Some(Element::Light), // Castle Courtyard
+                                            0x51 => Some(Element::Light), // Spot 00 - Hyrule Field
+                                            0x52 => Some(Element::Shadow), // Spot 01 - Kakariko Village
+                                            0x53 => Some(Element::Shadow), // Spot 02 - Graveyard
+                                            0x54 => Some(Element::Water), // Spot 03 - Zora's River
+                                            0x55 => Some(Element::Forest), // Spot 04 - Kokiri Forest
+                                            0x56 => Some(Element::Forest), // Spot 05 - Sacred Forest Meadow
+                                            0x57 => Some(Element::Water), // Spot 06 - Lake Hylia
+                                            0x58 => Some(Element::Water), // Spot 07 - Zora's Domain
+                                            0x59 => Some(Element::Water), // Spot 08 - Zora's Fountain
+                                            0x5A => Some(Element::Spirit), // Spot 09 - Gerudo Valley
+                                            0x5B => Some(Element::Forest), // Spot 10 - Lost Woods
+                                            0x5C => Some(Element::Spirit), // Spot 11 - Desert Colossus
+                                            0x5D => Some(Element::Spirit), // Spot 12 - Gerudo's Fortress
+                                            0x5E => Some(Element::Spirit), // Spot 13 - Haunted Wasteland
+                                            0x5F => Some(Element::Light), // Spot 15 - Hyrule Castle
+                                            0x60 => Some(Element::Fire), // Spot 16 - Death Mountain Trail
+                                            0x61 => Some(Element::Fire), // Spot 17 - Death Mountain Crater
+                                            0x62 => Some(Element::Fire), // Spot 18 - Goron City
+                                            0x63 => Some(Element::Light), // Spot 20 - Lon Lon Ranch
+                                            0x64 => Some(Element::Light), // Ganon's Castle Exterior
+                                            _ => None,
+                                        };
+                                        if let Some(element) = element {
+                                            let discord_ctx = global_state.discord_ctx.read().await;
+                                            if discord_ctx.data.write().await.entry::<Element>().or_default().insert(discord_user.id, element).unwrap_or(Element::Light) != element {
+                                                let _ = MULTIWORLD_GUILD.move_member(&*discord_ctx, discord_user.id, element.voice_channel()).await; // errors if the user isn't in voice in the multiworld guild
+                                            }
+                                        }
+                                    }
+                                }
                                 0u8.write(&mut sock).await.expect("error writing to UNIX socket");
                                 break
                             }

@@ -201,6 +201,36 @@ impl TypeMapKey for CommandIds {
     type Value = HashMap<GuildId, CommandIds>;
 }
 
+pub(crate) const MULTIWORLD_GUILD: GuildId = GuildId::new(826935332867276820);
+
+#[cfg_attr(not(unix), allow(unused))] // only constructed in UNIX socket handler
+#[derive(Clone, Copy, PartialEq, Eq, Sequence)]
+pub(crate) enum Element {
+    Light,
+    Forest,
+    Fire,
+    Water,
+    Shadow,
+    Spirit,
+}
+
+impl Element {
+    pub(crate) fn voice_channel(&self) -> ChannelId {
+        match self {
+            Self::Light => ChannelId::new(1096152882962768032),
+            Self::Forest => ChannelId::new(1096153269933441064),
+            Self::Fire => ChannelId::new(1096153203508260884),
+            Self::Water => ChannelId::new(1096153240049025024),
+            Self::Shadow => ChannelId::new(1242773533600387143),
+            Self::Spirit => ChannelId::new(1242774260682985573),
+        }
+    }
+}
+
+impl TypeMapKey for Element {
+    type Value = HashMap<UserId, Element>;
+}
+
 #[async_trait]
 trait GenericInteraction {
     fn channel_id(&self) -> ChannelId;
@@ -1786,6 +1816,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     },
                 },
                 _ => {}
+            }
+            Ok(())
+        }))
+        .on_voice_state_update(|ctx, _, new| Box::pin(async move {
+            if let Some(source_channel) = new.channel_id {
+                if new.guild_id == Some(MULTIWORLD_GUILD) && all::<Element>().any(|region| region.voice_channel() == source_channel) {
+                    let target_channel = ctx.data.read().await.get::<Element>().and_then(|regions| regions.get(&new.user_id)).copied().unwrap_or(Element::Light).voice_channel();
+                    if source_channel != target_channel {
+                        MULTIWORLD_GUILD.move_member(ctx, new.user_id, target_channel).await?;
+                    }
+                }
             }
             Ok(())
         }))
