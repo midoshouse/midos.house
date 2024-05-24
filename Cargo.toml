@@ -51,10 +51,10 @@ log-lock = { git = "https://github.com/fenhl/log-lock", branch = "main" }
 noisy_float = "0.2"
 once_cell = "1"
 ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", branch = "main", features = ["sqlx"] }
-racetime = "0.21"
+racetime = "0.21.5"
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls", "stream"] }
-rocket = "0.5"
+rocket = "0.5.1"
 rocket-util = { git = "https://github.com/fenhl/rocket-util", branch = "main", features = ["ics", "image", "rocket_csrf"] }
 rocket_csrf = { git = "https://github.com/fenhl/rocket_csrf", branch = "rocket05" } # waiting for a release with rocket 0.5 support
 rocket_oauth2 = "0.5.0-rc.3"
@@ -76,7 +76,7 @@ wheel = { git = "https://github.com/fenhl/wheel", branch = "main", features = ["
 yup-oauth2 = "9"
 
 [target.'cfg(unix)'.dependencies]
-async-proto = { version = "0.21", features = ["chrono", "serde_json", "serenity", "uuid"] }
+async-proto = { version = "0.22", features = ["chrono", "serde_json", "serenity", "uuid"] }
 openssl = { version = "0.10", features = ["vendored"] }
 xdg = "2"
 
