@@ -121,7 +121,7 @@ pub(crate) fn qualifier_async_rules() -> RawHtml<String> {
             li {
                 : "Requesting the seed for async will make you ";
                 strong : "ineligible";
-                : " to participate in the live qualifier on April 8th."; //TODO adjust for S3
+                : " to participate in the respective live qualifier.";
             }
             li {
                 : "To avoid accidental spoilers, the qualifier async ";
