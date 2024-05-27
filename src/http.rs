@@ -441,7 +441,10 @@ async fn mw(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResu
 async fn mw_platforms(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
     let transaction = pool.begin().await?;
     page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::default() }, "platform support — Mido's House Multiworld", html! {
-        h1 : "Mido's House Multiworld platform support status";
+        h1 {
+            a(href = uri!(mw).to_string()) : "Mido's House Multiworld";
+            : " platform support status";
+        }
         table {
             tr {
                 th;
