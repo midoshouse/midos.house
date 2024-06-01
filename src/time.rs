@@ -107,12 +107,12 @@ pub(crate) fn unparse_duration(duration: Duration) -> String {
             buf.push_str(&format!("{mins:02}m"));
         }
         if secs > 0 {
-            buf.push_str(&format!("{secs:02}m"));
+            buf.push_str(&format!("{secs:02}s"));
         }
     } else if mins > 0 {
         buf.push_str(&format!("{mins}m"));
         if secs > 0 {
-            buf.push_str(&format!("{secs:02}m"));
+            buf.push_str(&format!("{secs:02}s"));
         }
     } else {
         buf.push_str(&format!("{secs}s"));
