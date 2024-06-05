@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT kind AS \"kind: AsyncKind\" FROM asyncs WHERE series = $1 AND event = $2",
+  "query": "SELECT kind AS \"kind: AsyncKind\" FROM asyncs WHERE series = $1 AND event = $2 AND (start IS NULL OR start <= NOW()) AND (end_time IS NULL OR end_time > NOW())",
   "describe": {
     "columns": [
       {
@@ -32,5 +32,5 @@
       false
     ]
   },
-  "hash": "1f80e649b2d5d740d79750b23c2bec463ffd2ed619145dc1d35a4f1b29dc686b"
+  "hash": "ebbec1360933da7d7bc231ab6156ac1c71b0a131be961cd6c56b6168631e4da5"
 }
