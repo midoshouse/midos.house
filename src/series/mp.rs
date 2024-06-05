@@ -168,6 +168,10 @@ pub(crate) fn s3_settings() -> serde_json::Map<String, Json> {
         format!("open_door_of_time") => json!(true),
         format!("zora_fountain") => json!("open"),
         format!("gerudo_fortress") => json!("open"),
+        format!("dungeon_shortcuts_choice") => json!("choice"),
+        format!("dungeon_shortcuts") => json!([
+            "Jabu Jabus Belly",
+        ]),
         format!("starting_age") => json!("random"),
         format!("shuffle_interior_entrances") => json!("all"),
         format!("shuffle_grotto_entrances") => json!(true),
