@@ -214,7 +214,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, csrf: Op
                 }
             }
         } else {
-            unimplemented!() //TODO redirect to enter page
+            unimplemented!("no async team row for team {team_id:?}, kind {async_kind:?}") //TODO redirect to enter page
         }
     } else {
         html! {
