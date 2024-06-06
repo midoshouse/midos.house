@@ -148,7 +148,7 @@ struct UtcTimestamp(DateTime<Utc>);
 
 impl<Z: TimeZone> From<DateTime<Z>> for UtcTimestamp {
     fn from(value: DateTime<Z>) -> Self {
-        Self(value.with_timezone(&Utc))
+        Self(value.to_utc())
     }
 }
 
@@ -157,7 +157,7 @@ impl<Z: TimeZone> From<DateTime<Z>> for UtcTimestamp {
 impl ScalarType for UtcTimestamp {
     fn parse(value: Value) -> InputValueResult<Self> {
         if let Value::String(s) = value {
-            Ok(Self(DateTime::parse_from_rfc3339(&s).map_err(InputValueError::custom)?.with_timezone(&Utc)))
+            Ok(Self(DateTime::parse_from_rfc3339(&s).map_err(InputValueError::custom)?.to_utc()))
         } else {
             Err(InputValueError::expected_type(value))
         }

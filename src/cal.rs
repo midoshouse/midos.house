@@ -3,7 +3,10 @@ use {
         max_by_key,
         min_by_key,
     },
-    chrono_tz::Tz,
+    chrono_tz::{
+        America,
+        Tz,
+    },
     ics::{
         ICalendar,
         properties::{
@@ -17,6 +20,7 @@ use {
     reqwest::StatusCode,
     rocket_util::Response,
     sqlx::types::Json,
+    wheel::traits::LocalResultExt as _,
     yup_oauth2::{
         ServiceAccountAuthenticator,
         read_service_account_key,
@@ -662,7 +666,42 @@ impl Race {
             },
             Series::MixedPools => match &*event.event {
                 "1" | "2" => {}
-                "3" => {} //TODO request access to schedule sheet from organizers
+                "3" => for row in sheet_values(http_client.clone(), "1DqKrmcLhWwfIRpTMZ-NqGGFma_jgCSkyHyP8kaJg6OA", "Schedule!A2:F").await? {
+                    let [timestamp, p1, p2, round, date_et, time_et] = &*row else { continue };
+                    let id = Id::new(&mut *transaction).await?;
+                    let (phase, round) = match &**round {
+                        "Top 16" => (format!("Top 16"), format!("Round 1")),
+                        "Quarterfinals" => (format!("Top 16"), format!("Quarterfinal")),
+                        "Semifinals" => (format!("Top 16"), format!("Semifinal")),
+                        "Finals" => (format!("Top 16"), format!("Final")),
+                        _ => (format!("Swiss"), round.clone()),
+                    };
+                    add_or_update_race(&mut *transaction, &mut races, Self {
+                        series: event.series,
+                        event: event.event.to_string(),
+                        source: Source::Sheet { timestamp: NaiveDateTime::parse_from_str(timestamp, "%d.%m.%Y %H:%M:%S")? },
+                        entrants: Entrants::Two([
+                            Entrant::Named { name: p1.clone(), racetime_id: None, twitch_username: None },
+                            Entrant::Named { name: p2.clone(), racetime_id: None, twitch_username: None },
+                        ]),
+                        phase: Some(phase),
+                        round: Some(round),
+                        game: None,
+                        scheduling_thread: None,
+                        schedule: RaceSchedule::Live {
+                            start: NaiveDateTime::parse_from_str(&format!("{date_et} at {time_et}"), "%d.%m.%Y at %H:%M:%S")?.and_local_timezone(America::New_York).single_ok()?.to_utc(),
+                            end: None,
+                            room: None,
+                        },
+                        draft: None,
+                        seed: seed::Data::default(),
+                        video_urls: HashMap::default(),
+                        restreamers: HashMap::default(),
+                        ignored: false,
+                        schedule_locked: false,
+                        id,
+                    }).await?;
+                },
                 _ => unimplemented!(),
             },
             Series::Multiworld => match &*event.event {
@@ -1423,7 +1462,7 @@ async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str)
 }
 
 fn ics_datetime<Z: TimeZone>(datetime: DateTime<Z>) -> String {
-    datetime.with_timezone(&Utc).format("%Y%m%dT%H%M%SZ").to_string()
+    datetime.to_utc().format("%Y%m%dT%H%M%SZ").to_string()
 }
 
 async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, http_client: &reqwest::Client, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {

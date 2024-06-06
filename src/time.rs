@@ -126,7 +126,7 @@ pub(crate) struct DateTimeFormat {
 }
 
 pub(crate) fn format_datetime<Z: TimeZone>(datetime: DateTime<Z>, format: DateTimeFormat) -> RawHtml<String> {
-    let utc = datetime.with_timezone(&Utc);
+    let utc = datetime.to_utc();
     let berlin = datetime.with_timezone(&Europe::Berlin);
     let new_york = datetime.with_timezone(&America::New_York);
     html! {
