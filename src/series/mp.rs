@@ -55,6 +55,12 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     a(href = "https://discord.gg/cpvPMTPZtP") : "the Discord server";
                     : " for details.";
                 }
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = "https://docs.google.com/spreadsheets/d/1DqKrmcLhWwfIRpTMZ-NqGGFma_jgCSkyHyP8kaJg6OA/edit?resourcekey#gid=1885752948") : "Swiss pairings and results";
+                    }
+                }
             }
         }),
         _ => None,
