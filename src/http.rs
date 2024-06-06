@@ -250,7 +250,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                     p {
                         : "Special thanks to Maplestar for some of the chest icons used in the logo, and to ";
                         : xopar;
-                        : " and shiroaeli for some of the seed hash icons!";
+                        : " and shirosoluna for some of the seed hash icons!";
                     }
                 }
             }
