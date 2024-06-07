@@ -237,6 +237,27 @@ impl RaceSchedule {
             (Self::Unscheduled, _) | (Self::Live { .. }, _) | (Self::Async { .. }, _) => false, // ensure compile error on missing variants by listing each left-hand side individually
         }
     }
+
+    pub(crate) fn set_live_start(&mut self, new_start: DateTime<Utc>) {
+        match self {
+            Self::Live { start, .. } => *start = new_start,
+            _ => *self = Self::Live { start: new_start, end: None, room: None },
+        }
+    }
+
+    pub(crate) fn set_async_start1(&mut self, new_start: DateTime<Utc>) {
+        match self {
+            Self::Async { start1, .. } => *start1 = Some(new_start),
+            _ => *self = Self::Async { start1: Some(new_start), start2: None, end1: None, end2: None, room1: None, room2: None },
+        }
+    }
+
+    pub(crate) fn set_async_start2(&mut self, new_start: DateTime<Utc>) {
+        match self {
+            Self::Async { start2, .. } => *start2 = Some(new_start),
+            _ => *self = Self::Async { start1: None, start2: Some(new_start), end1: None, end2: None, room1: None, room2: None },
+        }
+    }
 }
 
 impl PartialEq for RaceSchedule {
@@ -292,6 +313,7 @@ pub(crate) struct Race {
     pub(crate) game: Option<i16>,
     pub(crate) scheduling_thread: Option<ChannelId>,
     pub(crate) schedule: RaceSchedule,
+    pub(crate) schedule_updated_at: Option<DateTime<Utc>>,
     pub(crate) draft: Option<Draft>,
     pub(crate) seed: seed::Data,
     pub(crate) video_urls: HashMap<Language, Url>,
@@ -337,6 +359,7 @@ impl Race {
             room,
             async_room1,
             async_room2,
+            schedule_updated_at,
             file_stem,
             locked_spoiler_log_path,
             web_id,
@@ -460,6 +483,7 @@ impl Race {
                 end_time, async_end1, async_end2,
                 row.room.map(|room| room.parse()).transpose()?, row.async_room1.map(|room| room.parse()).transpose()?, row.async_room2.map(|room| room.parse()).transpose()?,
             ),
+            schedule_updated_at: row.schedule_updated_at,
             draft: row.draft_state.map(|Json(draft)| draft),
             seed: seed::Data::from_db(
                 row.start,
@@ -597,6 +621,7 @@ impl Race {
                             end: None,
                             room: None,
                         },
+                        schedule_updated_at: None,
                         draft: None,
                         seed: seed::Data::default(),
                         video_urls: HashMap::default(),
@@ -644,6 +669,7 @@ impl Race {
                                 end: None,
                                 room: None,
                             },
+                            schedule_updated_at: None,
                             draft: None,
                             seed: seed::Data::default(),
                             video_urls: if let Some(twitch_username) = race.restreamers.into_iter().filter_map(|restreamer| restreamer.twitch_username).at_most_one().expect("multiple restreams for a League race") {
@@ -693,6 +719,7 @@ impl Race {
                             end: None,
                             room: None,
                         },
+                        schedule_updated_at: None,
                         draft: None,
                         seed: seed::Data::default(),
                         video_urls: HashMap::default(),
@@ -733,6 +760,7 @@ impl Race {
                     round: None,
                     game: None,
                     scheduling_thread: None,
+                    schedule_updated_at: None,
                     draft: None,
                     seed: seed::Data::default(), //TODO
                     video_urls: event.video_url.iter().map(|video_url| (English, video_url.clone())).collect(), //TODO sync between event and race? Video URL fields for other languages on event::Data?
@@ -1084,10 +1112,10 @@ impl Race {
             None => (None, None, None, None, None),
         };
         sqlx::query!("
-            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime)
-            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,       $29,   $30,   $31, $32,           $33,               $34,   $35,      $36,      $37,          $38,        $39,           $40,                     $41,          $42,           $43,       $44,       $45,        $46,        $47,   $48,          $49,           $50,             $51,       $52,         $53        )
-            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime)
-            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,       $29,   $30,   $31, $32,           $33,               $34,   $35,      $36,      $37,          $38,        $39,           $40,                     $41,          $42,           $43,       $44,       $45,        $46,        $47,   $48,          $49,           $50,             $51,       $52,         $53        )
+            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime)
+            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,       $29,   $30,   $31, $32,           $33,               $34,   $35,      $36,      $37,          $38,        $39,           $40,                     $41,          $42,           $43,       $44,       $45,        $46,        $47,   $48,                 $49,          $50,           $51,             $52,       $53,         $54        )
+            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime)
+            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,       $29,   $30,   $31, $32,           $33,               $34,   $35,      $36,      $37,          $38,        $39,           $40,                     $41,          $42,           $43,       $44,       $45,        $46,        $47,   $48,                 $49,          $50,           $51,             $52,       $53,         $54        )
         ",
             startgg_set as _,
             start,
@@ -1136,6 +1164,7 @@ impl Race {
             p1_discord.map(|id| i64::from(id)),
             p2_discord.map(|id| i64::from(id)),
             team3.map(|id| i64::from(id)),
+            self.schedule_updated_at,
             self.video_urls.get(&German).map(|url| url.to_string()),
             self.restreamers.get(&German),
             sheet_timestamp,
@@ -1255,7 +1284,7 @@ impl Event {
 
     pub(crate) fn room(&self) -> Option<&Url> {
         match self.race.schedule {
-            RaceSchedule::Unscheduled => unreachable!(),
+            RaceSchedule::Unscheduled => None,
             RaceSchedule::Live { ref room, .. } => room.as_ref(),
             RaceSchedule::Async { ref room1, ref room2, .. } => match self.kind {
                 EventKind::Normal => unreachable!(),
@@ -1267,7 +1296,7 @@ impl Event {
 
     pub(crate) fn start(&self) -> Option<DateTime<Utc>> {
         match self.race.schedule {
-            RaceSchedule::Unscheduled => unreachable!(),
+            RaceSchedule::Unscheduled => None,
             RaceSchedule::Live { start, .. } => Some(start),
             RaceSchedule::Async { start1, start2, .. } => match self.kind {
                 EventKind::Normal => unreachable!(),
@@ -1279,7 +1308,7 @@ impl Event {
 
     pub(crate) fn end(&self) -> Option<DateTime<Utc>> {
         match self.race.schedule {
-            RaceSchedule::Unscheduled => unreachable!(),
+            RaceSchedule::Unscheduled => None,
             RaceSchedule::Live { end, .. } => end,
             RaceSchedule::Async { end1, end2, .. } => match self.kind {
                 EventKind::Normal => unreachable!(),
@@ -1853,6 +1882,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                     round: round.clone(),
                     game: (value.game_count > 1).then_some(game),
                     schedule: RaceSchedule::Unscheduled,
+                    schedule_updated_at: None,
                     draft: draft.clone(),
                     seed: seed::Data::default(),
                     video_urls: HashMap::default(),
@@ -2114,6 +2144,7 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
             },
             scheduling_thread: None,
             schedule: RaceSchedule::Unscheduled,
+            schedule_updated_at: None,
             draft: if let Some(draft_kind) = event.draft_kind() {
                 let [high_seed, low_seed] = match draft_kind {
                     draft::Kind::S7 => [

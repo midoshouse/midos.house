@@ -1111,6 +1111,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             game: race.game,
                                             scheduling_thread: race.scheduling_thread,
                                             schedule: RaceSchedule::Unscheduled, //TODO add command parameter that needs to be specified to reset this
+                                            schedule_updated_at: Some(Utc::now()),
                                             draft: race.draft, //TODO add command parameter to reset the draft state
                                             seed: seed::Data::default(), //TODO keep if schedule is kept
                                             video_urls: race.video_urls,
@@ -1144,7 +1145,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
                                 _ => panic!("unexpected slash command option type"),
                             });
-                            if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
+                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
                                 let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
                                 if team.is_some() || is_organizer {
@@ -1182,7 +1183,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             )).await?;
                                             transaction.rollback().await?;
                                         } else {
-                                            sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
+                                            race.schedule.set_live_start(start);
+                                            race.schedule_updated_at = Some(Utc::now());
+                                            race.save(&mut transaction).await?;
                                             let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
                                             if cal_event.should_create_room(&mut transaction, &event).await? && start - Utc::now() < TimeDelta::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
@@ -1272,7 +1275,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
                                 _ => panic!("unexpected slash command option type"),
                             });
-                            if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
+                            if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
                                 let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
                                 if team.is_some() && event.asyncs_allowed() || is_organizer {
@@ -1313,10 +1316,14 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             let kind = match race.entrants {
                                                 Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
                                                     if team.as_ref().map_or(false, |team| team1 == team) {
-                                                        sqlx::query!("UPDATE races SET async_start1 = $1, start = NULL, schedule_updated_at = NOW() WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
+                                                        race.schedule.set_async_start1(start);
+                                                        race.schedule_updated_at = Some(Utc::now());
+                                                        race.save(&mut transaction).await?;
                                                         cal::EventKind::Async1
                                                     } else if team.as_ref().map_or(false, |team| team2 == team) {
-                                                        sqlx::query!("UPDATE races SET async_start2 = $1, start = NULL, schedule_updated_at = NOW() WHERE id = $2", start, race.id as _).execute(&mut *transaction).await?;
+                                                        race.schedule.set_async_start2(start);
+                                                        race.schedule_updated_at = Some(Utc::now());
+                                                        race.save(&mut transaction).await?;
                                                         cal::EventKind::Async2
                                                     } else {
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
