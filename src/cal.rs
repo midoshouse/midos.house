@@ -952,11 +952,18 @@ impl Race {
         match self.schedule {
             RaceSchedule::Unscheduled => Box::new(iter::empty()) as Box<dyn Iterator<Item = Event> + Send>,
             RaceSchedule::Live { .. } => Box::new(iter::once(Event { race: self.clone(), kind: EventKind::Normal })),
-            RaceSchedule::Async { .. } => Box::new([
-                Event { race: self.clone(), kind: EventKind::Async1 },
-                Event { race: self.clone(), kind: EventKind::Async2 },
-                Event { race: self.clone(), kind: EventKind::Async3 },
-            ].into_iter()),
+            RaceSchedule::Async { .. } => if let Entrants::Three(_) = self.entrants {
+                Box::new([
+                    Event { race: self.clone(), kind: EventKind::Async1 },
+                    Event { race: self.clone(), kind: EventKind::Async2 },
+                    Event { race: self.clone(), kind: EventKind::Async3 },
+                ].into_iter()) as Box<dyn Iterator<Item = Event> + Send>
+            } else {
+                Box::new([
+                    Event { race: self.clone(), kind: EventKind::Async1 },
+                    Event { race: self.clone(), kind: EventKind::Async2 },
+                ].into_iter())
+            },
         }
     }
 
