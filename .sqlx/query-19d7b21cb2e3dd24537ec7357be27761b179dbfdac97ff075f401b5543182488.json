@@ -1,0 +1,27 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE races SET\n                    room = $1,\n                    async_room1 = $2,\n                    async_room2 = $3,\n                    async_room3 = $4,\n                    video_url = $5,\n                    restreamer = $6,\n                    video_url_fr = $7,\n                    restreamer_fr = $8,\n                    video_url_de = $9,\n                    restreamer_de = $10,\n                    video_url_pt = $11,\n                    restreamer_pt = $12,\n                    last_edited_by = $13,\n                    last_edited_at = NOW()\n                WHERE id = $14",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "19d7b21cb2e3dd24537ec7357be27761b179dbfdac97ff075f401b5543182488"
+}

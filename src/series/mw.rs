@@ -1360,6 +1360,7 @@ pub(crate) async fn status(transaction: &mut Transaction<'_, Postgres>, discord_
                     None,
                     None,
                     None,
+                    None,
                     async_row.file_stem,
                     None,
                     async_row.web_id,

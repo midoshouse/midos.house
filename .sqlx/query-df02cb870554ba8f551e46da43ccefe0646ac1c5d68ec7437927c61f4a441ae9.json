@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL, async_start3 = NULL WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "df02cb870554ba8f551e46da43ccefe0646ac1c5d68ec7437927c61f4a441ae9"
+}

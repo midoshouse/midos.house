@@ -703,7 +703,7 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Races, false).await?;
     let (mut past_races, ongoing_and_upcoming_races) = Race::for_event(&mut transaction, http_client, &data).await?
         .into_iter()
-        .partition::<Vec<_>, _>(|race| race.schedule.is_ended());
+        .partition::<Vec<_>, _>(|race| race.is_ended());
     past_races.reverse();
     let any_races_ongoing_or_upcoming = !ongoing_and_upcoming_races.is_empty();
     let (can_create, show_restream_consent, can_edit) = if let Some(ref me) = me {
@@ -959,7 +959,7 @@ pub(crate) async fn status_post(env: &State<Environment>, pool: &State<PgPool>, 
     Ok(if let Some(ref value) = form.value {
         if row.restream_consent && !value.restream_consent {
             //TODO check if restream consent can still be revoked according to tournament rules, offer to resign if not
-            if Race::for_event(&mut transaction, http_client, &data).await?.into_iter().any(|race| !race.schedule.is_ended() && !race.video_urls.is_empty()) {
+            if Race::for_event(&mut transaction, http_client, &data).await?.into_iter().any(|race| !race.is_ended() && !race.video_urls.is_empty()) {
                 form.context.push_error(form::Error::validation("There is a restream planned for one of your upcoming races. Please contact an event organizer if you would like to cancel.").with_name("restream_consent"));
             }
         }

@@ -328,7 +328,7 @@ impl Handler {
             sleep(Duration::from_secs(15 * 60)).await;
         }
         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-        if cal_event.is_first_async_half() {
+        if cal_event.is_private_async_part() {
             ctx.say("@entrants Please remember to send the videos of your run to a tournament organizer.").await?;
             if let Some(organizer_channel) = event.discord_organizer_channel {
                 organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
@@ -398,12 +398,12 @@ impl Handler {
                     Entrants::Two(_) => {
                         let mut team_times = HashMap::<_, Vec<_>>::default();
                         let mut team_rooms = HashMap::new();
-                        if cal_event.is_last_async_half() {
+                        if cal_event.is_public_async_part() {
                             #[derive(Debug, thiserror::Error)]
                             #[error("ExactlyOneError while formatting result of last async half")]
                             struct ExactlyOneError;
 
-                            let first_async_half = cal_event.race.cal_events().filter(|cal_event| cal_event.is_first_async_half()).exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
+                            let first_async_half = cal_event.race.cal_events().filter(|cal_event| cal_event.is_private_async_part()).exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
                             if let Some(ref room) = first_async_half.room() {
                                 let nonactive_team = first_async_half.active_teams().exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
                                 let data = ctx.global_state.http_client.get(format!("{}/data", room.to_string()))

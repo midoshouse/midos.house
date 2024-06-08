@@ -189,43 +189,51 @@ pub(crate) enum RaceSchedule {
     Async {
         start1: Option<DateTime<Utc>>,
         start2: Option<DateTime<Utc>>,
+        start3: Option<DateTime<Utc>>,
         end1: Option<DateTime<Utc>>,
         end2: Option<DateTime<Utc>>,
+        end3: Option<DateTime<Utc>>,
         room1: Option<Url>,
         room2: Option<Url>,
+        room3: Option<Url>,
     },
 }
 
 impl RaceSchedule {
     fn new(
-        live_start: Option<DateTime<Utc>>, async_start1: Option<DateTime<Utc>>, async_start2: Option<DateTime<Utc>>,
-        live_end: Option<DateTime<Utc>>, async_end1: Option<DateTime<Utc>>, async_end2: Option<DateTime<Utc>>,
-        live_room: Option<Url>, async_room1: Option<Url>, async_room2: Option<Url>,
+        live_start: Option<DateTime<Utc>>, async_start1: Option<DateTime<Utc>>, async_start2: Option<DateTime<Utc>>, async_start3: Option<DateTime<Utc>>,
+        live_end: Option<DateTime<Utc>>, async_end1: Option<DateTime<Utc>>, async_end2: Option<DateTime<Utc>>, async_end3: Option<DateTime<Utc>>,
+        live_room: Option<Url>, async_room1: Option<Url>, async_room2: Option<Url>, async_room3: Option<Url>,
     ) -> Self {
-        match (live_start, async_start1, async_start2) {
-            (None, None, None) => Self::Unscheduled,
-            (Some(start), None, None) => Self::Live {
+        match (live_start, async_start1, async_start2, async_start3) {
+            (None, None, None, None) => Self::Unscheduled,
+            (Some(start), None, None, None) => Self::Live {
                 end: live_end,
                 room: live_room,
                 start,
             },
-            (None, start1, start2) => Self::Async {
+            (None, start1, start2, start3) => Self::Async {
                 end1: async_end1,
                 end2: async_end2,
+                end3: async_end3,
                 room1: async_room1,
                 room2: async_room2,
-                start1, start2,
+                room3: async_room3,
+                start1, start2, start3,
             },
-            (Some(_), _, _) => unreachable!("both live and async starts included, should be prevented by SQL constraint"),
+            (Some(_), _, _, _) => unreachable!("both live and async starts included, should be prevented by SQL constraint"),
         }
     }
 
-    pub(crate) fn is_ended(&self) -> bool {
-        // Since the end time of a race isn't known in advance, we assume that if a race has an end time, that end time is in the past.
+    fn end_time(&self, entrants: &Entrants) -> Option<DateTime<Utc>> {
         match *self {
-            Self::Unscheduled => false,
-            Self::Live { end, .. } => end.is_some(),
-            Self::Async { end1, end2, .. } => end1.is_some() && end2.is_some(),
+            Self::Unscheduled => None,
+            Self::Live { end, .. } => end,
+            Self::Async { end1, end2, end3, .. } => Some(if let Entrants::Three(_) = entrants {
+                end1?.max(end2?).max(end3?)
+            } else {
+                end1?.max(end2?)
+            }),
         }
     }
 
@@ -233,9 +241,41 @@ impl RaceSchedule {
         match (self, other) {
             (Self::Unscheduled, Self::Unscheduled) => true,
             (Self::Live { start: start_a, .. }, Self::Live { start: start_b, .. }) => start_a == start_b,
-            (Self::Async { start1: start_a1, start2: start_a2, .. }, Self::Async { start1: start_b1, start2: start_b2, .. }) => start_a1 == start_b1 && start_a2 == start_b2,
+            (Self::Async { start1: start_a1, start2: start_a2, start3: start_a3, .. }, Self::Async { start1: start_b1, start2: start_b2, start3: start_b3, .. }) => start_a1 == start_b1 && start_a2 == start_b2 && start_a3 == start_b3,
             (Self::Unscheduled, _) | (Self::Live { .. }, _) | (Self::Async { .. }, _) => false, // ensure compile error on missing variants by listing each left-hand side individually
         }
+    }
+
+    fn cmp(&self, entrants_a: &Entrants, other: &Self, entrants_b: &Entrants) -> Ordering {
+        let (mut starts_a, end_a) = match *self {
+            Self::Unscheduled => ([None; 3], None),
+            Self::Live { start, end, .. } => ([Some(start); 3], end),
+            Self::Async { start1, start2, start3, end1, end2, end3, .. } => ([start1, start2, start3], if let Entrants::Three(_) = entrants_a {
+                end1.and_then(|end1| Some(end1.max(end2?).max(end3?)))
+            } else {
+                end1.and_then(|end1| Some(end1.max(end2?)))
+            }),
+        };
+        let (mut starts_b, end_b) = match *other {
+            Self::Unscheduled => ([None; 3], None),
+            Self::Live { start, end, .. } => ([Some(start); 3], end),
+            Self::Async { start1, start2, start3, end1, end2, end3, .. } => ([start1, start2, start3], if let Entrants::Three(_) = entrants_b {
+                end1.and_then(|end1| Some(end1.max(end2?).max(end3?)))
+            } else {
+                end1.and_then(|end1| Some(end1.max(end2?)))
+            }),
+        };
+        let mut ordering = end_a.is_none().cmp(&end_b.is_none()) // races that have ended first
+            .then_with(|| end_a.cmp(&end_b)); // races that ended earlier first
+        if ordering.is_eq() {
+            starts_a.sort_unstable();
+            starts_b.sort_unstable();
+            for (start_a, start_b) in starts_a.into_iter().zip_eq(starts_b) {
+                ordering = ordering.then_with(|| start_a.is_none().cmp(&start_b.is_none())) // races with more starting times first
+                    .then_with(|| start_a.cmp(&start_b)); // races with parts starting earlier first
+            }
+        }
+        ordering
     }
 
     pub(crate) fn set_live_start(&mut self, new_start: DateTime<Utc>) {
@@ -248,56 +288,22 @@ impl RaceSchedule {
     pub(crate) fn set_async_start1(&mut self, new_start: DateTime<Utc>) {
         match self {
             Self::Async { start1, .. } => *start1 = Some(new_start),
-            _ => *self = Self::Async { start1: Some(new_start), start2: None, end1: None, end2: None, room1: None, room2: None },
+            _ => *self = Self::Async { start1: Some(new_start), start2: None, start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None },
         }
     }
 
     pub(crate) fn set_async_start2(&mut self, new_start: DateTime<Utc>) {
         match self {
             Self::Async { start2, .. } => *start2 = Some(new_start),
-            _ => *self = Self::Async { start1: None, start2: Some(new_start), end1: None, end2: None, room1: None, room2: None },
+            _ => *self = Self::Async { start1: None, start2: Some(new_start), start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None },
         }
     }
-}
 
-impl PartialEq for RaceSchedule {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Equal
-    }
-}
-
-impl Eq for RaceSchedule {}
-
-impl PartialOrd for RaceSchedule {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for RaceSchedule {
-    fn cmp(&self, other: &Self) -> Ordering {
-        let (start_a1, start_a2, end_a) = match *self {
-            Self::Unscheduled => (None, None, None),
-            Self::Live { start, end, .. } => (Some(start), Some(start), end),
-            Self::Async { start1, start2, end1, end2, .. } => (start1, start2, end1.and_then(|end1| Some(end1.max(end2?)))),
-        };
-        let (start_b1, start_b2, end_b) = match *other {
-            Self::Unscheduled => (None, None, None),
-            Self::Live { start, end, .. } => (Some(start), Some(start), end),
-            Self::Async { start1, start2, end1, end2, .. } => (start1, start2, end1.and_then(|end1| Some(end1.max(end2?)))),
-        };
-        end_a.is_none().cmp(&end_b.is_none()) // races that have ended first
-            .then_with(|| end_a.cmp(&end_b)) // races that ended earlier first
-            .then_with(|| (start_a1.is_none() && start_a2.is_none()).cmp(&(start_b1.is_none() && start_b2.is_none()))) // races that have at least 1 starting time first
-            .then_with(||
-                start_a1.map_or(start_a2, |start_a1| start_a2.map_or(Some(start_a1), |start_a2| Some(start_a1.min(start_a2))))
-                .cmp(&start_b1.map_or(start_b2, |start_b1| start_b2.map_or(Some(start_b1), |start_b2| Some(start_b1.min(start_b2)))))
-            ) // races whose first half started earlier first
-            .then_with(|| (start_a1.is_none() || start_a2.is_none()).cmp(&(start_b1.is_none() || start_b2.is_none()))) // races that have both starting times first
-            .then_with(||
-                start_a1.map_or(start_a2, |start_a1| start_a2.map_or(Some(start_a1), |start_a2| Some(start_a1.max(start_a2))))
-                .cmp(&start_b1.map_or(start_b2, |start_b1| start_b2.map_or(Some(start_b1), |start_b2| Some(start_b1.max(start_b2)))))
-            ) // races whose second half started earlier first
+    pub(crate) fn set_async_start3(&mut self, new_start: DateTime<Utc>) {
+        match self {
+            Self::Async { start3, .. } => *start3 = Some(new_start),
+            _ => *self = Self::Async { start1: None, start2: None, start3: Some(new_start), end1: None, end2: None, end3: None, room1: None, room2: None, room3: None },
+        }
     }
 }
 
@@ -353,12 +359,15 @@ impl Race {
             start,
             async_start1,
             async_start2,
+            async_start3,
             end_time,
             async_end1,
             async_end2,
+            async_end3,
             room,
             async_room1,
             async_room2,
+            async_room3,
             schedule_updated_at,
             file_stem,
             locked_spoiler_log_path,
@@ -471,6 +480,7 @@ impl Race {
         update_end!(end_time, room, "UPDATE races SET end_time = $1 WHERE id = $2");
         update_end!(async_end1, async_room1, "UPDATE races SET async_end1 = $1 WHERE id = $2");
         update_end!(async_end2, async_room2, "UPDATE races SET async_end2 = $1 WHERE id = $2");
+        update_end!(async_end3, async_room3, "UPDATE races SET async_end3 = $1 WHERE id = $2");
         Ok(Self {
             series: row.series,
             event: row.event,
@@ -479,9 +489,9 @@ impl Race {
             game: row.game,
             scheduling_thread: row.scheduling_thread.map(|PgSnowflake(id)| id),
             schedule: RaceSchedule::new(
-                row.start, row.async_start1, row.async_start2,
-                end_time, async_end1, async_end2,
-                row.room.map(|room| room.parse()).transpose()?, row.async_room1.map(|room| room.parse()).transpose()?, row.async_room2.map(|room| room.parse()).transpose()?,
+                row.start, row.async_start1, row.async_start2, row.async_start3,
+                end_time, async_end1, async_end2, async_end3,
+                row.room.map(|room| room.parse()).transpose()?, row.async_room1.map(|room| room.parse()).transpose()?, row.async_room2.map(|room| room.parse()).transpose()?, row.async_room3.map(|room| room.parse()).transpose()?,
             ),
             schedule_updated_at: row.schedule_updated_at,
             draft: row.draft_state.map(|Json(draft)| draft),
@@ -489,6 +499,7 @@ impl Race {
                 row.start,
                 row.async_start1,
                 row.async_start2,
+                row.async_start3,
                 row.file_stem,
                 row.locked_spoiler_log_path,
                 row.web_id,
@@ -539,7 +550,7 @@ impl Race {
                 match race.schedule {
                     RaceSchedule::Unscheduled => {
                         found_race.schedule = RaceSchedule::Unscheduled;
-                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL WHERE id = $1", found_race.id as _).execute(&mut **transaction).await?;
+                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL, async_start3 = NULL WHERE id = $1", found_race.id as _).execute(&mut **transaction).await?;
                     }
                     RaceSchedule::Live { start, .. } => {
                         match found_race.schedule {
@@ -547,18 +558,19 @@ impl Race {
                             RaceSchedule::Live { start: ref mut old_start, .. } => *old_start = start,
                             RaceSchedule::Async { .. } => unimplemented!("race listed as async in database was rescheduled as live"), //TODO
                         }
-                        sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL WHERE id = $2", start, found_race.id as _).execute(&mut **transaction).await?;
+                        sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL, async_start3 = NULL WHERE id = $2", start, found_race.id as _).execute(&mut **transaction).await?;
                     },
-                    RaceSchedule::Async { start1, start2, .. } => {
+                    RaceSchedule::Async { start1, start2, start3, .. } => {
                         match found_race.schedule {
                             RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
                             RaceSchedule::Live { .. } => unimplemented!("race listed as live in database was rescheduled as async"), //TODO
-                            RaceSchedule::Async { start1: ref mut old_start1, start2: ref mut old_start2, .. } => {
+                            RaceSchedule::Async { start1: ref mut old_start1, start2: ref mut old_start2, start3: ref mut old_start3, .. } => {
                                 *old_start1 = start1;
                                 *old_start2 = start2;
+                                *old_start3 = start3;
                             }
                         }
-                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = $1, async_start2 = $2 WHERE id = $3", start1, start2, found_race.id as _).execute(&mut **transaction).await?;
+                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = $1, async_start2 = $2, async_start3 = $3 WHERE id = $4", start1, start2, start3, found_race.id as _).execute(&mut **transaction).await?;
                     }
                 }
             }
@@ -940,21 +952,30 @@ impl Race {
         match self.schedule {
             RaceSchedule::Unscheduled => Box::new(iter::empty()) as Box<dyn Iterator<Item = Event> + Send>,
             RaceSchedule::Live { .. } => Box::new(iter::once(Event { race: self.clone(), kind: EventKind::Normal })),
-            RaceSchedule::Async { .. } => Box::new([Event { race: self.clone(), kind: EventKind::Async1 }, Event { race: self.clone(), kind: EventKind::Async2 }].into_iter()),
+            RaceSchedule::Async { .. } => Box::new([
+                Event { race: self.clone(), kind: EventKind::Async1 },
+                Event { race: self.clone(), kind: EventKind::Async2 },
+                Event { race: self.clone(), kind: EventKind::Async3 },
+            ].into_iter()),
         }
     }
 
     /// The seed remains hidden until it's posted in the last calendar event of this race.
     pub(crate) fn show_seed(&self) -> bool {
         let now = Utc::now();
-        self.cal_events().all(|event| event.is_first_async_half() || event.start().is_some_and(|start| start <= now + TimeDelta::minutes(15)) || event.end().is_some())
+        self.cal_events().all(|event| event.is_private_async_part() || event.start().is_some_and(|start| start <= now + TimeDelta::minutes(15)) || event.end().is_some())
+    }
+
+    pub(crate) fn is_ended(&self) -> bool {
+        // Since the end time of a race isn't known in advance, we assume that if a race has an end time, that end time is in the past.
+        self.schedule.end_time(&self.entrants).is_some()
     }
 
     pub(crate) fn rooms(&self) -> impl Iterator<Item = Url> + Send {
-        // hide room of 1st async half until 2nd half finished
-        //TODO show to the team that played the 1st async half
+        // hide room of private async parts until public part finished
+        //TODO show to the team that played the private async part
         let all_ended = self.cal_events().all(|event| event.end().is_some());
-        self.cal_events().filter(move |event| all_ended || !event.is_first_async_half()).filter_map(|event| event.room().cloned())
+        self.cal_events().filter(move |event| all_ended || !event.is_private_async_part()).filter_map(|event| event.room().cloned())
     }
 
     pub(crate) fn teams(&self) -> impl Iterator<Item = &Team> + Send {
@@ -1072,8 +1093,8 @@ impl Race {
         match &self.schedule {
             RaceSchedule::Unscheduled => false,
             RaceSchedule::Live { room, .. } => room.is_some(),
-            RaceSchedule::Async { room1, room2, .. } => match &self.entrants {
-                Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) | Entrants::Three(_) => panic!("asynced race not with Entrants::Two"),
+            RaceSchedule::Async { room1, room2, room3, .. } => match &self.entrants {
+                Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => panic!("asynced race not with Entrants::Two or Entrants::Three"),
                 Entrants::Two([team1, team2]) => {
                     if let Entrant::MidosHouseTeam(team1) = team1 {
                         if team == team1 {
@@ -1083,6 +1104,24 @@ impl Race {
                     if let Entrant::MidosHouseTeam(team2) = team2 {
                         if team == team2 {
                             return room2.is_some()
+                        }
+                    }
+                    false
+                }
+                Entrants::Three([team1, team2, team3]) => {
+                    if let Entrant::MidosHouseTeam(team1) = team1 {
+                        if team == team1 {
+                            return room1.is_some()
+                        }
+                    }
+                    if let Entrant::MidosHouseTeam(team2) = team2 {
+                        if team == team2 {
+                            return room2.is_some()
+                        }
+                    }
+                    if let Entrant::MidosHouseTeam(team3) = team3 {
+                        if team == team3 {
+                            return room3.is_some()
                         }
                     }
                     false
@@ -1099,10 +1138,10 @@ impl Race {
             Source::StartGG { ref event, ref set } => (None, None, Some(event), Some(set)),
         };
         let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
-        let (start, async_start1, async_start2, end, async_end1, async_end2, room, async_room1, async_room2) = match self.schedule {
-            RaceSchedule::Unscheduled => (None, None, None, None, None, None, None, None, None),
-            RaceSchedule::Live { start, end, ref room } => (Some(start), None, None, end, None, None, room.as_ref(), None, None),
-            RaceSchedule::Async { start1, start2, end1, end2, ref room1, ref room2 } => (None, start1, start2, None, end1, end2, None, room1.as_ref(), room2.as_ref()),
+        let (start, [async_start1, async_start2, async_start3], end, [async_end1, async_end2, async_end3], room, [async_room1, async_room2, async_room3]) = match self.schedule {
+            RaceSchedule::Unscheduled => (None, [None; 3], None, [None; 3], None, [None; 3]),
+            RaceSchedule::Live { start, end, ref room } => (Some(start), [None; 3], end, [None; 3], room.as_ref(), [None; 3]),
+            RaceSchedule::Async { start1, start2, start3, end1, end2, end3, ref room1, ref room2, ref room3 } => (None, [start1, start2, start3], None, [end1, end2, end3], None, [room1.as_ref(), room2.as_ref(), room3.as_ref()]),
         };
         let (web_id, web_gen_time, file_stem, locked_spoiler_log_path, tfb_uuid) = match self.seed.files {
             Some(seed::Files::MidosHouse { ref file_stem, ref locked_spoiler_log_path }) => (None, None, Some(file_stem), locked_spoiler_log_path.as_ref(), None),
@@ -1112,10 +1151,10 @@ impl Race {
             None => (None, None, None, None, None),
         };
         sqlx::query!("
-            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime)
-            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,       $29,   $30,   $31, $32,           $33,               $34,   $35,      $36,      $37,          $38,        $39,           $40,                     $41,          $42,           $43,       $44,       $45,        $46,        $47,   $48,                 $49,          $50,           $51,             $52,       $53,         $54        )
-            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime)
-            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,       $29,   $30,   $31, $32,           $33,               $34,   $35,      $36,      $37,          $38,        $39,           $40,                     $41,          $42,           $43,       $44,       $45,        $46,        $47,   $48,                 $49,          $50,           $51,             $52,       $53,         $54        )
+            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3)
+            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,       $29,   $30,   $31, $32,           $33,               $34,   $35,      $36,      $37,          $38,        $39,           $40,                     $41,          $42,           $43,       $44,       $45,        $46,        $47,   $48,                 $49,          $50,           $51,             $52,       $53,         $54,         $55,          $56,         $57       )
+            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3)
+            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,       $29,   $30,   $31, $32,           $33,               $34,   $35,      $36,      $37,          $38,        $39,           $40,                     $41,          $42,           $43,       $44,       $45,        $46,        $47,   $48,                 $49,          $50,           $51,             $52,       $53,         $54,         $55,          $56,         $57       )
         ",
             startgg_set as _,
             start,
@@ -1171,6 +1210,9 @@ impl Race {
             league_id,
             p1_racetime,
             p2_racetime,
+            async_start3,
+            async_room3.map(|url| url.to_string()),
+            async_end3,
         ).execute(&mut **transaction).await?;
         Ok(())
     }
@@ -1192,7 +1234,7 @@ impl PartialOrd for Race {
 
 impl Ord for Race {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.schedule.cmp(&other.schedule)
+        self.schedule.cmp(&self.entrants, &other.schedule, &other.entrants)
             .then_with(|| self.series.to_str().cmp(other.series.to_str()))
             .then_with(|| self.event.cmp(&other.event))
             .then_with(|| self.phase.cmp(&other.phase))
@@ -1208,6 +1250,7 @@ pub(crate) enum EventKind {
     Normal,
     Async1,
     Async2,
+    Async3,
 }
 
 #[derive(Clone)]
@@ -1236,6 +1279,12 @@ impl Event {
                 kind: EventKind::Async2,
             }))
         }
+        if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room3 = $1 AND async_start3 IS NOT NULL"#, room.to_string()).fetch_optional(&mut **transaction).await? {
+            return Ok(Some(Self {
+                race: Race::from_id(&mut *transaction, http_client, id).await?,
+                kind: EventKind::Async3,
+            }))
+        }
         Ok(None)
     }
 
@@ -1247,7 +1296,7 @@ impl Event {
                 kind: EventKind::Normal,
             })
         }
-        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room1 IS NULL AND async_start1 IS NOT NULL AND async_start1 > NOW() AND (async_start1 <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND async_start1 <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room1 IS NULL AND async_start1 IS NOT NULL AND async_start1 > NOW() AND async_start1 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut **transaction).await? {
             let event = Self {
                 race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async1,
@@ -1256,10 +1305,19 @@ impl Event {
                 events.push(event);
             }
         }
-        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room2 IS NULL AND async_start2 IS NOT NULL AND async_start2 > NOW() AND (async_start2 <= NOW() + TIME '00:30:00' OR (team1 IS NULL AND p1_discord IS NULL AND p1 IS NULL AND async_start2 <= NOW() + TIME '01:00:00'))"#).fetch_all(&mut **transaction).await? {
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room2 IS NULL AND async_start2 IS NOT NULL AND async_start2 > NOW() AND async_start2 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut **transaction).await? {
             let event = Self {
                 race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async2,
+            };
+            if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() { // racetime.gg doesn't support single-entrant races
+                events.push(event);
+            }
+        }
+        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room3 IS NULL AND async_start3 IS NOT NULL AND async_start3 > NOW() AND async_start3 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut **transaction).await? {
+            let event = Self {
+                race: Race::from_id(&mut *transaction, http_client, id).await?,
+                kind: EventKind::Async3,
             };
             if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() { // racetime.gg doesn't support single-entrant races
                 events.push(event);
@@ -1275,10 +1333,11 @@ impl Event {
                 matches!(self.kind, EventKind::Normal | EventKind::Async1).then_some(team1),
                 matches!(self.kind, EventKind::Normal | EventKind::Async2).then_some(team2),
             ].into_iter().filter_map(identity).filter_map(as_variant!(Entrant::MidosHouseTeam))),
-            Entrants::Three([ref team1, ref team2, ref team3]) => match self.kind {
-                EventKind::Normal => Box::new([team1, team2, team3].into_iter().filter_map(as_variant!(Entrant::MidosHouseTeam))),
-                EventKind::Async1 | EventKind::Async2 => unimplemented!(), //TODO
-            },
+            Entrants::Three([ref team1, ref team2, ref team3]) => Box::new([
+                matches!(self.kind, EventKind::Normal | EventKind::Async1).then_some(team1),
+                matches!(self.kind, EventKind::Normal | EventKind::Async2).then_some(team2),
+                matches!(self.kind, EventKind::Normal | EventKind::Async3).then_some(team3),
+            ].into_iter().filter_map(identity).filter_map(as_variant!(Entrant::MidosHouseTeam))),
         }
     }
 
@@ -1286,10 +1345,11 @@ impl Event {
         match self.race.schedule {
             RaceSchedule::Unscheduled => None,
             RaceSchedule::Live { ref room, .. } => room.as_ref(),
-            RaceSchedule::Async { ref room1, ref room2, .. } => match self.kind {
+            RaceSchedule::Async { ref room1, ref room2, ref room3, .. } => match self.kind {
                 EventKind::Normal => unreachable!(),
                 EventKind::Async1 => room1.as_ref(),
                 EventKind::Async2 => room2.as_ref(),
+                EventKind::Async3 => room3.as_ref(),
             },
         }
     }
@@ -1298,10 +1358,11 @@ impl Event {
         match self.race.schedule {
             RaceSchedule::Unscheduled => None,
             RaceSchedule::Live { start, .. } => Some(start),
-            RaceSchedule::Async { start1, start2, .. } => match self.kind {
+            RaceSchedule::Async { start1, start2, start3, .. } => match self.kind {
                 EventKind::Normal => unreachable!(),
                 EventKind::Async1 => start1,
                 EventKind::Async2 => start2,
+                EventKind::Async3 => start3,
             },
         }
     }
@@ -1310,33 +1371,39 @@ impl Event {
         match self.race.schedule {
             RaceSchedule::Unscheduled => None,
             RaceSchedule::Live { end, .. } => end,
-            RaceSchedule::Async { end1, end2, .. } => match self.kind {
+            RaceSchedule::Async { end1, end2, end3, .. } => match self.kind {
                 EventKind::Normal => unreachable!(),
                 EventKind::Async1 => end1,
                 EventKind::Async2 => end2,
+                EventKind::Async3 => end3,
             },
         }
     }
 
-    pub(crate) fn is_first_async_half(&self) -> bool {
+    pub(crate) fn is_private_async_part(&self) -> bool {
         match self.race.schedule {
             RaceSchedule::Unscheduled | RaceSchedule::Live { .. } => false,
-            RaceSchedule::Async { start1, start2, .. } => match self.kind {
-                EventKind::Normal => unreachable!(),
-                EventKind::Async1 => start1.map_or(false, |start1| start2.map_or(true, |start2| start1 <= start2)),
-                EventKind::Async2 => start2.map_or(false, |start2| start1.map_or(true, |start1| start2 < start1)),
+            RaceSchedule::Async { start1, start2, start3, .. } => match self.race.entrants {
+                Entrants::Two(_) => match self.kind {
+                    EventKind::Async1 => start1.map_or(false, |start1| start2.map_or(true, |start2| start1 <= start2)),
+                    EventKind::Async2 => start2.map_or(false, |start2| start1.map_or(true, |start1| start2 < start1)),
+                    EventKind::Normal | EventKind::Async3 => unreachable!(),
+                },
+                Entrants::Three(_) => match self.kind {
+                    EventKind::Async1 => start1.map_or(false, |start1| start2.map_or(true, |start2| start1 <= start2) || start3.map_or(true, |start3| start1 <= start3)),
+                    EventKind::Async2 => start2.map_or(false, |start2| start1.map_or(true, |start1| start2 < start1) || start3.map_or(true, |start3| start2 <= start3)),
+                    EventKind::Async3 => start3.map_or(false, |start3| start1.map_or(true, |start1| start3 < start1) || start2.map_or(true, |start2| start3 < start2)),
+                    EventKind::Normal => unreachable!(),
+                },
+                _ => unreachable!(),
             },
         }
     }
 
-    pub(crate) fn is_last_async_half(&self) -> bool {
+    pub(crate) fn is_public_async_part(&self) -> bool {
         match self.race.schedule {
             RaceSchedule::Unscheduled | RaceSchedule::Live { .. } => false,
-            RaceSchedule::Async { start1, start2, .. } => match self.kind {
-                EventKind::Normal => unreachable!(),
-                EventKind::Async1 => start1.map_or(false, |start1| start2.map_or(true, |start2| start1 > start2)),
-                EventKind::Async2 => start2.map_or(false, |start2| start1.map_or(true, |start1| start2 >= start1)),
-            },
+            RaceSchedule::Async { .. } => !self.is_private_async_part(),
         }
     }
 
@@ -1504,6 +1571,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                         EventKind::Normal => "",
                         EventKind::Async1 => "-1",
                         EventKind::Async2 => "-2",
+                        EventKind::Async3 => "-3",
                     },
                 ), ics_datetime(Utc::now()));
                 let summary_prefix = match (&race.phase, &race.round) {
@@ -1516,7 +1584,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                     Entrants::Open | Entrants::Count { .. } => summary_prefix,
                     Entrants::Named(ref entrants) => match race_event.kind {
                         EventKind::Normal => format!("{summary_prefix}: {entrants}"),
-                        EventKind::Async1 | EventKind::Async2 => format!("{summary_prefix} (async): {entrants}"),
+                        EventKind::Async1 | EventKind::Async2 | EventKind::Async3 => format!("{summary_prefix} (async): {entrants}"),
                     },
                     Entrants::Two([ref team1, ref team2]) => match race_event.kind {
                         EventKind::Normal => format!(
@@ -1534,6 +1602,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                             team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
+                        EventKind::Async3 => unreachable!(),
                     },
                     Entrants::Three([ref team1, ref team2, ref team3]) => match race_event.kind {
                         EventKind::Normal => format!(
@@ -1542,7 +1611,24 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                             team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             team3.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                         ),
-                        EventKind::Async1 | EventKind::Async2 => unimplemented!(), //TODO
+                        EventKind::Async1 => format!(
+                            "{summary_prefix} (async): {} vs {} vs {}",
+                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team3.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                        ),
+                        EventKind::Async2 => format!(
+                            "{summary_prefix} (async): {} vs {} vs {}",
+                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team3.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                        ),
+                        EventKind::Async3 => format!(
+                            "{summary_prefix} (async): {} vs {} vs {}",
+                            team3.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team1.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            team2.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                        ),
                     },
                 };
                 cal_event.push(Summary::new(if let Some(game) = race.game {
@@ -2047,9 +2133,33 @@ pub(crate) async fn race_table(
                                 }
                             }
                             Entrants::Three([ref team1, ref team2, ref team3]) => {
-                                td(colspan = "2") : team1.to_html(&mut *transaction, env, discord_ctx, false).await?;
-                                td(colspan = "2") : team2.to_html(&mut *transaction, env, discord_ctx, false).await?;
-                                td(colspan = "2") : team3.to_html(&mut *transaction, env, discord_ctx, false).await?;
+                                td(colspan = "2") {
+                                    : team1.to_html(&mut *transaction, env, discord_ctx, false).await?;
+                                    @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {
+                                        br;
+                                        small {
+                                            : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+                                        }
+                                    }
+                                }
+                                td(colspan = "2") {
+                                    : team2.to_html(&mut *transaction, env, discord_ctx, false).await?;
+                                    @if let RaceSchedule::Async { start2: Some(start), .. } = race.schedule {
+                                        br;
+                                        small {
+                                            : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+                                        }
+                                    }
+                                }
+                                td(colspan = "2") {
+                                    : team3.to_html(&mut *transaction, env, discord_ctx, false).await?;
+                                    @if let RaceSchedule::Async { start3: Some(start), .. } = race.schedule {
+                                        br;
+                                        small {
+                                            : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+                                        }
+                                    }
+                                }
                             }
                         }
                         td {
@@ -2511,7 +2621,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                         room.as_ref().map(|room| room.to_string())
                     });
                 });
-                RaceSchedule::Async { ref room1, ref room2, .. } => {
+                RaceSchedule::Async { ref room1, ref room2, ref room3, .. } => {
                     : form_field("async_room1", &mut errors, html! {
                         label(for = "async_room1") : "racetime.gg room (team A):";
                         input(type = "text", name = "async_room1", value? = if let Some(ref ctx) = ctx {
@@ -2528,6 +2638,16 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                             room2.as_ref().map(|room| room.to_string())
                         });
                     });
+                    @if let Entrants::Three(_) = race.entrants {
+                        : form_field("async_room3", &mut errors, html! {
+                            label(for = "async_room3") : "racetime.gg room (team C):";
+                            input(type = "text", name = "async_room3", value? = if let Some(ref ctx) = ctx {
+                                ctx.field_value("async_room3").map(|room| room.to_string())
+                            } else {
+                                room2.as_ref().map(|room| room.to_string())
+                            });
+                        });
+                    }
                 }
             }
             table {
@@ -2615,18 +2735,18 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                 : finished;
                 : " finishers";
             }
-            Entrants::Named(entrants) => p {
+            Entrants::Named(ref entrants) => p {
                 : "Entrants: ";
                 : entrants;
             }
-            Entrants::Two([p1, p2]) => {
+            Entrants::Two([ref p1, ref p2]) => {
                 p : "Entrants:";
                 ol {
                     li : p1.to_html(&mut transaction, env, discord_ctx, false).await?;
                     li : p2.to_html(&mut transaction, env, discord_ctx, false).await?;
                 }
             }
-            Entrants::Three([p1, p2, p3]) => {
+            Entrants::Three([ref p1, ref p2, ref p3]) => {
                 p : "Entrants:";
                 ol {
                     li : p1.to_html(&mut transaction, env, discord_ctx, false).await?;
@@ -2669,7 +2789,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                     p : "Not yet ended (will be updated automatically from the racetime.gg room, if any)";
                 }
             }
-            RaceSchedule::Async { start1, start2, end1, end2, room1: _, room2: _ } => {
+            RaceSchedule::Async { start1, start2, start3, end1, end2, end3, room1: _, room2: _, room3: _ } => {
                 @if let Some(start1) = start1 {
                     p {
                         : "Start (team A): ";
@@ -2686,6 +2806,16 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                 } else {
                     p : "Team B not yet started";
                 }
+                @if let Entrants::Three(_) = race.entrants {
+                    @if let Some(start3) = start3 {
+                        p {
+                            : "Start (team C): ";
+                            : format_datetime(start3, DateTimeFormat { long: true, running_text: false });
+                        }
+                    } else {
+                        p : "Team C not yet started";
+                    }
+                }
                 @if let Some(end1) = end1 {
                     p {
                         : "End (team A): ";
@@ -2701,6 +2831,16 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                     }
                 } else {
                     p : "Team B not yet ended (will be updated automatically from the racetime.gg room, if any)";
+                }
+                @if let Entrants::Three(_) = race.entrants {
+                    @if let Some(end3) = end3 {
+                        p {
+                            : "End (team C): ";
+                            : format_datetime(end3, DateTimeFormat { long: true, running_text: false });
+                        }
+                    } else {
+                        p : "Team C not yet ended (will be updated automatically from the racetime.gg room, if any)";
+                    }
                 }
             }
         }
@@ -2735,6 +2875,8 @@ pub(crate) struct EditRaceForm {
     async_room1: String,
     #[field(default = String::new())]
     async_room2: String,
+    #[field(default = String::new())]
+    async_room3: String,
     #[field(default = HashMap::new())]
     video_urls: HashMap<Language, String>,
     #[field(default = HashMap::new())]
@@ -2767,6 +2909,9 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                 if !value.async_room2.is_empty() {
                     form.context.push_error(form::Error::validation("The race room can't be added yet because the race isn't scheduled.").with_name("async_room2"));
                 }
+                if !value.async_room3.is_empty() {
+                    form.context.push_error(form::Error::validation("The race room can't be added yet because the race isn't scheduled.").with_name("async_room3"));
+                }
             }
             RaceSchedule::Live { .. } => {
                 if !value.room.is_empty() {
@@ -2788,6 +2933,9 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                 }
                 if !value.async_room2.is_empty() {
                     form.context.push_error(form::Error::validation("The race room can't be added yet because the race isn't scheduled.").with_name("async_room2"));
+                }
+                if !value.async_room3.is_empty() {
+                    form.context.push_error(form::Error::validation("The race room can't be added yet because the race isn't scheduled.").with_name("async_room3"));
                 }
             }
             RaceSchedule::Async { .. } => {
@@ -2820,6 +2968,20 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                             form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room2"));
                         }
                         Err(e) => form.context.push_error(form::Error::validation(format!("Failed to parse race room URL: {e}")).with_name("async_room2")),
+                    }
+                }
+                if !value.async_room3.is_empty() {
+                    match Url::parse(&value.async_room3) {
+                        Ok(room) => if let Some(host) = room.host_str() {
+                            if host == "racetime.gg" {
+                                valid_room_urls.insert("async_room3", room);
+                            } else {
+                                form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room3"));
+                            }
+                        } else {
+                            form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room3"));
+                        }
+                        Err(e) => form.context.push_error(form::Error::validation(format!("Failed to parse race room URL: {e}")).with_name("async_room3")),
                     }
                 }
             }
@@ -2982,20 +3144,22 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                     room = $1,
                     async_room1 = $2,
                     async_room2 = $3,
-                    video_url = $4,
-                    restreamer = $5,
-                    video_url_fr = $6,
-                    restreamer_fr = $7,
-                    video_url_de = $8,
-                    restreamer_de = $9,
-                    video_url_pt = $10,
-                    restreamer_pt = $11,
-                    last_edited_by = $12,
+                    async_room3 = $4,
+                    video_url = $5,
+                    restreamer = $6,
+                    video_url_fr = $7,
+                    restreamer_fr = $8,
+                    video_url_de = $9,
+                    restreamer_de = $10,
+                    video_url_pt = $11,
+                    restreamer_pt = $12,
+                    last_edited_by = $13,
                     last_edited_at = NOW()
-                WHERE id = $13",
+                WHERE id = $14",
                 (!value.room.is_empty()).then(|| &value.room),
                 (!value.async_room1.is_empty()).then(|| &value.async_room1),
                 (!value.async_room2.is_empty()).then(|| &value.async_room2),
+                (!value.async_room3.is_empty()).then(|| &value.async_room3),
                 value.video_urls.get(&English).filter(|video_url| !video_url.is_empty()),
                 restreamers.get(&English),
                 value.video_urls.get(&French).filter(|video_url| !video_url.is_empty()),
@@ -3035,6 +3199,7 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
     let form = if me.is_some() {
         let mut errors = ctx.errors().collect();
         full_form(uri!(add_file_hash_post(event.series, &*event.event, race.id)), csrf, html! {
+            //TODO preview selected icons using CSS/JS?
             : form_field("hash1", &mut errors, html! {
                 label(for = "hash1") : "Hash Icon 1:";
                 select(name = "hash1") {
@@ -3098,7 +3263,7 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
             } else {
                 p : "Race room not yet assigned";
             }
-            RaceSchedule::Async { room1, room2, .. } => {
+            RaceSchedule::Async { room1, room2, room3, .. } => {
                 @if let Some(room1) = room1 {
                     p {
                         a(href = room1.to_string()) : "Race room 1";
@@ -3112,6 +3277,15 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
                     }
                 } else {
                     p : "Race room 2 not yet assigned";
+                }
+                @if let Entrants::Three(_) = race.entrants {
+                    @if let Some(room3) = room3 {
+                        p {
+                            a(href = room3.to_string()) : "Race room 3";
+                        }
+                    } else {
+                        p : "Race room 3 not yet assigned";
+                    }
                 }
             }
         }

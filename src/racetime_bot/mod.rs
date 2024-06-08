@@ -650,6 +650,7 @@ impl Goal {
                                 None,
                                 None,
                                 None,
+                                None,
                                 row.file_stem,
                                 row.locked_spoiler_log_path,
                                 None,
@@ -2448,7 +2449,7 @@ impl Handler {
 
         lock!(@write state = self.race_state; {
             match *state {
-                RaceState::Rolled(seed::Data { files: Some(ref files), .. }) => if self.official_data.as_ref().map_or(true, |official_data| !official_data.cal_event.is_first_async_half()) {
+                RaceState::Rolled(seed::Data { files: Some(ref files), .. }) => if self.official_data.as_ref().map_or(true, |official_data| !official_data.cal_event.is_private_async_part()) {
                     if let UnlockSpoilerLog::After = goal.unlock_spoiler_log(self.is_official(), false /* we may try to unlock a log that's already unlocked, but other than that, this assumption doesn't break anything */) {
                         match files {
                             seed::Files::MidosHouse { file_stem, locked_spoiler_log_path } => if let Some(locked_spoiler_log_path) = locked_spoiler_log_path {
@@ -3580,14 +3581,14 @@ impl RaceHandler<GlobalState> for Handler {
                         goal_is_custom: goal.is_custom(),
                         team_race: event.team_config.is_racetime_team_format(),
                         invitational: !matches!(cal_event.race.entrants, Entrants::Open),
-                        unlisted: cal_event.is_first_async_half(),
+                        unlisted: cal_event.is_private_async_part(),
                         info_user: ctx.data().await.info_user.clone().unwrap_or_default(),
                         info_bot: ctx.data().await.info_bot.clone().unwrap_or_default(),
                         require_even_teams: true,
                         start_delay: 15,
                         time_limit: 24,
                         time_limit_auto_complete: false,
-                        streaming_required: !cal_event.is_first_async_half(),
+                        streaming_required: !cal_event.is_private_async_part(),
                         auto_start: true,
                         allow_comments: true,
                         hide_comments: true,
@@ -3625,14 +3626,14 @@ impl RaceHandler<GlobalState> for Handler {
                                             goal_is_custom: goal.is_custom(),
                                             team_race: event.team_config.is_racetime_team_format(),
                                             invitational: !matches!(cal_event.race.entrants, Entrants::Open),
-                                            unlisted: cal_event.is_first_async_half(),
+                                            unlisted: cal_event.is_private_async_part(),
                                             info_user: ctx.data().await.info_user.clone().unwrap_or_default(),
                                             info_bot: ctx.data().await.info_bot.clone().unwrap_or_default(),
                                             require_even_teams: true,
                                             start_delay: 15,
                                             time_limit: 24,
                                             time_limit_auto_complete: false,
-                                            streaming_required: !cal_event.is_first_async_half(),
+                                            streaming_required: !cal_event.is_private_async_part(),
                                             auto_start: false,
                                             allow_comments: true,
                                             hide_comments: true,
@@ -4012,12 +4013,15 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                         } else {
                             None // no French translation available
                         },
-                        cal::EventKind::Async1 | cal::EventKind::Async2 => None,
+                        cal::EventKind::Async1 | cal::EventKind::Async2 | cal::EventKind::Async3 => None,
                     },
-                    Entrants::Three([ref team1, ref team2, ref team3]) => if let (Some(team1), Some(team2), Some(team3)) = (team1.name(&mut *transaction, discord_ctx).await.to_racetime()?, team2.name(&mut *transaction, discord_ctx).await.to_racetime()?, team3.name(&mut *transaction, discord_ctx).await.to_racetime()?) {
-                        Some(Some(format!("{team1} vs {team2} vs {team3}"))) //TODO adjust for asyncs
-                    } else {
-                        None // no French translation available
+                    Entrants::Three([ref team1, ref team2, ref team3]) => match cal_event.kind {
+                        cal::EventKind::Normal => if let (Some(team1), Some(team2), Some(team3)) = (team1.name(&mut *transaction, discord_ctx).await.to_racetime()?, team2.name(&mut *transaction, discord_ctx).await.to_racetime()?, team3.name(&mut *transaction, discord_ctx).await.to_racetime()?) {
+                            Some(Some(format!("{team1} vs {team2} vs {team3}")))
+                        } else {
+                            None // no French translation available
+                        },
+                        cal::EventKind::Async1 | cal::EventKind::Async2 | cal::EventKind::Async3 => None,
                     },
                 };
                 then {
@@ -4055,14 +4059,38 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                                 team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
                                 team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
                             ),
+                            cal::EventKind::Async3 => unreachable!(),
                         },
-                        Entrants::Three([ref team1, ref team2, ref team3]) => format!(
-                            "{}{} vs {} vs {}",
-                            info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
-                            team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                            team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
-                        ), //TODO adjust for asyncs
+                        Entrants::Three([ref team1, ref team2, ref team3]) => match cal_event.kind {
+                            cal::EventKind::Normal => format!(
+                                "{}{} vs {} vs {}",
+                                info_prefix.as_ref().map(|prefix| format!("{prefix}: ")).unwrap_or_default(),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                            cal::EventKind::Async1 => format!(
+                                "{} (async): {} vs {} vs {}",
+                                info_prefix.clone().unwrap_or_default(),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                            cal::EventKind::Async2 => format!(
+                                "{} (async): {} vs {} vs {}",
+                                info_prefix.clone().unwrap_or_default(),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                            cal::EventKind::Async3 => format!(
+                                "{} (async): {} vs {} vs {}",
+                                info_prefix.clone().unwrap_or_default(),
+                                team3.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team1.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                team2.name(&mut *transaction, discord_ctx).await.to_racetime()?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                            ),
+                        },
                     };
                     if let Some(game) = cal_event.race.game {
                         info_user.push_str(", game ");
@@ -4076,14 +4104,14 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                 goal_is_custom: goal.is_custom(),
                 team_race: event.team_config.is_racetime_team_format() && matches!(cal_event.kind, cal::EventKind::Normal),
                 invitational: !matches!(cal_event.race.entrants, Entrants::Open),
-                unlisted: cal_event.is_first_async_half(),
+                unlisted: cal_event.is_private_async_part(),
                 info_bot: String::default(),
                 require_even_teams: true,
                 start_delay: 15,
                 time_limit: 24,
                 time_limit_auto_complete: false,
-                streaming_required: !cal_event.is_first_async_half(),
-                auto_start: cal_event.is_first_async_half() || cal_event.race.video_urls.is_empty(),
+                streaming_required: !cal_event.is_private_async_part(),
+                auto_start: cal_event.is_private_async_part() || cal_event.race.video_urls.is_empty(),
                 allow_comments: true,
                 hide_comments: true,
                 allow_prerace_chat: true,
@@ -4097,6 +4125,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                 cal::EventKind::Normal => { sqlx::query!("UPDATE races SET room = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?; }
                 cal::EventKind::Async1 => { sqlx::query!("UPDATE races SET async_room1 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?; }
                 cal::EventKind::Async2 => { sqlx::query!("UPDATE races SET async_room2 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?; }
+                cal::EventKind::Async3 => { sqlx::query!("UPDATE races SET async_room3 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?; }
             }
             let msg = if_chain! {
                 if let French = event.language;
@@ -4289,8 +4318,12 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                         if !cal_event.should_create_room(&mut transaction, &event).await.to_racetime()? { continue }
                         if let Some(msg) = create_room(&mut transaction, &*global_state.discord_ctx.read().await, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.extra_room_tx, &global_state.http_client, &cal_event, &event).await? {
                             let ctx = global_state.discord_ctx.read().await;
-                            if cal_event.is_first_async_half() {
-                                let msg = format!("unlisted room for first async half: {msg}");
+                            if cal_event.is_private_async_part() {
+                                let msg = match cal_event.race.entrants {
+                                    Entrants::Two(_) => format!("unlisted room for first async half: {msg}"),
+                                    Entrants::Three(_) => format!("unlisted room for first/second async part: {msg}"),
+                                    _ => format!("unlisted room for async part: {msg}"),
+                                };
                                 if let Some(channel) = event.discord_organizer_channel {
                                     channel.say(&*ctx, &msg).await.to_racetime()?;
                                 } else {

@@ -100,6 +100,7 @@ impl Data {
         start: Option<DateTime<Utc>>,
         async_start1: Option<DateTime<Utc>>,
         async_start2: Option<DateTime<Utc>>,
+        async_start3: Option<DateTime<Utc>>,
         file_stem: Option<String>,
         locked_spoiler_log_path: Option<String>,
         web_id: Option<i64>,
@@ -120,10 +121,10 @@ impl Data {
             files: match (file_stem, locked_spoiler_log_path, web_id, web_gen_time, tfb_uuid) {
                 (_, _, _, _, Some(uuid)) => Some(Files::TriforceBlitz { uuid }),
                 (Some(file_stem), _, Some(id), Some(gen_time), None) => Some(Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
-                (Some(file_stem), locked_spoiler_log_path, Some(id), None, None) => Some(match (start, async_start1, async_start2) {
-                    (Some(start), None, None) | (None, Some(start), None) | (None, None, Some(start)) => Files::OotrWeb { id, gen_time: start - TimeDelta::days(1), file_stem: Cow::Owned(file_stem) },
-                    (None, Some(async_start1), Some(async_start2)) => Files::OotrWeb { id, gen_time: async_start1.min(async_start2) - TimeDelta::days(1), file_stem: Cow::Owned(file_stem) },
-                    (_, _, _) => Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path },
+                (Some(file_stem), locked_spoiler_log_path, Some(id), None, None) => Some(if let Some(first_start) = [start, async_start1, async_start2, async_start3].into_iter().filter_map(identity).min() {
+                    Files::OotrWeb { id, gen_time: first_start - TimeDelta::days(1), file_stem: Cow::Owned(file_stem) }
+                } else {
+                    Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path }
                 }),
                 (Some(file_stem), locked_spoiler_log_path, None, _, None) => Some(Files::MidosHouse { file_stem: Cow::Owned(file_stem), locked_spoiler_log_path }),
                 (None, _, _, _, None) => None,

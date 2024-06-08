@@ -1334,7 +1334,32 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         return Ok(())
                                                     }
                                                 }
-                                                _ => panic!("tried to schedule race with not two MH teams as async"),
+                                                Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => {
+                                                    if team.as_ref().map_or(false, |team| team1 == team) {
+                                                        race.schedule.set_async_start1(start);
+                                                        race.schedule_updated_at = Some(Utc::now());
+                                                        race.save(&mut transaction).await?;
+                                                        cal::EventKind::Async1
+                                                    } else if team.as_ref().map_or(false, |team| team2 == team) {
+                                                        race.schedule.set_async_start2(start);
+                                                        race.schedule_updated_at = Some(Utc::now());
+                                                        race.save(&mut transaction).await?;
+                                                        cal::EventKind::Async2
+                                                    } else if team.as_ref().map_or(false, |team| team3 == team) {
+                                                        race.schedule.set_async_start3(start);
+                                                        race.schedule_updated_at = Some(Utc::now());
+                                                        race.save(&mut transaction).await?;
+                                                        cal::EventKind::Async3
+                                                    } else {
+                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                            .ephemeral(true)
+                                                            .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to schedule as async (with team parameter)
+                                                        )).await?;
+                                                        transaction.rollback().await?;
+                                                        return Ok(())
+                                                    }
+                                                }
+                                                _ => panic!("tried to schedule race with not 2 or 3 MH teams as async"),
                                             };
                                             let cal_event = cal::Event { race, kind };
                                             if cal_event.should_create_room(&mut transaction, &event).await? && event.team_config.is_racetime_team_format() && start - Utc::now() < TimeDelta::minutes(30) {
@@ -1350,8 +1375,12 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 };
                                                 lock!(new_room_lock = new_room_lock; {
                                                     if let Some(mut msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, &cal_event, &event).await? {
-                                                        if cal_event.is_first_async_half() {
-                                                            msg = format!("unlisted room for first async half: {msg}");
+                                                        if cal_event.is_private_async_part() {
+                                                            msg = match cal_event.race.entrants {
+                                                                Entrants::Two(_) => format!("unlisted room for first async half: {msg}"),
+                                                                Entrants::Three(_) => format!("unlisted room for first/second async part: {msg}"),
+                                                                _ => format!("unlisted room for async part: {msg}"),
+                                                            };
                                                             if let Some(channel) = event.discord_organizer_channel {
                                                                 channel.say(ctx, &msg).await?;
                                                             } else {
@@ -1364,12 +1393,12 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             }
                                                         }
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                            .ephemeral(cal_event.is_first_async_half())
+                                                            .ephemeral(cal_event.is_private_async_part()) //TODO create public response without room link
                                                             .content(msg)
                                                         )).await?;
                                                     } else {
                                                         let response_content = MessageBuilder::default()
-                                                            .push("Your half of ")
+                                                            .push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " })
                                                             .push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") })
                                                             .push(" is now scheduled for ")
                                                             .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
@@ -1395,7 +1424,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .build()
                                                     } else {
                                                         MessageBuilder::default()
-                                                            .push("Your half of ")
+                                                            .push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " })
                                                             .push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") })
                                                             .push(" is now scheduled for ")
                                                             .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
@@ -1508,7 +1537,32 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         })
                                                     )).await?;
                                                 }
-                                                _ => panic!("found race with not two MH teams scheduled as async"),
+                                                Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => {
+                                                    if team.as_ref().map_or(false, |team| team1 == team) {
+                                                        sqlx::query!("UPDATE races SET async_start1 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                                    } else if team.as_ref().map_or(false, |team| team2 == team) {
+                                                        sqlx::query!("UPDATE races SET async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                                    } else if team.as_ref().map_or(false, |team| team3 == team) {
+                                                        sqlx::query!("UPDATE races SET async_start3 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
+                                                    } else {
+                                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                            .ephemeral(true)
+                                                            .content("Sorry, only participants in this race can use this command for now. Please contact Fenhl to edit the schedule.") //TODO allow TOs to edit asynced schedules (with team parameter)
+                                                        )).await?;
+                                                        transaction.rollback().await?;
+                                                        return Ok(())
+                                                    }
+                                                    transaction.commit().await?;
+                                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                        .ephemeral(false)
+                                                        .content(if let Some(game) = race.game {
+                                                            format!("The starting time for your part of game {game} has been removed from the schedule.")
+                                                        } else {
+                                                            format!("The starting time for your part of this race has been removed from the schedule.")
+                                                        })
+                                                    )).await?;
+                                                }
+                                                _ => panic!("found race with not 2 or 3 MH teams scheduled as async"),
                                             },
                                         }
                                     }

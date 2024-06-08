@@ -18,7 +18,7 @@ with open('/etc/xdg/midos-house.json') as config_f:
 
 conn = psycopg.connect('dbname=midos_house user=mido')
 
-def b(seed_id, room=None, *, startgg=None, async_room1=None, async_room2=None, unlock=True):
+def b(seed_id, room=None, *, startgg=None, async_room1=None, async_room2=None, async_room3=None, unlock=True):
     patch_resp = requests.get('https://ootrandomizer.com/patch/get', params={'id': seed_id})
     if patch_resp.status_code == 404:
         file_stem = input('file stem: ').strip()
@@ -31,7 +31,7 @@ def b(seed_id, room=None, *, startgg=None, async_room1=None, async_room2=None, u
     try:
         api_resp.raise_for_status()
     except requests.HTTPError:
-        if room is not None or startgg is not None or async_room1 is not None or async_room2 is not None:
+        if room is not None or startgg is not None or async_room1 is not None or async_room2 is not None or async_room3 is not None:
             page_resp = requests.get('https://ootrandomizer.com/seed/get', params={'id': seed_id})
             page_resp.raise_for_status()
             soup = bs4.BeautifulSoup(page_resp.text)
@@ -100,6 +100,17 @@ def b(seed_id, room=None, *, startgg=None, async_room1=None, async_room2=None, u
                     hash4 = %s,
                     hash5 = %s
                 WHERE async_room2 = %s""", (seed_id, creation_timestamp, file_stem, *file_hash, async_room2))
+            if async_room3 is not None:
+                cur.execute("""UPDATE races SET
+                    web_id = %s,
+                    web_gen_time = %s,
+                    file_stem = %s,
+                    hash1 = %s,
+                    hash2 = %s,
+                    hash3 = %s,
+                    hash4 = %s,
+                    hash5 = %s
+                WHERE async_room3 = %s""", (seed_id, creation_timestamp, file_stem, *file_hash, async_room3))
         except Exception:
             conn.rollback()
             raise

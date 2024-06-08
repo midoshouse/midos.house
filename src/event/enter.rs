@@ -197,7 +197,7 @@ impl Requirement {
                 Some(if_chain! {
                     // All qualifiers must be completed to ensure the qualifier placements are final.
                     //TODO This could be relaxed by calculating whether the player has secured a spot ahead of time.
-                    if Race::for_event(&mut *transaction, http_client, data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.schedule.is_ended());
+                    if Race::for_event(&mut *transaction, http_client, data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.is_ended());
                     if let Some(me) = me;
                     let teams = teams::signups_sorted(transaction, http_client, Some(me), data, teams::QualifierKind::SglOnline).await?;
                     if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| match member.user {
