@@ -308,6 +308,7 @@ pub(crate) enum Goal {
     Sgl2023,
     SongsOfHope,
     TournoiFrancoS3,
+    TournoiFrancoS4,
     TriforceBlitz,
     WeTryToBeBetter,
 }
@@ -337,6 +338,7 @@ impl Goal {
             Self::Sgl2023 => series == Series::SpeedGaming && matches!(event, "2023onl" | "2023live"),
             Self::SongsOfHope => series == Series::SongsOfHope && event == "1",
             Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
+            Self::TournoiFrancoS4 => series == Series::TournoiFrancophone && event == "4",
             Self::TriforceBlitz => series == Series::TriforceBlitz,
             Self::WeTryToBeBetter => series == Series::WeTryToBeBetter && event == "1",
         }
@@ -360,6 +362,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::SongsOfHope
             | Self::TournoiFrancoS3
+            | Self::TournoiFrancoS4
             | Self::WeTryToBeBetter
                 => true,
         }
@@ -381,6 +384,7 @@ impl Goal {
             Self::Sgl2023 => "SGL 2023",
             Self::SongsOfHope => "Songs of Hope",
             Self::TournoiFrancoS3 => "Tournoi Francophone Saison 3",
+            Self::TournoiFrancoS4 => "Tournoi Francophone Saison 4",
             Self::TriforceBlitz => "Triforce Blitz",
             Self::WeTryToBeBetter => "WeTryToBeBetter",
         }
@@ -403,6 +407,7 @@ impl Goal {
             | Self::TriforceBlitz
                 => English,
             | Self::TournoiFrancoS3
+            | Self::TournoiFrancoS4
             | Self::WeTryToBeBetter
                 => French,
             | Self::CopaDoBrasil
@@ -416,6 +421,7 @@ impl Goal {
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
             Self::MultiworldS4 => Some(draft::Kind::MultiworldS4),
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
+            Self::TournoiFrancoS4 => Some(draft::Kind::TournoiFrancoS4),
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
@@ -450,6 +456,7 @@ impl Goal {
             | Self::Rsl
             | Self::SongsOfHope
             | Self::TournoiFrancoS3
+            | Self::TournoiFrancoS4
             | Self::WeTryToBeBetter
                 => PrerollMode::Medium,
             | Self::MixedPoolsS2
@@ -476,6 +483,7 @@ impl Goal {
                 | Self::Sgl2023
                 | Self::SongsOfHope
                 | Self::TournoiFrancoS3
+                | Self::TournoiFrancoS4
                 | Self::TriforceBlitz
                 | Self::WeTryToBeBetter
                     => UnlockSpoilerLog::After,
@@ -500,6 +508,7 @@ impl Goal {
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl),
             Self::SongsOfHope => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
+            Self::TournoiFrancoS4 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
             Self::WeTryToBeBetter => VersionedBranch::Latest(rando::Branch::Dev),
             Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
@@ -523,6 +532,7 @@ impl Goal {
             Self::Sgl2023 => Some(sgl::settings_2023()),
             Self::SongsOfHope => Some(soh::settings()),
             Self::TournoiFrancoS3 => None, // settings draft
+            Self::TournoiFrancoS4 => None, // settings draft
             Self::TriforceBlitz => None, // per-event settings
             Self::WeTryToBeBetter => Some(wttbb::settings()),
         }
@@ -545,6 +555,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::SongsOfHope
             | Self::TournoiFrancoS3
+            | Self::TournoiFrancoS4
             | Self::TriforceBlitz
             | Self::WeTryToBeBetter
                 => true,
@@ -600,7 +611,7 @@ impl Goal {
                     rsl::Preset::Multiworld => "weights tuned for multiworld",
                 })).await?;
             },
-            Self::TournoiFrancoS3 => {
+            Self::TournoiFrancoS3 | Self::TournoiFrancoS4 => {
                 ctx.say("!seed base : Settings de base.").await?;
                 ctx.say("!seed random : Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.").await?;
                 ctx.say("!seed draft : Vous fait effectuer un draft dans le chat.").await?;
@@ -962,7 +973,12 @@ impl Goal {
                 };
                 SeedCommandParseResult::Rsl { preset: VersionedRslPreset::Xopar { version: None, preset }, world_count, unlock_spoiler_log, language: English, article, description }
             }
-            Self::TournoiFrancoS3 => {
+            Self::TournoiFrancoS3 | Self::TournoiFrancoS4 => {
+                let all_settings = match self {
+                    Self::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
+                    Self::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
+                    _ => unreachable!(),
+                };
                 let mut args = args.to_owned();
                 let mut mq_dungeons_count = None::<u8>;
                 let mut hard_settings_ok = false;
@@ -987,7 +1003,7 @@ impl Goal {
                             Cow::Borrowed("mq_ok") => Cow::Borrowed(if mq_dungeons_count.is_some() { "ok" } else { "no" }),
                             Cow::Borrowed("mq_dungeons_count") => Cow::Owned(mq_dungeons_count.unwrap_or_default().to_string()),
                         ],
-                    }.complete_randomly(draft::Kind::TournoiFrancoS3).await.to_racetime()?,
+                    }.complete_randomly(self.draft_kind().unwrap()).await.to_racetime()?,
                     [arg] if arg == "draft" => return Ok(SeedCommandParseResult::StartDraft {
                         new_state: Draft {
                             high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
@@ -1001,14 +1017,14 @@ impl Goal {
                         },
                         unlock_spoiler_log,
                     }),
-                    [arg] if fr::S3_SETTINGS.into_iter().any(|fr::S3Setting { name, .. }| name == arg) => return Ok(SeedCommandParseResult::SendSettings { language: French, msg: "vous devez associer un setting avec une configuration.".into() }),
+                    [arg] if all_settings.iter().any(|&fr::Setting { name, .. }| name == arg) => return Ok(SeedCommandParseResult::SendSettings { language: French, msg: "vous devez associer un setting avec une configuration.".into() }),
                     [_] => return Ok(SeedCommandParseResult::SendPresets { language: French, msg: "je ne reconnais pas ce preset" }),
                     args => {
                         let args = args.iter().map(|arg| arg.to_owned()).collect_vec();
                         let mut settings = HashMap::default();
                         let mut tuples = args.into_iter().tuples();
                         for (setting, value) in &mut tuples {
-                            if let Some(fr::S3Setting { default, other, .. }) = fr::S3_SETTINGS.into_iter().find(|fr::S3Setting { name, .. }| **name == setting) {
+                            if let Some(&fr::Setting { default, other, .. }) = all_settings.iter().find(|&fr::Setting { name, .. }| **name == setting) {
                                 if setting == "dungeon-er" && value == "mixed" {
                                     settings.insert(Cow::Borrowed("dungeon-er"), Cow::Borrowed("on"));
                                     settings.insert(Cow::Borrowed("mixed-dungeons"), Cow::Borrowed("mixed"));
@@ -1031,7 +1047,17 @@ impl Goal {
                         }
                     }
                 };
-                SeedCommandParseResult::Regular { settings: fr::resolve_draft_settings(&settings), unlock_spoiler_log, language: French, article: "une", description: format!("seed avec {}", fr::display_draft_picks(&settings)) }
+                SeedCommandParseResult::Regular {
+                    settings: match self {
+                        Self::TournoiFrancoS3 => fr::resolve_s3_draft_settings(&settings),
+                        Self::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&settings),
+                        _ => unreachable!(),
+                    },
+                    unlock_spoiler_log,
+                    language: French,
+                    article: "une",
+                    description: format!("seed avec {}", fr::display_draft_picks(all_settings, &settings)),
+                }
             }
             Self::TriforceBlitz => match args {
                 [] => SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" },
@@ -2267,7 +2293,8 @@ impl Handler {
                 draft::Kind::S7 => s::S7_SETTINGS.into_iter().map(|setting| Cow::Owned(setting.description())).collect(),
                 draft::Kind::MultiworldS3 => mw::S3_SETTINGS.into_iter().map(|mw::Setting { description, .. }| Cow::Borrowed(description)).collect(),
                 draft::Kind::MultiworldS4 => mw::S4_SETTINGS.into_iter().map(|mw::Setting { description, .. }| Cow::Borrowed(description)).collect(),
-                draft::Kind::TournoiFrancoS3 => fr::S3_SETTINGS.into_iter().map(|fr::S3Setting { description, .. }| Cow::Borrowed(description)).collect(),
+                draft::Kind::TournoiFrancoS3 => fr::S3_SETTINGS.into_iter().map(|fr::Setting { description, .. }| Cow::Borrowed(description)).collect(),
+                draft::Kind::TournoiFrancoS4 => fr::S4_SETTINGS.into_iter().map(|fr::Setting { description, .. }| Cow::Borrowed(description)).collect(),
             });
             if available_settings.is_empty() {
                 ctx.say(&if let French = goal.language() {
@@ -2314,7 +2341,7 @@ impl Handler {
                 match *state {
                     RaceState::Init => match draft_kind {
                         draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => ctx.say(&format!("Sorry {reply_to}, no draft has been started. Use “!seed draft” to start one.")).await?,
-                        draft::Kind::TournoiFrancoS3 => ctx.say(&format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
+                        draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => ctx.say(&format!("Désolé {reply_to}, le draft n'a pas débuté. Utilisez “!seed draft” pour en commencer un. Pour plus d'infos, utilisez !presets")).await?,
                     },
                     RaceState::Draft { state: ref mut draft, .. } => {
                         let is_active_team = if let Some(OfficialRaceData { ref cal_event, ref event, .. }) = self.official_data {
@@ -2346,7 +2373,7 @@ impl Handler {
                         } else {
                             match draft_kind {
                                 draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => ctx.say(&format!("Sorry {reply_to}, it's not your turn in the settings draft.")).await?,
-                                draft::Kind::TournoiFrancoS3 => ctx.say(&format!("Désolé {reply_to}, mais ce n'est pas votre tour.")).await?,
+                                draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => ctx.say(&format!("Désolé {reply_to}, mais ce n'est pas votre tour.")).await?,
                             }
                         }
                     }
@@ -3111,6 +3138,103 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::TournoiFrancoS4 => ctx.send_message(
+                                "Bienvenue ! Ceci est une practice room pour le tournoi francophone saison 4. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/fr/4",
+                                true,
+                                vec![
+                                    ("Roll seed (settings de base)", ActionButton::Message {
+                                        message: format!("!seed base ${{mq}}mq"),
+                                        help_text: Some(format!("Roll une seed avec les settings de base, sans setting additionnel.")),
+                                        survey: Some(vec![
+                                            SurveyQuestion {
+                                                name: format!("mq"),
+                                                label: format!("Donjons Master Quest"),
+                                                default: Some(format!("0")),
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Select,
+                                                placeholder: None,
+                                                options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                            },
+                                        ]),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                    ("Roll seed (settings aléatoires)", ActionButton::Message {
+                                        message: format!("!seed random ${{advanced}} ${{mq}}mq"),
+                                        help_text: Some(format!("Simule en draft en sélectionnant des settings au hasard.")),
+                                        survey: Some(vec![
+                                            SurveyQuestion {
+                                                name: format!("advanced"),
+                                                label: format!("Active les settings difficiles"),
+                                                default: None,
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Bool,
+                                                placeholder: None,
+                                                options: Vec::default(),
+                                            },
+                                            SurveyQuestion {
+                                                name: format!("mq"),
+                                                label: format!("Donjons Master Quest"),
+                                                default: Some(format!("0")),
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Select,
+                                                placeholder: None,
+                                                options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                            },
+                                        ]),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                    ("Roll seed (settings à choisir)", ActionButton::Message {
+                                        message: format!("!seed {} ${{mq}}mq", fr::S4_SETTINGS.into_iter().map(|setting| format!("{0} ${{{0}}}", setting.name)).format(" ")),
+                                        help_text: Some(format!("Vous laisse sélectionner les settings que vous voulez dans votre seed.")),
+                                        survey: Some(fr::S4_SETTINGS.into_iter().map(|setting| SurveyQuestion {
+                                            name: setting.name.to_owned(),
+                                            label: setting.display.to_owned(),
+                                            default: Some(setting.default.to_owned()),
+                                            help_text: None,
+                                            kind: SurveyQuestionKind::Radio,
+                                            placeholder: None,
+                                            options: iter::once((setting.default.to_owned(), setting.default_display.to_owned()))
+                                                .chain(setting.other.iter().map(|(name, _, display)| (name.to_string(), display.to_string())))
+                                                .chain((setting.name == "dungeon-er").then(|| (format!("mixed"), format!("dungeon ER (mixés)"))))
+                                                .collect(),
+                                        }).chain(iter::once(SurveyQuestion {
+                                            name: format!("mq"),
+                                            label: format!("Donjons Master Quest"),
+                                            default: Some(format!("0")),
+                                            help_text: None,
+                                            kind: SurveyQuestionKind::Select,
+                                            placeholder: None,
+                                            options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                        })).collect()),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                    ("Roll seed (avec draft)", ActionButton::Message {
+                                        message: format!("!seed draft ${{advanced}} ${{mq}}mq"),
+                                        help_text: Some(format!("Vous fait effectuer un draft dans le chat racetime.")),
+                                        survey: Some(vec![
+                                            SurveyQuestion {
+                                                name: format!("advanced"),
+                                                label: format!("Active les settings difficiles"),
+                                                default: None,
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Bool,
+                                                placeholder: None,
+                                                options: Vec::default(),
+                                            },
+                                            SurveyQuestion {
+                                                name: format!("mq"),
+                                                label: format!("Donjons Master Quest"),
+                                                default: Some(format!("0")),
+                                                help_text: None,
+                                                kind: SurveyQuestionKind::Select,
+                                                placeholder: None,
+                                                options: (0..=12).map(|mq| (mq.to_string(), mq.to_string())).collect(),
+                                            },
+                                        ]),
+                                        submit: Some(format!("Roll")),
+                                    }),
+                                ],
+                            ).await?,
                             Goal::TriforceBlitz => ctx.send_message(
                                 "Welcome to Triforce Blitz! Learn more at https://triforceblitz.com/",
                                 true,
@@ -3258,7 +3382,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::WeTryToBeBetter
                                 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
                             Goal::Rsl => unreachable!("no official race rooms"),
-                            Goal::Cc7 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::TournoiFrancoS3 => unreachable!("should have draft state set"),
+                            Goal::Cc7 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::TournoiFrancoS3 | Goal::TournoiFrancoS4 => unreachable!("should have draft state set"),
                             Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
                             Goal::PicRs2 => this.roll_rsl_seed(ctx, VersionedRslPreset::Fenhl {
                                 version: Some((Version::new(2, 3, 8), 10)),
@@ -3947,6 +4071,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::Sgl2023
                     | Goal::SongsOfHope
                     | Goal::TournoiFrancoS3
+                    | Goal::TournoiFrancoS4
                     | Goal::WeTryToBeBetter
                         => {}
                 }

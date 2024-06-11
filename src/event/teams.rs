@@ -489,7 +489,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
             });
         }
     }
-    if let Some(draft::Kind::TournoiFrancoS3) = data.draft_kind() {
+    if let Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4) = data.draft_kind() {
         column_headers.push(html! {
             th : "Advanced Settings OK";
         });
@@ -619,7 +619,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                 }
                                 (_, _) => @unreachable
                             }
-                            @if let Some(draft::Kind::TournoiFrancoS3) = data.draft_kind() {
+                            @if let Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4) = data.draft_kind() {
                                 td {
                                     @if hard_settings_ok {
                                         : "✓";

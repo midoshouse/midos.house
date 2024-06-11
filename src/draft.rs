@@ -36,6 +36,7 @@ pub(crate) enum Kind {
     MultiworldS3,
     MultiworldS4,
     TournoiFrancoS3,
+    TournoiFrancoS4,
 }
 
 #[derive(Clone)]
@@ -187,7 +188,7 @@ impl Draft {
                     (high_seed == Id::from(17814073240662869290_u64) || low_seed == Id::from(17814073240662869290_u64))
                         .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
                 ),
-                Kind::TournoiFrancoS3 => {
+                Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => {
                     let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", high_seed as _, low_seed as _).fetch_all(&mut **transaction).await?;
                     let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
                     let mq_ok = team_rows.iter().all(|row| row.mq_ok);
@@ -206,7 +207,8 @@ impl Draft {
             Kind::S7 => self.skipped_bans + u8::try_from(self.settings.len()).unwrap(),
             Kind::MultiworldS3 => self.skipped_bans + u8::try_from(mw::S3_SETTINGS.into_iter().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::MultiworldS4 => self.skipped_bans + u8::try_from(mw::S4_SETTINGS.into_iter().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
-            Kind::TournoiFrancoS3 => self.skipped_bans + u8::try_from(fr::S3_SETTINGS.into_iter().filter(|&fr::S3Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
+            Kind::TournoiFrancoS3 => self.skipped_bans + u8::try_from(fr::S3_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
+            Kind::TournoiFrancoS4 => self.skipped_bans + u8::try_from(fr::S4_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
         }
     }
 
@@ -704,7 +706,12 @@ impl Draft {
                     }
                 }
             }
-            Kind::TournoiFrancoS3 => {
+            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => {
+                let all_settings = match kind {
+                    Kind::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
+                    Kind::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
+                    _ => unreachable!(),
+                };
                 if let Some(went_first) = self.went_first {
                     let mut pick_count = self.pick_count(kind);
                     let select_mixed_dungeons = !self.settings.contains_key("mixed-dungeons") && self.settings.get("dungeon-er").map(|dungeon_er| &**dungeon_er).unwrap_or("off") == "on" && self.settings.get("mixed-er").map(|mixed_er| &**mixed_er).unwrap_or("off") == "on";
@@ -716,11 +723,15 @@ impl Draft {
                         (0, true) | (1, false) | (2, true) | (3, false) | (4, false) | (5, true) | (6, true) | (7, false) | (8, true) | (9, false) => Team::HighSeed,
                         (0, false) | (1, true) | (2, false) | (3, true) | (4, true) | (5, false) | (6, false) | (7, true) | (8, false) | (9, true) => Team::LowSeed,
                         (10.., _) => return Ok(Step {
-                            kind: StepKind::Done(fr::resolve_draft_settings(&self.settings)),
+                            kind: StepKind::Done(match kind {
+                                Kind::TournoiFrancoS3 => fr::resolve_s3_draft_settings(&self.settings),
+                                Kind::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&self.settings),
+                                _ => unreachable!(),
+                            }),
                             message: match msg_ctx {
                                 MessageContext::None => String::default(),
-                                MessageContext::Discord { .. } => format!("Fin du draft ! Voici un récapitulatif : {}.", fr::display_draft_picks(&self.settings)),
-                                MessageContext::RaceTime { .. } => fr::display_draft_picks(&self.settings),
+                                MessageContext::Discord { .. } => format!("Fin du draft ! Voici un récapitulatif : {}.", fr::display_draft_picks(all_settings, &self.settings)),
+                                MessageContext::RaceTime { .. } => fr::display_draft_picks(all_settings, &self.settings),
                             },
                         }),
                     };
@@ -752,13 +763,13 @@ impl Draft {
                         match self.pick_count(kind) {
                             prev_bans @ 0..=1 => {
                                 let hard_settings_ok = self.settings.get("hard_settings_ok").map(|hard_settings_ok| &**hard_settings_ok).unwrap_or("no") == "ok";
-                                let (hard_settings, classic_settings) = fr::S3_SETTINGS.into_iter()
-                                    .filter(|&fr::S3Setting { name, .. }| !self.settings.contains_key(name) && match name {
+                                let (hard_settings, classic_settings) = all_settings.iter()
+                                    .filter(|&&fr::Setting { name, .. }| !self.settings.contains_key(name) && match name {
                                         "keysy" => self.settings.get("keysanity").map_or(true, |keysanity| keysanity == "off"),
                                         "keysanity" => self.settings.get("keysy").map_or(true, |keysy| keysy == "off"),
                                         _ => true,
                                     })
-                                    .filter_map(|fr::S3Setting { name, display, default, default_display, other, description }| {
+                                    .filter_map(|fr::Setting { name, display, default, default_display, other, description }| {
                                         let (is_hard, is_empty) = if hard_settings_ok {
                                             (other.iter().all(|&(_, hard, _)| hard), other.is_empty())
                                         } else {
@@ -804,9 +815,9 @@ impl Draft {
                                 let hard_settings_ok = self.settings.get("hard_settings_ok").map(|hard_settings_ok| &**hard_settings_ok).unwrap_or("no") == "ok";
                                 let can_ban = n < 8 || self.settings.get(team.choose("high_seed_has_picked", "low_seed_has_picked")).map(|has_picked| &**has_picked).unwrap_or("no") == "yes";
                                 let skippable = n == 9 && can_ban;
-                                let (hard_settings, classic_settings) = fr::S3_SETTINGS.into_iter()
-                                    .filter(|&fr::S3Setting { name, .. }| !self.settings.contains_key(name))
-                                    .filter_map(|fr::S3Setting { name, display, default, default_display, other, description }| {
+                                let (hard_settings, classic_settings) = all_settings.iter()
+                                    .filter(|&&fr::Setting { name, .. }| !self.settings.contains_key(name))
+                                    .filter_map(|&fr::Setting { name, display, default, default_display, other, description }| {
                                         let (is_hard, other) = if hard_settings_ok {
                                             (other.iter().all(|&(_, hard, _)| hard), other.to_owned())
                                         } else {
@@ -1687,9 +1698,14 @@ impl Draft {
                     },
                 }
             }
-            Kind::TournoiFrancoS3 => {
+            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => {
+                let all_settings = match kind {
+                    Kind::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
+                    Kind::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
+                    _ => unreachable!(),
+                };
                 let resolved_action = match action {
-                    Action::Ban { setting } => if let Some(setting) = fr::S3_SETTINGS.into_iter().find(|&fr::S3Setting { name, .. }| *name == setting) {
+                    Action::Ban { setting } => if let Some(setting) = all_settings.iter().find(|&&fr::Setting { name, .. }| *name == setting) {
                         Action::Pick { setting: setting.name.to_owned(), value: setting.default.to_owned() }
                     } else {
                         return Ok(Err(match msg_ctx {
@@ -1697,7 +1713,7 @@ impl Draft {
                             MessageContext::Discord { .. } => {
                                 let mut content = MessageBuilder::default();
                                 content.push("Sorry, I don't recognize that setting. Use one of the following: ");
-                                for (i, setting) in fr::S3_SETTINGS.into_iter().enumerate() {
+                                for (i, setting) in all_settings.iter().enumerate() {
                                     if i > 0 {
                                         content.push(" or ");
                                     }
@@ -1707,7 +1723,7 @@ impl Draft {
                             }
                             MessageContext::RaceTime { reply_to, .. } => format!(
                                 "Sorry {reply_to}, I don't recognize that setting. Use one of the following: {}",
-                                fr::S3_SETTINGS.into_iter().map(|setting| setting.name).format(" or "),
+                                all_settings.iter().map(|setting| setting.name).format(" or "),
                             ),
                         }))
                     },
@@ -1799,7 +1815,7 @@ impl Draft {
                                 })
                             }
                         } else {
-                            let exists = fr::S3_SETTINGS.into_iter().any(|fr::S3Setting { name, .. }| setting == name);
+                            let exists = all_settings.iter().any(|&fr::Setting { name, .. }| setting == name);
                             Err(match msg_ctx {
                                 MessageContext::None => String::default(),
                                 MessageContext::Discord { command_ids, .. } => {
@@ -1833,7 +1849,7 @@ impl Draft {
                         },
                         StepKind::Pick { available_choices, skippable, .. } => if let Some(setting) = available_choices.get(&setting) {
                             if let Some(option) = setting.options.iter().find(|option| option.name == value) {
-                                let is_default = value == fr::S3_SETTINGS.into_iter().find(|&fr::S3Setting { name, .. }| setting.name == name).unwrap().default;
+                                let is_default = value == all_settings.iter().find(|&&fr::Setting { name, .. }| setting.name == name).unwrap().default;
                                 if !is_default {
                                     self.settings.insert(Cow::Borrowed(self.active_team(kind, game).await?.unwrap().choose("high_seed_has_picked", "low_seed_has_picked")), Cow::Borrowed("yes"));
                                 }
@@ -1868,7 +1884,7 @@ impl Draft {
                                 })
                             }
                         } else {
-                            let exists = fr::S3_SETTINGS.into_iter().any(|fr::S3Setting { name, .. }| setting == name);
+                            let exists = all_settings.iter().any(|&fr::Setting { name, .. }| setting == name);
                             Err(match msg_ctx {
                                 MessageContext::None => String::default(),
                                 MessageContext::Discord { command_ids, .. } => {

@@ -551,7 +551,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Locks a setting for this race to its default value."),
-                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("ban")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Verrouille un setting à sa valeur par défaut.")
@@ -590,7 +590,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Chooses a setting for this race."),
-                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("draft")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Choisit un setting pour la race.")
@@ -606,7 +606,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Go first in the settings draft."),
-                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("first")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Partir premier dans la phase de pick&ban.")
@@ -630,7 +630,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(match draft_kind {
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => return None,
-                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("no")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("no")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Répond à la négative dans une question fermée.")
@@ -774,7 +774,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Go second in the settings draft."),
-                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("second")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Partir second dans la phase de pick&ban.")
@@ -801,7 +801,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Skips your current turn of the settings draft."),
-                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("skip")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Skip le dernier pick du draft.")
@@ -850,7 +850,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(match draft_kind {
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => return None,
-                    draft::Kind::TournoiFrancoS3 => CreateCommand::new("yes")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("yes")
                         .kind(CommandType::ChatInput)
                         .dm_permission(false)
                         .description("Répond à l'affirmative dans une question fermée.")
@@ -925,7 +925,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             send_draft_settings_page(ctx, interaction, "draft", 0).await?;
                         } else if Some(interaction.data.id) == command_ids.first {
                             if let Some((_, mut race, draft_kind, msg_ctx)) = check_draft_permissions(ctx, interaction).await? {
-                                if let draft::Kind::TournoiFrancoS3 = draft_kind {
+                                if let draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 = draft_kind {
                                     let settings = &mut race.draft.as_mut().unwrap().settings;
                                     if settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
                                         let mut transaction = msg_ctx.into_transaction();
@@ -1580,7 +1580,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             }
                         } else if Some(interaction.data.id) == command_ids.second {
                             if let Some((_, mut race, draft_kind, msg_ctx)) = check_draft_permissions(ctx, interaction).await? {
-                                if let draft::Kind::TournoiFrancoS3 = draft_kind {
+                                if let draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 = draft_kind {
                                     let settings = &mut race.draft.as_mut().unwrap().settings;
                                     if settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
                                         let mut transaction = msg_ctx.into_transaction();
@@ -1962,7 +1962,7 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
         if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?;
         if game_count == 1;
         if event.asyncs_allowed();
-        if let None | Some(draft::Kind::TournoiFrancoS3) = event.draft_kind();
+        if let None | Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4) = event.draft_kind();
         then {
             for team in race.teams() {
                 content.mention_team(&mut transaction, Some(guild_id), team).await?;

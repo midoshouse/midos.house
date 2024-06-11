@@ -805,7 +805,7 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::TournoiFrancophone => match &*event.event {
-                "3" => {}
+                "3" | "4" => {}
                 _ => unimplemented!(),
             },
             Series::TriforceBlitz => match &*event.event {
@@ -1942,7 +1942,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                         max_by_key(&team1, &team2, |team| team.qualifier_rank).id,
                     ],
                     draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => [team1.id, team2.id],
-                    draft::Kind::TournoiFrancoS3 => {
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => {
                         let mut team_ids = [team1.id, team2.id];
                         team_ids.shuffle(&mut thread_rng());
                         team_ids
@@ -2304,7 +2304,7 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                             }
                         }
                     },
-                    draft::Kind::TournoiFrancoS3 => unreachable!("this event does not use start.gg"),
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => unreachable!("this event does not use start.gg"),
                 };
                 Some(Draft::new(&mut *transaction, draft_kind, high_seed, low_seed).await?)
             } else {
