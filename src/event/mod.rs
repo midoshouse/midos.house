@@ -299,7 +299,7 @@ impl<'a> Data<'a> {
             (Series::Standard, "7" | "7cc") => from_file!("../../assets/event/s/chests-7-7.1.198.json"),
             (Series::Standard, _) => unimplemented!(),
             (Series::TournoiFrancophone, "3") => from_file!("../../assets/event/fr/chests-3-7.1.83-r.1.json"),
-            (Series::TournoiFrancophone, "4") => from_file!("../../assets/event/fr/chests-3-7.1.83-r.1.json"), //TODO
+            (Series::TournoiFrancophone, "4") => from_file!("../../assets/event/fr/chests-4-8.1.45-rob.105.json"),
             (Series::TournoiFrancophone, _) => unimplemented!(),
             (Series::TriforceBlitz, "2") => from_file!("../../assets/event/tfb/chests-2-7.1.3-blitz.42.json"),
             (Series::TriforceBlitz, "3") => from_file!("../../assets/event/tfb/chests-3-8.1.32-blitz.57.json"),

@@ -517,7 +517,6 @@ pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map
             "8dungeons" => json!(8),
             _ => json!(9),
         },
-        format!("shuffle_ganon_bosskey") => json!("remove"),
         format!("shuffle_bosskeys") => if bosskeys == "anywhere" {
             json!("keysanity")
         } else {
@@ -552,7 +551,7 @@ pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map
         format!("starting_age") => json!("random"),
         format!("mq_dungeons_mode") => json!("count"),
         format!("mq_dungeons_count") => json!(mq_dungeons_count.parse::<u8>().unwrap()),
-        format!("empty_dungeons_mode") => if bridge == "precompleted" {
+        format!("empty_dungeons_mode") => if let "1precompleted" | "2precompleted" | "3precompleted" = bridge {
             json!("count")
         } else {
             json!("none")
