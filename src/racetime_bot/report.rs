@@ -1,4 +1,5 @@
 use {
+    std::cmp::Reverse,
     tokio::sync::RwLockReadGuard,
     crate::{
         prelude::*,
@@ -42,7 +43,7 @@ impl Score for Option<Duration> {
 }
 
 impl Score for tfb::Score {
-    type SortKey = (i8, Duration);
+    type SortKey = (Reverse<u8>, Duration);
 
     fn is_dnf(&self) -> bool {
         self.pieces == 0
@@ -50,7 +51,7 @@ impl Score for tfb::Score {
 
     fn sort_key(&self) -> Self::SortKey {
         (
-            -(self.pieces as i8), // most pieces first
+            Reverse(self.pieces),
             self.last_collection_time,
         )
     }
@@ -322,6 +323,41 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
     Ok(transaction)
 }
 
+async fn report_ffa(ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, event: &event::Data<'_>, room: Url) -> Result<(), Error> {
+    if let Some(results_channel) = event.discord_race_results_channel.or(event.discord_organizer_channel) {
+        let mut builder = MessageBuilder::default();
+        let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
+            (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
+            (Some(phase), None) => Some(phase.clone()),
+            (None, Some(round)) => Some(round.clone()),
+            (None, None) => None,
+        };
+        match (info_prefix, cal_event.race.game) {
+            (Some(prefix), Some(game)) => {
+                builder.push_safe(prefix);
+                builder.push(", game ");
+                builder.push(game.to_string());
+                builder.push(": ");
+            }
+            (Some(prefix), None) => {
+                builder.push_safe(prefix);
+                builder.push(": ");
+            }
+            (None, Some(game)) => {
+                builder.push("game ");
+                builder.push(game.to_string());
+                builder.push(": ");
+            }
+            (None, None) => {}
+        }
+        builder.push("race finished: <");
+        builder.push(room.to_string());
+        builder.push('>');
+        results_channel.say(&*ctx.global_state.discord_ctx.read().await, builder.build()).await.to_racetime()?;
+    }
+    Ok(())
+}
+
 impl Handler {
     pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, tfb_scores: Option<HashMap<String, tfb::Score>>) -> Result<(), Error> {
         if let Series::SpeedGaming = event.series {
@@ -368,34 +404,48 @@ impl Handler {
         } else {
             match event.team_config {
                 TeamConfig::Solo => match cal_event.race.entrants {
-                    Entrants::Open | Entrants::Count { .. } => {} //TODO post results (just finisher and total entrant counts?)
+                    Entrants::Open | Entrants::Count { .. } => {
+                        let room = Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?;
+                        report_ffa(ctx, cal_event, event, room).await?;
+                    }
                     Entrants::Named(_) => unimplemented!(),
-                    Entrants::Two(_) => if let Some(mut tfb_scores) = tfb_scores {
-                        let mut teams = Vec::with_capacity(data.entrants.len());
+                    Entrants::Two(_) | Entrants::Three(_) => {
                         let room = Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?;
-                        for entrant in &data.entrants {
-                            let user = User::from_racetime(&mut *transaction, &entrant.user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                            let team = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                            teams.push((team, tfb_scores.remove(&entrant.user.id).expect("missing TFB score"), room.clone()));
+                        if let Some(mut tfb_scores) = tfb_scores {
+                            let mut teams = Vec::with_capacity(data.entrants.len());
+                            for entrant in &data.entrants {
+                                let user = User::from_racetime(&mut *transaction, &entrant.user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                let team = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                teams.push((team, tfb_scores.remove(&entrant.user.id).expect("missing TFB score"), room.clone()));
+                            }
+                            if let Ok(teams) = teams.try_into() {
+                                transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                            } else { //TODO separate function for reporting 3-entrant results
+                                report_ffa(ctx, cal_event, event, room).await?;
+                            }
+                        } else {
+                            let mut teams = Vec::with_capacity(data.entrants.len());
+                            for entrant in &data.entrants {
+                                let user = User::from_racetime(&mut *transaction, &entrant.user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                let team = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
+                                teams.push((team, entrant.finish_time, room.clone()));
+                            }
+                            if let Ok(teams) = teams.try_into() {
+                                transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                            } else { //TODO separate function for reporting 3-entrant results
+                                report_ffa(ctx, cal_event, event, room).await?;
+                            }
                         }
-                        transaction = report_1v1(transaction, ctx, cal_event, event, teams.try_into().expect("wrong number of times for 2 entrants")).await?;
-                    } else {
-                        let mut teams = Vec::with_capacity(data.entrants.len());
-                        let room = Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?;
-                        for entrant in &data.entrants {
-                            let user = User::from_racetime(&mut *transaction, &entrant.user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                            let team = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                            teams.push((team, entrant.finish_time, room.clone()));
-                        }
-                        transaction = report_1v1(transaction, ctx, cal_event, event, teams.try_into().expect("wrong number of times for 2 entrants")).await?;
-                    },
-                    Entrants::Three(_) => unimplemented!(), //TODO
+                    }
                 },
                 TeamConfig::Pictionary => unimplemented!(), //TODO calculate like solo but report as teams
                 _ => match cal_event.race.entrants {
-                    Entrants::Open | Entrants::Count { .. } => {} //TODO post results (just finisher and total entrant counts?)
+                    Entrants::Open | Entrants::Count { .. } => {
+                        let room = Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?;
+                        report_ffa(ctx, cal_event, event, room).await?;
+                    }
                     Entrants::Named(_) => unimplemented!(),
-                    Entrants::Two(_) => {
+                    Entrants::Two(_) | Entrants::Three(_) => {
                         let mut team_times = HashMap::<_, Vec<_>>::default();
                         let mut team_rooms = HashMap::new();
                         if cal_event.is_public_async_part() {
@@ -403,16 +453,17 @@ impl Handler {
                             #[error("ExactlyOneError while formatting result of last async half")]
                             struct ExactlyOneError;
 
-                            let first_async_half = cal_event.race.cal_events().filter(|cal_event| cal_event.is_private_async_part()).exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
-                            if let Some(ref room) = first_async_half.room() {
-                                let nonactive_team = first_async_half.active_teams().exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
-                                let data = ctx.global_state.http_client.get(format!("{}/data", room.to_string()))
-                                    .send().await?
-                                    .detailed_error_for_status().await.to_racetime()?
-                                    .json_with_text_in_error::<RaceData>().await.to_racetime()?;
-                                team_rooms.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), Url::clone(room));
-                                for entrant in &data.entrants {
-                                    team_times.entry(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(entrant.finish_time);
+                            for private_async_part in cal_event.race.cal_events().filter(|cal_event| cal_event.is_private_async_part()) {
+                                if let Some(ref room) = private_async_part.room() {
+                                    let nonactive_team = private_async_part.active_teams().exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
+                                    let data = ctx.global_state.http_client.get(format!("{}/data", room.to_string()))
+                                        .send().await?
+                                        .detailed_error_for_status().await.to_racetime()?
+                                        .json_with_text_in_error::<RaceData>().await.to_racetime()?;
+                                    team_rooms.insert(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team"), Url::clone(room));
+                                    for entrant in &data.entrants {
+                                        team_times.entry(nonactive_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(entrant.finish_time);
+                                    }
                                 }
                             }
                             let active_team = cal_event.active_teams().exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
@@ -440,9 +491,13 @@ impl Handler {
                                 team_rooms.remove(&team_slug).expect("each team should have a room"),
                             ));
                         }
-                        transaction = report_1v1(transaction, ctx, cal_event, event, teams.try_into().expect("wrong number of times for 2 entrants")).await?;
+                        if let Ok(teams) = teams.try_into() {
+                            transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                        } else { //TODO separate function for reporting 3-entrant results
+                            let room = Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?;
+                            report_ffa(ctx, cal_event, event, room).await?;
+                        }
                     }
-                    Entrants::Three(_) => unimplemented!(), //TODO
                 },
             }
         }
