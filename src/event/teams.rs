@@ -285,16 +285,71 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 }).collect()
         }
         QualifierKind::None | QualifierKind::Rank | QualifierKind::Single { .. } => {
-            let teams = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
-                series = $1
-                AND event = $2
-                AND NOT resigned
-                AND (
-                    EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
-                    OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-                )
-                AND (kind = 'qualifier' OR kind IS NULL)
-            "#, data.series as _, &data.event, me.as_ref().map(|me| i64::from(me.id))).fetch_all(&mut **transaction).await?;
+            struct TeamRow {
+                team: Team,
+                hard_settings_ok: bool,
+                mq_ok: bool,
+                pieces: Option<i16>,
+                qualified: bool,
+            }
+
+            let teams = if let QualifierKind::Rank = qualifier_kind {
+                // teams are manually ranked so include ones that haven't submitted qualifier asyncs
+                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
+                    series = $1
+                    AND event = $2
+                    AND NOT resigned
+                    AND (
+                        EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
+                        OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+                    )
+                "#, data.series as _, &data.event, me.as_ref().map(|me| i64::from(me.id))).fetch(&mut **transaction)
+                    .map_ok(|row| TeamRow {
+                        team: Team {
+                            id: row.id,
+                            name: row.name,
+                            racetime_slug: row.racetime_slug,
+                            startgg_id: row.startgg_id,
+                            plural_name: row.plural_name,
+                            restream_consent: row.restream_consent,
+                            mw_impl: row.mw_impl,
+                            qualifier_rank: row.qualifier_rank,
+                        },
+                        hard_settings_ok: row.hard_settings_ok,
+                        mq_ok: row.mq_ok,
+                        pieces: None,
+                        qualified: false,
+                    })
+                    .try_collect::<Vec<_>>().await?
+            } else {
+                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+                    series = $1
+                    AND event = $2
+                    AND NOT resigned
+                    AND (
+                        EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
+                        OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+                    )
+                    AND (kind = 'qualifier' OR kind IS NULL)
+                "#, data.series as _, &data.event, me.as_ref().map(|me| i64::from(me.id))).fetch(&mut **transaction)
+                    .map_ok(|row| TeamRow {
+                        team: Team {
+                            id: row.id,
+                            name: row.name,
+                            racetime_slug: row.racetime_slug,
+                            startgg_id: row.startgg_id,
+                            plural_name: row.plural_name,
+                            restream_consent: row.restream_consent,
+                            mw_impl: row.mw_impl,
+                            qualifier_rank: row.qualifier_rank,
+                        },
+                        hard_settings_ok: row.hard_settings_ok,
+                        mq_ok: row.mq_ok,
+                        pieces: row.pieces,
+                        qualified: row.qualified,
+                    })
+                    .try_collect().await?
+            };
             let roles = data.team_config.roles();
             let mut signups = Vec::with_capacity(teams.len());
             for team in teams {
@@ -304,7 +359,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         SELECT member AS "id: Id<Users>", status AS "status: SignupStatus", time, vod
                         FROM team_members LEFT OUTER JOIN async_players ON (member = player AND series = $1 AND event = $2 AND kind = 'qualifier')
                         WHERE team = $3 AND role = $4
-                    "#, data.series as _, &data.event, team.id as _, role as _).fetch_one(&mut **transaction).await?;
+                    "#, data.series as _, &data.event, team.team.id as _, role as _).fetch_one(&mut **transaction).await?;
                     let is_confirmed = row.status.is_confirmed();
                     let user = User::from_id(&mut **transaction, row.id).await?.ok_or(DataError::NonexistentUser)?;
                     members.push(SignupsMember {
@@ -315,16 +370,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     });
                 }
                 signups.push(SignupsTeam {
-                    team: Some(Team {
-                        id: team.id,
-                        name: team.name,
-                        racetime_slug: team.racetime_slug,
-                        startgg_id: team.startgg_id,
-                        plural_name: team.plural_name,
-                        restream_consent: team.restream_consent,
-                        mw_impl: team.mw_impl,
-                        qualifier_rank: team.qualifier_rank,
-                    }),
+                    team: Some(team.team),
                     qualification: if let Some(pieces) = team.pieces {
                         Qualification::TriforceBlitz { qualified: team.qualified, pieces }
                     } else {
