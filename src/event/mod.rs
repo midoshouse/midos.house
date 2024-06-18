@@ -785,7 +785,7 @@ impl<'v> StatusContext<'v> {
     }
 }
 
-async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environment, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, mut ctx: StatusContext<'_>) -> Result<RawHtml<String>, Error> {
+async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, mut ctx: StatusContext<'_>) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, env, me.as_ref(), Tab::MyStatus, false).await?;
     let content = if let Some(ref me) = me {
         if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, role AS "role: Role", resigned, restream_consent FROM teams, team_members WHERE
@@ -823,63 +823,238 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                 @if row.resigned {
                     p : "You have resigned from this event.";
                 } else {
-                    //TODO deduplicate async handling code
-                    @match data.series {
-                        Series::BattleRoyale => @unimplemented // no signups on Mido's House
-                        Series::CoOp => p : "Please schedule your matches using the Discord scheduling threads.";
-                        Series::CopaDoBrasil => : br::status(&mut transaction, csrf, &data, row.id, &mut ctx).await?;
-                        Series::League => @unimplemented // no signups on Mido's House
-                        Series::MixedPools => @unimplemented // no signups on Mido's House
-                        Series::Multiworld => : mw::status(&mut transaction, discord_ctx, csrf, &data, row.id, &mut ctx).await?;
-                        Series::NineDaysOfSaws => @if data.is_ended() {
-                            p : "This race has been completed."; //TODO ranking and finish time
-                        } else if let Some(ref race_room) = data.url {
-                            p {
-                                : "Please join ";
-                                a(href = race_room.to_string()) : "the race room";
-                                : " as soon as possible. You will receive further instructions there.";
+                    @let async_info = if let Some(async_kind) = data.active_async(&mut transaction, Some(row.id)).await? {
+                        let async_row = sqlx::query!(r#"SELECT tfb_uuid, web_id, web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
+                        if let Some(team_row) = sqlx::query!(r#"SELECT requested AS "requested!", submitted FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL"#, row.id as _, async_kind as _).fetch_optional(&mut *transaction).await? {
+                            if team_row.submitted.is_some() {
+                                None
+                            } else {
+                                let seed = seed::Data::from_db(
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    async_row.file_stem,
+                                    None,
+                                    async_row.web_id,
+                                    async_row.web_gen_time,
+                                    async_row.tfb_uuid,
+                                    async_row.hash1,
+                                    async_row.hash2,
+                                    async_row.hash3,
+                                    async_row.hash4,
+                                    async_row.hash5,
+                                );
+                                let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
+                                let ctx = ctx.take_submit_async();
+                                let mut errors = ctx.errors().collect_vec();
+                                Some(html! {
+                                    div(class = "info") {
+                                        p {
+                                            : "You requested an async on ";
+                                            : format_datetime(team_row.requested, DateTimeFormat { long: true, running_text: true });
+                                            : ".";
+                                        };
+                                        : seed_table;
+                                        p : "After playing the async, fill out the form below.";
+                                        : full_form(uri!(event::submit_async(data.series, &*data.event)), csrf, html! {
+                                            @match data.team_config {
+                                                TeamConfig::Solo => {
+                                                    @if let Series::TriforceBlitz = data.series {
+                                                        : form_field("pieces", &mut errors, html! {
+                                                            label(for = "pieces") : "Number of Triforce Pieces found:";
+                                                            input(type = "number", min = "0", max = "3", name = "pieces", value? = ctx.field_value("pieces"));
+                                                        });
+                                                        : form_field("time1", &mut errors, html! {
+                                                            label(for = "time1") : "Time at which you found the most recent piece:";
+                                                            input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                            label(class = "help") : "(If you did not find any, leave this field blank.)";
+                                                        });
+                                                    } else {
+                                                        : form_field("time1", &mut errors, html! {
+                                                            label(for = "time1") : "Finishing Time:";
+                                                            input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                            label(class = "help") : "(If you did not finish, leave this field blank.)";
+                                                        });
+                                                    }
+                                                    : form_field("vod1", &mut errors, html! {
+                                                        label(for = "vod1") : "VoD:";
+                                                        input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
+                                                        label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                    });
+                                                }
+                                                TeamConfig::Pictionary => @unimplemented
+                                                TeamConfig::CoOp => {
+                                                    : form_field("time1", &mut errors, html! {
+                                                        label(for = "time1") : "Player 1 Finishing Time:";
+                                                        input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                        label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
+                                                    });
+                                                    : form_field("vod1", &mut errors, html! {
+                                                        label(for = "vod1") : "Player 1 VoD:";
+                                                        input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
+                                                        label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                    });
+                                                    : form_field("time2", &mut errors, html! {
+                                                        label(for = "time2") : "Player 2 Finishing Time:";
+                                                        input(type = "text", name = "time2", value? = ctx.field_value("time2")); //TODO h:m:s fields?
+                                                        label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
+                                                    });
+                                                    : form_field("vod2", &mut errors, html! {
+                                                        label(for = "vod2") : "Player 2 VoD:";
+                                                        input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
+                                                        label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
+                                                    });
+                                                }
+                                                TeamConfig::Multiworld => {
+                                                    : form_field("time1", &mut errors, html! {
+                                                        label(for = "time1", class = "power") : "Player 1 Finishing Time:";
+                                                        input(type = "text", name = "time1", value? = ctx.field_value("time1")); //TODO h:m:s fields?
+                                                        label(class = "help") : "(If player 1 did not finish, leave this field blank.)";
+                                                    });
+                                                    : form_field("vod1", &mut errors, html! {
+                                                        label(for = "vod1", class = "power") : "Player 1 VoD:";
+                                                        input(type = "text", name = "vod1", value? = ctx.field_value("vod1"));
+                                                        label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
+                                                    });
+                                                    : form_field("time2", &mut errors, html! {
+                                                        label(for = "time2", class = "wisdom") : "Player 2 Finishing Time:";
+                                                        input(type = "text", name = "time2", value? = ctx.field_value("time2")); //TODO h:m:s fields?
+                                                        label(class = "help") : "(If player 2 did not finish, leave this field blank.)";
+                                                    });
+                                                    : form_field("vod2", &mut errors, html! {
+                                                        label(for = "vod2", class = "wisdom") : "Player 2 VoD:";
+                                                        input(type = "text", name = "vod2", value? = ctx.field_value("vod2"));
+                                                        label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
+                                                    });
+                                                    : form_field("time3", &mut errors, html! {
+                                                        label(for = "time3", class = "courage") : "Player 3 Finishing Time:";
+                                                        input(type = "text", name = "time3", value? = ctx.field_value("time3")); //TODO h:m:s fields?
+                                                        label(class = "help") : "(If player 3 did not finish, leave this field blank.)";
+                                                    });
+                                                    : form_field("vod3", &mut errors, html! {
+                                                        label(for = "vod3", class = "courage") : "Player 3 VoD:";
+                                                        input(type = "text", name = "vod3", value? = ctx.field_value("vod3"));
+                                                        label(class = "help") : "(The link to a YouTube video becomes available as soon as you begin the upload process. Other upload methods such as Twitch highlights are also allowed.)";
+                                                    });
+                                                }
+                                            }
+                                            : form_field("fpa", &mut errors, html! {
+                                                label(for = "fpa") {
+                                                    : "If you would like to invoke the ";
+                                                    a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement";
+                                                    : ", describe the break(s) you took below. Include the reason, starting time, and duration.";
+                                                }
+                                                textarea(name = "fpa") : ctx.field_value("fpa");
+                                            });
+                                        }, errors, "Submit");
+                                    }
+                                })
                             }
                         } else {
-                            : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
+                            let ctx = ctx.take_request_async();
+                            let mut errors = ctx.errors().collect_vec();
+                            Some(html! {
+                                div(class = "info") {
+                                    @match async_kind {
+                                        AsyncKind::Qualifier1 | AsyncKind::Qualifier2 | AsyncKind::Qualifier3 => p : "Play the qualifier async to qualify for the tournament.";
+                                        AsyncKind::Tiebreaker1 | AsyncKind::Tiebreaker2 => p : "Play the tiebreaker async to qualify for the bracket stage of the tournament.";
+                                    }
+                                    @if let Series::Multiworld = data.series {
+                                        : mw::async_rules(&data, async_kind);
+                                    }
+                                    : full_form(uri!(event::request_async(data.series, &*data.event)), csrf, html! {
+                                        : form_field("confirm", &mut errors, html! {
+                                            input(type = "checkbox", id = "confirm", name = "confirm");
+                                            label(for = "confirm") {
+                                                @match data.team_config {
+                                                    TeamConfig::Solo => : "I am ready to play the seed";
+                                                    TeamConfig::Multiworld => : "We have read the above and are ready to play the seed";
+                                                    _ => : "We are ready to play the seed";
+                                                }
+                                            }
+                                        });
+                                    }, errors, "Request Now");
+                                }
+                            })
                         }
-                        Series::Pictionary => @if data.is_ended() {
-                            p : "This race has been completed."; //TODO ranking and finish time
-                        } else if let Some(ref race_room) = data.url {
-                            @match row.role.try_into().expect("non-Pictionary role in Pictionary team") {
-                                pic::Role::Sheikah => p {
+                    } else {
+                        None
+                    };
+                    @if let Some(async_info) = async_info {
+                        : async_info;
+                    } else {
+                        @match data.series {
+                            Series::BattleRoyale => @unimplemented // no signups on Mido's House
+                            Series::CoOp => p : "Please schedule your matches using the Discord scheduling threads.";
+                            Series::CopaDoBrasil => p : "Please schedule your races using the Discord threads.";
+                            Series::League => @unimplemented // no signups on Mido's House
+                            Series::MixedPools => @unimplemented // no signups on Mido's House
+                            Series::Multiworld => @if data.is_started(&mut transaction).await? {
+                                //TODO adjust for other match data sources?
+                                //TODO get this team's known matchup(s) from start.gg
+                                p : "Please schedule your matches using Discord threads in the scheduling channel.";
+                                //TODO form to submit matches
+                            } else {
+                                //TODO if any vods are still missing, show form to add them
+                                p : "Waiting for the start of the tournament and round 1 pairings. Keep an eye out for an announcement on Discord."; //TODO include start date?
+                            }
+                            Series::NineDaysOfSaws => @if data.is_ended() {
+                                p : "This race has been completed."; //TODO ranking and finish time
+                            } else if let Some(ref race_room) = data.url {
+                                p {
                                     : "Please join ";
                                     a(href = race_room.to_string()) : "the race room";
                                     : " as soon as possible. You will receive further instructions there.";
                                 }
-                                pic::Role::Gerudo => p {
-                                    : "Please keep an eye on ";
-                                    a(href = race_room.to_string()) : "the race room";
-                                    : " (but do not join). The spoiler log will be posted there.";
+                            } else {
+                                : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
+                            }
+                            Series::Pictionary => @if data.is_ended() {
+                                p : "This race has been completed."; //TODO ranking and finish time
+                            } else if let Some(ref race_room) = data.url {
+                                @match row.role.try_into().expect("non-Pictionary role in Pictionary team") {
+                                    pic::Role::Sheikah => p {
+                                        : "Please join ";
+                                        a(href = race_room.to_string()) : "the race room";
+                                        : " as soon as possible. You will receive further instructions there.";
+                                    }
+                                    pic::Role::Gerudo => p {
+                                        : "Please keep an eye on ";
+                                        a(href = race_room.to_string()) : "the race room";
+                                        : " (but do not join). The spoiler log will be posted there.";
+                                    }
+                                }
+                            } else {
+                                : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
+                            }
+                            Series::Rsl => @unimplemented // no signups on Mido's House
+                            Series::Scrubs => @unimplemented // no signups on Mido's House
+                            Series::SongsOfHope => @if data.is_started(&mut transaction).await? {
+                                p : "Please schedule your matches using Discord threads in the scheduling channel.";
+                            } else {
+                                p { //TODO indicate whether qualified?
+                                    : "Please see the rules document for how to qualify, and "; //TODO linkify
+                                    a(href = uri!(races(data.series, &*data.event)).to_string()) : "the race schedule";
+                                    : " for upcoming qualifiers.";
                                 }
                             }
-                        } else {
-                            : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
-                        }
-                        Series::Rsl => @unimplemented // no signups on Mido's House
-                        Series::Scrubs => @unimplemented // no signups on Mido's House
-                        Series::SongsOfHope => @if data.is_started(&mut transaction).await? {
-                            p : "Please schedule your matches using Discord threads in the scheduling channel.";
-                        } else {
-                            p { //TODO indicate whether qualified?
+                            Series::SpeedGaming => p { //TODO indicate whether qualified?
                                 : "Please see the rules document for how to qualify, and "; //TODO linkify
                                 a(href = uri!(races(data.series, &*data.event)).to_string()) : "the race schedule";
                                 : " for upcoming qualifiers.";
                             }
+                            Series::Standard => p : "Please schedule your matches using Discord threads in the scheduling channel.";
+                            Series::TournoiFrancophone => p : "Planifiez vos matches dans les fils du canal dédié.";
+                            Series::TriforceBlitz => @if data.is_started(&mut transaction).await? {
+                                //TODO get this entrant's known matchup(s)
+                                p : "Please schedule your matches using Discord threads in the scheduling channel.";
+                            } else {
+                                //TODO if any vods are still missing, show form to add them
+                                p : "Waiting for the start of the tournament and round 1 pairings. Keep an eye out for an announcement on Discord."; //TODO include start date?
+                            }
+                            Series::WeTryToBeBetter => p : "Planifiez vos matches dans les fils du canal dédié.";
                         }
-                        Series::SpeedGaming => p { //TODO indicate whether qualified?
-                            : "Please see the rules document for how to qualify, and "; //TODO linkify
-                            a(href = uri!(races(data.series, &*data.event)).to_string()) : "the race schedule";
-                            : " for upcoming qualifiers.";
-                        }
-                        Series::Standard => p : "Please schedule your matches using Discord threads in the scheduling channel.";
-                        Series::TournoiFrancophone => p : "Planifiez vos matches dans les fils du canal dédié.";
-                        Series::TriforceBlitz => : tfb::status(&mut transaction, csrf, &data, Some(row.id), &mut ctx).await?;
-                        Series::WeTryToBeBetter => p : "Planifiez vos matches dans les fils du canal dédié.";
                     }
                     @if !data.is_ended() {
                         h2 : "Options";
@@ -928,10 +1103,10 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
-pub(crate) async fn status(pool: &State<PgPool>, env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn status(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(status_page(transaction, **env, &*discord_ctx.read().await, me, uri, csrf.as_ref(), data, StatusContext::None).await?)
+    Ok(status_page(transaction, **env, me, uri, csrf.as_ref(), data, StatusContext::None).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -942,7 +1117,7 @@ pub(crate) struct StatusForm {
 }
 
 #[rocket::post("/event/<series>/<event>/status", data = "<form>")]
-pub(crate) async fn status_post(env: &State<Environment>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, StatusForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn status_post(env: &State<Environment>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, StatusForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -966,14 +1141,14 @@ pub(crate) async fn status_post(env: &State<Environment>, pool: &State<PgPool>, 
             }
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(status_page(transaction, **env, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
+            RedirectOrContent::Content(status_page(transaction, **env, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
         } else {
             sqlx::query!("UPDATE teams SET restream_consent = $1 WHERE id = $2", value.restream_consent, row.id as _).execute(&mut *transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(status(series, event))))
         }
     } else {
-        RedirectOrContent::Content(status_page(transaction, **env, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
+        RedirectOrContent::Content(status_page(transaction, **env, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
     })
 }
 
@@ -1367,7 +1542,7 @@ pub(crate) struct RequestAsyncForm {
 }
 
 #[rocket::post("/event/<series>/<event>/request-async", data = "<form>")]
-pub(crate) async fn request_async(pool: &State<PgPool>, env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, RequestAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn request_async(pool: &State<PgPool>, env: &State<Environment>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, RequestAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1402,7 +1577,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, env: &State<Environment>
         }
         if form.context.errors().next().is_some() {
             transaction.rollback().await?;
-            RedirectOrContent::Content(status_page(pool.begin().await?, **env, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
+            RedirectOrContent::Content(status_page(pool.begin().await?, **env, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
         } else {
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
@@ -1412,7 +1587,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, env: &State<Environment>
         }
     } else {
         transaction.rollback().await?;
-        RedirectOrContent::Content(status_page(pool.begin().await?, **env, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
+        RedirectOrContent::Content(status_page(pool.begin().await?, **env, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
     })
 }
 
@@ -1512,7 +1687,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
         ];
         if form.context.errors().next().is_some() {
             transaction.rollback().await?;
-            RedirectOrContent::Content(status_page(pool.begin().await?, **env, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
+            RedirectOrContent::Content(status_page(pool.begin().await?, **env, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
         } else {
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
@@ -1582,7 +1757,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
         }
     } else {
         transaction.rollback().await?;
-        RedirectOrContent::Content(status_page(pool.begin().await?, **env, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
+        RedirectOrContent::Content(status_page(pool.begin().await?, **env, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
     })
 }
 
