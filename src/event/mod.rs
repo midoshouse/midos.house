@@ -960,17 +960,23 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                                         AsyncKind::Qualifier1 | AsyncKind::Qualifier2 | AsyncKind::Qualifier3 => p : "Play the qualifier async to qualify for the tournament.";
                                         AsyncKind::Tiebreaker1 | AsyncKind::Tiebreaker2 => p : "Play the tiebreaker async to qualify for the bracket stage of the tournament.";
                                     }
-                                    @if let Series::Multiworld = data.series {
-                                        : mw::async_rules(&data, async_kind);
+                                    @match data.series {
+                                        Series::CoOp => : coop::async_rules(async_kind);
+                                        Series::Multiworld => : mw::async_rules(&data, async_kind);
+                                        _ => {}
                                     }
                                     : full_form(uri!(event::request_async(data.series, &*data.event)), csrf, html! {
                                         : form_field("confirm", &mut errors, html! {
                                             input(type = "checkbox", id = "confirm", name = "confirm");
                                             label(for = "confirm") {
-                                                @match data.team_config {
-                                                    TeamConfig::Solo => : "I am ready to play the seed";
-                                                    TeamConfig::Multiworld => : "We have read the above and are ready to play the seed";
-                                                    _ => : "We are ready to play the seed";
+                                                @if let Series::CoOp | Series::Multiworld = data.series {
+                                                    : "We have read the above and are ready to play the seed";
+                                                } else {
+                                                    @if let TeamConfig::Solo = data.team_config {
+                                                        : "I am ready to play the seed";
+                                                    } else {
+                                                        : "We are ready to play the seed";
+                                                    }
                                                 }
                                             }
                                         });
