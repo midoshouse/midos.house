@@ -1714,16 +1714,37 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
                         }
                     }
                 }
-                if let Some(PgSnowflake(discord_channel)) = asyncs_row.discord_channel {
+                let result_channel = if let Some(PgSnowflake(discord_channel)) = asyncs_row.discord_channel {
+                    Some((discord_channel, false))
+                } else if let Some(organizer_channel) = data.discord_organizer_channel {
+                    Some((organizer_channel, true))
+                } else {
+                    None
+                };
+                if let Some((discord_channel, private)) = result_channel {
                     let mut message = MessageBuilder::default();
-                    message.push("Please welcome ");
+                    if private {
+                        message.push(match async_kind {
+                            AsyncKind::Qualifier1 => "qualifier async 1",
+                            AsyncKind::Qualifier2 => "qualifier async 2",
+                            AsyncKind::Qualifier3 => "qualifier async 3",
+                            AsyncKind::Tiebreaker1 => "tiebreaker async 1",
+                            AsyncKind::Tiebreaker2 => "tiebreaker async 2",
+                        });
+                        message.push(": ");
+                    } else {
+                        message.push("Please welcome ");
+                    }
                     message.mention_team(&mut transaction, Some(discord_guild), &team).await?;
+                    if !private {
+                        message.push(" who");
+                    }
                     if let Some(sum) = times.iter().take(players.len()).try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
-                        message.push(" who finished with a time of ");
+                        message.push(" finished with a time of ");
                         message.push(English.format_duration(sum / u32::try_from(players.len()).expect("too many players in team"), true));
                         message.push_line('!');
                     } else {
-                        message.push_line(" who did not finish.");
+                        message.push_line(" did not finish.");
                     }
                     if players.len() > 1 {
                         for (i, ((player, time), vod)) in players.into_iter().zip(&times).zip(&vods).enumerate() {
