@@ -613,56 +613,20 @@ impl Race {
         }
         match event.series {
             Series::BattleRoyale => match &*event.event {
-                "1" => for row in sheet_values(http_client.clone(), "1M_VtwoOEx3sZ7UsQ8Xfe2GFXFGIuhRgbcMiJZhYYgaM", "Form responses 1!A2:F").await? {
-                    let [timestamp, p1, p2, round, date_utc, time_utc] = &*row else { continue };
-                    let id = Id::new(&mut *transaction).await?;
-                    add_or_update_race(&mut *transaction, &mut races, Self {
-                        series: event.series,
-                        event: event.event.to_string(),
-                        source: Source::Sheet { timestamp: NaiveDateTime::parse_from_str(timestamp, "%d/%m/%Y %H:%M:%S")? },
-                        entrants: Entrants::Two([
-                            Entrant::Named { name: p1.clone(), racetime_id: None, twitch_username: None },
-                            Entrant::Named { name: p2.clone(), racetime_id: None, twitch_username: None },
-                        ]),
-                        phase: None,
-                        round: Some(round.clone()),
-                        game: None,
-                        scheduling_thread: None,
-                        schedule: RaceSchedule::Live {
-                            start: NaiveDateTime::parse_from_str(&format!("{date_utc} at {time_utc}"), "%d/%m/%Y at %H:%M:%S")?.and_utc(),
-                            end: None,
-                            room: None,
-                        },
-                        schedule_updated_at: None,
-                        draft: None,
-                        seed: seed::Data::default(),
-                        video_urls: HashMap::default(),
-                        restreamers: HashMap::default(),
-                        ignored: false,
-                        schedule_locked: false,
-                        id,
-                    }).await?;
-                },
-                _ => unimplemented!(),
-            },
-            Series::CoOp => match &*event.event {
-                "3" => {}
-                _ => unimplemented!(),
-            },
-            Series::CopaDoBrasil => match &*event.event {
                 "1" => {}
                 _ => unimplemented!(),
             },
             Series::League => match &*event.event {
                 "4" => {}
                 "5" => {}
-                "6" => {
+                "6" => {}
+                "7" => {
                     let schedule = http_client.get("https://league.ootrandomizer.com/scheduleJson")
                         .send().await?
                         .detailed_error_for_status().await?
                         .json_with_text_in_error::<league::Schedule>().await?;
                     for race in schedule.matches {
-                        if race.id <= 270 { continue } // S5
+                        if race.id <= 427 { continue } // seasons 5 and 6
                         let id = Id::<Races>::new(&mut *transaction).await?;
                         add_or_update_race(&mut *transaction, &mut races, Self {
                             series: event.series,
@@ -791,31 +755,19 @@ impl Race {
                 "5" => {}
                 _ => unimplemented!(),
             },
-            Series::SongsOfHope => match &*event.event {
-                "1" => {}
-                _ => unimplemented!(),
-            },
-            Series::SpeedGaming => match &*event.event {
-                "2023onl" => {}
-                "2023live" => {}
-                _ => unimplemented!(),
-            },
             Series::Standard => match &*event.event {
+                //TODO add archives of old Standard tournaments and Challenge Cups?
                 "6" | "7" | "7cc" => {}
                 _ => unimplemented!(),
             },
-            Series::TournoiFrancophone => match &*event.event {
-                "3" | "4" => {}
-                _ => unimplemented!(),
-            },
-            Series::TriforceBlitz => match &*event.event {
-                "2" | "3" => {}
-                _ => unimplemented!(),
-            },
-            Series::WeTryToBeBetter => match &*event.event {
-                "1" => {}
-                _ => unimplemented!(),
-            },
+            | Series::CoOp //TODO add archives of seasons 1 and 2?
+            | Series::CopaDoBrasil
+            | Series::SongsOfHope
+            | Series::SpeedGaming
+            | Series::TournoiFrancophone
+            | Series::TriforceBlitz
+            | Series::WeTryToBeBetter
+                => {} // these series are now scheduled via Mido's House
         }
         races.retain(|race| !race.ignored);
         races.sort_unstable();
