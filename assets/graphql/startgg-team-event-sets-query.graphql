@@ -18,10 +18,7 @@ query TeamEventSetsQuery($event_slug: String!, $page: Int!) {
         fullRoundText
         slots {
           entrant {
-            team {
-              __typename
-              id
-            }
+            id
           }
         }
         setGamesType

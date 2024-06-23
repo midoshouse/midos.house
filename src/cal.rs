@@ -2337,8 +2337,8 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                 } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE startgg_set = $1) AS "exists!""#, id as _).fetch_one(&mut **transaction).await? {
                     skips.push((id, ImportSkipReason::Exists));
                 } else if let [
-                    Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { team: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrantTeam { id: Some(ref team1), on: _ }) }) }),
-                    Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { team: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrantTeam { id: Some(ref team2), on: _ }) }) }),
+                    Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { id: Some(ref team1) }) }),
+                    Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { id: Some(ref team2) }) }),
                 ] = *slots {
                     let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or_else(|| Error::UnknownTeamStartGG(team1.clone()))?;
                     let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or_else(|| Error::UnknownTeamStartGG(team2.clone()))?;
