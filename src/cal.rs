@@ -1390,8 +1390,10 @@ pub(crate) enum Error {
     #[error(transparent)] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
     #[error(transparent)] Url(#[from] url::ParseError),
     #[error(transparent)] Wheel(#[from] wheel::Error),
-    #[error("this start.gg team ID is not associated with a Mido's House team")]
+    #[error("no team with this ID")]
     UnknownTeam,
+    #[error("start.gg team ID {0} is not associated with a Mido's House team")]
+    UnknownTeamStartGG(startgg::ID),
 }
 
 impl<E: Into<Error>> From<E> for StatusOrError<Error> {
@@ -1416,6 +1418,7 @@ impl IsNetworkError for Error {
             Self::Url(_) => false,
             Self::Wheel(e) => e.is_network_error(),
             Self::UnknownTeam => false,
+            Self::UnknownTeamStartGG(_) => false,
         }
     }
 }
@@ -2295,8 +2298,8 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                 ] = *slots {
                     if let [Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrantParticipants { id: Some(ref team1) })] = **p1 {
                         if let [Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrantParticipants { id: Some(ref team2) })] = **p2 {
-                            let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?;
-                            let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
+                            let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or_else(|| Error::UnknownTeamStartGG(team1.clone()))?;
+                            let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or_else(|| Error::UnknownTeamStartGG(team2.clone()))?;
                             let best_of = phase_group.as_ref()
                                 .and_then(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroup { rounds, .. }| rounds.as_ref())
                                 .and_then(|rounds| rounds.iter().filter_map(Option::as_ref).find(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroupRounds { number, .. }| *number == round))
@@ -2337,8 +2340,8 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
                     Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { team: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrantTeam { id: Some(ref team1), on: _ }) }) }),
                     Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { team: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrantTeam { id: Some(ref team2), on: _ }) }) }),
                 ] = *slots {
-                    let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or(Error::UnknownTeam)?;
-                    let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or(Error::UnknownTeam)?;
+                    let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or_else(|| Error::UnknownTeamStartGG(team1.clone()))?;
+                    let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or_else(|| Error::UnknownTeamStartGG(team2.clone()))?;
                     let best_of = phase_group.as_ref()
                         .and_then(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroup { rounds, .. }| rounds.as_ref())
                         .and_then(|rounds| rounds.iter().filter_map(Option::as_ref).find(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroupRounds { number, .. }| *number == round))

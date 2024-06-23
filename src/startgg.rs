@@ -58,6 +58,12 @@ impl From<IdInner> for ID {
 #[sqlx(transparent)]
 pub struct ID(pub(crate) String);
 
+impl fmt::Display for ID {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl From<ID> for String {
     fn from(ID(s): ID) -> Self {
         s
