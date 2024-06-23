@@ -462,6 +462,7 @@ pub(crate) enum Error {
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] PgInterval(#[from] PgIntervalDecodeError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
 }
 
 impl<E: Into<Error>> From<E> for StatusOrError<Error> {
@@ -705,5 +706,5 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), content).await?)
 }

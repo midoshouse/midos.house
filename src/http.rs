@@ -293,7 +293,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
             .then_with(|| race1.id.cmp(&race2.id))
     });
     let chests_event = upcoming_events.choose(&mut thread_rng());
-    let chests = if let Some(event) = chests_event { event.chests().await } else { ChestAppearances::random() };
+    let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
     let mut ongoing_events = Vec::default();
     for event in upcoming_events.drain(..).collect_vec() {
         if event.is_started(&mut transaction).await? { &mut ongoing_events } else { &mut upcoming_events }.push(event);
@@ -358,7 +358,7 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Res
         past_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction"));
     }
     let chests_event = past_events.choose(&mut thread_rng());
-    let chests = if let Some(event) = chests_event { event.chests().await } else { ChestAppearances::random() };
+    let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
     let page_content = html! {
         h1 : "Past events";
         ul {

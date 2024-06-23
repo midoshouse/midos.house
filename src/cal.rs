@@ -1790,7 +1790,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await, ..PageStyle::default() }, &format!("New Race — {}", event.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("New Race — {}", event.display_name), html! {
         : header;
         h2 : "Create race";
         : form;
@@ -2436,7 +2436,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
             }
         },
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await, ..PageStyle::default() }, &format!("Import Races — {}", event.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Import Races — {}", event.display_name), html! {
         : header;
         h2 : "Import races";
         : form;
@@ -2810,7 +2810,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
         }
         : form;
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit")]
@@ -3250,7 +3250,7 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
         }
         : form;
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit-hash")]

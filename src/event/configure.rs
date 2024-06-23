@@ -43,7 +43,7 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, env: Environ
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await, ..PageStyle::default() }, &format!("Configure — {}", event.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Configure — {}", event.display_name), html! {
         : header;
         : form;
     }).await?)

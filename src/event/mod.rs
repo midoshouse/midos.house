@@ -241,7 +241,7 @@ impl<'a> Data<'a> {
     }
 
     /// Weights for chest appearances in Mido's house in this event, generated using <https://github.com/fenhl/ootrstats>
-    pub(crate) async fn chests(&self) -> ChestAppearances {
+    pub(crate) async fn chests(&self) -> wheel::Result<ChestAppearances> {
         macro_rules! from_file {
             ($path:literal) => {{
                 static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!($path)).expect("failed to parse chest weights"));
@@ -251,21 +251,16 @@ impl<'a> Data<'a> {
         }
         //TODO parse weights at compile time
 
-        match (self.series, &*self.event) {
+        Ok(match (self.series, &*self.event) {
             (Series::BattleRoyale, "1") => from_file!("../../assets/event/ohko/chests-1-8.0.json"), //TODO reroll with the plando
-            (Series::BattleRoyale, _) => unimplemented!(),
             (Series::CoOp, "3") => ChestAppearances::VANILLA,
-            (Series::CoOp, _) => unimplemented!(),
             (Series::CopaDoBrasil, "1") => from_file!("../../assets/event/br/chests-1-7.1.143.json"),
-            (Series::CopaDoBrasil, _) => unimplemented!(),
             (Series::League, "4") => from_file!("../../assets/event/league/chests-4-7.1.94.json"),
             (Series::League, "5") => from_file!("../../assets/event/league/chests-4-7.1.94.json"), //TODO S5 was generated on Dev versions between 7.1.184 and 7.1.200
             (Series::League, "6") => from_file!("../../assets/event/league/chests-6-8.0.22.json"),
-            (Series::League, _) => unimplemented!(),
             (Series::MixedPools, "1") => from_file!("../../assets/event/mp/chests-1-6.2.100-fenhl.4.json"),
             (Series::MixedPools, "2") => from_file!("../../assets/event/mp/chests-2-7.1.117-fenhl.17.json"),
             (Series::MixedPools, "3") => from_file!("../../assets/event/mp/chests-3-8.1.36-fenhl.6.riir.4.json"),
-            (Series::MixedPools, _) => unimplemented!(),
             (Series::Multiworld, "1" | "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
             (Series::Multiworld, "3") => mw::s3_chests(&Draft {
                 high_seed: Id::dummy(), // Draft::complete_randomly doesn't check for active team
@@ -274,7 +269,6 @@ impl<'a> Data<'a> {
                 settings: HashMap::default(),
             }.complete_randomly(draft::Kind::MultiworldS3).await.unwrap()),
             (Series::Multiworld, "4") => from_file!("../../assets/event/mw/chests-4-7.1.198.json"),
-            (Series::Multiworld, _) => unimplemented!(),
             (Series::NineDaysOfSaws, _) => ChestAppearances::VANILLA, // no CAMC in SAWS
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
             (Series::Rsl, "1") => from_file!("../../assets/event/rsl/chests-1-4c526c2.json"),
@@ -288,25 +282,21 @@ impl<'a> Data<'a> {
                 from_file!("../../assets/event/rsl/chests-5-05bfcd2.json")
             }
             (Series::Rsl, "6") => from_file!("../../assets/event/rsl/chests-6-248f8b5.json"),
-            (Series::Rsl, _) => unimplemented!(),
             (Series::Scrubs, "5") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
-            (Series::Scrubs, _) => unimplemented!(),
             (Series::SongsOfHope, "1") => from_file!("../../assets/event/soh/chests-1-8.1.json"),
-            (Series::SongsOfHope, _) => unimplemented!(),
             (Series::SpeedGaming, "2023onl" | "2023live") => from_file!("../../assets/event/sgl/chests-2023-42da4aa.json"),
-            (Series::SpeedGaming, _) => unimplemented!(),
             (Series::Standard, "6") => from_file!("../../assets/event/s/chests-6-6.9.10.json"),
             (Series::Standard, "7" | "7cc") => from_file!("../../assets/event/s/chests-7-7.1.198.json"),
-            (Series::Standard, _) => unimplemented!(),
             (Series::TournoiFrancophone, "3") => from_file!("../../assets/event/fr/chests-3-7.1.83-r.1.json"),
             (Series::TournoiFrancophone, "4") => from_file!("../../assets/event/fr/chests-4-8.1.45-rob.105.json"),
-            (Series::TournoiFrancophone, _) => unimplemented!(),
             (Series::TriforceBlitz, "2") => from_file!("../../assets/event/tfb/chests-2-7.1.3-blitz.42.json"),
             (Series::TriforceBlitz, "3") => from_file!("../../assets/event/tfb/chests-3-8.1.32-blitz.57.json"),
-            (Series::TriforceBlitz, _) => unimplemented!(),
             (Series::WeTryToBeBetter, "1") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
-            (Series::WeTryToBeBetter, _) => unimplemented!(),
-        }
+            (series, event) => {
+                wheel::night_report("/net/midoshouse/error", Some(&format!("no chest appearances specified for {series}/{event}, using random chests"))).await?;
+                ChestAppearances::random()
+            }
+        })
     }
 
     pub(crate) fn asyncs_allowed(&self) -> bool {
@@ -640,6 +630,7 @@ pub(crate) enum InfoError {
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
 }
 
 impl<E: Into<InfoError>> From<E> for StatusOrError<InfoError> {
@@ -695,7 +686,7 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &data.display_name, content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &data.display_name, content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races")]
@@ -744,7 +735,7 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("Races — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Races — {}", data.display_name), content).await?)
 }
 
 pub(crate) enum StatusContext<'v> {
@@ -1105,7 +1096,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
@@ -1164,6 +1155,7 @@ pub(crate) enum FindTeamError {
     #[error(transparent)] Event(#[from] Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("unknown user")]
     UnknownUser,
 }
@@ -1178,7 +1170,7 @@ async fn find_team_form(mut transaction: Transaction<'_, Postgres>, env: Environ
     Ok(match data.team_config {
         TeamConfig::Solo => {
             let header = data.header(&mut transaction, env, me.as_ref(), Tab::FindTeam, false).await?;
-            page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+            page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
                 : header;
                 : "This is a solo event.";
             }).await?
@@ -1354,7 +1346,7 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
         return Err(StatusOrError::Status(Status::Forbidden))
     }
     let is_started = data.is_started(&mut transaction).await?;
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
         p {
             @if is_started {
                 @if let TeamConfig::Solo = data.team_config {
@@ -1466,7 +1458,7 @@ pub(crate) async fn opt_out(pool: &State<PgPool>, me: Option<User>, uri: Origin<
     } else {
         false
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
         @if opted_out {
             p : "You have already opted out.";
         } else if entered {
@@ -1825,7 +1817,7 @@ pub(crate) async fn volunteer(pool: &State<PgPool>, env: &State<Environment>, me
         },
         _ => unimplemented!(),
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await, ..PageStyle::default() }, &data.display_name, html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &data.display_name, html! {
         : header;
         : content;
     }).await?)
