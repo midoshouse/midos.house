@@ -3816,7 +3816,7 @@ impl RaceHandler<GlobalState> for Handler {
             },
             "score" => if_chain! {
                 if let Goal::TriforceBlitz = goal;
-                if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, ref mut scores, .. }) = self.official_data;
+                if let Some(OfficialRaceData { ref mut scores, .. }) = self.official_data;
                 then {
                     if let Some(UserData { ref id, .. }) = msg.user {
                         if let Some(score) = scores.get_mut(id) {
@@ -3844,15 +3844,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     } else {
                                         format!("Score reported: {new_score}")
                                     }).await?;
-                                    let data = ctx.data().await;
-                                    if let Some(scores) = data.entrants.iter().map(|entrant| match entrant.status.value {
-                                        EntrantStatusValue::Dnf => Some(tfb::Score::default()),
-                                        EntrantStatusValue::Done => scores.get(&entrant.user.id).and_then(|&score| score),
-                                        _ => None,
-                                    }.map(|score| (entrant.user.id.clone(), score))).collect() {
-                                        ctx.say("All scores received. Thank you for playing Triforce Blitz, see you next race!").await?;
-                                        self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, Some(scores)).await?;
-                                    }
+                                    self.check_tfb_finish(ctx).await?;
                                 } else {
                                     ctx.send_message(
                                         &format!("Sorry {reply_to}, I didn't quite understand that. Please use this button to try again:"),
@@ -4099,7 +4091,9 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx, goal).await? {
-                if !matches!(goal, Goal::TriforceBlitz) { // TFB races are reported once all entrants have reported scores
+                if let Goal::TriforceBlitz = goal {
+                    self.check_tfb_finish(ctx).await?;
+                } else {
                     if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, .. }) = self.official_data {
                         self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, None).await?;
                     }

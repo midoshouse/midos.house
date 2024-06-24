@@ -359,6 +359,20 @@ async fn report_ffa(ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, even
 }
 
 impl Handler {
+    pub(super) async fn check_tfb_finish(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
+        let data = ctx.data().await;
+        let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, ref scores, .. }) = self.official_data else { return Ok(()) };
+        if let Some(scores) = data.entrants.iter().map(|entrant| match entrant.status.value {
+            EntrantStatusValue::Dnf => Some(tfb::Score::default()),
+            EntrantStatusValue::Done => scores.get(&entrant.user.id).and_then(|&score| score),
+            _ => None,
+        }.map(|score| (entrant.user.id.clone(), score))).collect() {
+            ctx.say("All scores received. Thank you for playing Triforce Blitz, see you next race!").await?;
+            self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, Some(scores)).await?;
+        }
+        Ok(())
+    }
+
     pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, tfb_scores: Option<HashMap<String, tfb::Score>>) -> Result<(), Error> {
         if let Series::SpeedGaming = event.series {
             sleep(Duration::from_secs(15 * 60)).await;

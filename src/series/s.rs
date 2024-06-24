@@ -1,7 +1,13 @@
 use {
     chrono::Days,
     serde_json::Value as Json,
-    crate::prelude::*,
+    crate::{
+        event::{
+            Data,
+            InfoError,
+        },
+        prelude::*,
+    },
 };
 
 pub(crate) struct Setting {
@@ -171,27 +177,48 @@ pub(crate) fn next_eu_weekly() -> DateTime<Tz> {
     }
 }
 
-pub(crate) fn info(event: &str) -> Option<RawHtml<String>> {
-    match event {
-        "w" => Some(html! {
-            article {
-                p : "The Standard weeklies are a set of community races organized by the race mods and main tournament organizers in cooperation with ZeldaSpeedRuns."; //TODO list organizers
-                p : "There are two races each week, both open to all participants:";
-                ul {
-                    li {
-                        : "The NA weekly on Saturdays at 6PM Eastern Time (next: ";
-                        : format_datetime(next_na_weekly(), DateTimeFormat { long: true, running_text: false });
-                        : ")";
+pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
+    Ok(match &*data.event {
+        "w" => {
+            let organizers = data.organizers(transaction).await?;
+            let main_tournament_season = sqlx::query_scalar!("SELECT event FROM events WHERE series = 's'")
+                .fetch_all(&mut **transaction).await?
+                .into_iter()
+                .filter_map(|event| event.parse::<u32>().ok())
+                .max().expect("no main tournaments in database");
+            let main_tournament = Data::new(transaction, Series::Standard, main_tournament_season.to_string()).await?.expect("database changed during transaction");
+            let main_tournament_organizers = main_tournament.organizers(transaction).await?;
+            let (main_tournament_organizers, race_mods) = organizers.into_iter().partition::<Vec<_>, _>(|organizer| main_tournament_organizers.contains(organizer));
+            Some(html! {
+                article {
+                    p {
+                        : "The Standard weeklies are a set of community races organized by the race mods (";
+                        : English.join_html(race_mods);
+                        : ") and main tournament organizers (";
+                        : English.join_html(main_tournament_organizers);
+                        : ") in cooperation with ZeldaSpeedRuns."; //TODO list organizers
                     }
-                    li {
-                        : "The EU weekly on Sundays at 15:00 Central European (Summer) Time (next: ";
-                        : format_datetime(next_eu_weekly(), DateTimeFormat { long: true, running_text: false });
-                        : ")";
+                    p : "There are two races each week, both open to all participants:";
+                    ul {
+                        li {
+                            : "The NA weekly on Saturdays at 6PM Eastern Time (next: ";
+                            : format_datetime(next_na_weekly(), DateTimeFormat { long: true, running_text: false });
+                            : ")";
+                        }
+                        li {
+                            : "The EU weekly on Sundays at 15:00 Central European (Summer) Time (next: ";
+                            : format_datetime(next_eu_weekly(), DateTimeFormat { long: true, running_text: false });
+                            : ")";
+                        }
+                    }
+                    p {
+                        : "Settings are typically changed once per month and posted in ";
+                        a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
+                        : " on Discord.";
                     }
                 }
-                p : "Settings are typically changed once per month and posted in #standard-announcements on Discord.";
-            }
-        }),
+            })
+        }
         "6" => Some(html! {
             article {
                 p {
@@ -238,7 +265,7 @@ pub(crate) fn info(event: &str) -> Option<RawHtml<String>> {
             }
         }),
         _ => None,
-    }
+    })
 }
 
 pub(crate) fn enter_form() -> RawHtml<String> {

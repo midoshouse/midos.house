@@ -657,7 +657,7 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
         Series::Scrubs => scrubs::info(&mut transaction, &data).await?,
         Series::SongsOfHope => soh::info(&mut transaction, &data).await?,
         Series::SpeedGaming => sgl::info(&mut transaction, &data).await?,
-        Series::Standard => s::info(event),
+        Series::Standard => s::info(&mut transaction, &data).await?,
         Series::TournoiFrancophone => fr::info(&mut transaction, &data).await?,
         Series::TriforceBlitz => tfb::info(&mut transaction, &data).await?,
         Series::WeTryToBeBetter => wttbb::info(&mut transaction, &data).await?,
