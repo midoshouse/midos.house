@@ -3,10 +3,6 @@ use {
         max_by_key,
         min_by_key,
     },
-    chrono_tz::{
-        America,
-        Tz,
-    },
     ics::{
         ICalendar,
         properties::{
@@ -20,7 +16,6 @@ use {
     reqwest::StatusCode,
     rocket_util::Response,
     sqlx::types::Json,
-    wheel::traits::LocalResultExt as _,
     yup_oauth2::{
         ServiceAccountAuthenticator,
         read_service_account_key,
@@ -588,7 +583,7 @@ impl Race {
             Ok(())
         }
 
-        async fn add_or_update_race(transaction: &mut Transaction<'_, Postgres>, races: &mut Vec<Race>, mut race: Race) -> sqlx::Result<()> {
+        async fn add_or_update_race(transaction: &mut Transaction<'_, Postgres>, races: &mut Vec<Race>, race: Race) -> sqlx::Result<()> {
             if let Some(found_race) = races.iter_mut().find(|iter_race|
                 iter_race.series == race.series
                 && iter_race.event == race.event
@@ -756,6 +751,56 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {
+                "w" => {
+                    let schedule = RaceSchedule::Live { start: s::next_na_weekly().to_utc(), end: None, room: None };
+                    if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
+                        let race = Race {
+                            id: Id::new(&mut *transaction).await?,
+                            series: event.series,
+                            event: event.event.to_string(),
+                            source: Source::Manual,
+                            entrants: Entrants::Open,
+                            phase: None,
+                            round: Some(format!("NA Weekly")),
+                            game: None,
+                            scheduling_thread: None,
+                            schedule_updated_at: None,
+                            draft: None,
+                            seed: seed::Data::default(),
+                            video_urls: HashMap::default(),
+                            restreamers: HashMap::default(),
+                            ignored: false,
+                            schedule_locked: false,
+                            schedule,
+                        };
+                        race.save(&mut *transaction).await?;
+                        races.push(race);
+                    }
+                    let schedule = RaceSchedule::Live { start: s::next_eu_weekly().to_utc(), end: None, room: None };
+                    if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
+                        let race = Race {
+                            id: Id::new(&mut *transaction).await?,
+                            series: event.series,
+                            event: event.event.to_string(),
+                            source: Source::Manual,
+                            entrants: Entrants::Open,
+                            phase: None,
+                            round: Some(format!("EU Weekly")),
+                            game: None,
+                            scheduling_thread: None,
+                            schedule_updated_at: None,
+                            draft: None,
+                            seed: seed::Data::default(),
+                            video_urls: HashMap::default(),
+                            restreamers: HashMap::default(),
+                            ignored: false,
+                            schedule_locked: false,
+                            schedule,
+                        };
+                        race.save(&mut *transaction).await?;
+                        races.push(race);
+                    }
+                }
                 //TODO add archives of old Standard tournaments and Challenge Cups?
                 "6" | "7" | "7cc" => {}
                 _ => unimplemented!(),
@@ -1089,7 +1134,7 @@ impl Race {
         }
     }
 
-    pub(crate) async fn save(&mut self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
+    pub(crate) async fn save(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
         let (league_id, sheet_timestamp, startgg_event, startgg_set) = match self.source {
             Source::Manual => (None, None, None, None),
             Source::League { id } => (Some(id), None, None, None),

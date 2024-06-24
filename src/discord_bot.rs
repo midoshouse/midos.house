@@ -1099,7 +1099,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         transaction.rollback().await?;
                                     }
                                     Ok(Some(race)) => {
-                                        let mut race = Race {
+                                        let race = Race {
                                             // explicitly listing fields here instead of using `..race` so if the fields change they're kept/reset correctly
                                             id: race.id,
                                             series: race.series,

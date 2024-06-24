@@ -307,6 +307,7 @@ pub(crate) enum Goal {
     Rsl,
     Sgl2023,
     SongsOfHope,
+    StandardRuleset,
     TournoiFrancoS3,
     TournoiFrancoS4,
     TriforceBlitz,
@@ -320,6 +321,13 @@ pub(crate) struct GoalFromStrError;
 impl Goal {
     pub(crate) fn for_event(series: Series, event: &str) -> Option<Self> {
         all::<Self>().find(|goal| goal.matches_event(series, event))
+    }
+
+    fn from_race_data(race_data: &RaceData) -> Option<Self> {
+        let Ok(bot_goal) = race_data.goal.name.parse::<Self>() else { return None };
+        if race_data.goal.custom != bot_goal.is_custom() { return None }
+        if let (Goal::StandardRuleset, Some(_)) = (bot_goal, &race_data.opened_by) { return None }
+        Some(bot_goal)
     }
 
     fn matches_event(&self, series: Series, event: &str) -> bool {
@@ -337,6 +345,7 @@ impl Goal {
             Self::Rsl => series == Series::Rsl,
             Self::Sgl2023 => series == Series::SpeedGaming && matches!(event, "2023onl" | "2023live"),
             Self::SongsOfHope => series == Series::SongsOfHope && event == "1",
+            Self::StandardRuleset => series == Series::Standard && event == "w",
             Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
             Self::TournoiFrancoS4 => series == Series::TournoiFrancophone && event == "4",
             Self::TriforceBlitz => series == Series::TriforceBlitz,
@@ -347,6 +356,7 @@ impl Goal {
     pub(crate) fn is_custom(&self) -> bool {
         match self {
             | Self::Rsl
+            | Self::StandardRuleset
             | Self::TriforceBlitz
                 => false,
             | Self::Cc7
@@ -383,6 +393,7 @@ impl Goal {
             Self::Rsl => "Random settings league",
             Self::Sgl2023 => "SGL 2023",
             Self::SongsOfHope => "Songs of Hope",
+            Self::StandardRuleset => "Standard Ruleset",
             Self::TournoiFrancoS3 => "Tournoi Francophone Saison 3",
             Self::TournoiFrancoS4 => "Tournoi Francophone Saison 4",
             Self::TriforceBlitz => "Triforce Blitz",
@@ -404,6 +415,7 @@ impl Goal {
             | Self::Rsl
             | Self::Sgl2023
             | Self::SongsOfHope
+            | Self::StandardRuleset
             | Self::TriforceBlitz
                 => English,
             | Self::TournoiFrancoS3
@@ -432,6 +444,7 @@ impl Goal {
             | Self::Rsl
             | Self::Sgl2023
             | Self::SongsOfHope
+            | Self::StandardRuleset
             | Self::TriforceBlitz
             | Self::WeTryToBeBetter
                 => None,
@@ -446,6 +459,7 @@ impl Goal {
                 => PrerollMode::None,
             | Self::Cc7
             | Self::CoOpS3
+            | Self::StandardRuleset //TODO allow organizers to configure this
                 => PrerollMode::Short,
             | Self::CopaDoBrasil
             | Self::MultiworldS3
@@ -489,6 +503,7 @@ impl Goal {
                     => UnlockSpoilerLog::After,
                 | Self::Cc7
                 | Self::CoOpS3
+                | Self::StandardRuleset
                     => if official_race { UnlockSpoilerLog::Never } else { UnlockSpoilerLog::After },
             }
         }
@@ -507,6 +522,7 @@ impl Goal {
             Self::Pic7 => VersionedBranch::Custom { github_username: "fenhl", branch: "frogs2-melody" },
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl),
             Self::SongsOfHope => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
+            Self::StandardRuleset => VersionedBranch::Latest(rando::Branch::Dev), //TODO allow organizers to configure this
             Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
             Self::TournoiFrancoS4 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
@@ -531,6 +547,7 @@ impl Goal {
             Self::Rsl => None, // random settings
             Self::Sgl2023 => Some(sgl::settings_2023()),
             Self::SongsOfHope => Some(soh::settings()),
+            Self::StandardRuleset => None, //TODO allow organizers to configure this
             Self::TournoiFrancoS3 => None, // settings draft
             Self::TournoiFrancoS4 => None, // settings draft
             Self::TriforceBlitz => None, // per-event settings
@@ -554,6 +571,7 @@ impl Goal {
             | Self::PicRs2
             | Self::Sgl2023
             | Self::SongsOfHope
+            | Self::StandardRuleset
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
             | Self::TriforceBlitz
@@ -611,6 +629,7 @@ impl Goal {
                     rsl::Preset::Multiworld => "weights tuned for multiworld",
                 })).await?;
             },
+            Self::StandardRuleset => ctx.say("!seed: The current weekly settings").await?,
             Self::TournoiFrancoS3 | Self::TournoiFrancoS4 => {
                 ctx.say("!seed base : Settings de base.").await?;
                 ctx.say("!seed random : Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.").await?;
@@ -639,6 +658,7 @@ impl Goal {
             | Self::Pic7
             | Self::Sgl2023
             | Self::SongsOfHope
+            | Self::StandardRuleset
             | Self::WeTryToBeBetter
                 => {
                     let (article, description) = match self.language() {
@@ -2235,8 +2255,7 @@ struct Handler {
 impl Handler {
     /// For `existing_state`, `Some(None)` means this is an existing race room with unknown state, while `None` means this is a new race room.
     async fn should_handle_inner(race_data: &RaceData, global_state: Arc<GlobalState>, existing_state: Option<Option<&Self>>) -> bool {
-        let Ok(bot_goal) = race_data.goal.name.parse::<Goal>() else { return false };
-        if race_data.goal.custom != bot_goal.is_custom() { return false }
+        if Goal::from_race_data(race_data).is_none() { return false }
         if let Some(existing_state) = existing_state {
             if let Some(existing_state) = existing_state {
                 if let Some(ref official_data) = existing_state.official_data {
@@ -3041,6 +3060,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::StandardRuleset => unreachable!("attempted to handle a user-opened Standard Ruleset room"),
                             Goal::TournoiFrancoS3 => ctx.send_message(
                                 "Bienvenue ! Ceci est une practice room pour le tournoi francophone saison 3. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/fr/3",
                                 true,
@@ -3378,6 +3398,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::Pic7
                             | Goal::Sgl2023
                             | Goal::SongsOfHope
+                            | Goal::StandardRuleset
                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                             | Goal::WeTryToBeBetter
                                 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
@@ -4070,6 +4091,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::Rsl
                     | Goal::Sgl2023
                     | Goal::SongsOfHope
+                    | Goal::StandardRuleset
                     | Goal::TournoiFrancoS3
                     | Goal::TournoiFrancoS4
                     | Goal::WeTryToBeBetter

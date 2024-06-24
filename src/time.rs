@@ -1,8 +1,4 @@
 use {
-    chrono_tz::{
-        America,
-        Europe,
-    },
     sqlx::postgres::types::PgInterval,
     crate::prelude::*,
 };
@@ -127,7 +123,7 @@ pub(crate) struct DateTimeFormat {
 
 pub(crate) fn format_datetime<Z: TimeZone>(datetime: DateTime<Z>, format: DateTimeFormat) -> RawHtml<String> {
     let utc = datetime.to_utc();
-    let berlin = datetime.with_timezone(&Europe::Berlin);
+    let paris = datetime.with_timezone(&Europe::Paris);
     let new_york = datetime.with_timezone(&America::New_York);
     html! {
         span(class = "datetime", data_timestamp = datetime.timestamp_millis(), data_long = format.long.to_string()) {
@@ -137,7 +133,7 @@ pub(crate) fn format_datetime<Z: TimeZone>(datetime: DateTime<Z>, format: DateTi
             } else {
                 : " • ";
             }
-            : berlin.format(if berlin.date_naive() == utc.date_naive() { "%H:%M %Z" } else { "%A %H:%M %Z" }).to_string();
+            : paris.format(if paris.date_naive() == utc.date_naive() { "%H:%M %Z" } else { "%A %H:%M %Z" }).to_string();
             @if format.running_text {
                 : ", ";
             } else {

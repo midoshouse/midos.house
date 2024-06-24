@@ -1,4 +1,5 @@
 use {
+    chrono::Days,
     serde_json::Value as Json,
     crate::prelude::*,
 };
@@ -144,8 +145,53 @@ pub(crate) fn resolve_s7_draft_settings(picks: &draft::Picks) -> serde_json::Map
     settings
 }
 
+pub(crate) fn next_na_weekly() -> DateTime<Tz> {
+    let now = Utc::now();
+    let today = now.with_timezone(&America::New_York).date_naive();
+    let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Sat).unwrap();
+    let time = date.and_hms_opt(18, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining NA weekly time");
+    if time < now {
+        let date = date.checked_add_days(Days::new(7)).unwrap();
+        date.and_hms_opt(18, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining NA weekly time")
+    } else {
+        time
+    }
+}
+
+pub(crate) fn next_eu_weekly() -> DateTime<Tz> {
+    let now = Utc::now();
+    let today = now.with_timezone(&Europe::Paris).date_naive();
+    let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Sun).unwrap();
+    let time = date.and_hms_opt(15, 0, 0).unwrap().and_local_timezone(Europe::Paris).single_ok().expect("error determining EU weekly time");
+    if time < now {
+        let date = date.checked_add_days(Days::new(7)).unwrap();
+        date.and_hms_opt(15, 0, 0).unwrap().and_local_timezone(Europe::Paris).single_ok().expect("error determining EU weekly time")
+    } else {
+        time
+    }
+}
+
 pub(crate) fn info(event: &str) -> Option<RawHtml<String>> {
     match event {
+        "w" => Some(html! {
+            article {
+                p : "The Standard weeklies are a set of community races organized by the race mods and main tournament organizers in cooperation with ZeldaSpeedRuns."; //TODO list organizers
+                p : "There are two races each week, both open to all participants:";
+                ul {
+                    li {
+                        : "The NA weekly on Saturdays at 6PM Eastern Time (next: ";
+                        : format_datetime(next_na_weekly(), DateTimeFormat { long: true, running_text: false });
+                        : ")";
+                    }
+                    li {
+                        : "The EU weekly on Sundays at 15:00 Central European (Summer) Time (next: ";
+                        : format_datetime(next_eu_weekly(), DateTimeFormat { long: true, running_text: false });
+                        : ")";
+                    }
+                }
+                p : "Settings are typically changed once per month and posted in #standard-announcements on Discord.";
+            }
+        }),
         "6" => Some(html! {
             article {
                 p {
