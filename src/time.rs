@@ -125,6 +125,15 @@ pub(crate) fn format_datetime<Z: TimeZone>(datetime: DateTime<Z>, format: DateTi
     let utc = datetime.to_utc();
     let paris = datetime.with_timezone(&Europe::Paris);
     let new_york = datetime.with_timezone(&America::New_York);
+    let paris_same_date = paris.date_naive() == utc.date_naive();
+    let new_york_same_date = new_york.date_naive() == utc.date_naive();
+    let paris = paris.format(if paris_same_date { "%H:%M %Z" } else { "%A %H:%M %Z" }).to_string();
+    let new_york = new_york.format(match (new_york_same_date, new_york.minute() == 0) {
+        (false, false) => "%A %-I:%M %p %Z",
+        (false, true) => "%A %-I%p %Z",
+        (true, false) => "%-I:%M %p %Z",
+        (true, true) => "%-I%p %Z",
+    }).to_string();
     html! {
         span(class = "datetime", data_timestamp = datetime.timestamp_millis(), data_long = format.long.to_string()) {
             : utc.format("%A, %B %-d, %Y, %H:%M UTC").to_string();
@@ -133,18 +142,21 @@ pub(crate) fn format_datetime<Z: TimeZone>(datetime: DateTime<Z>, format: DateTi
             } else {
                 : " • ";
             }
-            : paris.format(if paris.date_naive() == utc.date_naive() { "%H:%M %Z" } else { "%A %H:%M %Z" }).to_string();
+            @if new_york_same_date && !paris_same_date {
+                : new_york;
+            } else {
+                : paris;
+            }
             @if format.running_text {
                 : ", ";
             } else {
                 : " • ";
             }
-            : new_york.format(match (new_york.date_naive() == utc.date_naive(), new_york.minute() == 0) {
-                (false, false) => "%A %-I:%M %p %Z",
-                (false, true) => "%A %-I%p %Z",
-                (true, false) => "%-I:%M %p %Z",
-                (true, true) => "%-I%p %Z",
-            }).to_string();
+            @if new_york_same_date && !paris_same_date {
+                : paris;
+            } else {
+                : new_york;
+            }
             @if format.running_text {
                 : ")";
             }
