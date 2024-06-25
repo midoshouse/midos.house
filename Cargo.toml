@@ -17,7 +17,7 @@ lto = true
 strip = true
 
 [build-dependencies]
-git2 = "0.18"
+git2 = "0.19"
 thiserror = "1"
 
 [dependencies]
@@ -37,7 +37,7 @@ derive_more = { version = "0.99", default-features = false, features = ["from"] 
 either = "1"
 enum-iterator = "2"
 futures = "0.3"
-git2 = "0.18"
+git2 = "0.19"
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
 graphql_client = { git = "https://github.com/fenhl/graphql-client", branch = "skip-default-scalars" }
 if_chain = "1"

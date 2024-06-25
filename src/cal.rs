@@ -966,6 +966,7 @@ impl Race {
 
     /// The seed remains hidden until it's posted in the last calendar event of this race.
     pub(crate) fn show_seed(&self) -> bool {
+        if let RaceSchedule::Unscheduled = self.schedule { return false }
         let now = Utc::now();
         self.cal_events().all(|event| event.is_private_async_part() || event.start().is_some_and(|start| start <= now + TimeDelta::minutes(15)) || event.end().is_some())
     }

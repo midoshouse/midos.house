@@ -27,17 +27,27 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
             }
         }),
-        "4" => Some(html! {
-            article {
-                p(lang = "fr") {
-                    : "Voici la 4e saison du tournoi francophone, organisée par ";
-                    : French.join_html(data.organizers(transaction).await?);
-                    : ". Rejoignez ";
-                    a(href = "https://discord.gg/wyhPVmquZC") : "le serveur Discord";
-                    : " pour plus de détails.";
+        "4" => {
+            let organizers = data.organizers(transaction).await?;
+            Some(html! {
+                article {
+                    p(lang = "en") {
+                        : "This is the 4th season of the Francophone tournament, organized by ";
+                        : English.join_html(&organizers);
+                        : ". Join ";
+                        a(href = "https://discord.gg/wyhPVmquZC") : "the Discord server";
+                        : " for details.";
+                    }
+                    p(lang = "fr") {
+                        : "Voici la 4e saison du tournoi francophone, organisée par ";
+                        : French.join_html(organizers);
+                        : ". Rejoignez ";
+                        a(href = "https://discord.gg/wyhPVmquZC") : "le serveur Discord";
+                        : " pour plus de détails.";
+                    }
                 }
-            }
-        }),
+            })
+        }
         _ => None,
     })
 }
