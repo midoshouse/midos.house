@@ -151,12 +151,11 @@ pub(crate) fn resolve_s7_draft_settings(picks: &draft::Picks) -> serde_json::Map
     settings
 }
 
-pub(crate) fn next_na_weekly() -> DateTime<Tz> {
-    let now = Utc::now();
-    let today = now.with_timezone(&America::New_York).date_naive();
+pub(crate) fn next_na_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
+    let today = min_time.with_timezone(&America::New_York).date_naive();
     let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Sat).unwrap();
     let time = date.and_hms_opt(18, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining NA weekly time");
-    if time < now {
+    if time <= min_time {
         let date = date.checked_add_days(Days::new(7)).unwrap();
         date.and_hms_opt(18, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining NA weekly time")
     } else {
@@ -164,12 +163,11 @@ pub(crate) fn next_na_weekly() -> DateTime<Tz> {
     }
 }
 
-pub(crate) fn next_eu_weekly() -> DateTime<Tz> {
-    let now = Utc::now();
-    let today = now.with_timezone(&Europe::Paris).date_naive();
+pub(crate) fn next_eu_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
+    let today = min_time.with_timezone(&Europe::Paris).date_naive();
     let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Sun).unwrap();
     let time = date.and_hms_opt(15, 0, 0).unwrap().and_local_timezone(Europe::Paris).single_ok().expect("error determining EU weekly time");
-    if time < now {
+    if time <= min_time {
         let date = date.checked_add_days(Days::new(7)).unwrap();
         date.and_hms_opt(15, 0, 0).unwrap().and_local_timezone(Europe::Paris).single_ok().expect("error determining EU weekly time")
     } else {
@@ -189,6 +187,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             let main_tournament = Data::new(transaction, Series::Standard, main_tournament_season.to_string()).await?.expect("database changed during transaction");
             let main_tournament_organizers = main_tournament.organizers(transaction).await?;
             let (main_tournament_organizers, race_mods) = organizers.into_iter().partition::<Vec<_>, _>(|organizer| main_tournament_organizers.contains(organizer));
+            let now = Utc::now();
             Some(html! {
                 article {
                     p {
@@ -202,12 +201,12 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     ul {
                         li {
                             : "The NA weekly on Saturdays at 6PM Eastern Time (next: ";
-                            : format_datetime(next_na_weekly(), DateTimeFormat { long: true, running_text: false });
+                            : format_datetime(next_na_weekly_after(now), DateTimeFormat { long: true, running_text: false });
                             : ")";
                         }
                         li {
                             : "The EU weekly on Sundays at 15:00 Central European (Summer) Time (next: ";
-                            : format_datetime(next_eu_weekly(), DateTimeFormat { long: true, running_text: false });
+                            : format_datetime(next_eu_weekly_after(now), DateTimeFormat { long: true, running_text: false });
                             : ")";
                         }
                     }

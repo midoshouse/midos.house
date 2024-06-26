@@ -296,7 +296,9 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
     let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
     let mut ongoing_events = Vec::default();
     for event in upcoming_events.drain(..).collect_vec() {
-        if event.is_started(&mut transaction).await? { &mut ongoing_events } else { &mut upcoming_events }.push(event);
+        if event.series != Series::Standard || event.event != "w" { // the weeklies are a perpetual event so we avoid always listing them
+            if event.is_started(&mut transaction).await? { &mut ongoing_events } else { &mut upcoming_events }.push(event);
+        }
     }
     let page_content = html! {
         p {

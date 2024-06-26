@@ -2631,17 +2631,17 @@ impl RaceHandler<GlobalState> for Handler {
                             "Welcome to {}! Learn more about the event at https://midos.house/event/{}/{}",
                             if event.is_single_race() {
                                 format!("the {}", event.display_name) //TODO remove “the” depending on event name
-                            } else if let (Some("Qualifier"), Some(round)) = (cal_event.race.phase.as_deref(), cal_event.race.round.as_ref()) {
-                                format!("qualifier {round}")
-                            } else if let (Some("Live Qualifier"), Some(round)) = (cal_event.race.phase.as_deref(), cal_event.race.round.as_ref()) {
-                                format!("live qualifier {round}")
                             } else {
-                                format!("this {} race", match (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref()) {
-                                    (Some(phase), Some(round)) => format!("{phase} {round}"),
-                                    (Some(phase), None) => phase.clone(),
-                                    (None, Some(round)) => round.clone(),
-                                    (None, None) => event.display_name.clone(),
-                                })
+                                match (cal_event.race.phase.as_deref(), cal_event.race.round.as_deref()) {
+                                    (Some("Qualifier"), Some(round)) => format!("qualifier {round}"),
+                                    (Some("Live Qualifier"), Some(round)) => format!("live qualifier {round}"),
+                                    (None, Some("NA Weekly")) => format!("the NA weekly"),
+                                    (None, Some("EU Weekly")) => format!("the EU weekly"),
+                                    (Some(phase), Some(round)) => format!("this {phase} {round} race"),
+                                    (Some(phase), None) => format!("this {phase} race"),
+                                    (None, Some(round)) => format!("this {round} race"),
+                                    (None, None) => format!("this {} race", event.display_name),
+                                }
                             },
                             event.series,
                             event.event,

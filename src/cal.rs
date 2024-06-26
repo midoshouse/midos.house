@@ -5,10 +5,12 @@ use {
     },
     ics::{
         ICalendar,
+        parameters::TzIDParam,
         properties::{
             Description,
             DtEnd,
             DtStart,
+            RRule,
             Summary,
             URL,
         },
@@ -602,6 +604,7 @@ impl Race {
             Ok(())
         }
 
+        let now = Utc::now();
         let mut races = Vec::default();
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut **transaction).await? {
             races.push(Self::from_id(&mut *transaction, http_client, id).await?);
@@ -752,7 +755,7 @@ impl Race {
             },
             Series::Standard => match &*event.event {
                 "w" => {
-                    let schedule = RaceSchedule::Live { start: s::next_na_weekly().to_utc(), end: None, room: None };
+                    let schedule = RaceSchedule::Live { start: s::next_na_weekly_after(now).to_utc(), end: None, room: None };
                     if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
                         let race = Race {
                             id: Id::new(&mut *transaction).await?,
@@ -776,7 +779,7 @@ impl Race {
                         race.save(&mut *transaction).await?;
                         races.push(race);
                     }
-                    let schedule = RaceSchedule::Live { start: s::next_eu_weekly().to_utc(), end: None, room: None };
+                    let schedule = RaceSchedule::Live { start: s::next_eu_weekly_after(now).to_utc(), end: None, room: None };
                     if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
                         let race = Race {
                             id: Id::new(&mut *transaction).await?,
@@ -1306,8 +1309,11 @@ impl Event {
                 race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async1,
             };
-            if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() { // racetime.gg doesn't support single-entrant races
+            if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() {
                 events.push(event);
+            } else {
+                // racetime.gg doesn't support single-entrant races
+                //TODO DM/post seed 15 minutes before start
             }
         }
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room2 IS NULL AND async_start2 IS NOT NULL AND async_start2 > NOW() AND async_start2 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut **transaction).await? {
@@ -1315,8 +1321,11 @@ impl Event {
                 race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async2,
             };
-            if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() { // racetime.gg doesn't support single-entrant races
+            if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() {
                 events.push(event);
+            } else {
+                // racetime.gg doesn't support single-entrant races
+                //TODO DM/post seed 15 minutes before start
             }
         }
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room3 IS NULL AND async_start3 IS NOT NULL AND async_start3 > NOW() AND async_start3 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut **transaction).await? {
@@ -1324,8 +1333,11 @@ impl Event {
                 race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async3,
             };
-            if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() { // racetime.gg doesn't support single-entrant races
+            if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() {
                 events.push(event);
+            } else {
+                // racetime.gg doesn't support single-entrant races
+                //TODO DM/post seed 15 minutes before start
             }
         }
         Ok(events)
@@ -1565,11 +1577,42 @@ async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str)
     }))
 }
 
-fn ics_datetime<Z: TimeZone>(datetime: DateTime<Z>) -> String {
+trait IntoIcsTzid {
+    fn into_tzid(self) -> TzIDParam<'static>;
+}
+
+impl IntoIcsTzid for Utc {
+    fn into_tzid(self) -> TzIDParam<'static> {
+        TzIDParam::new("Etc/UTC")
+    }
+}
+
+impl IntoIcsTzid for Tz {
+    fn into_tzid(self) -> TzIDParam<'static> {
+        TzIDParam::new(self.name())
+    }
+}
+
+fn dtstamp(datetime: DateTime<Utc>) -> String {
     datetime.to_utc().format("%Y%m%dT%H%M%SZ").to_string()
 }
 
+fn dtstart<Z: TimeZone + IntoIcsTzid>(datetime: DateTime<Z>) -> DtStart<'static> {
+    let mut dtstart = DtStart::new(datetime.naive_local().format("%Y%m%dT%H%M%S").to_string());
+    dtstart.add(datetime.timezone().into_tzid());
+    dtstart
+}
+
+fn dtend<Z: TimeZone + IntoIcsTzid>(datetime: DateTime<Z>) -> DtEnd<'static> {
+    let mut dtend = DtEnd::new(datetime.naive_local().format("%Y%m%dT%H%M%S").to_string());
+    dtend.add(datetime.timezone().into_tzid());
+    dtend
+}
+
 async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, http_client: &reqwest::Client, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
+    let now = Utc::now();
+    let mut latest_instantiated_na_weekly = None;
+    let mut latest_instantiated_eu_weekly = None;
     for race in Race::for_event(transaction, http_client, event).await?.into_iter() {
         for race_event in race.cal_events() {
             if let Some(start) = race_event.start() {
@@ -1581,7 +1624,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                         EventKind::Async2 => "-2",
                         EventKind::Async3 => "-3",
                     },
-                ), ics_datetime(Utc::now()));
+                ), dtstamp(now));
                 let summary_prefix = match (&race.phase, &race.round) {
                     (Some(phase), Some(round)) => format!("{} {phase} {round}", event.short_name()),
                     (Some(phase), None) => format!("{} {phase}", event.short_name()),
@@ -1644,15 +1687,15 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                 } else {
                     summary_prefix
                 }));
-                cal_event.push(DtStart::new(ics_datetime(start)));
-                cal_event.push(DtEnd::new(ics_datetime(race_event.end().unwrap_or_else(|| start + match event.series {
+                cal_event.push(dtstart(start));
+                cal_event.push(dtend(race_event.end().unwrap_or_else(|| start + match event.series {
                     Series::TriforceBlitz => TimeDelta::hours(2),
                     Series::BattleRoyale => TimeDelta::hours(2) + TimeDelta::minutes(30),
                     Series::CoOp | Series::MixedPools | Series::Scrubs | Series::SpeedGaming | Series::WeTryToBeBetter => TimeDelta::hours(3),
                     Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::SongsOfHope | Series::Standard | Series::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
                     Series::Multiworld | Series::Pictionary => TimeDelta::hours(4),
                     Series::Rsl => TimeDelta::hours(4) + TimeDelta::minutes(30),
-                })))); //TODO better fallback duration estimates depending on participants
+                }))); //TODO better fallback duration estimates depending on participants
                 let mut urls = Vec::default();
                 for (language, video_url) in &race.video_urls {
                     urls.push((Cow::Owned(format!("{language} restream")), video_url.clone()));
@@ -1673,8 +1716,33 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                     cal_event.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string()));
                 }
                 cal.add_event(cal_event);
+                if let (Series::Standard, "w", Some(round)) = (event.series, &*event.event, &race.round) {
+                    match &**round {
+                        "NA Weekly" => latest_instantiated_na_weekly = Some(start),
+                        "EU Weekly" => latest_instantiated_eu_weekly = Some(start),
+                        _ => {}
+                    }
+                }
             }
         }
+    }
+    if let Some(latest_instantiated_na_weekly) = latest_instantiated_na_weekly {
+        let mut cal_event = ics::Event::new("weekly-na@midos.house", dtstamp(now));
+        cal_event.push(Summary::new("NA Weekly"));
+        let start = s::next_na_weekly_after(latest_instantiated_na_weekly);
+        cal_event.push(dtstart(start));
+        cal_event.push(dtend(start + TimeDelta::hours(3) + TimeDelta::minutes(30)));
+        cal_event.push(RRule::new("FREQ=WEEKLY"));
+        cal.add_event(cal_event);
+    }
+    if let Some(latest_instantiated_eu_weekly) = latest_instantiated_eu_weekly {
+        let mut cal_event = ics::Event::new("weekly-eu@midos.house", dtstamp(now));
+        cal_event.push(Summary::new("EU Weekly"));
+        let start = s::next_eu_weekly_after(latest_instantiated_eu_weekly);
+        cal_event.push(dtstart(start));
+        cal_event.push(dtend(start + TimeDelta::hours(3) + TimeDelta::minutes(30)));
+        cal_event.push(RRule::new("FREQ=WEEKLY"));
+        cal.add_event(cal_event);
     }
     Ok(())
 }
