@@ -885,8 +885,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         if Some(interaction.data.id) == command_ids.ban {
                             send_draft_settings_page(ctx, interaction, "ban", 0).await?;
                         } else if interaction.data.id == command_ids.delete_after {
+                            let Some(parent_channel) = interaction.channel.as_ref().and_then(|thread| thread.parent_id) else {
+                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                    .ephemeral(true)
+                                    .content("Sorry, this command can only be used inside threads and forum posts.")
+                                )).await?;
+                                return Ok(())
+                            };
                             let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
-                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_scheduling_channel = $1 AND end_time IS NULL"#, PgSnowflake(interaction.channel_id) as _).fetch_optional(&mut *transaction).await? {
+                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_scheduling_channel = $1 AND end_time IS NULL"#, PgSnowflake(parent_channel) as _).fetch_optional(&mut *transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
                                 match event.match_source() {
                                     MatchSource::Manual | MatchSource::StartGG(_) => {} //TODO automate for start.gg
@@ -1073,8 +1080,15 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 .button(CreateButton::new("racingrole").label("racing"))
                             )).await?;
                         } else if interaction.data.id == command_ids.reset_race {
+                            let Some(parent_channel) = interaction.channel.as_ref().and_then(|thread| thread.parent_id) else {
+                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                    .ephemeral(true)
+                                    .content("Sorry, this command can only be used inside threads and forum posts.")
+                                )).await?;
+                                return Ok(())
+                            };
                             let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
-                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_scheduling_channel = $1 AND end_time IS NULL"#, PgSnowflake(interaction.channel_id) as _).fetch_optional(&mut *transaction).await? {
+                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_scheduling_channel = $1 AND end_time IS NULL"#, PgSnowflake(parent_channel) as _).fetch_optional(&mut *transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
                                 if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
