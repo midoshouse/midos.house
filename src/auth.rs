@@ -520,7 +520,7 @@ async fn register_racetime_inner(pool: &State<PgPool>, me: Option<User>, racetim
 async fn register_discord_inner(pool: &State<PgPool>, me: Option<User>, discord_user: Option<DiscordUser>, redirect_uri: Option<rocket::http::uri::Origin<'static>>) -> Result<Redirect, RegisterError> {
     Ok(if let Some(discord_user) = discord_user {
         let mut transaction = pool.begin().await?;
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE discord_id = $1) AS "exists!""#, i64::from(discord_user.id)).fetch_one(&mut *transaction).await? {
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM users WHERE discord_id = $1) AS "exists!""#, PgSnowflake(discord_user.id) as _).fetch_one(&mut *transaction).await? {
             return Err(RegisterError::ExistsDiscord) //TODO user-facing error message
         } else {
             let (display_name, username) = if discord_user.discriminator.is_some() {
@@ -529,12 +529,12 @@ async fn register_discord_inner(pool: &State<PgPool>, me: Option<User>, discord_
                 (discord_user.global_name.unwrap_or_else(|| discord_user.username.clone()), Some(discord_user.username))
             };
             if let Some(me) = me {
-                sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3, discord_username = $4 WHERE id = $5", i64::from(discord_user.id), display_name, discord_user.discriminator as _, username, me.id as _).execute(&mut *transaction).await?;
+                sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3, discord_username = $4 WHERE id = $5", PgSnowflake(discord_user.id) as _, display_name, discord_user.discriminator as _, username, me.id as _).execute(&mut *transaction).await?;
                 transaction.commit().await?;
                 Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(me.id))))
             } else {
                 let id = Id::<Users>::new(&mut transaction).await?;
-                sqlx::query!("INSERT INTO users (id, display_source, discord_id, discord_display_name, discord_discriminator, discord_username) VALUES ($1, 'discord', $2, $3, $4, $5)", id as _, i64::from(discord_user.id), display_name, discord_user.discriminator as _, username).execute(&mut *transaction).await?;
+                sqlx::query!("INSERT INTO users (id, display_source, discord_id, discord_display_name, discord_discriminator, discord_username) VALUES ($1, 'discord', $2, $3, $4, $5)", id as _, PgSnowflake(discord_user.id) as _, display_name, discord_user.discriminator as _, username).execute(&mut *transaction).await?;
                 transaction.commit().await?;
                 Redirect::to(redirect_uri.unwrap_or_else(|| uri!(crate::user::profile(id))))
             }
@@ -572,7 +572,7 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, racetime_user
             if let Ok(Some(discord_user)) = User::from_discord(&mut *transaction, discord_user.id).await {
                 if discord_user.racetime.is_none() {
                     let discord = discord_user.discord.expect("Discord user without Discord ID");
-                    sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3, discord_username = $4 WHERE id = $5", i64::from(discord.id), discord.display_name, discord.username_or_discriminator.as_ref().right() as _, discord.username_or_discriminator.as_ref().left(), me.id as _).execute(&mut *transaction).await?;
+                    sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3, discord_username = $4 WHERE id = $5", PgSnowflake(discord.id) as _, discord.display_name, discord.username_or_discriminator.as_ref().right() as _, discord.username_or_discriminator.as_ref().left(), me.id as _).execute(&mut *transaction).await?;
                     sqlx::query!("DELETE FROM users WHERE id = $1", discord_user.id as _).execute(&mut *transaction).await?;
                     transaction.commit().await?;
                     return Ok(Redirect::to(uri!(crate::user::profile(me.id))))

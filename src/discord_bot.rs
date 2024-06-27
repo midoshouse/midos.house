@@ -100,7 +100,7 @@ impl MessageBuilderExt for MessageBuilder {
             self.mention_user(&member);
         } else {
             let team_role = if let (Some(guild), Some(racetime_slug)) = (guild, &team.racetime_slug) {
-                sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, i64::from(guild), racetime_slug).fetch_optional(&mut **transaction).await?
+                sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, PgSnowflake(guild) as _, racetime_slug).fetch_optional(&mut **transaction).await?
             } else {
                 None
             };
@@ -179,7 +179,7 @@ impl TypeMapKey for ExtraRoomTx {
 #[derive(Clone, Copy)]
 pub(crate) struct CommandIds {
     pub(crate) ban: Option<CommandId>,
-    delete_after: Option<CommandId>,
+    delete_after: CommandId,
     pub(crate) draft: Option<CommandId>,
     pub(crate) first: Option<CommandId>,
     pub(crate) no: Option<CommandId>,
@@ -525,7 +525,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
         .data::<ExtraRoomTx>(extra_room_tx)
         .on_guild_create(false, |ctx, guild, _| Box::pin(async move {
             let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
-            let guild_event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND (end_time IS NULL OR end_time > NOW())"#, i64::from(guild.id)).fetch_all(&mut *transaction).await?;
+            let guild_event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND (end_time IS NULL OR end_time > NOW())"#, PgSnowflake(guild.id) as _).fetch_all(&mut *transaction).await?;
             let mut guild_events = Vec::with_capacity(guild_event_rows.len());
             for row in guild_event_rows {
                 guild_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("just received from database"));
@@ -544,7 +544,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft_kind = Some(new_kind);
                 }
             }
-            let match_source = guild_events.iter().map(|event| event.match_source()).all_equal_value();
             let ban = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
@@ -561,28 +560,23 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 });
                 idx
             });
-            let delete_after = match match_source {
-                Ok(MatchSource::Manual | MatchSource::StartGG(_)) => { //TODO automate for start.gg
-                    let idx = commands.len();
-                    commands.push(CreateCommand::new("delete-after")
-                        .kind(CommandType::ChatInput)
-                        .dm_permission(false)
-                        .description("Deletes games of the match that are not required.")
-                        .add_option(CreateCommandOption::new(
-                            CommandOptionType::Integer,
-                            "game",
-                            "The last game number within the match that should be kept.",
-                        )
-                            .min_int_value(1)
-                            .max_int_value(255)
-                            .required(true)
-                        )
-                    );
-                    Some(idx)
-                }
-                Ok(MatchSource::League) => None,
-                Err(Some((_, _))) => unimplemented!("Discord guilds with mixed match sources not yet supported (guild ID: {}, events: {})", guild.id, guild_events.iter().map(|event| format!("{}/{}", event.series, event.event)).format(", ")),
-                Err(None) => None,
+            let delete_after = {
+                let idx = commands.len();
+                commands.push(CreateCommand::new("delete-after")
+                    .kind(CommandType::ChatInput)
+                    .dm_permission(false)
+                    .description("Deletes games of the match that are not required.")
+                    .add_option(CreateCommandOption::new(
+                        CommandOptionType::Integer,
+                        "game",
+                        "The last game number within the match that should be kept.",
+                    )
+                        .min_int_value(1)
+                        .max_int_value(255)
+                        .required(true)
+                    )
+                );
+                idx
             };
             let draft = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
@@ -863,7 +857,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let commands = guild.set_commands(ctx, commands).await?;
             ctx.data.write().await.entry::<CommandIds>().or_default().insert(guild.id, CommandIds {
                 ban: ban.map(|idx| commands[idx].id),
-                delete_after: delete_after.map(|idx| commands[idx].id),
+                delete_after: commands[delete_after].id,
                 draft: draft.map(|idx| commands[idx].id),
                 first: first.map(|idx| commands[idx].id),
                 no: no.map(|idx| commands[idx].id),
@@ -890,10 +884,20 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     if let Some(&command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)) {
                         if Some(interaction.data.id) == command_ids.ban {
                             send_draft_settings_page(ctx, interaction, "ban", 0).await?;
-                        } else if Some(interaction.data.id) == command_ids.delete_after {
+                        } else if interaction.data.id == command_ids.delete_after {
                             let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
-                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut *transaction).await? {
+                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_scheduling_channel = $1 AND end_time IS NULL"#, PgSnowflake(interaction.channel_id) as _).fetch_optional(&mut *transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
+                                match event.match_source() {
+                                    MatchSource::Manual | MatchSource::StartGG(_) => {} //TODO automate for start.gg
+                                    MatchSource::League => {
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content("Sorry, this command is not available for events sourcing their match schedule from league.ootrandomizer.com")
+                                        )).await?;
+                                        return Ok(())
+                                    }
+                                };
                                 if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
@@ -905,7 +909,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
                                     _ => panic!("unexpected slash command option type"),
                                 };
-                                let races_deleted = sqlx::query_scalar!(r#"DELETE FROM races WHERE scheduling_thread = $1 AND NOT ignored AND GAME > $2"#, i64::from(interaction.channel_id), after_game).execute(&mut *transaction).await?
+                                let races_deleted = sqlx::query_scalar!(r#"DELETE FROM races WHERE scheduling_thread = $1 AND NOT ignored AND GAME > $2"#, PgSnowflake(interaction.channel_id) as _, after_game).execute(&mut *transaction).await?
                                     .rows_affected();
                                 transaction.commit().await?;
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -919,7 +923,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             } else {
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                     .ephemeral(true)
-                                    .content("Sorry, this Discord server is not associated with an ongoing Mido's House event.")
+                                    .content("Sorry, this channel is not configured as the scheduling channel for any ongoing Mido's House events.")
                                 )).await?;
                             }
                         } else if Some(interaction.data.id) == command_ids.draft {
@@ -1070,7 +1074,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             )).await?;
                         } else if interaction.data.id == command_ids.reset_race {
                             let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
-                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND end_time IS NULL"#, i64::from(guild_id)).fetch_optional(&mut *transaction).await? {
+                            if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_scheduling_channel = $1 AND end_time IS NULL"#, PgSnowflake(interaction.channel_id) as _).fetch_optional(&mut *transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
                                 if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()

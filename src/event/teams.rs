@@ -303,7 +303,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
                         OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
                     )
-                "#, data.series as _, &data.event, me.as_ref().map(|me| i64::from(me.id))).fetch(&mut **transaction)
+                "#, data.series as _, &data.event, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch(&mut **transaction)
                     .map_ok(|row| TeamRow {
                         team: Team {
                             id: row.id,
@@ -331,7 +331,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
                     )
                     AND (kind = 'qualifier' OR kind IS NULL)
-                "#, data.series as _, &data.event, me.as_ref().map(|me| i64::from(me.id))).fetch(&mut **transaction)
+                "#, data.series as _, &data.event, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch(&mut **transaction)
                     .map_ok(|row| TeamRow {
                         team: Team {
                             id: row.id,
@@ -485,7 +485,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier') AS "exists!""#, series as _, event).fetch_one(&mut *transaction).await? {
         QualifierKind::Single {
             show_times: data.show_qualifier_times && (
-                sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM teams, async_teams, team_members WHERE async_teams.team = teams.id AND teams.series = $1 AND teams.event = $2 AND async_teams.team = team_members.team AND member = $3 AND kind = 'qualifier'"#, series as _, event, me.as_ref().map(|me| i64::from(me.id))).fetch_optional(&mut *transaction).await?.unwrap_or(false)
+                sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM teams, async_teams, team_members WHERE async_teams.team = teams.id AND teams.series = $1 AND teams.event = $2 AND async_teams.team = team_members.team AND member = $3 AND kind = 'qualifier'"#, series as _, event, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch_optional(&mut *transaction).await?.unwrap_or(false)
                 || data.is_started(&mut transaction).await?
             ),
         }

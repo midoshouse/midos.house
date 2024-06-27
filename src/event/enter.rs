@@ -1069,7 +1069,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                     }
                     if let (Some(discord_user), Some(discord_guild)) = (me.discord.as_ref(), data.discord_guild) {
                         let discord_ctx = discord_ctx.read().await;
-                        if let Some(PgSnowflake(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, i64::from(discord_guild), series as _, event).fetch_optional(&mut *transaction).await? {
+                        if let Some(PgSnowflake(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, PgSnowflake(discord_guild) as _, series as _, event).fetch_optional(&mut *transaction).await? {
                             if let Ok(member) = discord_guild.member(&*discord_ctx, discord_user.id).await {
                                 member.add_role(&*discord_ctx, participant_role).await?;
                             }

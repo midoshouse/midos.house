@@ -190,7 +190,7 @@ impl User {
                 challonge_id,
                 startgg_id AS "startgg_id: startgg::ID",
                 is_archivist
-            FROM users WHERE discord_id = $1"#, i64::from(discord_id)).fetch_optional(pool).await?
+            FROM users WHERE discord_id = $1"#, PgSnowflake(discord_id) as _).fetch_optional(pool).await?
             .map(|row| Self::from_row(
                 row.id,
                 row.display_source,
