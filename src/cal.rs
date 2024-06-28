@@ -1428,7 +1428,7 @@ impl Event {
         Ok(racetime_bot::Goal::for_event(self.race.series, &self.race.event).map_or(false, |goal| goal.should_create_rooms()) && (
             // don't create racetime.gg rooms for in-person races
             self.race.series != Series::SpeedGaming
-            || self.race.event != "2023live"
+            || !self.race.event.ends_with("live")
             || !event.is_started(transaction).await?
         ))
     }

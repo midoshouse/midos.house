@@ -73,7 +73,7 @@ typemap_rev = "0.3"
 url = { version = "2", features = ["serde"] }
 uuid = "1"
 wheel = { git = "https://github.com/fenhl/wheel", branch = "main", features = ["chrono", "racetime", "reqwest", "rocket", "serde", "serde_json"] }
-yup-oauth2 = "9"
+yup-oauth2 = "11"
 
 [target.'cfg(unix)'.dependencies]
 async-proto = { version = "0.22", features = ["chrono", "serde_json", "serenity", "uuid"] }

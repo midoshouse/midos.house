@@ -193,7 +193,7 @@ impl Requirement {
             Self::RestreamConsent { .. } => Some(false),
             Self::Qualifier { .. } => Some(false),
             Self::TripleQualifier { .. } => Some(false),
-            Self::QualifierPlacement { num_players, min_races } => if data.series == Series::SpeedGaming && data.event == "2023onl" {
+            Self::QualifierPlacement { num_players, min_races } => if data.series == Series::SpeedGaming && data.event.ends_with("onl") {
                 Some(if_chain! {
                     // All qualifiers must be completed to ensure the qualifier placements are final.
                     //TODO This could be relaxed by calculating whether the player has secured a spot ahead of time.

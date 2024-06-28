@@ -476,7 +476,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Teams, false).await?;
-    let qualifier_kind = if data.series == Series::SpeedGaming && data.event == "2023onl" {
+    let qualifier_kind = if data.series == Series::SpeedGaming && data.event.ends_with("onl") {
         QualifierKind::SglOnline
     } else if data.series == Series::SongsOfHope && data.event == "1" {
         QualifierKind::SongsOfHope
