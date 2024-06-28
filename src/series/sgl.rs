@@ -257,7 +257,7 @@ pub(crate) fn settings_2024() -> serde_json::Map<String, Json> {
             "prelude",
         ]),
         format!("start_with_consumables") => json!(true),
-        format!("start_with_rupees") => json!(true),
+        format!("skip_reward_from_rauru") => json!(true),
         format!("no_escape_sequence") => json!(true),
         format!("no_guard_stealth") => json!(true),
         format!("no_epona_race") => json!(true),
