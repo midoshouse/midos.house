@@ -193,28 +193,28 @@ impl Requirement {
             Self::RestreamConsent { .. } => Some(false),
             Self::Qualifier { .. } => Some(false),
             Self::TripleQualifier { .. } => Some(false),
-            Self::QualifierPlacement { num_players, min_races } => if data.series == Series::SpeedGaming && data.event.ends_with("onl") {
-                Some(if_chain! {
-                    // All qualifiers must be completed to ensure the qualifier placements are final.
-                    //TODO This could be relaxed by calculating whether the player has secured a spot ahead of time.
-                    if Race::for_event(&mut *transaction, http_client, data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.is_ended());
-                    if let Some(me) = me;
-                    let teams = teams::signups_sorted(transaction, http_client, Some(me), data, teams::QualifierKind::SglOnline).await?;
-                    if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| match member.user {
-                        teams::MemberUser::MidosHouse(ref user) => user == me,
-                        teams::MemberUser::RaceTime { ref id, .. } => me.racetime.as_ref().map_or(false, |racetime| racetime.id == *id),
-                    }));
-                    if let teams::Qualification::Multiple { num_qualifiers, .. } = team.qualification;
-                    then {
-                        placement < *num_players //TODO adjust for opt-outs
-                        && num_qualifiers >= *min_races
-                    } else {
-                        false
-                    }
-                })
-            } else {
-                unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series, data.event)
-            },
+            Self::QualifierPlacement { num_players, min_races } => Some(if_chain! {
+                // All qualifiers must be completed to ensure the qualifier placements are final.
+                //TODO This could be relaxed by calculating whether the player has secured a spot ahead of time.
+                if Race::for_event(&mut *transaction, http_client, data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.is_ended());
+                if let Some(me) = me;
+                let teams = teams::signups_sorted(transaction, http_client, Some(me), data, match (data.series, &*data.event) {
+                    (Series::SpeedGaming, "2023onl") => teams::QualifierKind::Sgl2023Online,
+                    (Series::SpeedGaming, "2024onl") => teams::QualifierKind::Sgl2024Online,
+                    (_, _) => unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series, data.event),
+                }).await?;
+                if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| match member.user {
+                    teams::MemberUser::MidosHouse(ref user) => user == me,
+                    teams::MemberUser::RaceTime { ref id, .. } => me.racetime.as_ref().map_or(false, |racetime| racetime.id == *id),
+                }));
+                if let teams::Qualification::Multiple { num_qualifiers, .. } = team.qualification;
+                then {
+                    placement < *num_players //TODO adjust for opt-outs
+                    && num_qualifiers >= *min_races
+                } else {
+                    false
+                }
+            }),
             Self::External { .. } => None,
         })
     }

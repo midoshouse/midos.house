@@ -21,7 +21,8 @@ pub(crate) enum QualifierKind {
     Single {
         show_times: bool,
     },
-    SglOnline,
+    Sgl2023Online,
+    Sgl2024Online,
     SongsOfHope,
 }
 
@@ -111,7 +112,7 @@ pub(crate) struct SignupsTeam {
 
 pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind) -> Result<Vec<SignupsTeam>, cal::Error> {
     let mut signups = match qualifier_kind {
-        QualifierKind::SglOnline => {
+        QualifierKind::Sgl2023Online => {
             let mut scores = HashMap::<_, Vec<_>>::default();
             for race in Race::for_event(transaction, http_client, data).await? {
                 if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
@@ -178,6 +179,77 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         scores.pop();
                     }
                     if num_qualifiers >= 5 {
+                        // remove worst score
+                        scores.swap_remove(0);
+                    }
+                    Qualification::Multiple {
+                        num_qualifiers,
+                        score: scores.iter().copied().sum::<R64>() / r64(scores.len().max(3) as f64),
+                    }
+                },
+                hard_settings_ok: false,
+                mq_ok: false,
+            }).collect()
+        }
+        QualifierKind::Sgl2024Online => {
+            let mut scores = HashMap::<_, Vec<_>>::default();
+            for race in Race::for_event(transaction, http_client, data).await? {
+                if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
+                let Ok(room) = race.rooms().exactly_one() else { continue };
+                let room_data = http_client.get(format!("{room}/data"))
+                    .send().await?
+                    .detailed_error_for_status().await?
+                    .json_with_text_in_error::<RaceData>().await?;
+                if room_data.status.value != RaceStatusValue::Finished { continue }
+                let mut entrants = room_data.entrants;
+                entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
+                let par_cutoff = if entrants.len() < 20 { 3 } else { 4 };
+                let par_time = entrants[0..par_cutoff].iter().map(|entrant| entrant.finish_time.expect("not enough finishers to calculate par")).sum::<Duration>() / par_cutoff as u32;
+                for entrant in entrants {
+                    scores.entry(MemberUser::RaceTime {
+                        id: entrant.user.id,
+                        url: entrant.user.url,
+                        name: entrant.user.name,
+                    }).or_default().push(r64(if let Some(finish_time) = entrant.finish_time {
+                        (100.0 * (2.0 - (finish_time.as_secs_f64() / par_time.as_secs_f64()))).clamp(10.0, 110.0)
+                    } else {
+                        0.0
+                    }));
+                }
+            }
+            let scores = if data.is_started(&mut *transaction).await? {
+                let teams = Team::for_event(&mut *transaction, data.series, &data.event).await?;
+                let mut entrant_scores = Vec::with_capacity(teams.len());
+                for team in teams {
+                    let user = team.members(&mut *transaction).await?.into_iter().exactly_one().expect("QualifierKind::Multiple in team-based event");
+                    let id = user.racetime.as_ref().expect("QualifierKind::Multiple with entrant without racetime.gg account").id.clone();
+                    entrant_scores.push((MemberUser::MidosHouse(user), scores.remove(&MemberUser::RaceTime { id, url: String::default(), name: String::default() }).expect("Unqualified QualifierKind::Multiple entrant")));
+                }
+                Either::Left(entrant_scores.into_iter())
+            } else {
+                let opt_outs = sqlx::query_scalar!("SELECT racetime_id FROM opt_outs WHERE series = $1 AND event = $2", data.series as _, &data.event).fetch_all(&mut **transaction).await?;
+                Either::Right(
+                    scores.into_iter()
+                        .filter(move |(user, _)| match user {
+                            MemberUser::RaceTime { id, .. } => !opt_outs.contains(id),
+                            MemberUser::MidosHouse(_) => true,
+                        })
+                )
+            };
+            scores.map(|(user, mut scores)| SignupsTeam {
+                team: None, //TODO
+                members: vec![SignupsMember {
+                    role: Role::None,
+                    is_confirmed: false, //TODO
+                    qualifier_time: None,
+                    qualifier_vod: None,
+                    user,
+                }],
+                qualification: {
+                    let num_qualifiers = scores.len();
+                    scores.truncate(6); // only count the first 5 qualifiers chronologically
+                    scores.sort_unstable();
+                    if num_qualifiers >= 4 {
                         // remove worst score
                         scores.swap_remove(0);
                     }
@@ -436,7 +508,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 QualificationOrder::new(*qualification1, members1).cmp(&QualificationOrder::new(*qualification2, members2))
                 .then_with(|| team1.cmp(&team2))
             }
-            QualifierKind::SglOnline => {
+            QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
                 let (num1, score1) = match *qualification1 {
                     Qualification::Multiple { num_qualifiers, score } => (num_qualifiers, score),
                     _ => unreachable!("QualifierKind::Multiple must use Qualification::Multiple"),
@@ -476,21 +548,22 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Teams, false).await?;
-    let qualifier_kind = if data.series == Series::SpeedGaming && data.event.ends_with("onl") {
-        QualifierKind::SglOnline
-    } else if data.series == Series::SongsOfHope && data.event == "1" {
-        QualifierKind::SongsOfHope
-    } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE series = $1 AND event = $2 AND qualifier_rank IS NOT NULL) AS "exists!""#, series as _, event).fetch_one(&mut *transaction).await? {
-        QualifierKind::Rank
-    } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier') AS "exists!""#, series as _, event).fetch_one(&mut *transaction).await? {
-        QualifierKind::Single {
-            show_times: data.show_qualifier_times && (
-                sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM teams, async_teams, team_members WHERE async_teams.team = teams.id AND teams.series = $1 AND teams.event = $2 AND async_teams.team = team_members.team AND member = $3 AND kind = 'qualifier'"#, series as _, event, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch_optional(&mut *transaction).await?.unwrap_or(false)
-                || data.is_started(&mut transaction).await?
-            ),
-        }
-    } else {
-        QualifierKind::None
+    let qualifier_kind = match (data.series, &*data.event) {
+        (Series::SongsOfHope, "1") => QualifierKind::SongsOfHope,
+        (Series::SpeedGaming, "2023onl") => QualifierKind::Sgl2023Online,
+        (Series::SpeedGaming, "2024onl") => QualifierKind::Sgl2024Online,
+        (_, _) => if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE series = $1 AND event = $2 AND qualifier_rank IS NOT NULL) AS "exists!""#, series as _, event).fetch_one(&mut *transaction).await? {
+            QualifierKind::Rank
+        } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier') AS "exists!""#, series as _, event).fetch_one(&mut *transaction).await? {
+            QualifierKind::Single {
+                show_times: data.show_qualifier_times && (
+                    sqlx::query_scalar!(r#"SELECT submitted IS NOT NULL AS "qualified!" FROM teams, async_teams, team_members WHERE async_teams.team = teams.id AND teams.series = $1 AND teams.event = $2 AND async_teams.team = team_members.team AND member = $3 AND kind = 'qualifier'"#, series as _, event, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch_optional(&mut *transaction).await?.unwrap_or(false)
+                    || data.is_started(&mut transaction).await?
+                ),
+            }
+        } else {
+            QualifierKind::None
+        },
     };
     let show_restream_consent = if let Some(ref me) = me {
         data.organizers(&mut transaction).await?.contains(me) || data.restreamers(&mut transaction).await?.contains(me)
@@ -527,7 +600,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                 th : "Pieces Found";
             });
         }
-        QualifierKind::SglOnline => {
+        QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
             column_headers.push(html! {
                 th : "# Qualifiers";
             });
@@ -660,7 +733,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                     }
                                 }
                                 (QualifierKind::Single { show_times: true }, Qualification::TriforceBlitz { pieces, .. }) => td : pieces;
-                                (QualifierKind::SglOnline, Qualification::Multiple { num_qualifiers, score }) => {
+                                (QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online, Qualification::Multiple { num_qualifiers, score }) => {
                                     td(style = "text-align: right;") : num_qualifiers;
                                     td(style = "text-align: right;") : format!("{score:.2}");
                                 }
