@@ -20,7 +20,7 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, env: Environ
             full_form(uri!(post(event.series, &*event.event)), csrf, html! {
                 @if let MatchSource::StartGG(_) = event.match_source() {
                     : form_field("auto_import", &mut errors, html! {
-                        input(type = "checkbox", id = "auto_import", name = "auto_import", checked? = ctx.field_value("restream_consent").map_or(event.auto_import, |value| value == "on"));
+                        input(type = "checkbox", id = "auto_import", name = "auto_import", checked? = ctx.field_value("auto_import").map_or(event.auto_import, |value| value == "on"));
                         label(for = "auto_import") : "Automatically import new races from start.gg";
                         label(class = "help") : "(If this option is turned off, you can import races by clicking the Import button on the Races tab.)";
                     });
