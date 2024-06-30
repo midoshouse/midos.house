@@ -1135,6 +1135,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             seed: seed::Data::default(), //TODO keep if schedule is kept
                                             video_urls: race.video_urls,
                                             restreamers: race.restreamers,
+                                            last_edited_by: race.last_edited_by,
+                                            last_edited_at: race.last_edited_at,
                                             ignored: race.ignored,
                                             schedule_locked: race.schedule_locked,
                                         };

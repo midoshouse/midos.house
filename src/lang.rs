@@ -2,7 +2,7 @@
 
 use crate::prelude::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Sequence, Deserialize, sqlx::Type, FromFormField)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Sequence, Deserialize, sqlx::Type, async_graphql::Enum, FromFormField)]
 #[sqlx(type_name = "language")]
 pub(crate) enum Language {
     #[serde(rename = "en")]

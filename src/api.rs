@@ -1,7 +1,6 @@
 use {
     async_graphql::{
         Context,
-        EmptyMutation,
         EmptySubscription,
         Error,
         Guard,
@@ -43,11 +42,12 @@ macro_rules! db {
 struct Scopes {
     entrants_read: bool,
     user_search: bool,
+    write: bool,
 }
 
 impl Scopes {
     async fn validate(&self, transaction: &mut Transaction<'_, Postgres>, api_key: &str) -> sqlx::Result<Option<user::User>> {
-        let Some(key_scope) = sqlx::query_as!(Self, "SELECT entrants_read, user_search FROM api_keys WHERE key = $1", api_key).fetch_optional(&mut **transaction).await? else { return Ok(None) };
+        let Some(key_scope) = sqlx::query_as!(Self, "SELECT entrants_read, user_search, write FROM api_keys WHERE key = $1", api_key).fetch_optional(&mut **transaction).await? else { return Ok(None) };
         if key_scope >= *self {
             let user_id = sqlx::query_scalar!(r#"SELECT user_id AS "user_id: Id<Users>" FROM api_keys WHERE key = $1"#, api_key).fetch_one(&mut **transaction).await?;
             user::User::from_id(&mut **transaction, user_id).await
@@ -78,6 +78,7 @@ impl PartialOrd for Scopes {
         compare_fields![
             entrants_read,
             user_search,
+            write,
         ];
         match (any_less, any_greater) {
             (false, false) => Some(Equal),
@@ -90,10 +91,11 @@ impl PartialOrd for Scopes {
 
 impl fmt::Display for Scopes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { entrants_read, user_search } = *self;
+        let Self { entrants_read, user_search, write } = *self;
         let mut scopes = Vec::default();
         if entrants_read { scopes.push("entrants_read") }
         if user_search { scopes.push("user_search") }
+        if write { scopes.push("write") }
         let plural = scopes.len() != 1;
         if let Some(scopes) = English.join_str(scopes) {
             scopes.fmt(f)?;
@@ -142,7 +144,46 @@ impl Guard for ShowRestreamConsent<'_> {
     }
 }
 
+struct EditRace(GqlId);
+
+impl Guard for EditRace {
+    async fn check(&self, ctx: &Context<'_>) -> Result<()> {
+        let me = &ctx.data::<ApiKey>().map_err(|e| Error {
+            message: format!("This query requires an API key. Provide one using the X-API-Key header."),
+            source: Some(Arc::new(e)),
+            extensions: None,
+        })?.user;
+        db!(db = ctx; if me.is_archivist {
+            Ok(())
+        } else {
+            let race = cal::Race::from_id(&mut *db, ctx.data_unchecked(), (&self.0).try_into()?).await?;
+            let event = race.event(&mut *db).await?;
+            if event.organizers(&mut *db).await?.contains(me) || event.restreamers(&mut *db).await?.contains(me) {
+                Ok(())
+            } else {
+                Err("Only archivists, event organizers, and restreamers can edit races.".into())
+            }
+        })
+    }
+}
+
 type ArcTransaction = Arc<Mutex<Transaction<'static, Postgres>>>;
+
+impl<T: crate::id::Table> TryFrom<GqlId> for Id<T> {
+    type Error = std::num::ParseIntError;
+
+    fn try_from(value: GqlId) -> Result<Self, Self::Error> {
+        Self::try_from(&value)
+    }
+}
+
+impl<'a, T: crate::id::Table> TryFrom<&'a GqlId> for Id<T> {
+    type Error = std::num::ParseIntError;
+
+    fn try_from(value: &GqlId) -> Result<Self, Self::Error> {
+        Ok(value.parse::<u64>()?.into())
+    }
+}
 
 struct UtcTimestamp(DateTime<Utc>);
 
@@ -176,7 +217,7 @@ impl ScalarType for UtcTimestamp {
     }
 }
 
-type MidosHouseSchema = Schema<Query, EmptyMutation, EmptySubscription>;
+type MidosHouseSchema = Schema<Query, Mutation, EmptySubscription>;
 
 pub(crate) struct Query;
 
@@ -209,6 +250,47 @@ enum UserFromDiscordError {
     #[graphql(guard = Scopes { user_search: true, ..Scopes::default() })]
     async fn user_from_discord(&self, ctx: &Context<'_>, id: GqlId) -> Result<Option<User>, UserFromDiscordError> {
         Ok(db!(db = ctx; user::User::from_discord(&mut **db, id.parse()?).await?).map(User))
+    }
+}
+
+pub(crate) struct Mutation;
+
+#[Object] impl Mutation {
+    /// Requires permission to edit races and an API key with the `write` scope.
+    #[graphql(guard = Scopes { write: true, ..Scopes::default() }.and(EditRace(id.clone())))]
+    async fn set_race_restream_url(&self, ctx: &Context<'_>, id: GqlId, language: Language, restream_url: String) -> Result<Race> {
+        db!(db = ctx; {
+            let mut race = cal::Race::from_id(&mut *db, ctx.data_unchecked(), id.try_into()?).await?;
+            race.video_urls.insert(language, restream_url.parse()?);
+            let me = &ctx.data::<ApiKey>().map_err(|e| Error {
+                message: format!("This query requires an API key. Provide one using the X-API-Key header."),
+                source: Some(Arc::new(e)),
+                extensions: None,
+            })?.user;
+            race.last_edited_by = Some(me.id);
+            race.last_edited_at = Some(Utc::now());
+            race.save(&mut *db).await?;
+            Ok(Race(race))
+        })
+    }
+
+    /// `restreamer` must be a racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID.
+    /// Requires permission to edit races and an API key with the `write` scope.
+    #[graphql(guard = Scopes { write: true, ..Scopes::default() }.and(EditRace(id.clone())))]
+    async fn set_race_restreamer(&self, ctx: &Context<'_>, id: GqlId, language: Language, restreamer: String) -> Result<Race> {
+        db!(db = ctx; {
+            let mut race = cal::Race::from_id(&mut *db, ctx.data_unchecked(), id.try_into()?).await?;
+            race.restreamers.insert(language, crate::racetime_bot::parse_user(&mut *db, ctx.data_unchecked(), ctx.data_unchecked::<Environment>().racetime_host(), &restreamer).await?);
+            let me = &ctx.data::<ApiKey>().map_err(|e| Error {
+                message: format!("This query requires an API key. Provide one using the X-API-Key header."),
+                source: Some(Arc::new(e)),
+                extensions: None,
+            })?.user;
+            race.last_edited_by = Some(me.id);
+            race.last_edited_at = Some(Utc::now());
+            race.save(&mut *db).await?;
+            Ok(Race(race))
+        })
     }
 }
 
@@ -346,7 +428,7 @@ struct User(user::User);
 }
 
 pub(crate) fn schema(db_pool: PgPool) -> MidosHouseSchema {
-    Schema::build(Query, EmptyMutation, EmptySubscription)
+    Schema::build(Query, Mutation, EmptySubscription)
         .data(db_pool)
         .finish()
 }
@@ -383,12 +465,14 @@ impl<'r> FromRequest<'r> for ApiKey {
             Ok(Some(api_key)) => match sqlx::query!(r#"SELECT
                 entrants_read,
                 user_search,
+                write,
                 user_id AS "user_id: Id<Users>"
             FROM api_keys WHERE key = $1"#, api_key).fetch_optional(&**db_pool).await {
                 Ok(Some(row)) => request::Outcome::Success(Self {
                     scopes: Scopes {
                         entrants_read: row.entrants_read,
                         user_search: row.user_search,
+                        write: row.write,
                     },
                     user: match user::User::from_id(&**db_pool, row.user_id).await {
                         Ok(user) => user.expect("database constraint validated: API keys belong to existing users"),

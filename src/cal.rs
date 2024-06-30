@@ -321,6 +321,8 @@ pub(crate) struct Race {
     pub(crate) seed: seed::Data,
     pub(crate) video_urls: HashMap<Language, Url>,
     pub(crate) restreamers: HashMap<Language, String>,
+    pub(crate) last_edited_by: Option<Id<Users>>,
+    pub(crate) last_edited_at: Option<DateTime<Utc>>,
     pub(crate) ignored: bool,
     pub(crate) schedule_locked: bool,
 }
@@ -384,6 +386,8 @@ impl Race {
             restreamer_de,
             video_url_pt,
             restreamer_pt,
+            last_edited_by AS "last_edited_by: Id<Users>",
+            last_edited_at,
             ignored,
             schedule_locked
         FROM races WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
@@ -520,6 +524,8 @@ impl Race {
                 German => row.restreamer_de.clone(),
                 Portuguese => row.restreamer_pt.clone(),
             }.map(|restreamer| (language, restreamer))).collect(),
+            last_edited_by: row.last_edited_by,
+            last_edited_at: row.last_edited_at,
             ignored: row.ignored,
             schedule_locked: row.schedule_locked,
             id, source, entrants,
@@ -653,6 +659,8 @@ impl Race {
                                 HashMap::default()
                             },
                             restreamers: HashMap::default(),
+                            last_edited_by: None,
+                            last_edited_at: None,
                             ignored: match race.status {
                                 league::MatchStatus::Canceled => true,
                                 league::MatchStatus::Confirmed => false,
@@ -698,6 +706,8 @@ impl Race {
                         seed: seed::Data::default(),
                         video_urls: HashMap::default(),
                         restreamers: HashMap::default(),
+                        last_edited_by: None,
+                        last_edited_at: None,
                         ignored: false,
                         schedule_locked: false,
                         id,
@@ -739,6 +749,8 @@ impl Race {
                     seed: seed::Data::default(), //TODO
                     video_urls: event.video_url.iter().map(|video_url| (English, video_url.clone())).collect(), //TODO sync between event and race? Video URL fields for other languages on event::Data?
                     restreamers: HashMap::default(),
+                    last_edited_by: None,
+                    last_edited_at: None,
                     ignored: false,
                     schedule_locked: false,
                     id, schedule,
@@ -772,6 +784,8 @@ impl Race {
                             seed: seed::Data::default(),
                             video_urls: HashMap::default(),
                             restreamers: HashMap::default(),
+                            last_edited_by: None,
+                            last_edited_at: None,
                             ignored: false,
                             schedule_locked: false,
                             schedule,
@@ -796,6 +810,8 @@ impl Race {
                             seed: seed::Data::default(),
                             video_urls: HashMap::default(),
                             restreamers: HashMap::default(),
+                            last_edited_by: None,
+                            last_edited_at: None,
                             ignored: false,
                             schedule_locked: false,
                             schedule,
@@ -1159,10 +1175,10 @@ impl Race {
             None => (None, None, None, None, None),
         };
         sqlx::query!("
-            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3)
-            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,       $29,   $30,   $31, $32,           $33,               $34,   $35,      $36,      $37,          $38,        $39,           $40,                     $41,          $42,           $43,       $44,       $45,        $46,        $47,   $48,                 $49,          $50,           $51,             $52,       $53,         $54,         $55,          $56,         $57       )
-            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3)
-            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,       $29,   $30,   $31, $32,           $33,               $34,   $35,      $36,      $37,          $38,        $39,           $40,                     $41,          $42,           $43,       $44,       $45,        $46,        $47,   $48,                 $49,          $50,           $51,             $52,       $53,         $54,         $55,          $56,         $57       )
+            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3)
+            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,            $29,            $30,       $31,   $32,   $33, $34,           $35,               $36,   $37,      $38,      $39,          $40,        $41,           $42,                     $43,          $44,           $45,       $46,       $47,        $48,        $49,   $50,                 $51,          $52,           $53,             $54,       $55,         $56,         $57,          $58,         $59       )
+            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3)
+            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,            $29,            $30,       $31,   $32,   $33, $34,           $35,               $36,   $37,      $38,      $39,          $40,        $41,           $42,                     $43,          $44,           $45,       $46,       $47,        $48,        $49,   $50,                 $51,          $52,           $53,             $54,       $55,         $56,         $57,          $58,         $59       )
         ",
             startgg_set as _,
             start,
@@ -1191,6 +1207,8 @@ impl Race {
             self.id as _,
             p1,
             p2,
+            self.last_edited_by as _,
+            self.last_edited_at,
             self.video_urls.get(&English).map(|url| url.to_string()),
             self.phase,
             self.round,
@@ -2049,6 +2067,8 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
                     seed: seed::Data::default(),
                     video_urls: HashMap::default(),
                     restreamers: HashMap::default(),
+                    last_edited_by: None,
+                    last_edited_at: None,
                     ignored: false,
                     schedule_locked: false,
                     scheduling_thread,
@@ -2382,6 +2402,8 @@ async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, ht
             seed: seed::Data::default(),
             video_urls: HashMap::default(),
             restreamers: HashMap::default(),
+            last_edited_by: None,
+            last_edited_at: None,
             ignored: false,
             schedule_locked: false,
             phase, round,

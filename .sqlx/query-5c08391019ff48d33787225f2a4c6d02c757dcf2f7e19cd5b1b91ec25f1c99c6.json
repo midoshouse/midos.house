@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n                entrants_read,\n                user_search,\n                user_id AS \"user_id: Id<Users>\"\n            FROM api_keys WHERE key = $1",
+  "query": "SELECT\n                entrants_read,\n                user_search,\n                write,\n                user_id AS \"user_id: Id<Users>\"\n            FROM api_keys WHERE key = $1",
   "describe": {
     "columns": [
       {
@@ -15,6 +15,11 @@
       },
       {
         "ordinal": 2,
+        "name": "write",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 3,
         "name": "user_id: Id<Users>",
         "type_info": "Int8"
       }
@@ -27,8 +32,9 @@
     "nullable": [
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "72167dd2a534b1704d7a047d670b603b2b9b2fa605c68fed3bbd4946d14baf6e"
+  "hash": "5c08391019ff48d33787225f2a4c6d02c757dcf2f7e19cd5b1b91ec25f1c99c6"
 }
