@@ -1389,6 +1389,12 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFutu
     form.verify(&csrf); //TODO option to resubmit on error page (with some “are you sure?” wording)
     if data.is_ended() { return Err(ResignError::EventEnded.into()) }
     let keep_record = data.is_started(&mut transaction).await? || sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1) AS "exists!""#, team.id as _).fetch_one(&mut *transaction).await?;
+    let msg = MessageBuilder::default()
+        .mention_team(&mut transaction, data.discord_guild, &team).await?
+        .push(if team.name_is_plural() { " have resigned from " } else { " has resigned from " })
+        .push_safe(data.display_name)
+        .push(".")
+        .build();
     let members = if keep_record {
         sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, team.id as _).execute(&mut *transaction).await?;
         sqlx::query!(r#"SELECT member AS "id: Id<Users>", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, team.id as _).fetch(&mut *transaction)
@@ -1417,13 +1423,7 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFutu
         }
         if let Some(organizer_channel) = data.discord_organizer_channel {
             //TODO don't post this message for unconfirmed (or unqualified?) teams
-            organizer_channel.say(&*discord_ctx.read().await, MessageBuilder::default()
-                .mention_team(&mut transaction, data.discord_guild, &team).await?
-                .push(if team.name_is_plural() { " have resigned from " } else { " has resigned from " })
-                .push_safe(data.display_name)
-                .push(".")
-                .build(),
-            ).await?;
+            organizer_channel.say(&*discord_ctx.read().await, msg).await?;
         }
         if !keep_record {
             sqlx::query!("DELETE FROM teams WHERE id = $1", team.id as _).execute(&mut *transaction).await?;
