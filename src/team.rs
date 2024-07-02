@@ -24,6 +24,10 @@ impl Team {
         sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE series = $1 AND event = $2 AND racetime_slug = $3"#, series as _, event, racetime_slug).fetch_optional(&mut **transaction).await
     }
 
+    pub(crate) async fn from_challonge(transaction: &mut Transaction<'_, Postgres>, challonge_id: &str) -> sqlx::Result<Option<Self>> {
+        sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE challonge_id = $1"#, challonge_id).fetch_optional(&mut **transaction).await
+    }
+
     pub(crate) async fn from_startgg(transaction: &mut Transaction<'_, Postgres>, startgg_id: &startgg::ID) -> sqlx::Result<Option<Self>> {
         sqlx::query_as!(Self, r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE startgg_id = $1"#, startgg_id as _).fetch_optional(&mut **transaction).await
     }

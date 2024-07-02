@@ -171,6 +171,7 @@ pub(crate) use {
             Race,
             RaceSchedule,
         },
+        challonge,
         config::Config,
         discord_bot::{
             CommandIds,
