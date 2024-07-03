@@ -557,7 +557,7 @@ impl Goal {
             Self::Sgl2023 => Some(sgl::settings_2023()),
             Self::Sgl2024 => Some(sgl::settings_2024()),
             Self::SongsOfHope => Some(soh::settings()),
-            Self::StandardRuleset => None, //TODO allow organizers to configure this
+            Self::StandardRuleset => Some(s::weekly_settings_2024w27()), //TODO allow organizers to configure this
             Self::TournoiFrancoS3 => None, // settings draft
             Self::TournoiFrancoS4 => None, // settings draft
             Self::TriforceBlitz => None, // per-event settings
@@ -2657,8 +2657,9 @@ impl RaceHandler<GlobalState> for Handler {
                                 match (cal_event.race.phase.as_deref(), cal_event.race.round.as_deref()) {
                                     (Some("Qualifier"), Some(round)) => format!("qualifier {round}"),
                                     (Some("Live Qualifier"), Some(round)) => format!("live qualifier {round}"),
-                                    (None, Some("NA Weekly")) => format!("the NA weekly"),
-                                    (None, Some("EU Weekly")) => format!("the EU weekly"),
+                                    (None, Some("Friday Weekly")) => format!("the Friday weekly"),
+                                    (None, Some("Saturday Weekly")) => format!("the Saturday weekly"),
+                                    (None, Some("Sunday Weekly")) => format!("the Sunday weekly"),
                                     (Some(phase), Some(round)) => format!("this {phase} {round} race"),
                                     (Some(phase), None) => format!("this {phase} race"),
                                     (None, Some(round)) => format!("this {round} race"),

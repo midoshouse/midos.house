@@ -151,25 +151,37 @@ pub(crate) fn resolve_s7_draft_settings(picks: &draft::Picks) -> serde_json::Map
     settings
 }
 
-pub(crate) fn next_na_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
+pub(crate) fn next_friday_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
     let today = min_time.with_timezone(&America::New_York).date_naive();
-    let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Sat).unwrap();
-    let time = date.and_hms_opt(18, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining NA weekly time");
+    let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Fri).unwrap();
+    let time = date.and_hms_opt(20, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Friday weekly time");
     if time <= min_time {
         let date = date.checked_add_days(Days::new(7)).unwrap();
-        date.and_hms_opt(18, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining NA weekly time")
+        date.and_hms_opt(20, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Friday weekly time")
     } else {
         time
     }
 }
 
-pub(crate) fn next_eu_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
+pub(crate) fn next_saturday_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
     let today = min_time.with_timezone(&Europe::Paris).date_naive();
-    let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Sun).unwrap();
-    let time = date.and_hms_opt(15, 0, 0).unwrap().and_local_timezone(Europe::Paris).single_ok().expect("error determining EU weekly time");
+    let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Sat).unwrap();
+    let time = date.and_hms_opt(20, 0, 0).unwrap().and_local_timezone(Europe::Paris).single_ok().expect("error determining Satuday weekly time");
     if time <= min_time {
         let date = date.checked_add_days(Days::new(7)).unwrap();
-        date.and_hms_opt(15, 0, 0).unwrap().and_local_timezone(Europe::Paris).single_ok().expect("error determining EU weekly time")
+        date.and_hms_opt(20, 0, 0).unwrap().and_local_timezone(Europe::Paris).single_ok().expect("error determining Satuday weekly time")
+    } else {
+        time
+    }
+}
+
+pub(crate) fn next_sunday_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
+    let today = min_time.with_timezone(&America::New_York).date_naive();
+    let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Sun).unwrap();
+    let time = date.and_hms_opt(17, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Sunday weekly time");
+    if time <= min_time {
+        let date = date.checked_add_days(Days::new(7)).unwrap();
+        date.and_hms_opt(17, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Sunday weekly time")
     } else {
         time
     }
@@ -197,16 +209,21 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         : English.join_html(main_tournament_organizers);
                         : ") in cooperation with ZeldaSpeedRuns."; //TODO list organizers
                     }
-                    p : "There are two races each week, both open to all participants:";
-                    ul {
+                    p : "There are three races each week, each open to all participants:";
+                    ol {
                         li {
-                            : "The NA weekly on Saturdays at 6PM Eastern Time (next: ";
-                            : format_datetime(next_na_weekly_after(now), DateTimeFormat { long: true, running_text: false });
+                            : "Fridays at 8PM Eastern Time (next: ";
+                            : format_datetime(next_friday_weekly_after(now), DateTimeFormat { long: true, running_text: false });
                             : ")";
                         }
                         li {
-                            : "The EU weekly on Sundays at 15:00 Central European (Summer) Time (next: ";
-                            : format_datetime(next_eu_weekly_after(now), DateTimeFormat { long: true, running_text: false });
+                            : "Saturdays at 20:00 Central European (Summer) Time (next: ";
+                            : format_datetime(next_saturday_weekly_after(now), DateTimeFormat { long: true, running_text: false });
+                            : ")";
+                        }
+                        li {
+                            : "Sundays at 5PM Eastern Time (next: ";
+                            : format_datetime(next_sunday_weekly_after(now), DateTimeFormat { long: true, running_text: false });
                             : ")";
                         }
                     }
@@ -278,4 +295,85 @@ pub(crate) fn enter_form() -> RawHtml<String> {
             }
         }
     }
+}
+
+pub(crate) fn weekly_settings_2024w27() -> serde_json::Map<String, Json> {
+    collect![
+        format!("user_message") => json!("Standard Weekly (2024-07-05)"),
+        format!("bridge") => json!("vanilla"),
+        format!("trials") => json!(0),
+        format!("shuffle_ganon_bosskey") => json!("medallions"),
+        format!("shuffle_mapcompass") => json!("startwith"),
+        format!("enhance_map_compass") => json!(true),
+        format!("open_forest") => json!("closed_deku"),
+        format!("open_kakariko") => json!("open"),
+        format!("open_door_of_time") => json!(true),
+        format!("gerudo_fortress") => json!("fast"),
+        format!("starting_age") => json!("random"),
+        format!("empty_dungeons_mode") => json!("rewards"),
+        format!("empty_dungeons_rewards") => json!([
+            "Kokiri Emerald",
+        ]),
+        format!("empty_dungeons_count") => json!(1),
+        format!("free_bombchu_drops") => json!(false),
+        format!("disabled_locations") => json!([
+            "Deku Theater Mask of Truth",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_fewer_tunic_requirements",
+            "logic_grottos_without_agony",
+            "logic_child_deadhand",
+            "logic_man_on_roof",
+            "logic_dc_jump",
+            "logic_rusted_switches",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_forest_vines",
+            "logic_lens_botw",
+            "logic_lens_castle",
+            "logic_lens_gtg",
+            "logic_lens_shadow",
+            "logic_lens_shadow_platform",
+            "logic_lens_bongo",
+            "logic_lens_spirit",
+            "logic_visible_collisions",
+        ]),
+        format!("starting_equipment") => json!([
+            "deku_shield",
+        ]),
+        format!("starting_inventory") => json!([
+            "ocarina",
+            "zeldas_letter",
+        ]),
+        format!("start_with_consumables") => json!(true),
+        format!("skip_reward_from_rauru") => json!(true),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("fast_bunny_hood") => json!(true),
+        format!("chicken_count") => json!(3),
+        format!("big_poe_count") => json!(1),
+        format!("ruto_already_f1_jabu") => json!(true),
+        format!("correct_chest_appearances") => json!("both"),
+        format!("correct_potcrate_appearances") => json!("textures_content"),
+        format!("hint_dist") => json!("weekly"),
+        format!("misc_hints") => json!([
+            "altar",
+            "ganondorf",
+            "warp_songs_and_owls",
+            "30_skulltulas",
+            "40_skulltulas",
+            "50_skulltulas",
+        ]),
+        format!("blue_fire_arrows") => json!(true),
+        format!("junk_ice_traps") => json!("off"),
+        format!("ice_trap_appearance") => json!("junk_only"),
+        format!("adult_trade_start") => json!([
+            "Prescription",
+            "Eyeball Frog",
+            "Eyedrops",
+            "Claim Check",
+        ]),
+    ]
 }

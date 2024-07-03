@@ -767,7 +767,7 @@ impl Race {
             },
             Series::Standard => match &*event.event {
                 "w" => {
-                    let schedule = RaceSchedule::Live { start: s::next_na_weekly_after(now).to_utc(), end: None, room: None };
+                    let schedule = RaceSchedule::Live { start: s::next_friday_weekly_after(now).to_utc(), end: None, room: None };
                     if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
                         let race = Race {
                             id: Id::new(&mut *transaction).await?,
@@ -776,7 +776,7 @@ impl Race {
                             source: Source::Manual,
                             entrants: Entrants::Open,
                             phase: None,
-                            round: Some(format!("NA Weekly")),
+                            round: Some(format!("Friday Weekly")),
                             game: None,
                             scheduling_thread: None,
                             schedule_updated_at: None,
@@ -793,7 +793,7 @@ impl Race {
                         race.save(&mut *transaction).await?;
                         races.push(race);
                     }
-                    let schedule = RaceSchedule::Live { start: s::next_eu_weekly_after(now).to_utc(), end: None, room: None };
+                    let schedule = RaceSchedule::Live { start: s::next_saturday_weekly_after(now).to_utc(), end: None, room: None };
                     if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
                         let race = Race {
                             id: Id::new(&mut *transaction).await?,
@@ -802,7 +802,33 @@ impl Race {
                             source: Source::Manual,
                             entrants: Entrants::Open,
                             phase: None,
-                            round: Some(format!("EU Weekly")),
+                            round: Some(format!("Saturday Weekly")),
+                            game: None,
+                            scheduling_thread: None,
+                            schedule_updated_at: None,
+                            draft: None,
+                            seed: seed::Data::default(),
+                            video_urls: HashMap::default(),
+                            restreamers: HashMap::default(),
+                            last_edited_by: None,
+                            last_edited_at: None,
+                            ignored: false,
+                            schedule_locked: false,
+                            schedule,
+                        };
+                        race.save(&mut *transaction).await?;
+                        races.push(race);
+                    }
+                    let schedule = RaceSchedule::Live { start: s::next_sunday_weekly_after(now).to_utc(), end: None, room: None };
+                    if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
+                        let race = Race {
+                            id: Id::new(&mut *transaction).await?,
+                            series: event.series,
+                            event: event.event.to_string(),
+                            source: Source::Manual,
+                            entrants: Entrants::Open,
+                            phase: None,
+                            round: Some(format!("Sunday Weekly")),
                             game: None,
                             scheduling_thread: None,
                             schedule_updated_at: None,
@@ -1629,8 +1655,9 @@ fn dtend<Z: TimeZone + IntoIcsTzid>(datetime: DateTime<Z>) -> DtEnd<'static> {
 
 async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, http_client: &reqwest::Client, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
     let now = Utc::now();
-    let mut latest_instantiated_na_weekly = None;
-    let mut latest_instantiated_eu_weekly = None;
+    let mut latest_instantiated_friday_weekly = None;
+    let mut latest_instantiated_saturday_weekly = None;
+    let mut latest_instantiated_sunday_weekly = None;
     for race in Race::for_event(transaction, http_client, event).await?.into_iter() {
         for race_event in race.cal_events() {
             if let Some(start) = race_event.start() {
@@ -1736,27 +1763,37 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                 cal.add_event(cal_event);
                 if let (Series::Standard, "w", Some(round)) = (event.series, &*event.event, &race.round) {
                     match &**round {
-                        "NA Weekly" => latest_instantiated_na_weekly = Some(start),
-                        "EU Weekly" => latest_instantiated_eu_weekly = Some(start),
+                        "Friday Weekly" => latest_instantiated_friday_weekly = Some(start),
+                        "Saturday Weekly" => latest_instantiated_saturday_weekly = Some(start),
+                        "Sunday Weekly" => latest_instantiated_sunday_weekly = Some(start),
                         _ => {}
                     }
                 }
             }
         }
     }
-    if let Some(latest_instantiated_na_weekly) = latest_instantiated_na_weekly {
-        let mut cal_event = ics::Event::new("weekly-na@midos.house", dtstamp(now));
-        cal_event.push(Summary::new("NA Weekly"));
-        let start = s::next_na_weekly_after(latest_instantiated_na_weekly);
+    if let Some(latest_instantiated_friday_weekly) = latest_instantiated_friday_weekly {
+        let mut cal_event = ics::Event::new("weekly-fri@midos.house", dtstamp(now));
+        cal_event.push(Summary::new("Friday Weekly"));
+        let start = s::next_friday_weekly_after(latest_instantiated_friday_weekly);
         cal_event.push(dtstart(start));
         cal_event.push(dtend(start + TimeDelta::hours(3) + TimeDelta::minutes(30)));
         cal_event.push(RRule::new("FREQ=WEEKLY"));
         cal.add_event(cal_event);
     }
-    if let Some(latest_instantiated_eu_weekly) = latest_instantiated_eu_weekly {
-        let mut cal_event = ics::Event::new("weekly-eu@midos.house", dtstamp(now));
-        cal_event.push(Summary::new("EU Weekly"));
-        let start = s::next_eu_weekly_after(latest_instantiated_eu_weekly);
+    if let Some(latest_instantiated_saturday_weekly) = latest_instantiated_saturday_weekly {
+        let mut cal_event = ics::Event::new("weekly-sat@midos.house", dtstamp(now));
+        cal_event.push(Summary::new("Saturday Weekly"));
+        let start = s::next_saturday_weekly_after(latest_instantiated_saturday_weekly);
+        cal_event.push(dtstart(start));
+        cal_event.push(dtend(start + TimeDelta::hours(3) + TimeDelta::minutes(30)));
+        cal_event.push(RRule::new("FREQ=WEEKLY"));
+        cal.add_event(cal_event);
+    }
+    if let Some(latest_instantiated_sunday_weekly) = latest_instantiated_sunday_weekly {
+        let mut cal_event = ics::Event::new("weekly-sun@midos.house", dtstamp(now));
+        cal_event.push(Summary::new("Sunday Weekly"));
+        let start = s::next_sunday_weekly_after(latest_instantiated_sunday_weekly);
         cal_event.push(dtstart(start));
         cal_event.push(dtend(start + TimeDelta::hours(3) + TimeDelta::minutes(30)));
         cal_event.push(RRule::new("FREQ=WEEKLY"));
