@@ -1097,7 +1097,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     )).await?;
                                     return Ok(())
                                 }
-                                let game = interaction.data.options.get(1).map(|option| match option.value {
+                                let game = interaction.data.options.get(0).map(|option| match option.value {
                                     CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
                                     _ => panic!("unexpected slash command option type"),
                                 });
