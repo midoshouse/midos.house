@@ -741,6 +741,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
         match (data.series, &*data.event) {
             (Series::BattleRoyale, "1") => ohko::enter_form(),
             (Series::Standard, "7") => s::enter_form(),
+            (Series::Standard, "w") => s::weeklies_enter_form(me.as_ref()),
             _ => match data.team_config {
                 TeamConfig::Solo => {
                     if let Some(Flow { ref requirements }) = data.enter_flow {
