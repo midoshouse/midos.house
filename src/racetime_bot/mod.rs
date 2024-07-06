@@ -528,8 +528,8 @@ impl Goal {
             Self::MultiworldS4 => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 199)),
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
             Self::Pic7 => VersionedBranch::Custom { github_username: "fenhl", branch: "frogs2-melody" },
-            Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl),
-            Self::Sgl2024 => VersionedBranch::Latest(rando::Branch::Sgl),
+            Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl2023),
+            Self::Sgl2024 => VersionedBranch::Latest(rando::Branch::Sgl2024),
             Self::SongsOfHope => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::StandardRuleset => VersionedBranch::Latest(rando::Branch::Dev), //TODO allow organizers to configure this
             Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
