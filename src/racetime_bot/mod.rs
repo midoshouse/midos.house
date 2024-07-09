@@ -4368,6 +4368,10 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                         (None, None) => None,
                     };
                     let mut msg = MessageBuilder::default();
+                    if let (Series::Standard, "w") = (event.series, &*event.event) {
+                        msg.mention(&RoleId::new(640750480246571014)); // @Standard
+                        msg.push(' ');
+                    }
                     msg.push("race starting ");
                     msg.push_timestamp(cal_event.start().expect("opening room for official race without start time"), serenity_utils::message::TimestampStyle::Relative);
                     msg.push(": ");
