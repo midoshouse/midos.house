@@ -1204,6 +1204,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             )).await?;
                                             transaction.rollback().await?;
                                         } else {
+                                            let was_scheduled = !matches!(race.schedule, RaceSchedule::Unscheduled);
                                             race.schedule.set_live_start(start);
                                             race.schedule_updated_at = Some(Utc::now());
                                             race.save(&mut transaction).await?;
@@ -1231,7 +1232,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     } else {
                                                         let response_content = MessageBuilder::default()
                                                             .push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") })
-                                                            .push(" is now scheduled for ")
+                                                            .push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " })
                                                             .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
                                                             .push(". The race room will be opened momentarily.")
                                                             .build();
@@ -1256,7 +1257,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     } else {
                                                         MessageBuilder::default()
                                                             .push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") })
-                                                            .push(" is now scheduled for ")
+                                                            .push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " })
                                                             .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
                                                             .push('.')
                                                             .build()
@@ -1334,6 +1335,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             )).await?;
                                             transaction.rollback().await?;
                                         } else {
+                                            let was_scheduled = !matches!(race.schedule, RaceSchedule::Unscheduled);
                                             let kind = match race.entrants {
                                                 Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
                                                     if team.as_ref().map_or(false, |team| team1 == team) {
@@ -1421,7 +1423,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         let response_content = MessageBuilder::default()
                                                             .push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " })
                                                             .push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") })
-                                                            .push(" is now scheduled for ")
+                                                            .push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " })
                                                             .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
                                                             .push(". The race room will be opened momentarily.")
                                                             .build();
@@ -1447,7 +1449,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         MessageBuilder::default()
                                                             .push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " })
                                                             .push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") })
-                                                            .push(" is now scheduled for ")
+                                                            .push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " })
                                                             .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
                                                             .push('.')
                                                             .build()
