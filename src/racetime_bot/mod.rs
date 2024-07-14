@@ -4361,6 +4361,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                     msg.push('>');
                     msg.build()
                 } else {
+                    let is_weekly = event.series == Series::Standard && event.event == "w";
                     let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
                         (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
                         (Some(phase), None) => Some(phase.clone()),
@@ -4368,7 +4369,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                         (None, None) => None,
                     };
                     let mut msg = MessageBuilder::default();
-                    if let (Series::Standard, "w") = (event.series, &*event.event) {
+                    if is_weekly {
                         msg.mention(&RoleId::new(640750480246571014)); // @Standard
                         msg.push(' ');
                     }
@@ -4413,9 +4414,14 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                         msg.push(", game ");
                         msg.push(game.to_string());
                     }
-                    msg.push(" <");
+                    msg.push(' ');
+                    if !is_weekly {
+                        msg.push('<');
+                    }
                     msg.push(room_url);
-                    msg.push('>');
+                    if !is_weekly {
+                        msg.push('>');
+                    }
                     msg.build()
                 }
             };
