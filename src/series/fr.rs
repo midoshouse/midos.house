@@ -113,10 +113,10 @@ pub(crate) const S4_SETTINGS: [Setting; 27] = [
     Setting { name: "1major", display: "1 major item per dungeon", default: "off", default_display: "no major items per dungeon restriction", other: &[("on", false, "1 major item per dungeon")], description: "1major: off (défaut) ou on" },
     Setting { name: "dungeon-er", display: "dungeon ER", default: "off", default_display: "no dungeon ER", other: &[("on", false, "dungeon ER")], description: "dungeon-er: off (défaut), on ou mixed" },
     Setting { name: "songs", display: "songs", default: "songs", default_display: "songs on songs", other: &[("anywhere", false, "songsanity anywhere"), ("dungeon", true, "songsanity dungeon rewards")], description: "songs: songs (défaut), anywhere ou dungeon (difficile)" },
-    Setting { name: "souls", display: "enemy souls", default: "off", default_display: "no enemy souls", other: &[("bosses", false, "boss souls"), ("all", true, "all enemy souls")], description: "souls: off (défaut), bosses ou all (difficile)" },
+    Setting { name: "souls", display: "enemy souls", default: "off", default_display: "no enemy souls", other: &[("bosses", false, "boss souls"), ("all-anywhere", true, "all enemy souls (anywhere)"), ("all-regional", true, "all enemy souls (regional)")], description: "souls: off (défaut), bosses, all-anywhere (difficile) ou all-regional (difficile)" },
     Setting { name: "itempool", display: "item pool", default: "balanced", default_display: "balanced item pool", other: &[("minimal", true, "minimal item pool"), ("scarce", true, "scarce item pool")], description: "itempool: balanced (défaut), minimal (difficile) ou scarce (difficile)" },
     Setting { name: "shortcuts", display: "shortcuts", default: "off", default_display: "no shortcuts", other: &[("random", true, "random shortcuts")], description: "shortcuts: off (défaut) ou on (difficile)" },
-    Setting { name: "keysanity", display: "keysanity", default: "off", default_display: "own dungeon small keys", other: &[("on", true, "small keys anywhere"), ("keyrings", true, "keyrings anywhere")], description: "keysanity: off (défaut), on (difficile) ou keyrings (difficile)" },
+    Setting { name: "keysanity", display: "keysanity", default: "off", default_display: "own dungeon small keys", other: &[("on", true, "small keys anywhere"), ("keyrings-anywhere", false, "keyrings anywhere"), ("keyrings-regional", false, "keyrings regional")], description: "keysanity: off (défaut), on (difficile), keyrings-anywhere ou keyrings-regional" },
     Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("random", true, "random trials")], description: "trials: 0 (défaut) ou random (difficile)" },
     Setting { name: "mixed-er", display: "mixed ER", default: "off", default_display: "no mixed ER", other: &[("on", true, "mixed ER")], description: "mixed-er: off (défaut) ou on (difficile: intérieurs et grottos mixés)" },
     Setting { name: "reachable", display: "reachable locations", default: "all", default_display: "all locations reachable", other: &[("required", true, "required only")], description: "reachable: all (défaut) ou required (difficile)" },
@@ -537,11 +537,12 @@ pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map
         } else {
             match keysanity {
                 "off" => json!("dungeon"),
-                "on" | "keyrings" => json!("keysanity"),
+                "keyrings-regional" => json!("regional"),
+                "on" | "keyrings-anywhere" => json!("keysanity"),
                 _ => unreachable!(),
             }
         },
-        format!("key_rings_choice") => if keysanity == "keyrings" {
+        format!("key_rings_choice") => if let "keyrings-regional" | "keyrings-anywhere" = keysanity {
             json!("all")
         } else {
             json!("off")
@@ -618,7 +619,13 @@ pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map
         format!("shuffle_cows") => json!(cows == "on"),
         format!("shuffle_ocarinas") => json!(ocarina == "shuffle"),
         format!("shuffle_gerudo_card") => json!(card == "shuffle"),
-        format!("shuffle_enemy_spawns") => json!(souls),
+        format!("shuffle_enemy_spawns") => match souls {
+            "off" => json!("off"),
+            "bosses" => json!("bosses"),
+            "all-anywhere" => json!("all"),
+            "all-regional" => json!("regional"),
+            _ => unreachable!(),
+        },
         format!("disabled_locations") => json!([
             "Deku Theater Skull Mask",
             "Deku Theater Mask of Truth",
@@ -644,9 +651,11 @@ pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map
             "logic_lens_gtg",
             "logic_lens_castle",
         ]),
-        format!("starting_equipment") => json!([
-            "deku_shield",
-        ]),
+        format!("starting_equipment") => if start_weirdegg == "vanilla-shuffle" {
+            json!([])
+        } else {
+            json!(["deku_shield"])
+        },
         format!("starting_inventory") => json!(starting_inventory),
         format!("start_with_consumables") => json!(start_weirdegg != "vanilla-shuffle"),
         format!("start_with_rupees") => json!(shops == "random"),

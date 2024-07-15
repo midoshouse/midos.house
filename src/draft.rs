@@ -710,7 +710,7 @@ impl Draft {
                 let all_settings = match kind {
                     Kind::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
                     Kind::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
-                    _ => unreachable!(),
+                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::S7 => unreachable!(),
                 };
                 if let Some(went_first) = self.went_first {
                     let mut pick_count = self.pick_count(kind);
@@ -719,14 +719,14 @@ impl Draft {
                         // chosen by the same team that chose the previous setting
                         pick_count -= 1;
                     }
-                    let team = match (pick_count, went_first) {
-                        (0, true) | (1, false) | (2, true) | (3, false) | (4, false) | (5, true) | (6, true) | (7, false) | (8, true) | (9, false) => Team::HighSeed,
-                        (0, false) | (1, true) | (2, false) | (3, true) | (4, true) | (5, false) | (6, false) | (7, true) | (8, false) | (9, true) => Team::LowSeed,
-                        (10.., _) => return Ok(Step {
+                    let team = match (kind, pick_count, went_first) {
+                        (_, 0, true) | (_, 1, false) | (_, 2, true) | (_, 3, false) | (_, 4, false) | (_, 5, true) | (_, 6, true) | (_, 7, false) | (Kind::TournoiFrancoS3, 8, true) | (Kind::TournoiFrancoS3, 9, false) => Team::HighSeed,
+                        (_, 0, false) | (_, 1, true) | (_, 2, false) | (_, 3, true) | (_, 4, true) | (_, 5, false) | (_, 6, false) | (_, 7, true) | (Kind::TournoiFrancoS3, 8, false) | (Kind::TournoiFrancoS3, 9, true) => Team::LowSeed,
+                        (Kind::TournoiFrancoS3, 10.., _) | (Kind::TournoiFrancoS4, 8.., _) => return Ok(Step {
                             kind: StepKind::Done(match kind {
                                 Kind::TournoiFrancoS3 => fr::resolve_s3_draft_settings(&self.settings),
                                 Kind::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&self.settings),
-                                _ => unreachable!(),
+                                Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::S7 => unreachable!(),
                             }),
                             message: match msg_ctx {
                                 MessageContext::None => String::default(),
@@ -734,6 +734,7 @@ impl Draft {
                                 MessageContext::RaceTime { .. } => fr::display_draft_picks(all_settings, &self.settings),
                             },
                         }),
+                        (Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::S7, _, _) => unreachable!(),
                     };
                     if select_mixed_dungeons {
                         Step {
@@ -812,9 +813,14 @@ impl Draft {
                                 }
                             }
                             n @ 2..=9 => {
+                                let round_count = match kind {
+                                    Kind::TournoiFrancoS3 => 10,
+                                    Kind::TournoiFrancoS4 => 8,
+                                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::S7 => unreachable!(),
+                                };
                                 let hard_settings_ok = self.settings.get("hard_settings_ok").map(|hard_settings_ok| &**hard_settings_ok).unwrap_or("no") == "ok";
-                                let can_ban = n < 8 || self.settings.get(team.choose("high_seed_has_picked", "low_seed_has_picked")).map(|has_picked| &**has_picked).unwrap_or("no") == "yes";
-                                let skippable = n == 9 && can_ban;
+                                let can_ban = n < round_count - 2 || self.settings.get(team.choose("high_seed_has_picked", "low_seed_has_picked")).map(|has_picked| &**has_picked).unwrap_or("no") == "yes";
+                                let skippable = n == round_count - 1 && can_ban;
                                 let (hard_settings, classic_settings) = all_settings.iter()
                                     .filter(|&&fr::Setting { name, .. }| !self.settings.contains_key(name))
                                     .filter_map(|&fr::Setting { name, display, default, default_display, other, description }| {
@@ -849,26 +855,8 @@ impl Draft {
                                             let (mut high_seed, mut low_seed) = teams.iter().partition::<Vec<_>, _>(|team| team.id == self.high_seed);
                                             let high_seed = high_seed.remove(0);
                                             let low_seed = low_seed.remove(0);
-                                            match n {
-                                                2 | 7 | 8 => MessageBuilder::default()
-                                                    .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                    .push(" : Choisissez un setting en utilisant ")
-                                                    .mention_command(command_ids.draft.unwrap(), "draft")
-                                                    .push('.')
-                                                    .build(),
-                                                3 | 5 => MessageBuilder::default()
-                                                    .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                    .push(" : Choisissez un setting avec ")
-                                                    .mention_command(command_ids.draft.unwrap(), "draft")
-                                                    .push(". Vous aurez un autre pick après celui-ci.")
-                                                    .build(),
-                                                4 | 6 => MessageBuilder::default()
-                                                    .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                    .push(" : Choisissez votre second setting avec ")
-                                                    .mention_command(command_ids.draft.unwrap(), "draft")
-                                                    .push('.')
-                                                    .build(),
-                                                9 => {
+                                            match (kind, n) {
+                                                (_, 9) | (Kind::TournoiFrancoS4, 7) => {
                                                     let mut builder = MessageBuilder::default();
                                                     builder.mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
                                                     builder.push(" : Choisissez un setting avec ");
@@ -881,17 +869,35 @@ impl Draft {
                                                     }
                                                     builder.build()
                                                 }
-                                                0..=1 | 10.. => unreachable!(),
+                                                (_, 2 | 7 | 8) => MessageBuilder::default()
+                                                    .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                    .push(" : Choisissez un setting en utilisant ")
+                                                    .mention_command(command_ids.draft.unwrap(), "draft")
+                                                    .push('.')
+                                                    .build(),
+                                                (_, 3 | 5) => MessageBuilder::default()
+                                                    .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                    .push(" : Choisissez un setting avec ")
+                                                    .mention_command(command_ids.draft.unwrap(), "draft")
+                                                    .push(". Vous aurez un autre pick après celui-ci.")
+                                                    .build(),
+                                                (_, 4 | 6) => MessageBuilder::default()
+                                                    .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                    .push(" : Choisissez votre second setting avec ")
+                                                    .mention_command(command_ids.draft.unwrap(), "draft")
+                                                    .push('.')
+                                                    .build(),
+                                                (_, 0..=1 | 10..) => unreachable!(),
                                             }
                                         }
-                                        MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => match n {
-                                            2 => format!("{}, choisissez un setting avec “!draft <setting> <configuration>”. <configuration> signifie la valeur du setting. Par exemple pour tokensanity, la configuration peut être {{all, dungeon, overworld}}.", team.choose(high_seed_name, low_seed_name)),
-                                            3 | 5 => format!("{}, choisissez deux settings. Quel est votre premier ?", team.choose(high_seed_name, low_seed_name)),
-                                            4 | 6 => format!("Et votre second ?"),
-                                            7 | 8 => format!("{}, choisissez un setting.", team.choose(high_seed_name, low_seed_name)),
-                                            9 if skippable => format!("{}, choisissez le dernier setting. Vous pouvez également utiliser “!skip” si vous voulez laisser les settings comme ils sont.", team.choose(high_seed_name, low_seed_name)),
-                                            9 => format!("{}, choisissez votre dernier setting.", team.choose(high_seed_name, low_seed_name)),
-                                            0..=1 | 10.. => unreachable!(),
+                                        MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => match (kind, n) {
+                                            (Kind::TournoiFrancoS4, 7) | (_, 9) if skippable => format!("{}, choisissez le dernier setting. Vous pouvez également utiliser “!skip” si vous voulez laisser les settings comme ils sont.", team.choose(high_seed_name, low_seed_name)),
+                                            (Kind::TournoiFrancoS4, 7) | (_, 9) => format!("{}, choisissez votre dernier setting.", team.choose(high_seed_name, low_seed_name)),
+                                            (_, 2) => format!("{}, choisissez un setting avec “!draft <setting> <configuration>”. <configuration> signifie la valeur du setting. Par exemple pour tokensanity, la configuration peut être {{all, dungeon, overworld}}.", team.choose(high_seed_name, low_seed_name)),
+                                            (_, 3 | 5) => format!("{}, choisissez deux settings. Quel est votre premier ?", team.choose(high_seed_name, low_seed_name)),
+                                            (_, 4 | 6) => format!("Et votre second ?"),
+                                            (_, 7 | 8) => format!("{}, choisissez un setting.", team.choose(high_seed_name, low_seed_name)),
+                                            (_, 0..=1 | 10..) => unreachable!(),
                                         },
                                     },
                                 }
@@ -1702,7 +1708,7 @@ impl Draft {
                 let all_settings = match kind {
                     Kind::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
                     Kind::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
-                    _ => unreachable!(),
+                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::S7 => unreachable!(),
                 };
                 let resolved_action = match action {
                     Action::Ban { setting } => if let Some(setting) = all_settings.iter().find(|&&fr::Setting { name, .. }| *name == setting) {
