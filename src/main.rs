@@ -21,6 +21,7 @@ use {
 mod api;
 mod auth;
 mod cal;
+mod challonge;
 mod config;
 mod discord_bot;
 mod draft;

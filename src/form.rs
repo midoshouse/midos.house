@@ -12,7 +12,7 @@ pub(crate) struct EmptyForm {
 
 fn render_form_error(error: &form::Error<'_>) -> RawHtml<String> {
     html! {
-        p(class = "error") : error.to_string();
+        p(class = "error") : error;
     }
 }
 
@@ -20,7 +20,7 @@ pub(crate) fn form_field(name: &str, errors: &mut Vec<&form::Error<'_>>, content
     let field_errors;
     (field_errors, *errors) = mem::take(errors).into_iter().partition(|error| error.is_for(name));
     html! {
-        fieldset(class? = (!field_errors.is_empty()).then(|| "error")) {
+        fieldset(class? = (!field_errors.is_empty()).then_some("error")) {
             @for error in field_errors {
                 : render_form_error(error);
             }

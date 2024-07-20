@@ -3,15 +3,13 @@ use {
         Stream,
         StreamExt as _,
     },
+    hyper::header::{
+        CONTENT_DISPOSITION,
+        LINK,
+    },
     rocket::{
         fs::NamedFile,
-        http::{
-            Header,
-            hyper::header::{
-                CONTENT_DISPOSITION,
-                LINK,
-            },
-        },
+        http::Header,
         response::content::RawJson,
         uri,
     },
@@ -21,6 +19,9 @@ use {
 
 #[cfg(unix)] pub(crate) const DIR: &str = "/var/www/midos.house/seed";
 #[cfg(windows)] pub(crate) const DIR: &str = "C:/Users/fenhl/games/zelda/oot/midos-house-seeds";
+
+/// ootrandomizer.com seeds are deleted after 60 days (https://discord.com/channels/274180765816848384/1248210891636342846/1257367685658837126)
+const WEB_TIMEOUT: TimeDelta = TimeDelta::days(60);
 
 pub(crate) trait HashIconExt {
     fn to_html(&self) -> RawHtml<String>;
@@ -142,7 +143,7 @@ impl Data {
         if_chain! {
             if self.file_hash.is_none() || match self.files {
                 Some(Files::MidosHouse { .. }) => true,
-                Some(Files::OotrWeb { gen_time, .. }) => gen_time <= now - TimeDelta::days(90),
+                Some(Files::OotrWeb { gen_time, .. }) => gen_time <= now - WEB_TIMEOUT,
                 Some(Files::TriforceBlitz { .. }) => false,
                 Some(Files::TfbSotd { .. }) => false,
                 None => false,
@@ -245,9 +246,8 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
                 a(class = "button", href = add_hash_url.to_string()) : "Add";
             }
         }
-        // ootrandomizer.com seeds are deleted after 90 days
         @match seed.files {
-            Some(Files::OotrWeb { id, gen_time, .. }) if gen_time > now - TimeDelta::days(90) => td(colspan? = spoiler_logs.then_some("2")) {
+            Some(Files::OotrWeb { id, gen_time, .. }) if gen_time > now - WEB_TIMEOUT => td(colspan? = spoiler_logs.then_some("2")) {
                 a(href = format!("https://ootrandomizer.com/seed/get?id={id}")) : "View";
             }
             Some(Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem, .. }) => {

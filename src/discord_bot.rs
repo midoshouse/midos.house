@@ -896,7 +896,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_scheduling_channel = $1 AND end_time IS NULL"#, PgSnowflake(parent_channel) as _).fetch_optional(&mut *transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
                                 match event.match_source() {
-                                    MatchSource::Manual | MatchSource::StartGG(_) => {} //TODO automate for start.gg
+                                    MatchSource::Manual | MatchSource::Challonge { .. } => {}
+                                    MatchSource::StartGG(_) => {} //TODO automate
                                     MatchSource::League => {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)

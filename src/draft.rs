@@ -1,6 +1,16 @@
 use {
+    std::cmp::{
+        max_by_key,
+        min_by_key,
+    },
     serde_json::Value as Json,
-    crate::prelude::*,
+    crate::{
+        event::teams::{
+            self,
+            SignupsTeam,
+        },
+        prelude::*,
+    },
 };
 
 pub(crate) type Picks = HashMap<Cow<'static, str>, Cow<'static, str>>;
@@ -177,19 +187,71 @@ pub(crate) struct Draft {
 }
 
 impl Draft {
-    pub(crate) async fn new(transaction: &mut Transaction<'_, Postgres>, kind: Kind, high_seed: Id<Teams>, low_seed: Id<Teams>) -> sqlx::Result<Self> {
+    pub(crate) async fn for_game1(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, kind: Kind, event: &event::Data<'_>, phase: Option<&str>, [team1, team2]: [&team::Team; 2]) -> Result<Self, cal::Error> {
+        let [high_seed, low_seed] = match kind {
+            Kind::S7 => [
+                min_by_key(team1, team2, |team| team.qualifier_rank).id,
+                max_by_key(team1, team2, |team| team.qualifier_rank).id,
+            ],
+            Kind::MultiworldS3 | Kind::MultiworldS4 => if phase.is_some_and(|phase| phase == "Top 8") {
+                let seeding = [
+                    Id::from(8429274534302278572_u64), // Anju's Secret
+                    Id::from(12142947927479333421_u64), // ADD
+                    Id::from(5548902498821246494_u64), // Donutdog!!! Wuff! Wuff!
+                    Id::from(7622448514297787774_u64), // Snack Pack
+                    Id::from(13644615382444869291_u64), // The Highest Gorons
+                    Id::from(4984265622447250649_u64), // Bongo Akimbo
+                    Id::from(592664405695569367_u64), // The Jhegsons
+                    Id::from(14405144517033747435_u64), // Pandora's Brot
+                ];
+                let mut team_ids = [team1.id, team2.id];
+                team_ids.sort_unstable_by_key(|team| seeding.iter().position(|iter_team| iter_team == team));
+                team_ids
+            } else {
+                let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
+                    show_times: event.show_qualifier_times && event.is_started(&mut *transaction).await?,
+                };
+                let signups = teams::signups_sorted(&mut *transaction, http_client, None, event, qualifier_kind).await?;
+                let SignupsTeam { members: members1, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| team == team1)).expect("match with team that didn't sign up");
+                let SignupsTeam { members: members2, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| team == team2)).expect("match with team that didn't sign up");
+                let avg1 = members1.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members1.len()).expect("too many team members"));
+                let avg2 = members2.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members2.len()).expect("too many team members"));
+                match [avg1, avg2] {
+                    [Some(_), None] => [team1.id, team2.id],
+                    [None, Some(_)] => [team2.id, team1.id],
+                    [Some(avg1), Some(avg2)] if avg1 < avg2 => [team1.id, team2.id],
+                    [Some(avg1), Some(avg2)] if avg1 > avg2 => [team2.id, team1.id],
+                    _ => {
+                        // tie broken by coin flip
+                        let mut team_ids = [team1.id, team2.id];
+                        team_ids.shuffle(&mut thread_rng());
+                        team_ids
+                    }
+                }
+            },
+            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => {
+                let mut team_ids = [team1.id, team2.id];
+                team_ids.shuffle(&mut thread_rng());
+                team_ids
+            }
+        };
+        Ok(Self::for_next_game(transaction, kind, high_seed, low_seed).await?)
+    }
+
+    pub(crate) async fn for_next_game(transaction: &mut Transaction<'_, Postgres>, kind: Kind, loser: Id<Teams>, winner: Id<Teams>) -> sqlx::Result<Self> {
         Ok(Self {
+            high_seed: loser,
             went_first: None,
             skipped_bans: 0,
             settings: match kind {
                 Kind::S7 => HashMap::default(),
                 // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
                 Kind::MultiworldS3 | Kind::MultiworldS4 => HashMap::from_iter(
-                    (high_seed == Id::from(17814073240662869290_u64) || low_seed == Id::from(17814073240662869290_u64))
+                    (loser == Id::from(17814073240662869290_u64) || winner == Id::from(17814073240662869290_u64))
                         .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
                 ),
                 Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => {
-                    let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", high_seed as _, low_seed as _).fetch_all(&mut **transaction).await?;
+                    let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", loser as _, winner as _).fetch_all(&mut **transaction).await?;
                     let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
                     let mq_ok = team_rows.iter().all(|row| row.mq_ok);
                     collect![as HashMap<_, _>:
@@ -198,7 +260,6 @@ impl Draft {
                     ]
                 }
             },
-            high_seed,
         })
     }
 

@@ -1,8 +1,4 @@
 use {
-    std::cmp::{
-        max_by_key,
-        min_by_key,
-    },
     ics::{
         ICalendar,
         parameters::TzIDParam,
@@ -24,13 +20,7 @@ use {
     },
     crate::{
         discord_bot,
-        event::{
-            Tab,
-            teams::{
-                self,
-                SignupsTeam,
-            },
-        },
+        event::Tab,
         prelude::*,
     },
 };
@@ -38,6 +28,9 @@ use {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Source {
     Manual,
+    Challonge {
+        id: String,
+    },
     League {
         id: i32,
     },
@@ -332,6 +325,7 @@ impl Race {
         let row = sqlx::query!(r#"SELECT
             series AS "series: Series",
             event,
+            challonge_match,
             league_id,
             sheet_timestamp,
             startgg_event,
@@ -391,7 +385,9 @@ impl Race {
             ignored,
             schedule_locked
         FROM races WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await?;
-        let source = if let Some(id) = row.league_id {
+        let source = if let Some(id) = row.challonge_match {
+            Source::Challonge { id }
+        } else if let Some(id) = row.league_id {
             Source::League { id }
         } else if let Some(timestamp) = row.sheet_timestamp {
             Source::Sheet { timestamp }
@@ -535,13 +531,15 @@ impl Race {
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
         async fn update_race(transaction: &mut Transaction<'_, Postgres>, found_race: &mut Race, race: Race) -> sqlx::Result<()> {
             if found_race.source != race.source { //TODO temporary code to add source data to existing races, remove once this has been applied
-                let (league_id, sheet_timestamp, startgg_event, startgg_set) = match race.source {
-                    Source::Manual => (None, None, None, None),
-                    Source::League { id } => (Some(id), None, None, None),
-                    Source::Sheet { timestamp } => (None, Some(timestamp), None, None),
-                    Source::StartGG { ref event, ref set } => (None, None, Some(event), Some(set)),
+                let (challonge_match, league_id, sheet_timestamp, startgg_event, startgg_set) = match race.source {
+                    Source::Manual => (None, None, None, None, None),
+                    Source::Challonge { id } => (Some(id), None, None, None, None),
+                    Source::League { id } => (None, Some(id), None, None, None),
+                    Source::Sheet { timestamp } => (None, None, Some(timestamp), None, None),
+                    Source::StartGG { ref event, ref set } => (None, None, None, Some(event), Some(set)),
                 };
-                sqlx::query!("UPDATE races SET league_id = $1, sheet_timestamp = $2, startgg_event = $3, startgg_set = $4 WHERE id = $5",
+                sqlx::query!("UPDATE races SET challonge_match = $1, league_id = $2, sheet_timestamp = $3, startgg_event = $4, startgg_set = $5 WHERE id = $6",
+                    challonge_match,
                     league_id,
                     sheet_timestamp,
                     startgg_event,
@@ -1181,11 +1179,12 @@ impl Race {
     }
 
     pub(crate) async fn save(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
-        let (league_id, sheet_timestamp, startgg_event, startgg_set) = match self.source {
-            Source::Manual => (None, None, None, None),
-            Source::League { id } => (Some(id), None, None, None),
-            Source::Sheet { timestamp } => (None, Some(timestamp), None, None),
-            Source::StartGG { ref event, ref set } => (None, None, Some(event), Some(set)),
+        let (challonge_match, league_id, sheet_timestamp, startgg_event, startgg_set) = match self.source {
+            Source::Manual => (None, None, None, None, None),
+            Source::Challonge { ref id } => (Some(id), None, None, None, None),
+            Source::League { id } => (None, Some(id), None, None, None),
+            Source::Sheet { timestamp } => (None, None, Some(timestamp), None, None),
+            Source::StartGG { ref event, ref set } => (None, None, None, Some(event), Some(set)),
         };
         let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
         let (start, [async_start1, async_start2, async_start3], end, [async_end1, async_end2, async_end3], room, [async_room1, async_room2, async_room3]) = match self.schedule {
@@ -1201,10 +1200,10 @@ impl Race {
             None => (None, None, None, None, None),
         };
         sqlx::query!("
-            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3)
-            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,            $29,            $30,       $31,   $32,   $33, $34,           $35,               $36,   $37,      $38,      $39,          $40,        $41,           $42,                     $43,          $44,           $45,       $46,       $47,        $48,        $49,   $50,                 $51,          $52,           $53,             $54,       $55,         $56,         $57,          $58,         $59       )
-            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3)
-            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,            $29,            $30,       $31,   $32,   $33, $34,           $35,               $36,   $37,      $38,      $39,          $40,        $41,           $42,                     $43,          $44,           $45,       $46,       $47,        $48,        $49,   $50,                 $51,          $52,           $53,             $54,       $55,         $56,         $57,          $58,         $59       )
+            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match)
+            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,            $29,            $30,       $31,   $32,   $33, $34,           $35,               $36,   $37,      $38,      $39,          $40,        $41,           $42,                     $43,          $44,           $45,       $46,       $47,        $48,        $49,   $50,                 $51,          $52,           $53,             $54,       $55,         $56,         $57,          $58,         $59,        $60            )
+            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match)
+            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,            $29,            $30,       $31,   $32,   $33, $34,           $35,               $36,   $37,      $38,      $39,          $40,        $41,           $42,                     $43,          $44,           $45,       $46,       $47,        $48,        $49,   $50,                 $51,          $52,           $53,             $54,       $55,         $56,         $57,          $58,         $59,        $60            )
         ",
             startgg_set as _,
             start,
@@ -1265,6 +1264,7 @@ impl Race {
             async_start3,
             async_room3.map(|url| url.to_string()),
             async_end3,
+            challonge_match,
         ).execute(&mut **transaction).await?;
         Ok(())
     }
@@ -1494,6 +1494,8 @@ pub(crate) enum Error {
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("no team with this ID")]
     UnknownTeam,
+    #[error("Challonge team ID {0} is not associated with a Mido's House team")]
+    UnknownTeamChallonge(String),
     #[error("start.gg team ID {0} is not associated with a Mido's House team")]
     UnknownTeamStartGG(startgg::ID),
 }
@@ -1520,6 +1522,7 @@ impl IsNetworkError for Error {
             Self::Url(_) => false,
             Self::Wheel(e) => e.is_network_error(),
             Self::UnknownTeam => false,
+            Self::UnknownTeamChallonge(_) => false,
             Self::UnknownTeamStartGG(_) => false,
         }
     }
@@ -1998,18 +2001,13 @@ pub(crate) struct CreateRaceForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/new", data = "<form>")]
-pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if !event.organizers(&mut transaction).await?.contains(&me) {
         form.context.push_error(form::Error::validation("You must be an organizer of this event to add a race."));
-    }
-    match event.match_source() {
-        MatchSource::Manual => {}
-        MatchSource::League => form.context.push_error(form::Error::validation("This event's races are generated automatically from league.ootrandomizer.com and cannot be edited manually. Please contact Fenhl if a race needs to be added that's not listed at league.ootrandomizer.com.")),
-        MatchSource::StartGG(_) => {} // allow adding tiebreakers which aren't tracked by start.gg
     }
     Ok(if let Some(ref value) = form.value {
         let team1 = Team::from_id(&mut transaction, value.team1).await?;
@@ -2060,19 +2058,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
             let draft = if team3.is_some() {
                 None
             } else if let Some(draft_kind) = event.draft_kind() {
-                let [high_seed, low_seed] = match draft_kind {
-                    draft::Kind::S7 => [
-                        min_by_key(&team1, &team2, |team| team.qualifier_rank).id,
-                        max_by_key(&team1, &team2, |team| team.qualifier_rank).id,
-                    ],
-                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => [team1.id, team2.id],
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => {
-                        let mut team_ids = [team1.id, team2.id];
-                        team_ids.shuffle(&mut thread_rng());
-                        team_ids
-                    }
-                };
-                Some(Draft::new(&mut transaction, draft_kind, high_seed, low_seed).await?)
+                Some(Draft::for_game1(&mut transaction, http_client, draft_kind, &event, phase.as_deref(), [&team1, &team2]).await?)
             } else {
                 None
             };
@@ -2125,24 +2111,13 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
     })
 }
 
-enum ImportSkipReason {
-    Exists,
-    Preview,
-    Slots,
-    Participants,
-    SetGamesType,
-}
-
-impl fmt::Display for ImportSkipReason {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Exists => write!(f, "already exists"),
-            Self::Preview => write!(f, "is a preview"),
-            Self::Slots => write!(f, "no match on slots"),
-            Self::Participants => write!(f, "no match on participants"),
-            Self::SetGamesType => write!(f, "unknown games type"),
-        }
-    }
+pub(crate) struct RaceTableOptions<'a> {
+    pub(crate) game_count: bool,
+    pub(crate) show_multistreams: bool,
+    pub(crate) can_create: bool,
+    pub(crate) can_edit: bool,
+    pub(crate) show_restream_consent: bool,
+    pub(crate) challonge_import_ctx: Option<Context<'a>>,
 }
 
 pub(crate) async fn race_table(
@@ -2151,16 +2126,21 @@ pub(crate) async fn race_table(
     env: Environment,
     http_client: &reqwest::Client,
     event: Option<&event::Data<'_>>,
-    game_count: bool,
-    show_multistreams: bool,
-    can_create: bool,
-    can_edit: bool,
-    show_restream_consent: bool,
+    options: RaceTableOptions<'_>,
     races: &[Race],
 ) -> Result<RawHtml<String>, Error> {
-    let has_games = game_count || races.iter().any(|race| race.game.is_some());
+    let phase_round_options = if_chain! {
+        if let Some(event) = event;
+        if options.challonge_import_ctx.is_some();
+        then {
+            Some(sqlx::query!("SELECT phase, round FROM phase_round_options WHERE series = $1 AND event = $2", event.series as _, &event.event).fetch_all(&mut **transaction).await?)
+        } else {
+            None
+        }
+    };
+    let has_games = options.game_count || races.iter().any(|race| race.game.is_some());
     let has_seeds = races.iter().any(|race| (race.seed.file_hash.is_some() || race.seed.files.is_some()) && race.show_seed());
-    let has_buttons = can_create || can_edit;
+    let has_buttons = options.can_create || options.can_edit;
     let now = Utc::now();
     Ok(html! {
         table {
@@ -2170,9 +2150,12 @@ pub(crate) async fn race_table(
                     @if event.is_none() {
                         th : "Event";
                     }
+                    @if phase_round_options.as_ref().is_some_and(|phase_round_options| phase_round_options.is_empty()) {
+                        th : "Phase";
+                    }
                     th : "Round";
                     @if has_games {
-                        @if game_count {
+                        @if options.game_count {
                             th : "Best of";
                         } else {
                             th : "Game";
@@ -2183,15 +2166,16 @@ pub(crate) async fn race_table(
                     @if has_seeds {
                         : seed::table_header_cells(true);
                     }
-                    @if show_restream_consent {
+                    @if options.show_restream_consent {
                         th : "Restream Consent";
                     }
                     @if has_buttons {
                         th {
-                            @if can_create {
+                            @if options.can_create {
                                 @if let Some(event) = event {
                                     @match event.match_source() {
                                         MatchSource::Manual => a(class = "button", href = uri!(create_race(races[0].series, &*races[0].event, _)).to_string()) : "New Race";
+                                        MatchSource::Challonge { .. } => a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event)).to_string()) : "Import";
                                         MatchSource::League => {}
                                         MatchSource::StartGG(_) => @if !event.auto_import {
                                             a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event)).to_string()) : "Import";
@@ -2224,15 +2208,41 @@ pub(crate) async fn race_table(
                             }
                             td(class = "large-table-content") : event;
                         }
-                        td {
-                            : race.phase;
-                            : " ";
-                            : race.round;
+                        @if let (Some(ctx), Some(phase_round_options), Source::Challonge { id: challonge_id }) = (&options.challonge_import_ctx, &phase_round_options, &race.source) {
+                            @if phase_round_options.is_empty() {
+                                : form_table_cell(&format!("phase[{challonge_id}]"), &mut Vec::default(), html! {
+                                    input(type = "text", name = format!("phase[{challonge_id}]"), value? = ctx.field_value(&*format!("phase[{challonge_id}]")));
+                                });
+                                : form_table_cell(&format!("round[{challonge_id}]"), &mut Vec::default(), html! {
+                                    input(type = "text", name = format!("round[{challonge_id}]"), value? = ctx.field_value(&*format!("round[{challonge_id}]")));
+                                });
+                            } else {
+                                : form_table_cell(&format!("phase_round[{challonge_id}]"), &mut Vec::default(), html! {
+                                    select(name = format!("phase_round[{challonge_id}]")) {
+                                        @for row in phase_round_options {
+                                            @let option = format!("{} {}", row.phase, row.round);
+                                            option(value = &option, selected? = ctx.field_value(&*format!("phase_round[{challonge_id}]")) == Some(&option)) : option;
+                                        }
+                                    }
+                                });
+                            }
+                        } else {
+                            td {
+                                : race.phase;
+                                : " ";
+                                : race.round;
+                            }
                         }
                         @if has_games {
-                            td {
-                                @if let Some(game) = race.game {
-                                    : game;
+                            @if let (Some(ctx), Source::Challonge { id: challonge_id }) = (&options.challonge_import_ctx, &race.source) {
+                                : form_table_cell(&format!("game_count[{challonge_id}]"), &mut Vec::default(), html! {
+                                    input(type = "number", min = "1", max = "255", name = format!("game_count[{challonge_id}]"), value = ctx.field_value(&*format!("game_count[{challonge_id}]")).map_or_else(|| event.default_game_count.to_string(), |game_count| game_count.to_owned()));
+                                });
+                            } else {
+                                td {
+                                    @if let Some(game) = race.game {
+                                        : game;
+                                    }
                                 }
                             }
                         }
@@ -2300,7 +2310,7 @@ pub(crate) async fn race_table(
                                 @for (language, video_url) in &race.video_urls {
                                     a(class = "favicon", title = format!("{language} restream"), href = video_url.to_string()) : favicon(video_url);
                                 }
-                                @if show_multistreams && race.video_urls.is_empty() {
+                                @if options.show_multistreams && race.video_urls.is_empty() {
                                     @if let Some(multistream_url) = race.multistream_url(&mut *transaction, env, http_client, &event).await? {
                                         a(class = "favicon", title = "multistream", href = multistream_url.to_string()) : favicon(&multistream_url);
                                     }
@@ -2318,14 +2328,14 @@ pub(crate) async fn race_table(
                         }
                         @if has_seeds {
                             @if race.show_seed() {
-                                : seed::table_cells(now, &race.seed, true, can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
+                                : seed::table_cells(now, &race.seed, true, options.can_edit.then(|| uri!(cal::add_file_hash(race.series, &*race.event, race.id)))).await?;
                             } else {
                                 // hide seed if unfinished async
                                 //TODO show to the team that played the 1st async half
                                 : seed::table_cells(now, &seed::Data::default(), true, None).await?;
                             }
                         }
-                        @if show_restream_consent {
+                        @if options.show_restream_consent {
                             td {
                                 @if race.teams().all(|team| team.restream_consent) {
                                     : "✓";
@@ -2334,7 +2344,7 @@ pub(crate) async fn race_table(
                         }
                         @if has_buttons {
                             td {
-                                @if can_edit {
+                                @if options.can_edit {
                                     a(class = "button", href = uri!(crate::cal::edit_race(race.series, &race.event, race.id)).to_string()) : "Edit";
                                 }
                             }
@@ -2346,208 +2356,43 @@ pub(crate) async fn race_table(
     })
 }
 
-/// Returns:
-///
-/// * A list of races to import. Only one race for each match is imported, with the `game` field specifying the total number of games in the match.
-///   The caller is expected to duplicate this race to get the different games of the match, and create a single scheduling thread for the match.
-///   A `game` value of `None` should be treated like `Some(1)`.
-/// * A list of start.gg set IDs that were not imported, along with the reasons they were skipped.
-async fn startgg_races_to_import(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, event_slug: &str) -> Result<(Vec<Race>, Vec<(startgg::ID, ImportSkipReason)>), Error> {
-    async fn process_set(
-        transaction: &mut Transaction<'_, Postgres>,
-        http_client: &reqwest::Client,
-        event: &event::Data<'_>,
-        races: &mut Vec<Race>,
-        startgg_event: &str,
-        set: startgg::ID,
-        phase: Option<String>,
-        round: Option<String>,
-        team1: Team,
-        team2: Team,
-        set_games_type: Option<i64>,
-        total_games: Option<i64>,
-        best_of: Option<i64>,
-    ) -> Result<Option<ImportSkipReason>, Error> {
-        races.push(Race {
-            id: Id::new(&mut *transaction).await?,
-            series: event.series,
-            event: event.event.to_string(),
-            source: Source::StartGG {
-                event: startgg_event.to_owned(),
-                set,
-            },
-            entrants: Entrants::Two([
-                Entrant::MidosHouseTeam(team1.clone()),
-                Entrant::MidosHouseTeam(team2.clone()),
-            ]),
-            game: match set_games_type {
-                Some(1) => best_of.map(|best_of| best_of.try_into().expect("too many games")),
-                Some(2) => total_games.map(|total_games| total_games.try_into().expect("too many games")),
-                _ => return Ok(Some(ImportSkipReason::SetGamesType)),
-            },
-            scheduling_thread: None,
-            schedule: RaceSchedule::Unscheduled,
-            schedule_updated_at: None,
-            draft: if let Some(draft_kind) = event.draft_kind() {
-                let [high_seed, low_seed] = match draft_kind {
-                    draft::Kind::S7 => [
-                        min_by_key(&team1, &team2, |team| team.qualifier_rank).id,
-                        max_by_key(&team1, &team2, |team| team.qualifier_rank).id,
-                    ],
-                    draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => if phase.as_ref().is_some_and(|phase| phase == "Top 8") {
-                        let seeding = [
-                            Id::from(8429274534302278572_u64), // Anju's Secret
-                            Id::from(12142947927479333421_u64), // ADD
-                            Id::from(5548902498821246494_u64), // Donutdog!!! Wuff! Wuff!
-                            Id::from(7622448514297787774_u64), // Snack Pack
-                            Id::from(13644615382444869291_u64), // The Highest Gorons
-                            Id::from(4984265622447250649_u64), // Bongo Akimbo
-                            Id::from(592664405695569367_u64), // The Jhegsons
-                            Id::from(14405144517033747435_u64), // Pandora's Brot
-                        ];
-                        let mut team_ids = [team1.id, team2.id];
-                        team_ids.sort_unstable_by_key(|team| seeding.iter().position(|iter_team| iter_team == team));
-                        team_ids
-                    } else {
-                        let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
-                            show_times: event.show_qualifier_times && event.is_started(&mut *transaction).await?,
-                        };
-                        let signups = teams::signups_sorted(&mut *transaction, http_client, None, event, qualifier_kind).await?;
-                        let SignupsTeam { members: members1, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team1)).expect("match with team that didn't sign up");
-                        let SignupsTeam { members: members2, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| *team == team2)).expect("match with team that didn't sign up");
-                        let avg1 = members1.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members1.len()).expect("too many team members"));
-                        let avg2 = members2.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members2.len()).expect("too many team members"));
-                        match [avg1, avg2] {
-                            [Some(_), None] => [team1.id, team2.id],
-                            [None, Some(_)] => [team2.id, team1.id],
-                            [Some(avg1), Some(avg2)] if avg1 < avg2 => [team1.id, team2.id],
-                            [Some(avg1), Some(avg2)] if avg1 > avg2 => [team2.id, team1.id],
-                            _ => {
-                                // tie broken by coin flip
-                                let mut team_ids = [team1.id, team2.id];
-                                team_ids.shuffle(&mut thread_rng());
-                                team_ids
-                            }
-                        }
-                    },
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => unreachable!("this event does not use start.gg"),
-                };
-                Some(Draft::new(&mut *transaction, draft_kind, high_seed, low_seed).await?)
-            } else {
-                None
-            },
-            seed: seed::Data::default(),
-            video_urls: HashMap::default(),
-            restreamers: HashMap::default(),
-            last_edited_by: None,
-            last_edited_at: None,
-            ignored: false,
-            schedule_locked: false,
-            phase, round,
-        });
-        Ok(None)
-    }
-
-    async fn process_page(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, event_slug: &str, page: i64, races: &mut Vec<Race>, skips: &mut Vec<(startgg::ID, ImportSkipReason)>) -> Result<i64, Error> {
-        let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
-        if let TeamConfig::Solo = event.team_config {
-            let startgg::solo_event_sets_query::ResponseData {
-                event: Some(startgg::solo_event_sets_query::SoloEventSetsQueryEvent {
-                    sets: Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSets {
-                        page_info: Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsPageInfo { total_pages: Some(total_pages) }),
-                        nodes: Some(sets),
-                    }),
-                }),
-            } = startgg::query_cached::<startgg::SoloEventSetsQuery>(http_client, startgg_token, startgg::solo_event_sets_query::Variables { event_slug: event_slug.to_owned(), page }).await? else { panic!("no match on query") };
-            for set in sets.into_iter().filter_map(identity) {
-                let startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodes { id: Some(id), phase_group, full_round_text, slots: Some(slots), set_games_type, total_games, round } = set else { panic!("unexpected set format") };
-                if id.0.starts_with("preview") {
-                    skips.push((id, ImportSkipReason::Preview));
-                } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE startgg_set = $1) AS "exists!""#, id as _).fetch_one(&mut **transaction).await? {
-                    skips.push((id, ImportSkipReason::Exists));
-                } else if let [
-                    Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrant { participants: Some(ref p1) }) }),
-                    Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrant { participants: Some(ref p2) }) }),
-                ] = *slots {
-                    if let [Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrantParticipants { id: Some(ref team1) })] = **p1 {
-                        if let [Some(startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrantParticipants { id: Some(ref team2) })] = **p2 {
-                            let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or_else(|| Error::UnknownTeamStartGG(team1.clone()))?;
-                            let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or_else(|| Error::UnknownTeamStartGG(team2.clone()))?;
-                            let best_of = phase_group.as_ref()
-                                .and_then(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroup { rounds, .. }| rounds.as_ref())
-                                .and_then(|rounds| rounds.iter().filter_map(Option::as_ref).find(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroupRounds { number, .. }| *number == round))
-                                .and_then(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroupRounds { best_of, .. }| *best_of);
-                            let phase = phase_group
-                                .and_then(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroup { phase, .. }| phase)
-                                .and_then(|startgg::solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroupPhase { name }| name);
-                            if let Some(reason) = process_set(&mut *transaction, http_client, event, races, event_slug, id.clone(), phase, full_round_text, team1, team2, set_games_type, total_games, best_of).await? {
-                                skips.push((id, reason));
-                            }
-                        } else {
-                            skips.push((id, ImportSkipReason::Participants));
-                        }
-                    } else {
-                        skips.push((id, ImportSkipReason::Participants));
-                    }
-                } else {
-                    skips.push((id, ImportSkipReason::Slots));
-                }
-            }
-            Ok(total_pages)
-        } else {
-            let startgg::team_event_sets_query::ResponseData {
-                event: Some(startgg::team_event_sets_query::TeamEventSetsQueryEvent {
-                    sets: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSets {
-                        page_info: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsPageInfo { total_pages: Some(total_pages) }),
-                        nodes: Some(sets),
-                    }),
-                }),
-            } = startgg::query_cached::<startgg::TeamEventSetsQuery>(http_client, startgg_token, startgg::team_event_sets_query::Variables { event_slug: event_slug.to_owned(), page }).await? else { panic!("no match on query") };
-            for set in sets.into_iter().filter_map(identity) {
-                let startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodes { id: Some(id), phase_group, full_round_text, slots: Some(slots), set_games_type, total_games, round } = set else { panic!("unexpected set format") };
-                if id.0.starts_with("preview") {
-                    skips.push((id, ImportSkipReason::Preview));
-                } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE startgg_set = $1) AS "exists!""#, id as _).fetch_one(&mut **transaction).await? {
-                    skips.push((id, ImportSkipReason::Exists));
-                } else if let [
-                    Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { id: Some(ref team1) }) }),
-                    Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { id: Some(ref team2) }) }),
-                ] = *slots {
-                    let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or_else(|| Error::UnknownTeamStartGG(team1.clone()))?;
-                    let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or_else(|| Error::UnknownTeamStartGG(team2.clone()))?;
-                    let best_of = phase_group.as_ref()
-                        .and_then(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroup { rounds, .. }| rounds.as_ref())
-                        .and_then(|rounds| rounds.iter().filter_map(Option::as_ref).find(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroupRounds { number, .. }| *number == round))
-                        .and_then(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroupRounds { best_of, .. }| *best_of);
-                    let phase = phase_group
-                        .and_then(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroup { phase, .. }| phase)
-                        .and_then(|startgg::team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroupPhase { name }| name);
-                    if let Some(reason) = process_set(&mut *transaction, http_client, event, races, event_slug, id.clone(), phase, full_round_text, team1, team2, set_games_type, total_games, best_of).await? {
-                        skips.push((id, reason));
-                    }
-                } else {
-                    skips.push((id, ImportSkipReason::Slots));
-                }
-            }
-            Ok(total_pages)
-        }
-    }
-
-    let mut races = Vec::default();
-    let mut skips = Vec::default();
-    let total_pages = process_page(&mut *transaction, http_client, env, config, event, event_slug, 1, &mut races, &mut skips).await?;
-    for page in 2..=total_pages {
-        process_page(&mut *transaction, http_client, env, config, event, event_slug, page, &mut races, &mut skips).await?;
-    }
-    Ok((races, skips))
-}
-
 pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, discord_ctx: &DiscordCtx, env: Environment, config: &Config, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
     let header = event.header(&mut transaction, env, me.as_ref(), Tab::Races, true).await?;
     let form = match event.match_source() {
         MatchSource::Manual => html! {
             article {
                 p : "This event has no source for importing races configured.";
+            }
+        },
+        MatchSource::Challonge { community, tournament } => if me.is_some() {
+            let races = challonge::races_to_import(&mut transaction, http_client, config, &event, community, tournament).await?;
+            if races.is_empty() {
+                html! {
+                    article {
+                        p : "Challonge did not list any matches for this event.";
+                    }
+                }
+            } else {
+                let table = race_table(&mut transaction, discord_ctx, env, http_client, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: Some(ctx.clone()) }, &races).await?;
+                let errors = ctx.errors().collect_vec();
+                full_form(uri!(import_races_post(event.series, &*event.event)), csrf, html! {
+                    p : "The following races will be imported:";
+                    : table;
+                    p {
+                        : "If some games of a multi-game match end up not being necessary, use ";
+                        code : "/delete-after";
+                        : " in the scheduling thread to delete them.";
+                    }
+                }, errors, "Import")
+            }
+        } else {
+            html! {
+                article {
+                    p {
+                        a(href = uri!(auth::login(Some(uri!(import_races(event.series, &*event.event))))).to_string()) : "Sign in or create a Mido's House account";
+                        : " to import races.";
+                    }
+                }
             }
         },
         MatchSource::League => html! {
@@ -2566,7 +2411,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                 }
             }
         } else if me.is_some() {
-            let (races, skips) = startgg_races_to_import(&mut transaction, http_client, env, config, &event, event_slug).await?;
+            let (races, skips) = startgg::races_to_import(&mut transaction, http_client, env, config, &event, event_slug).await?;
             if races.is_empty() {
                 html! {
                     article {
@@ -2594,7 +2439,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                     }
                 }
             } else {
-                let table = race_table(&mut transaction, discord_ctx, env, http_client, Some(&event), true, false, false, false, false, &races).await?;
+                let table = race_table(&mut transaction, discord_ctx, env, http_client, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: None }, &races).await?;
                 let errors = ctx.errors().collect_vec();
                 full_form(uri!(import_races_post(event.series, &*event.event)), csrf, html! {
                     p : "The following races will be imported:";
@@ -2626,8 +2471,22 @@ pub(crate) async fn import_races(config: &State<Config>, pool: &State<PgPool>, h
     Ok(RedirectOrContent::Content(import_races_form(transaction, http_client, &*discord_ctx.read().await, **env, config, me, uri, csrf.as_ref(), event, Context::default()).await?))
 }
 
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct ImportRacesForm {
+    #[field(default = String::new())]
+    csrf: String,
+    #[field(default = HashMap::new())]
+    phase: HashMap<String, String>,
+    #[field(default = HashMap::new())]
+    round: HashMap<String, String>,
+    #[field(default = HashMap::new())]
+    phase_round: HashMap<String, String>,
+    #[field(default = HashMap::new())]
+    game_count: HashMap<String, i16>,
+}
+
 #[rocket::post("/event/<series>/<event>/races/import", data = "<form>")]
-pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ImportRacesForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -2635,35 +2494,62 @@ pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>,
     if !event.organizers(&mut transaction).await?.contains(&me) {
         form.context.push_error(form::Error::validation("You must be an organizer to import races."));
     }
-    let races = match event.match_source() {
-        MatchSource::Manual => {
-            form.context.push_error(form::Error::validation("This event has no source for importing races configured."));
-            Vec::default()
-        }
-        MatchSource::League => {
-            form.context.push_error(form::Error::validation("Races for this event are automatically imported from league.ootrandomizer.com."));
-            Vec::default()
-        }
-        MatchSource::StartGG(event_slug) => {
-            let (races, skips) = startgg_races_to_import(&mut transaction, http_client, **env, config, &event, event_slug).await?;
-            if races.is_empty() {
-                if skips.is_empty() {
-                    form.context.push_error(form::Error::validation("start.gg did not list any matches for this event."));
-                } else {
-                    form.context.push_error(form::Error::validation("There are no races to import. Some matches have been skipped."));
-                }
+    Ok(if let Some(ref value) = form.value {
+        let races = match event.match_source() {
+            MatchSource::Manual => {
+                form.context.push_error(form::Error::validation("This event has no source for importing races configured."));
+                Vec::default()
             }
-            races
+            MatchSource::Challonge { community, tournament } => {
+                let mut races = challonge::races_to_import(&mut transaction, http_client, config, &event, community, tournament).await?;
+                if races.is_empty() {
+                    form.context.push_error(form::Error::validation("Challonge did not list any matches for this event."));
+                }
+                for race in &mut races {
+                    let Source::Challonge { ref id } = race.source else { unreachable!("received non-Challonge race from challonge::races_to_import") };
+                    (race.phase, race.round) = if value.phase_round.get(id).map_or(true, |phase_round| phase_round.is_empty()) {
+                        (
+                            value.phase.get(id).filter(|phase| !phase.is_empty()).map(|phase| phase.clone()),
+                            value.round.get(id).filter(|round| !round.is_empty()).map(|round| round.clone()),
+                        )
+                    } else {
+                        sqlx::query!("SELECT phase, round FROM phase_round_options WHERE series = $1 AND event = $2", event.series as _, &event.event).fetch_all(&mut *transaction).await?
+                            .into_iter()
+                            .find(|row| format!("{} {}", row.phase, row.round) == value.phase_round[id])
+                            .map(|row| (Some(row.phase), Some(row.round)))
+                            .unwrap_or_else(|| (None, Some(value.phase_round[id].clone())))
+                    };
+                    race.game = value.game_count.get(id).copied();
+                }
+                races
+            }
+            MatchSource::League => {
+                form.context.push_error(form::Error::validation("Races for this event are automatically imported from league.ootrandomizer.com."));
+                Vec::default()
+            }
+            MatchSource::StartGG(event_slug) => {
+                let (races, skips) = startgg::races_to_import(&mut transaction, http_client, **env, config, &event, event_slug).await?;
+                if races.is_empty() {
+                    if skips.is_empty() {
+                        form.context.push_error(form::Error::validation("start.gg did not list any matches for this event."));
+                    } else {
+                        form.context.push_error(form::Error::validation("There are no races to import. Some matches have been skipped."));
+                    }
+                }
+                races
+            }
+        };
+        if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(import_races_form(transaction, http_client, &*discord_ctx.read().await, **env, config, Some(me), uri, csrf.as_ref(), event, form.context).await?)
+        } else {
+            for race in races {
+                transaction = import_race(transaction, &*discord_ctx.read().await, race).await?;
+            }
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
-    };
-    Ok(if form.context.errors().next().is_some() {
-        RedirectOrContent::Content(import_races_form(transaction, http_client, &*discord_ctx.read().await, **env, config, Some(me), uri, csrf.as_ref(), event, form.context).await?)
     } else {
-        for race in races {
-            transaction = import_race(transaction, &*discord_ctx.read().await, race).await?;
-        }
-        transaction.commit().await?;
-        RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
+        RedirectOrContent::Content(import_races_form(transaction, http_client, &*discord_ctx.read().await, **env, config, Some(me), uri, csrf.as_ref(), event, form.context).await?)
     })
 }
 
@@ -2693,9 +2579,10 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
             let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction");
             match event.match_source() {
                 MatchSource::Manual => {}
+                MatchSource::Challonge { .. } => {} // Challonge's API doesn't provide enough data to automate race imports
                 MatchSource::League => {}
                 MatchSource::StartGG(event_slug) => {
-                    let (races, _) = startgg_races_to_import(&mut transaction, &http_client, env, &config, &event, event_slug).await?;
+                    let (races, _) = startgg::races_to_import(&mut transaction, &http_client, env, &config, &event, event_slug).await?;
                     for race in races {
                         transaction = import_race(transaction, &*discord_ctx.read().await, race).await?;
                     }
@@ -2845,7 +2732,11 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
         h2 : "Edit race";
         @match race.source {
             Source::Manual => p : "Source: Manually added";
-            Source::League { id: _ } => p: "Source: league.ootrandomizer.com";
+            Source::Challonge { id } => p {
+                : "Challonge match: ";
+                : id;
+            }
+            Source::League { id: _ } => p : "Source: league.ootrandomizer.com";
             Source::Sheet { timestamp } => p {
                 : "Google Form submission timestamp: ";
                 : timestamp.format("%d/%m/%Y %H:%M:%S").to_string();

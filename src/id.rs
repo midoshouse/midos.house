@@ -168,7 +168,7 @@ where i64: sqlx::Type<DB> {
 }
 
 impl<'a, T: Table> FromParam<'a> for Id<T> {
-    type Error = &'a str;
+    type Error = <u64 as FromParam<'a>>::Error;
 
     fn from_param(param: &'a str) -> Result<Self, Self::Error> {
         u64::from_param(param)

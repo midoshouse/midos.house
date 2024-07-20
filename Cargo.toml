@@ -22,8 +22,8 @@ thiserror = "1"
 
 [dependencies]
 anyhow = "1"
-async-graphql = "7"
-async-graphql-rocket = "7"
+async-graphql = { git = "https://github.com/fenhl/async-graphql", branch = "forms" }
+async-graphql-rocket = { git = "https://github.com/fenhl/async-graphql", branch = "forms" }
 async-trait = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
@@ -40,8 +40,9 @@ futures = "0.3"
 git2 = "0.19"
 #graphql_client = "0.11" # workaround for https://github.com/smashgg/developer-portal/issues/171 — see also https://github.com/graphql-rust/graphql-client/pull/437
 graphql_client = { git = "https://github.com/fenhl/graphql-client", branch = "skip-default-scalars" }
-if_chain = "1"
+hyper = "1.4.1"
 ics = "0.5"
+if_chain = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 itertools = "0.13"
 kuchiki = "0.8"
@@ -54,10 +55,10 @@ ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", branch = "
 racetime = "0.21.5"
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls", "stream"] }
-rocket = "0.5.1"
-rocket-util = { git = "https://github.com/fenhl/rocket-util", branch = "main", features = ["ics", "image", "rocket_csrf"] }
-rocket_csrf = { git = "https://github.com/fenhl/rocket_csrf", branch = "rocket05" } # waiting for a release with rocket 0.5 support
-rocket_oauth2 = "0.5.0-rc.3"
+rocket = { git = "https://github.com/fenhl/Rocket", branch = "forms" }
+rocket-util = { git = "https://github.com/fenhl/rocket-util", branch = "forms", features = ["ics", "image", "rocket_csrf"] }
+rocket_csrf = { git = "https://github.com/fenhl/rocket_csrf", branch = "forms" }
+rocket_oauth2 = { git = "https://github.com/fenhl/rocket_oauth2", branch = "forms" }
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

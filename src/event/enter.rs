@@ -1,5 +1,4 @@
 use {
-    std::pin::Pin,
     lazy_regex::Regex,
     serde_with::DeserializeAs,
     crate::{

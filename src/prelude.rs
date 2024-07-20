@@ -23,7 +23,10 @@ pub(crate) use {
             Path,
             PathBuf,
         },
-        pin::pin,
+        pin::{
+            Pin,
+            pin,
+        },
         str::FromStr,
         sync::Arc,
         time::Duration,
@@ -171,6 +174,7 @@ pub(crate) use {
             Race,
             RaceSchedule,
         },
+        challonge,
         config::Config,
         discord_bot::{
             CommandIds,

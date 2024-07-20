@@ -346,7 +346,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
         @if races.is_empty() {
             i : "(none currently)";
         } else {
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, None, false, true, false, me.as_ref().is_some_and(|me| me.is_archivist), false, &races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, None, cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create: false, can_edit: me.as_ref().is_some_and(|me| me.is_archivist), show_restream_consent: false, challonge_import_ctx: None }, &races).await?;
         }
     };
     Ok(page(transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", page_content).await?)
@@ -594,12 +594,11 @@ async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
 pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: Config, env: Environment, port: u16) -> Result<Rocket<rocket::Ignite>, crate::Error> {
     let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
     let racetime_config = if env.is_dev() { &config.racetime_oauth_dev } else { &config.racetime_oauth_production };
-    Ok(rocket::custom(rocket::Config {
+    Ok(rocket::custom(rocket::Config::figment().merge(rocket::Config {
         secret_key: SecretKey::from(&BASE64.decode(&config.secret_key)?),
-        log_level: rocket::config::LogLevel::Critical,
-        port,
+        log_level: Some(rocket::config::Level::ERROR),
         ..rocket::Config::default()
-    })
+    }).merge(("port", port))) //TODO report issue for lack of typed interface to set port, see https://github.com/rwf2/Rocket/commit/fd294049c784cb52680a423616fadc29d57fa25b
     .mount("/", rocket::routes![
         index,
         archive,
@@ -662,7 +661,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         seed::get,
         user::profile,
     ])
-    .mount("/static", FileServer::new("assets/static", rocket::fs::Options::None))
+    .mount("/static", FileServer::without_index("assets/static"))
     .register("/", rocket::catchers![
         bad_request,
         not_found,

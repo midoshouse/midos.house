@@ -76,8 +76,12 @@ impl Role {
 #[derive(PartialEq, Eq)]
 pub(crate) enum MatchSource<'a> {
     Manual,
+    Challonge {
+        community: Option<&'a str>,
+        tournament: &'a str,
+    },
     League, //TODO automatically scan for new matches and create scheduling threads
-    StartGG(&'a str), //TODO automatically scan for new matches and create scheduling threads
+    StartGG(&'a str),
 }
 
 #[derive(Debug, Clone, Copy, sqlx::Type)]
@@ -142,6 +146,7 @@ pub(crate) struct Data<'a> {
     pub(crate) base_start: Option<DateTime<Utc>>,
     pub(crate) end: Option<DateTime<Utc>>,
     pub(crate) url: Option<Url>,
+    challonge_community: Option<String>,
     hide_races_tab: bool,
     hide_teams_tab: bool,
     teams_url: Option<Url>,
@@ -184,6 +189,7 @@ impl<'a> Data<'a> {
             start,
             end_time,
             url,
+            challonge_community,
             hide_races_tab,
             hide_teams_tab,
             teams_url,
@@ -211,6 +217,7 @@ impl<'a> Data<'a> {
                 base_start: row.start,
                 end: row.end_time,
                 url: row.url.map(|url| url.parse()).transpose()?,
+                challonge_community: row.challonge_community,
                 hide_races_tab: row.hide_races_tab,
                 hide_teams_tab: row.hide_teams_tab,
                 teams_url: row.teams_url.map(|url| url.parse()).transpose()?,
@@ -332,7 +339,10 @@ impl<'a> Data<'a> {
     pub(crate) fn match_source(&self) -> MatchSource<'_> {
         if let Some(ref url) = self.url {
             match url.host_str() {
-                //TODO challonge.com support? (waiting for reply from support regarding API errors)
+                Some("challonge.com" | "www.challonge.com") => MatchSource::Challonge {
+                    community: self.challonge_community.as_deref(),
+                    tournament: &url.path()[1..],
+                },
                 Some("league.ootrandomizer.com") => MatchSource::League,
                 Some("start.gg" | "www.start.gg") => MatchSource::StartGG(&url.path()[1..]),
                 _ => MatchSource::Manual,
@@ -705,7 +715,7 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
         let is_organizer = data.organizers(&mut transaction).await?.contains(me);
         let can_create = is_organizer && match data.match_source() {
             MatchSource::League => false,
-            MatchSource::Manual | MatchSource::StartGG(_) => true,
+            MatchSource::Manual | MatchSource::Challonge { .. } | MatchSource::StartGG(_) => true,
         };
         let show_restream_consent = is_organizer || data.restreamers(&mut transaction).await?.contains(me);
         let can_edit = show_restream_consent || me.is_archivist;
@@ -718,17 +728,18 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
             //TODO split into ongoing and upcoming, show headers for both
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, Some(&data), false, true, can_create, can_edit, show_restream_consent, &ongoing_and_upcoming_races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create, can_edit, show_restream_consent, challonge_import_ctx: None }, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, Some(&data), false, false, can_create && !any_races_ongoing_or_upcoming, can_edit, false, &past_races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: false, can_create: can_create && !any_races_ongoing_or_upcoming, can_edit, show_restream_consent: false, challonge_import_ctx: None }, &past_races).await?;
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 @match data.match_source() {
                     MatchSource::Manual => a(class = "button", href = uri!(crate::cal::create_race(series, event, _)).to_string()) : "New Race";
+                    MatchSource::Challonge { .. } => a(class = "button", href = uri!(crate::cal::import_races(series, event)).to_string()) : "Import";
                     MatchSource::League => {}
                     MatchSource::StartGG(_) => @if !data.auto_import {
                         a(class = "button", href = uri!(crate::cal::import_races(series, event)).to_string()) : "Import";
