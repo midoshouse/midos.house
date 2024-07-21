@@ -1494,8 +1494,6 @@ pub(crate) enum Error {
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("no team with this ID")]
     UnknownTeam,
-    #[error("Challonge team ID {0} is not associated with a Mido's House team")]
-    UnknownTeamChallonge(String),
     #[error("start.gg team ID {0} is not associated with a Mido's House team")]
     UnknownTeamStartGG(startgg::ID),
 }
@@ -1522,7 +1520,6 @@ impl IsNetworkError for Error {
             Self::Url(_) => false,
             Self::Wheel(e) => e.is_network_error(),
             Self::UnknownTeam => false,
-            Self::UnknownTeamChallonge(_) => false,
             Self::UnknownTeamStartGG(_) => false,
         }
     }

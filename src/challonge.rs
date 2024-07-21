@@ -4,6 +4,8 @@ pub(crate) enum ImportSkipReason {
     Exists,
     Player1,
     Player2,
+    // can't include more info because showCommunityParticipant endpoint returns 404
+    UnknownTeam(String),
 }
 
 impl fmt::Display for ImportSkipReason {
@@ -12,6 +14,7 @@ impl fmt::Display for ImportSkipReason {
             Self::Exists => write!(f, "already exists"),
             Self::Player1 => write!(f, "no player 1"),
             Self::Player2 => write!(f, "no player 2"),
+            Self::UnknownTeam(id) => write!(f, "Challonge team ID {id} is not associated with a Mido's House team"),
         }
     }
 }
@@ -73,44 +76,38 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
             if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE challonge_match = $1) AS "exists!""#, set.id).fetch_one(&mut **transaction).await? {
                 skips.push((set.id, ImportSkipReason::Exists));
             } else {
-                if let Some(player1) = set.relationships.player1 {
-                    if let Some(player2) = set.relationships.player2 {
-                        let team1 = Team::from_challonge(&mut *transaction, &player1.data.id).await?.ok_or_else(|| cal::Error::UnknownTeamChallonge(player1.data.id))?;
-                        let team2 = Team::from_challonge(&mut *transaction, &player2.data.id).await?.ok_or_else(|| cal::Error::UnknownTeamChallonge(player2.data.id))?;
-                        races.push(Race {
-                            id: Id::new(transaction).await?,
-                            series: event.series,
-                            event: event.event.to_string(),
-                            source: cal::Source::Challonge { id: set.id },
-                            entrants: Entrants::Two([
-                                Entrant::MidosHouseTeam(team1.clone()),
-                                Entrant::MidosHouseTeam(team2.clone()),
-                            ]),
-                            phase: None,
-                            round: None,
-                            game: None,
-                            scheduling_thread: None,
-                            schedule: RaceSchedule::Unscheduled,
-                            schedule_updated_at: None,
-                            draft: if let Some(draft_kind) = event.draft_kind() {
-                                Some(Draft::for_game1(transaction, http_client, draft_kind, event, None, [&team1, &team2]).await?)
-                            } else {
-                                None
-                            },
-                            seed: seed::Data::default(),
-                            video_urls: HashMap::default(),
-                            restreamers: HashMap::default(),
-                            last_edited_by: None,
-                            last_edited_at: None,
-                            ignored: false,
-                            schedule_locked: false,
-                        });
+                let Some(player1) = set.relationships.player1 else { skips.push((set.id, ImportSkipReason::Player1)); continue };
+                let Some(player2) = set.relationships.player2 else { skips.push((set.id, ImportSkipReason::Player2)); continue };
+                let Some(team1) = Team::from_challonge(&mut *transaction, &player1.data.id).await? else { skips.push((set.id, ImportSkipReason::UnknownTeam(player1.data.id))); continue };
+                let Some(team2) = Team::from_challonge(&mut *transaction, &player2.data.id).await? else { skips.push((set.id, ImportSkipReason::UnknownTeam(player2.data.id))); continue };
+                races.push(Race {
+                    id: Id::new(transaction).await?,
+                    series: event.series,
+                    event: event.event.to_string(),
+                    source: cal::Source::Challonge { id: set.id },
+                    entrants: Entrants::Two([
+                        Entrant::MidosHouseTeam(team1.clone()),
+                        Entrant::MidosHouseTeam(team2.clone()),
+                    ]),
+                    phase: None,
+                    round: None,
+                    game: None,
+                    scheduling_thread: None,
+                    schedule: RaceSchedule::Unscheduled,
+                    schedule_updated_at: None,
+                    draft: if let Some(draft_kind) = event.draft_kind() {
+                        Some(Draft::for_game1(transaction, http_client, draft_kind, event, None, [&team1, &team2]).await?)
                     } else {
-                        skips.push((set.id, ImportSkipReason::Player2));
-                    }
-                } else {
-                    skips.push((set.id, ImportSkipReason::Player1));
-                }
+                        None
+                    },
+                    seed: seed::Data::default(),
+                    video_urls: HashMap::default(),
+                    restreamers: HashMap::default(),
+                    last_edited_by: None,
+                    last_edited_at: None,
+                    ignored: false,
+                    schedule_locked: false,
+                });
             }
         }
         next_endpoint = links.next;
