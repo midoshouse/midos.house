@@ -2365,11 +2365,31 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
             }
         },
         MatchSource::Challonge { community, tournament } => if me.is_some() {
-            let races = challonge::races_to_import(&mut transaction, http_client, config, &event, community, tournament).await?;
+            let (races, skips) = challonge::races_to_import(&mut transaction, http_client, config, &event, community, tournament).await?;
             if races.is_empty() {
                 html! {
                     article {
-                        p : "Challonge did not list any matches for this event.";
+                        @if skips.is_empty() {
+                            p : "Challonge did not list any matches for this event.";
+                        } else {
+                            p : "There are no races to import. The following matches have been skipped:";
+                            table {
+                                thead {
+                                    tr {
+                                        th : "Challonge match ID";
+                                        th : "Reason";
+                                    }
+                                }
+                                tbody {
+                                    @for (set_id, reason) in skips {
+                                        tr {
+                                            td : set_id;
+                                            td : reason.to_string();
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             } else {
@@ -2501,9 +2521,13 @@ pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>,
                 Vec::default()
             }
             MatchSource::Challonge { community, tournament } => {
-                let mut races = challonge::races_to_import(&mut transaction, http_client, config, &event, community, tournament).await?;
+                let (mut races, skips) = challonge::races_to_import(&mut transaction, http_client, config, &event, community, tournament).await?;
                 if races.is_empty() {
-                    form.context.push_error(form::Error::validation("Challonge did not list any matches for this event."));
+                    if skips.is_empty() {
+                        form.context.push_error(form::Error::validation("Challonge did not list any matches for this event."));
+                    } else {
+                        form.context.push_error(form::Error::validation("There are no races to import. Some matches have been skipped."));
+                    }
                 }
                 for race in &mut races {
                     let Source::Challonge { ref id } = race.source else { unreachable!("received non-Challonge race from challonge::races_to_import") };

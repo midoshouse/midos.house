@@ -115,17 +115,17 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
                 u8::read(&mut sock).await?;
             }
             #[cfg(unix)] Subcommand::PrepareStop { .. } => {
-                println!("preparing to stop Mido's House: waiting for reply");
+                println!("{} preparing to stop Mido's House: waiting for reply", Utc::now().format("%Y-%m-%d %H:%M:%S"));
                 u8::read(&mut sock).await?;
-                println!("preparing to stop Mido's House: done");
+                println!("{} preparing to stop Mido's House: done", Utc::now().format("%Y-%m-%d %H:%M:%S"));
             }
             #[cfg(unix)] Subcommand::Roll { .. } | Subcommand::RollRsl { .. } | Subcommand::Seed { .. } => while let Some(update) = Option::<SeedRollUpdate>::read(&mut sock).await? {
-                println!("{update:#?}");
+                println!("{} {update:#?}", Utc::now().format("%Y-%m-%d %H:%M:%S"));
             },
             #[cfg(unix)] Subcommand::UpdateRegionalVc { .. } => {
-                println!("Mido's House: updating regional voice chat");
+                println!("{} Mido's House: updating regional voice chat", Utc::now().format("%Y-%m-%d %H:%M:%S"));
                 u8::read(&mut sock).await?;
-                println!("Mido's House: done updating regional voice chat");
+                println!("{} Mido's House: done updating regional voice chat", Utc::now().format("%Y-%m-%d %H:%M:%S"));
             }
         }
     } else {
