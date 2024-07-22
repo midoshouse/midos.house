@@ -31,7 +31,7 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
 
     #[derive(Deserialize)]
     struct MatchesLinks {
-        next: Option<Url>,
+        next: Url,
     }
 
     #[derive(Deserialize)]
@@ -58,14 +58,14 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
 
     let mut races = Vec::default();
     let mut skips = Vec::default();
-    let mut next_endpoint = Some(if let Some(community) = community {
+    let mut next_endpoint = if let Some(community) = community {
         format!("https://api.challonge.com/v2/communities/{community}/tournaments/{tournament}/matches.json")
     } else {
         format!("https://api.challonge.com/v2/tournaments/{tournament}/matches.json")
-    }.parse()?);
-    while let Some(endpoint) = next_endpoint {
-        println!("Challonge: Requesting API endpoint {endpoint}");
-        let Matches { data, links } = http_client.get(endpoint)
+    }.parse()?;
+    loop {
+        println!("Challonge: Requesting API endpoint {next_endpoint}");
+        let Matches { data, links } = http_client.get(next_endpoint)
             .header(reqwest::header::ACCEPT, "application/json")
             .header(reqwest::header::CONTENT_TYPE, "application/vnd.api+json")
             .header("Authorization-Type", "v1")
@@ -74,6 +74,7 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
             .detailed_error_for_status().await?
             .json_with_text_in_error().await?;
         println!("Challonge: Got response from API");
+        if data.is_empty() { break }
         for set in data {
             if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE challonge_match = $1) AS "exists!""#, set.id).fetch_one(&mut **transaction).await? {
                 skips.push((set.id, ImportSkipReason::Exists));
