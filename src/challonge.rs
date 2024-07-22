@@ -64,6 +64,7 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
         format!("https://api.challonge.com/v2/tournaments/{tournament}/matches.json")
     }.parse()?);
     while let Some(endpoint) = next_endpoint {
+        println!("Challonge: Requesting API endpoint {endpoint}");
         let Matches { data, links } = http_client.get(endpoint)
             .header(reqwest::header::ACCEPT, "application/json")
             .header(reqwest::header::CONTENT_TYPE, "application/vnd.api+json")
@@ -72,6 +73,7 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
             .send().await?
             .detailed_error_for_status().await?
             .json_with_text_in_error().await?;
+        println!("Challonge: Got response from API");
         for set in data {
             if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE challonge_match = $1) AS "exists!""#, set.id).fetch_one(&mut **transaction).await? {
                 skips.push((set.id, ImportSkipReason::Exists));
