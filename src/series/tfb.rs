@@ -104,6 +104,12 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     a(href = "https://docs.google.com/document/d/1p8HAwWsjsLW7tjfDl2SK-yQ35pVqbAS9GB72bkOIDFI/edit") : "the official document";
                     : " for details.";
                 }
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = "https://challonge.com/sugcp0b") : "Group brackets (not adjusted for cross-group tiebreakers)";
+                    }
+                }
             }
         }),
         _ => None,
