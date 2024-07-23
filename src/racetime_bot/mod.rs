@@ -312,6 +312,7 @@ pub(crate) enum Goal {
     TournoiFrancoS3,
     TournoiFrancoS4,
     TriforceBlitz,
+    TriforceBlitzProgressionSpoiler,
     WeTryToBeBetter,
 }
 
@@ -351,6 +352,7 @@ impl Goal {
             Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
             Self::TournoiFrancoS4 => series == Series::TournoiFrancophone && event == "4",
             Self::TriforceBlitz => series == Series::TriforceBlitz,
+            Self::TriforceBlitzProgressionSpoiler => false, // possible future tournament but no concrete plans
             Self::WeTryToBeBetter => series == Series::WeTryToBeBetter && event == "1",
         }
     }
@@ -376,6 +378,7 @@ impl Goal {
             | Self::SongsOfHope
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
+            | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetter
                 => true,
         }
@@ -401,6 +404,7 @@ impl Goal {
             Self::TournoiFrancoS3 => "Tournoi Francophone Saison 3",
             Self::TournoiFrancoS4 => "Tournoi Francophone Saison 4",
             Self::TriforceBlitz => "Triforce Blitz",
+            Self::TriforceBlitzProgressionSpoiler => "Triforce Blitz Progression Spoiler",
             Self::WeTryToBeBetter => "WeTryToBeBetter",
         }
     }
@@ -423,6 +427,7 @@ impl Goal {
             | Self::StandardRuleset
             | Self::TournoiFrancoS4 //TODO change to bilingual English/French
             | Self::TriforceBlitz
+            | Self::TriforceBlitzProgressionSpoiler
                 => English,
             | Self::TournoiFrancoS3
             | Self::WeTryToBeBetter
@@ -452,6 +457,7 @@ impl Goal {
             | Self::SongsOfHope
             | Self::StandardRuleset
             | Self::TriforceBlitz
+            | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetter
                 => None,
         }
@@ -478,6 +484,7 @@ impl Goal {
             | Self::SongsOfHope
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
+            | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetter
                 => PrerollMode::Medium,
             | Self::MixedPoolsS2
@@ -507,6 +514,7 @@ impl Goal {
                 | Self::TournoiFrancoS3
                 | Self::TournoiFrancoS4
                 | Self::TriforceBlitz
+                | Self::TriforceBlitzProgressionSpoiler
                 | Self::WeTryToBeBetter
                     => UnlockSpoilerLog::After,
                 | Self::Cc7
@@ -535,6 +543,7 @@ impl Goal {
             Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
             Self::TournoiFrancoS4 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
+            Self::TriforceBlitzProgressionSpoiler => VersionedBranch::Latest(rando::Branch::DevBlitz),
             Self::WeTryToBeBetter => VersionedBranch::Latest(rando::Branch::Dev),
             Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
         }
@@ -561,6 +570,7 @@ impl Goal {
             Self::TournoiFrancoS3 => None, // settings draft
             Self::TournoiFrancoS4 => None, // settings draft
             Self::TriforceBlitz => None, // per-event settings
+            Self::TriforceBlitzProgressionSpoiler => Some(tfb::progression_spoiler_settings()),
             Self::WeTryToBeBetter => Some(wttbb::settings()),
         }
     }
@@ -586,6 +596,7 @@ impl Goal {
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
             | Self::TriforceBlitz
+            | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetter
                 => true,
         }
@@ -673,6 +684,7 @@ impl Goal {
                 ctx.say("!seed s2: Triforce Blitz season 2 settings").await?;
                 ctx.say("!seed daily: Triforce Blitz Seed of the Day").await?;
             }
+            Self::TriforceBlitzProgressionSpoiler => ctx.say("!seed: The current settings for the mode").await?,
         }
         Ok(())
     }
@@ -689,6 +701,7 @@ impl Goal {
             | Self::Sgl2024
             | Self::SongsOfHope
             | Self::StandardRuleset
+            | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetter
                 => {
                     let (article, description) = match self.language() {
@@ -3340,6 +3353,18 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::TriforceBlitzProgressionSpoiler => ctx.send_message(
+                                "Welcome to Triforce Blitz Progression Spoiler!",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the current settings for the mode.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::WeTryToBeBetter => ctx.send_message(
                                 "Bienvenue ! Ceci est une practice room pour le tournoi WeTryToBeBetter. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/wttbb/1",
                                 true,
@@ -3448,6 +3473,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::Sgl2024
                             | Goal::SongsOfHope
                             | Goal::StandardRuleset
+                            | Goal::TriforceBlitzProgressionSpoiler
                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                             | Goal::WeTryToBeBetter
                                 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
@@ -3864,7 +3890,7 @@ impl RaceHandler<GlobalState> for Handler {
                 }).await?;
             },
             "score" => if_chain! {
-                if let Goal::TriforceBlitz = goal;
+                if let Goal::TriforceBlitz | Goal::TriforceBlitzProgressionSpoiler = goal;
                 if let Some(OfficialRaceData { ref mut scores, .. }) = self.official_data;
                 then {
                     if let Some(UserData { ref id, .. }) = msg.user {
@@ -4018,7 +4044,7 @@ impl RaceHandler<GlobalState> for Handler {
                     EntrantStatusValue::Requested => if entrants.contains(&entrant.user.id) {
                         ctx.accept_request(&entrant.user.id).await?;
                     },
-                    EntrantStatusValue::Done => if let Goal::TriforceBlitz = goal {
+                    EntrantStatusValue::Done => if let Goal::TriforceBlitz | Goal::TriforceBlitzProgressionSpoiler = goal {
                         if let hash_map::Entry::Vacant(entry) = scores.entry(entrant.user.id.clone()) {
                             let reply_to = &entrant.user.name;
                             ctx.send_message(
@@ -4121,6 +4147,36 @@ impl RaceHandler<GlobalState> for Handler {
                             })
                         });
                     },
+                    Goal::TriforceBlitzProgressionSpoiler => {
+                        self.goal_notifications.get_or_insert_with(|| {
+                            let ctx = ctx.clone();
+                            tokio::spawn(async move {
+                                let initial_wait = ctx.data().await.started_at.expect("in-progress race with no start time") + TimeDelta::minutes(10) - Utc::now();
+                                if let Ok(initial_wait) = initial_wait.to_std() {
+                                    sleep(initial_wait).await;
+                                    if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
+                                    let (_, ()) = tokio::join!(
+                                        ctx.say("@entrants Reminder: 5 minutes until you can start playing."),
+                                        sleep(Duration::from_secs(5 * 60)),
+                                    );
+                                    let (_, ()) = tokio::join!(
+                                        ctx.say("@entrants You may now start playing."),
+                                        sleep(Duration::from_secs((60 + 45) * 60)),
+                                    );
+                                    let is_1v1 = {
+                                        let data = ctx.data().await;
+                                        if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await { return }
+                                        data.entrants_count == 2
+                                    };
+                                    let _ = ctx.say(if is_1v1 {
+                                        "@entrants Time limit reached. If anyone has found at least 1 Triforce piece, please .done. If neither player has any pieces, please continue and .done when one is found."
+                                    } else {
+                                        "@entrants Time limit reached. If you've found at least 1 Triforce piece, please mark yourself as done. If you haven't, you may continue playing until you find one."
+                                    }).await;
+                                }
+                            })
+                        });
+                    }
                     | Goal::Cc7
                     | Goal::CoOpS3
                     | Goal::CopaDoBrasil
@@ -4141,7 +4197,7 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx, goal).await? {
-                if let Goal::TriforceBlitz = goal {
+                if let Goal::TriforceBlitz | Goal::TriforceBlitzProgressionSpoiler = goal {
                     self.check_tfb_finish(ctx).await?;
                 } else {
                     if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, .. }) = self.official_data {
