@@ -286,12 +286,12 @@ impl Requirement {
                         @if let Some(invite_url) = invite_url {
                             a(href = invite_url) {
                                 : "Join the ";
-                                : name;
+                                bdi : name;
                                 : " Discord server";
                             }
                         } else {
                             : "Join the ";
-                            : name;
+                            bdi : name;
                             : " Discord server";
                         }
                     }),

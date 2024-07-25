@@ -205,7 +205,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                                 @if let Some(me) = me {
                                     : "signed in as ";
                                     @if let PageKind::MyProfile = style.kind {
-                                        : me.display_name();
+                                        bdi : me.display_name();
                                     } else {
                                         : me;
                                     }

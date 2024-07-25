@@ -82,9 +82,11 @@ impl Team {
             let inner = html! {
                 @if let Some(ref name) = self.name {
                     @if running_text {
-                        i : name;
+                        i {
+                            bdi : name;
+                        }
                     } else {
-                        : name;
+                        bdi : name;
                     }
                 } else {
                     @if running_text {

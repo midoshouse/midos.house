@@ -83,19 +83,27 @@ impl Entrant {
                 };
                 if let Some(user) = User::from_discord(&mut **transaction, *id).await? {
                     html! {
-                        a(href = url) : user.discord.unwrap().display_name;
+                        a(href = url) {
+                            bdi : user.discord.unwrap().display_name;
+                        }
                     }
                 } else {
                     let user = id.to_user(discord_ctx).await?;
                     html! {
-                        a(href = url) : user.global_name.unwrap_or(user.name);
+                        a(href = url) {
+                            bdi : user.global_name.unwrap_or(user.name);
+                        }
                     }
                 }
             }
             Self::Named { name, racetime_id: Some(racetime_id), .. } => html! {
-                a(href = format!("https://racetime.gg/user/{racetime_id}")) : name;
+                a(href = format!("https://racetime.gg/user/{racetime_id}")) {
+                    bdi : name;
+                }
             },
-            Self::Named { name, racetime_id: None, .. } => name.to_html(),
+            Self::Named { name, racetime_id: None, .. } => html! {
+                bdi : name;
+            },
         })
     }
 }
@@ -2251,7 +2259,9 @@ pub(crate) async fn race_table(
                                 : finished;
                                 : " finishers)";
                             }
-                            Entrants::Named(ref entrants) => td(colspan = "6") : entrants;
+                            Entrants::Named(ref entrants) => td(colspan = "6") {
+                                bdi : entrants;
+                            }
                             Entrants::Two([ref team1, ref team2]) => {
                                 td(class = "vs1", colspan = "3") {
                                     : team1.to_html(&mut *transaction, env, discord_ctx, false).await?;
@@ -2784,7 +2794,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
             }
             Entrants::Named(ref entrants) => p {
                 : "Entrants: ";
-                : entrants;
+                bdi : entrants;
             }
             Entrants::Two([ref p1, ref p2]) => {
                 p : "Entrants:";

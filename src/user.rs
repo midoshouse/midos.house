@@ -271,7 +271,9 @@ impl fmt::Display for User {
 impl ToHtml for User {
     fn to_html(&self) -> RawHtml<String> {
         html! {
-            a(href = uri!(profile(self.id)).to_string()) : self.display_name();
+            a(href = uri!(profile(self.id)).to_string()) {
+                bdi : self.display_name();
+            }
         }
     }
 }
@@ -297,7 +299,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
             p {
                 : "racetime.gg: ";
                 a(href = format!("https://racetime.gg/user/{}", racetime.id)) {
-                    : racetime.display_name;
+                    bdi : racetime.display_name;
                     @if let Some(discriminator) = racetime.discriminator {
                         : "#";
                         : discriminator;
@@ -315,7 +317,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                         @let racetime = racetime_user.racetime.expect("racetime.gg user without racetime.gg ID");
                         : "You are also signed in via racetime.gg as ";
                         a(href = format!("https://racetime.gg/user/{}", racetime.id)) {
-                            : racetime.display_name;
+                            bdi : racetime.display_name;
                             @if let Some(discriminator) = racetime.discriminator {
                                 : "#";
                                 : discriminator;
@@ -338,7 +340,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                     p {
                         : "You are also signed in via racetime.gg as ";
                         a(href = format!("https://racetime.gg/user/{}", racetime_user.id)) {
-                            : racetime_user.name;
+                            bdi : racetime_user.name;
                             @if let Some(discriminator) = racetime_user.discriminator {
                                 : "#";
                                 : discriminator;
@@ -368,13 +370,13 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                 a(href = format!("https://discord.com/users/{}", discord.id)) {
                     @match discord.username_or_discriminator {
                         Either::Left(ref username) => {
-                            : discord.display_name;
+                            bdi : discord.display_name;
                             : " (@";
-                            : username;
+                            bdi : username;
                             : ")";
                         }
                         Either::Right(discriminator) => {
-                            : discord.display_name;
+                            bdi : discord.display_name;
                             : "#";
                             : discriminator;
                         }
@@ -394,13 +396,13 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                         a(href = format!("https://discord.com/users/{}", discord.id)) {
                             @match discord.username_or_discriminator {
                                 Either::Left(ref username) => {
-                                    : discord.display_name;
+                                    bdi : discord.display_name;
                                     : " (@";
-                                    : username;
+                                    bdi : username;
                                     : ")";
                                 }
                                 Either::Right(discriminator) => {
-                                    : discord.display_name;
+                                    bdi : discord.display_name;
                                     : "#";
                                     : discriminator;
                                 }
@@ -424,13 +426,13 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                         : "You are also signed in via Discord as ";
                         a(href = format!("https://discord.com/users/{}", discord_user.id)) {
                             @if let Some(discriminator) = discord_user.discriminator {
-                                : discord_user.username;
+                                bdi : discord_user.username;
                                 : "#";
                                 : discriminator;
                             } else {
-                                : discord_user.global_name.unwrap_or_else(|| discord_user.username.clone());
+                                bdi : discord_user.global_name.unwrap_or_else(|| discord_user.username.clone());
                                 : " (@";
-                                : discord_user.username;
+                                bdi : discord_user.username;
                                 : ")";
                             }
                         }
@@ -452,7 +454,9 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
         html! {}
     };
     Ok(page(transaction, &me, &uri, PageStyle { kind: if me.as_ref().map_or(false, |me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
-        h1 : user.display_name();
+        h1 {
+            bdi : user.display_name();
+        }
         @if user.is_archivist {
             p {
                 : "This user is an archivist: ";

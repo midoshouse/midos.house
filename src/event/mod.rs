@@ -574,7 +574,9 @@ impl<'a> Data<'a> {
 impl ToHtml for Data<'_> {
     fn to_html(&self) -> RawHtml<String> {
         html! {
-            a(href = uri!(info(self.series, &*self.event)).to_string()) : self.display_name;
+            a(href = uri!(info(self.series, &*self.event)).to_string()) {
+                bdi : self.display_name;
+            }
         }
     }
 }
@@ -808,14 +810,18 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                         @if let Some(racetime_slug) = row.racetime_slug {
                             a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
                                 @if let Some(name) = row.name {
-                                    i : name;
+                                    i {
+                                        bdi : name;
+                                    }
                                 } else {
                                     : "an unnamed team";
                                 }
                             }
                         } else {
                             @if let Some(name) = row.name {
-                                i : name;
+                                i {
+                                    bdi : name;
+                                }
                             } else {
                                 : "an unnamed team";
                             }
@@ -1828,7 +1834,7 @@ pub(crate) async fn volunteer(pool: &State<PgPool>, env: &State<Environment>, me
                 p : "If a race already has a restream, you can volunteer through that channel's Discord.";
             }
         },
-        _ => unimplemented!(),
+        _ => unimplemented!(), //TODO ask other events' organizers if they want to show the Volunteer tab
     };
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &data.display_name, html! {
         : header;
