@@ -400,6 +400,7 @@ pub(crate) async fn get(pool: &State<PgPool>, env: &State<Environment>, me: Opti
                 } else {
                     h1 : "Seed";
                 }
+                //TODO progression spoiler
                 @match spoiler_status {
                     SpoilerStatus::Unlocked(spoiler_filename) => div(class = "button-row") {
                         a(class = "button", href = format!("/seed/{file_stem}.{patch_suffix}")) : "Patch File";

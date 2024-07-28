@@ -287,6 +287,7 @@ pub(crate) enum PrerollMode {
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum UnlockSpoilerLog {
     Now,
+    Progression,
     After,
     Never,
 }
@@ -501,6 +502,8 @@ impl Goal {
                 | Self::Pic7
                 | Self::PicRs2
                     => UnlockSpoilerLog::Now,
+                | Self::TriforceBlitzProgressionSpoiler
+                    => UnlockSpoilerLog::Progression,
                 | Self::CopaDoBrasil
                 | Self::MixedPoolsS2
                 | Self::MixedPoolsS3
@@ -514,7 +517,6 @@ impl Goal {
                 | Self::TournoiFrancoS3
                 | Self::TournoiFrancoS4
                 | Self::TriforceBlitz
-                | Self::TriforceBlitzProgressionSpoiler
                 | Self::WeTryToBeBetter
                     => UnlockSpoilerLog::After,
                 | Self::Cc7
@@ -1280,7 +1282,7 @@ impl GlobalState {
         tokio::spawn(async move {
             if_chain! {
                 if allow_web;
-                if let Some(web_version) = self.ootr_api_client.can_roll_on_web(None, &version, world_count).await;
+                if let Some(web_version) = self.ootr_api_client.can_roll_on_web(None, &version, world_count, unlock_spoiler_log).await;
                 then {
                     // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
                     // This is especially true for open races, whose rooms are opened an entire hour before start.
@@ -1376,7 +1378,7 @@ impl GlobalState {
                     break local_version.parse::<rando::Version>()?
                 }
             };
-            let web_version = self.ootr_api_client.can_roll_on_web(Some(&preset), &VersionedBranch::Pinned(version.clone()), world_count).await;
+            let web_version = self.ootr_api_client.can_roll_on_web(Some(&preset), &VersionedBranch::Pinned(version.clone()), world_count, unlock_spoiler_log).await;
             // run the RSL script
             let _ = update_tx.send(SeedRollUpdate::Started).await;
             let outer_tries = if web_version.is_some() { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script
@@ -1509,6 +1511,7 @@ impl GlobalState {
                     ("unlockSetting", "ALWAYS"),
                     ("version", version),
                 ],
+                UnlockSpoilerLog::Progression => panic!("progression spoiler mode not supported by triforceblitz.com"),
                 UnlockSpoilerLog::After => if let Some(ref room) = room {
                     vec![
                         ("unlockSetting", "RACETIME"),
@@ -1599,7 +1602,7 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
     settings.insert(format!("create_patch_file"), json!(true));
     settings.insert(format!("create_compressed_rom"), json!(false));
     if settings.insert(format!("create_spoiler"), json!(match unlock_spoiler_log {
-        UnlockSpoilerLog::Now | UnlockSpoilerLog::After => true,
+        UnlockSpoilerLog::Now | UnlockSpoilerLog::Progression | UnlockSpoilerLog::After => true,
         UnlockSpoilerLog::Never => false,
     })).is_some() {
         eprintln!("warning: overriding create_spoiler setting");
@@ -1624,7 +1627,7 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
         let patch_path_prefix = if world_count > 1 { "Created patch file archive at: " } else { "Creating Patch File: " };
         let patch_path = rando_path.join("Output").join(stderr.iter().rev().find_map(|line| line.strip_prefix(patch_path_prefix)).ok_or(RollError::PatchPath)?);
         let spoiler_log_path = match unlock_spoiler_log {
-            UnlockSpoilerLog::Now | UnlockSpoilerLog::After => Some(rando_path.join("Output").join(stderr.iter().rev().find_map(|line| line.strip_prefix("Created spoiler log at: ")).ok_or_else(|| RollError::SpoilerLogPath {
+            UnlockSpoilerLog::Now | UnlockSpoilerLog::Progression | UnlockSpoilerLog::After => Some(rando_path.join("Output").join(stderr.iter().rev().find_map(|line| line.strip_prefix("Created spoiler log at: ")).ok_or_else(|| RollError::SpoilerLogPath {
                 stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             })?).to_owned()),
@@ -1834,6 +1837,7 @@ impl SeedRollUpdate {
                 }
                 match unlock_spoiler_log {
                     UnlockSpoilerLog::Now => ctx.say("The spoiler log is also available on the seed page.").await?,
+                    UnlockSpoilerLog::Progression => ctx.say("The progression spoiler is also available on the seed page. The full spoiler will be available there after the race.").await?,
                     UnlockSpoilerLog::After => if let Some(seed::Files::TfbSotd { date, .. }) = seed.files {
                         if let Some(unlock_date) = date.succ_opt().and_then(|next| next.succ_opt()) {
                             let unlock_time = Utc.from_utc_datetime(&unlock_date.and_hms_opt(20, 0, 0).expect("failed to construct naive datetime at 20:00:00"));
@@ -2076,8 +2080,9 @@ impl OotrApiClient {
     }
 
     /// Checks if the given randomizer branch/version is available on web, and if so, which version to use.
-    async fn can_roll_on_web(&self, rsl_preset: Option<&VersionedRslPreset>, version: &VersionedBranch, world_count: u8) -> Option<rando::Version> {
+    async fn can_roll_on_web(&self, rsl_preset: Option<&VersionedRslPreset>, version: &VersionedBranch, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog) -> Option<rando::Version> {
         if world_count > 3 { return None }
+        if let UnlockSpoilerLog::Progression = unlock_spoiler_log { return None }
         if rsl_preset.is_some() && version.branch().map_or(true, |branch| branch.latest_web_name_random_settings().is_none()) { return None }
         match version {
             VersionedBranch::Pinned(version) => {
@@ -2544,7 +2549,7 @@ impl Handler {
         lock!(@write state = self.race_state; {
             match *state {
                 RaceState::Rolled(seed::Data { files: Some(ref files), .. }) => if self.official_data.as_ref().map_or(true, |official_data| !official_data.cal_event.is_private_async_part()) {
-                    if let UnlockSpoilerLog::After = goal.unlock_spoiler_log(self.is_official(), false /* we may try to unlock a log that's already unlocked, but other than that, this assumption doesn't break anything */) {
+                    if let UnlockSpoilerLog::Progression | UnlockSpoilerLog::After = goal.unlock_spoiler_log(self.is_official(), false /* we may try to unlock a log that's already unlocked, but other than that, this assumption doesn't break anything */) {
                         match files {
                             seed::Files::MidosHouse { file_stem, locked_spoiler_log_path } => if let Some(locked_spoiler_log_path) = locked_spoiler_log_path {
                                 fs::rename(locked_spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await.to_racetime()?;
