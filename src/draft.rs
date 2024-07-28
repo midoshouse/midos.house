@@ -49,6 +49,20 @@ pub(crate) enum Kind {
     TournoiFrancoS4,
 }
 
+impl Kind {
+    fn language(&self) -> Language {
+        match self {
+            | Self::S7
+            | Self::MultiworldS3
+            | Self::MultiworldS4
+            | Self::TournoiFrancoS4
+                => English,
+            | Self::TournoiFrancoS3
+                => French,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct BanSetting {
     pub(crate) name: &'static str,
@@ -791,8 +805,12 @@ impl Draft {
                             }),
                             message: match msg_ctx {
                                 MessageContext::None => String::default(),
-                                MessageContext::Discord { .. } => format!("Fin du draft ! Voici un récapitulatif : {}.", fr::display_draft_picks(all_settings, &self.settings)),
-                                MessageContext::RaceTime { .. } => fr::display_draft_picks(all_settings, &self.settings),
+                                MessageContext::Discord { .. } => if let French = kind.language() {
+                                    format!("Fin du draft ! Voici un récapitulatif : {}.", fr::display_draft_picks(kind.language(), all_settings, &self.settings))
+                                } else {
+                                    format!("Settings draft completed. You will be playing with {}.", fr::display_draft_picks(kind.language(), all_settings, &self.settings))
+                                },
+                                MessageContext::RaceTime { .. } => fr::display_draft_picks(kind.language(), all_settings, &self.settings),
                             },
                         }),
                         (Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::S7, _, _) => unreachable!(),
@@ -815,10 +833,17 @@ impl Draft {
                                         .push('.')
                                         .build()
                                 }
-                                MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => format!(
-                                    "{}, est-ce que les donjons seront mixés avec les intérieurs et les grottos ? Répondez en utilisant !yes ou !no",
-                                    team.choose(high_seed_name, low_seed_name),
-                                ),
+                                MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => if let French = kind.language() {
+                                    format!(
+                                        "{}, est-ce que les donjons seront mixés avec les intérieurs et les grottos ? Répondez en utilisant !yes ou !no",
+                                        team.choose(high_seed_name, low_seed_name),
+                                    )
+                                } else {
+                                    format!(
+                                        "{}, should dungeon entrances be mixed with interiors and grottos? Use !yes or !no",
+                                        team.choose(high_seed_name, low_seed_name),
+                                    )
+                                },
                             },
                         }
                     } else {
@@ -841,10 +866,10 @@ impl Draft {
                                     })
                                     .partition::<Vec<_>, _>(|&(is_hard, _)| is_hard);
                                 let mut available_settings = vec![
-                                    ("Settings classiques", classic_settings.into_iter().map(|(_, setting)| setting).collect()),
+                                    (if let French = kind.language() { "Settings classiques" } else { "Classic Settings" }, classic_settings.into_iter().map(|(_, setting)| setting).collect()),
                                 ];
                                 if hard_settings_ok && !hard_settings.is_empty() {
-                                    available_settings.push(("Settings difficiles", hard_settings.into_iter().map(|(_, setting)| setting).collect()));
+                                    available_settings.push((if let French = kind.language() { "Settings difficiles" } else { "Hard Settings" }, hard_settings.into_iter().map(|(_, setting)| setting).collect()));
                                 }
                                 Step {
                                     kind: StepKind::Ban {
@@ -860,16 +885,28 @@ impl Draft {
                                             let low_seed = low_seed.remove(0);
                                             MessageBuilder::default()
                                                 .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                .push(" : Veuillez ban un setting en utilisant ")
+                                                .push(if let French = kind.language() {
+                                                    " : Veuillez ban un setting en utilisant "
+                                                } else {
+                                                    ": lock a setting to its default using "
+                                                })
                                                 .mention_command(command_ids.ban.unwrap(), "ban")
                                                 .push('.')
                                                 .build()
                                         }
-                                        MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => format!(
-                                            "{}, veuillez ban un setting en utilisant “!ban <setting>”.{}",
-                                            team.choose(high_seed_name, low_seed_name),
-                                            if prev_bans == 0 { " Utilisez “!settings” pour la liste des settings." } else { "" },
-                                        ),
+                                        MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => if let French = kind.language() {
+                                            format!(
+                                                "{}, veuillez ban un setting en utilisant “!ban <setting>”.{}",
+                                                team.choose(high_seed_name, low_seed_name),
+                                                if prev_bans == 0 { " Utilisez “!settings” pour la liste des settings." } else { "" },
+                                            )
+                                        } else {
+                                            format!(
+                                                "{}, lock a setting to its default using “!ban <setting>”.{}",
+                                                team.choose(high_seed_name, low_seed_name),
+                                                if prev_bans == 0 { " Use “!settings” for a list of available settings." } else { "" },
+                                            )
+                                        },
                                     },
                                 }
                             }
@@ -900,10 +937,10 @@ impl Draft {
                                     })
                                     .partition::<Vec<_>, _>(|&(is_hard, _)| is_hard);
                                 let mut available_choices = vec![
-                                    ("Settings classiques", classic_settings.into_iter().map(|(_, setting)| setting).collect()),
+                                    (if let French = kind.language() { "Settings classiques" } else { "Classic Settings" }, classic_settings.into_iter().map(|(_, setting)| setting).collect()),
                                 ];
                                 if hard_settings_ok && !hard_settings.is_empty() {
-                                    available_choices.push(("Settings difficiles", hard_settings.into_iter().map(|(_, setting)| setting).collect()));
+                                    available_choices.push((if let French = kind.language() { "Settings difficiles" } else { "Hard Settings" }, hard_settings.into_iter().map(|(_, setting)| setting).collect()));
                                 }
                                 Step {
                                     kind: StepKind::Pick {
@@ -917,7 +954,7 @@ impl Draft {
                                             let high_seed = high_seed.remove(0);
                                             let low_seed = low_seed.remove(0);
                                             match (kind, n) {
-                                                (_, 9) | (Kind::TournoiFrancoS4, 7) => {
+                                                (_, 9) | (Kind::TournoiFrancoS4, 7) => if let French = kind.language() {
                                                     let mut builder = MessageBuilder::default();
                                                     builder.mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
                                                     builder.push(" : Choisissez un setting avec ");
@@ -929,35 +966,98 @@ impl Draft {
                                                         builder.push(" si vous voulez laisser les settings comme ils sont.");
                                                     }
                                                     builder.build()
-                                                }
-                                                (_, 2 | 7 | 8) => MessageBuilder::default()
-                                                    .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                    .push(" : Choisissez un setting en utilisant ")
-                                                    .mention_command(command_ids.draft.unwrap(), "draft")
-                                                    .push('.')
-                                                    .build(),
-                                                (_, 3 | 5) => MessageBuilder::default()
-                                                    .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                    .push(" : Choisissez un setting avec ")
-                                                    .mention_command(command_ids.draft.unwrap(), "draft")
-                                                    .push(". Vous aurez un autre pick après celui-ci.")
-                                                    .build(),
-                                                (_, 4 | 6) => MessageBuilder::default()
-                                                    .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                                    .push(" : Choisissez votre second setting avec ")
-                                                    .mention_command(command_ids.draft.unwrap(), "draft")
-                                                    .push('.')
-                                                    .build(),
+                                                } else {
+                                                    let mut builder = MessageBuilder::default();
+                                                    builder.mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?;
+                                                    builder.push(": pick a setting using ");
+                                                    builder.mention_command(command_ids.draft.unwrap(), "draft");
+                                                    builder.push('.');
+                                                    if skippable {
+                                                        builder.push(" You can also use ");
+                                                        builder.mention_command(command_ids.skip.unwrap(), "skip");
+                                                        builder.push(" if you want to leave the settings as they are.");
+                                                    }
+                                                    builder.build()
+                                                },
+                                                (_, 2 | 7 | 8) => if let French = kind.language() {
+                                                    MessageBuilder::default()
+                                                        .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                        .push(" : Choisissez un setting en utilisant ")
+                                                        .mention_command(command_ids.draft.unwrap(), "draft")
+                                                        .push('.')
+                                                        .build()
+                                                } else {
+                                                    MessageBuilder::default()
+                                                        .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                        .push(": pick a setting using ")
+                                                        .mention_command(command_ids.draft.unwrap(), "draft")
+                                                        .push('.')
+                                                        .build()
+                                                },
+                                                (_, 3 | 5) => if let French = kind.language() {
+                                                    MessageBuilder::default()
+                                                        .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                        .push(" : Choisissez un setting avec ")
+                                                        .mention_command(command_ids.draft.unwrap(), "draft")
+                                                        .push(". Vous aurez un autre pick après celui-ci.")
+                                                        .build()
+                                                } else {
+                                                    MessageBuilder::default()
+                                                        .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                        .push(": pick a setting using ")
+                                                        .mention_command(command_ids.draft.unwrap(), "draft")
+                                                        .push(". You will have another pick after this.")
+                                                        .build()
+                                                },
+                                                (_, 4 | 6) => if let French = kind.language() {
+                                                    MessageBuilder::default()
+                                                        .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                        .push(" : Choisissez votre second setting avec ")
+                                                        .mention_command(command_ids.draft.unwrap(), "draft")
+                                                        .push('.')
+                                                        .build()
+                                                } else {
+                                                    MessageBuilder::default()
+                                                        .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                        .push(": pick your second setting using ")
+                                                        .mention_command(command_ids.draft.unwrap(), "draft")
+                                                        .push('.')
+                                                        .build()
+                                                },
                                                 (_, 0..=1 | 10..) => unreachable!(),
                                             }
                                         }
                                         MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => match (kind, n) {
-                                            (Kind::TournoiFrancoS4, 7) | (_, 9) if skippable => format!("{}, choisissez le dernier setting. Vous pouvez également utiliser “!skip” si vous voulez laisser les settings comme ils sont.", team.choose(high_seed_name, low_seed_name)),
-                                            (Kind::TournoiFrancoS4, 7) | (_, 9) => format!("{}, choisissez votre dernier setting.", team.choose(high_seed_name, low_seed_name)),
-                                            (_, 2) => format!("{}, choisissez un setting avec “!draft <setting> <configuration>”. <configuration> signifie la valeur du setting. Par exemple pour tokensanity, la configuration peut être {{all, dungeon, overworld}}.", team.choose(high_seed_name, low_seed_name)),
-                                            (_, 3 | 5) => format!("{}, choisissez deux settings. Quel est votre premier ?", team.choose(high_seed_name, low_seed_name)),
-                                            (_, 4 | 6) => format!("Et votre second ?"),
-                                            (_, 7 | 8) => format!("{}, choisissez un setting.", team.choose(high_seed_name, low_seed_name)),
+                                            (Kind::TournoiFrancoS4, 7) | (_, 9) if skippable => if let French = kind.language() {
+                                                format!("{}, choisissez le dernier setting. Vous pouvez également utiliser “!skip” si vous voulez laisser les settings comme ils sont.", team.choose(high_seed_name, low_seed_name))
+                                            } else {
+                                                format!("{},  pick the final setting. You can also use “!skip” if you want to leave the settings as they are.", team.choose(high_seed_name, low_seed_name))
+                                            },
+                                            (Kind::TournoiFrancoS4, 7) | (_, 9) => if let French = kind.language() {
+                                                format!("{}, choisissez votre dernier setting.", team.choose(high_seed_name, low_seed_name))
+                                            } else {
+                                                format!("{}, pick the final setting.", team.choose(high_seed_name, low_seed_name))
+                                            },
+                                            (_, 2) => if let French = kind.language() {
+                                                format!("{}, choisissez un setting avec “!draft <setting> <configuration>”. <configuration> signifie la valeur du setting. Par exemple pour tokensanity, la configuration peut être {{all, dungeon, overworld}}.", team.choose(high_seed_name, low_seed_name))
+                                            } else {
+                                                format!("{}, pick a setting using “!draft <setting> <value>”", team.choose(high_seed_name, low_seed_name))
+                                            },
+                                            (_, 3 | 5) => if let French = kind.language() {
+                                                format!("{}, choisissez deux settings. Quel est votre premier ?", team.choose(high_seed_name, low_seed_name))
+                                            } else {
+                                                format!("{}, pick two settings.", team.choose(high_seed_name, low_seed_name))
+                                            },
+                                            (_, 4 | 6) => if let French = kind.language() {
+                                                format!("Et votre second ?")
+                                            } else {
+                                                format!("And your second pick?")
+                                            },
+                                            (_, 7 | 8) => if let French = kind.language() {
+                                                format!("{}, choisissez un setting.", team.choose(high_seed_name, low_seed_name))
+                                            } else {
+                                                format!("{}, pick a setting.", team.choose(high_seed_name, low_seed_name))
+                                            },
                                             (_, 0..=1 | 10..) => unreachable!(),
                                         },
                                     },
@@ -971,7 +1071,7 @@ impl Draft {
                         kind: StepKind::GoFirst,
                         message: match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { transaction, guild_id, command_ids, teams, .. } => {
+                            MessageContext::Discord { transaction, guild_id, command_ids, teams, .. } => if let French = kind.language() {
                                 let (mut high_seed, _) = teams.iter().partition::<Vec<_>, _>(|team| team.id == self.high_seed);
                                 let high_seed = high_seed.remove(0);
                                 let mut builder = MessageBuilder::default();
@@ -982,11 +1082,29 @@ impl Draft {
                                 builder.mention_command(command_ids.second.unwrap(), "second");
                                 builder.push(".");
                                 if self.settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
-                                    builder.push(" Veuillez choisir combien de donjons Master Quest seront présents. Vous devez vous concerter pour choisir ce nombre.");
+                                    builder.push(" Veuillez choisir combien de donjons Master Quest seront présents. Vous devez vous concerter pour choisir ce nombre. Utilisez “/first” ou “/second” suivi de “mq:{nombre}”");
                                 }
                                 builder.build()
-                            }
-                            MessageContext::RaceTime { high_seed_name, .. } => format!("{high_seed_name}, vous avez été sélectionné pour décider qui commencera le draft en premier. Si vous voulez commencer, veuillez entrer “!first”. Autrement, entrez “!second”."),
+                            } else {
+                                let (mut high_seed, _) = teams.iter().partition::<Vec<_>, _>(|team| team.id == self.high_seed);
+                                let high_seed = high_seed.remove(0);
+                                let mut builder = MessageBuilder::default();
+                                builder.mention_team(transaction, Some(*guild_id), high_seed).await?;
+                                builder.push(": you have won the coin flip. Choose whether you want to go ");
+                                builder.mention_command(command_ids.first.unwrap(), "first");
+                                builder.push(" or ");
+                                builder.mention_command(command_ids.second.unwrap(), "second");
+                                builder.push(" in the settings draft.");
+                                if self.settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
+                                    builder.push(" Please include the number of MQ dungeons.");
+                                }
+                                builder.build()
+                            },
+                            MessageContext::RaceTime { high_seed_name, .. } => if let French = kind.language() {
+                                format!("{high_seed_name}, vous avez été sélectionné pour décider qui commencera le draft en premier. Si vous voulez commencer, veuillez entrer “!first”. Autrement, entrez “!second”.")
+                            } else {
+                                format!("{high_seed_name}, you have won the coin flip. Choose whether you want to go !first or !second in the settings draft.")
+                            },
                         },
                     }
                 }
@@ -1802,7 +1920,7 @@ impl Draft {
                             self.went_first = Some(first);
                             Ok(match msg_ctx {
                                 MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
-                                MessageContext::Discord { transaction, guild_id, team, .. } => {
+                                MessageContext::Discord { transaction, guild_id, team, .. } => if let French = kind.language() {
                                     let mut content = MessageBuilder::default();
                                     content.mention_team(transaction, Some(*guild_id), team).await?;
                                     content.push(" a choisi de partir ");
@@ -1821,29 +1939,77 @@ impl Draft {
                                     content
                                         .push('.')
                                         .build()
-                                }
+                                } else {
+                                    let mut content = MessageBuilder::default();
+                                    content.mention_team(transaction, Some(*guild_id), team).await?;
+                                    content.push(" has chosen to go ");
+                                    content.push(if first { "first" } else { "second" });
+                                    content.push(" in the settings draft");
+                                    if self.settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
+                                        let mq_dungeons_count = self.settings.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0");
+                                        content.push(" and has selected ");
+                                        content.push(mq_dungeons_count);
+                                        content.push(" MQ dungeon");
+                                        if mq_dungeons_count != "1" {
+                                            content.push('s');
+                                        }
+                                    }
+                                    content
+                                        .push('.')
+                                        .build()
+                                },
                             })
                         }
                         StepKind::Ban { .. } | StepKind::Pick { .. } => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Désolé, le premier pick a déjà été sélectionné."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, le premier pick a déjà été sélectionné."),
+                            MessageContext::Discord { .. } => if let French = kind.language() {
+                                format!("Désolé, le premier pick a déjà été sélectionné.")
+                            } else {
+                                format!("Sorry, first pick has already been chosen.")
+                            },
+                            MessageContext::RaceTime { reply_to, .. } => if let French = kind.language() {
+                                format!("Désolé {reply_to}, le premier pick a déjà été sélectionné.")
+                            } else {
+                                format!("Sorry {reply_to}, first pick has already been chosen.")
+                            },
                         }),
                         StepKind::BooleanChoice { .. } => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
-                                .push("Désolé, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez ")
-                                .mention_command(command_ids.yes.unwrap(), "yes")
-                                .push(" ou ")
-                                .mention_command(command_ids.no.unwrap(), "no")
-                                .push('.')
-                                .build(),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez !yes ou !no"),
+                            MessageContext::Discord { command_ids, .. } => if let French = kind.language() {
+                                MessageBuilder::default()
+                                    .push("Désolé, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez ")
+                                    .mention_command(command_ids.yes.unwrap(), "yes")
+                                    .push(" ou ")
+                                    .mention_command(command_ids.no.unwrap(), "no")
+                                    .push('.')
+                                    .build()
+                            } else {
+                                MessageBuilder::default()
+                                    .push("Sorry, before the settings draft can continue, you first have to choose whether dungeons entrances should be mixed. Use ")
+                                    .mention_command(command_ids.yes.unwrap(), "yes")
+                                    .push(" or ")
+                                    .mention_command(command_ids.no.unwrap(), "no")
+                                    .push('.')
+                                    .build()
+                            },
+                            MessageContext::RaceTime { reply_to, .. } => if let French = kind.language() {
+                                format!("Désolé {reply_to}, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez !yes ou !no")
+                            } else {
+                                format!("Sorry {reply_to}, before the settings draft can continue, you first have to choose whether dungeons entrances should be mixed. Use !yes or !no")
+                            },
                         }),
                         StepKind::Done(_) => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Désolé, ce draft est terminé."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, ce draft est terminé."),
+                            MessageContext::Discord { .. } => if let French = kind.language() {
+                                format!("Désolé, ce draft est terminé.")
+                            } else {
+                                format!("Sorry, this settings draft is already completed.")
+                            },
+                            MessageContext::RaceTime { reply_to, .. } => if let French = kind.language() {
+                                format!("Désolé {reply_to}, ce draft est terminé.")
+                            } else {
+                                format!("Sorry {reply_to}, this settings draft is already completed.")
+                            },
                         }),
                     },
                     Action::Ban { .. } => unreachable!("normalized to Action::Pick above"),
@@ -1863,12 +2029,21 @@ impl Draft {
                                 self.settings.insert(Cow::Borrowed(setting.name), Cow::Borrowed(setting.default));
                                 Ok(match msg_ctx {
                                     MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
-                                    MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
-                                        .mention_team(transaction, Some(*guild_id), team).await?
-                                        .push(" a banni ")
-                                        .push(if setting.name == "camc" { "no CAMC" } else { setting.display })
-                                        .push('.')
-                                        .build(),
+                                    MessageContext::Discord { transaction, guild_id, team, .. } => if let French = kind.language() {
+                                        MessageBuilder::default()
+                                            .mention_team(transaction, Some(*guild_id), team).await?
+                                            .push(" a banni ")
+                                            .push(if setting.name == "camc" { "no CAMC" } else { setting.display })
+                                            .push('.')
+                                            .build()
+                                    } else {
+                                        MessageBuilder::default()
+                                            .mention_team(transaction, Some(*guild_id), team).await?
+                                            .push(" has banned ")
+                                            .push(if setting.name == "camc" { "no CAMC" } else { setting.display })
+                                            .push('.')
+                                            .build()
+                                    },
                                 })
                             } else {
                                 //TODO check if this setting is disabled because it is hard
@@ -1923,12 +2098,21 @@ impl Draft {
                                 self.settings.insert(Cow::Borrowed(setting.name), Cow::Borrowed(option.name));
                                 Ok(match msg_ctx {
                                     MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
-                                    MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
-                                        .mention_team(transaction, Some(*guild_id), team).await?
-                                        .push(if is_default { " a banni " } else { " a choisi " })
-                                        .push(if is_default { if setting.name == "camc" { "no CAMC" } else { setting.display } } else { option.display })
-                                        .push('.')
-                                        .build(),
+                                    MessageContext::Discord { transaction, guild_id, team, .. } => if let French = kind.language() {
+                                        MessageBuilder::default()
+                                            .mention_team(transaction, Some(*guild_id), team).await?
+                                            .push(if is_default { " a banni " } else { " a choisi " })
+                                            .push(if is_default { if setting.name == "camc" { "no CAMC" } else { setting.display } } else { option.display })
+                                            .push('.')
+                                            .build()
+                                    } else {
+                                        MessageBuilder::default()
+                                            .mention_team(transaction, Some(*guild_id), team).await?
+                                            .push(if is_default { " has banned " } else { " has picked " })
+                                            .push(if is_default { if setting.name == "camc" { "no CAMC" } else { setting.display } } else { option.display })
+                                            .push('.')
+                                            .build()
+                                    },
                                 })
                             } else {
                                 Err(match msg_ctx {
@@ -1984,19 +2168,41 @@ impl Draft {
                         },
                         StepKind::BooleanChoice { .. } => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
-                                .push("Désolé, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez ")
-                                .mention_command(command_ids.yes.unwrap(), "yes")
-                                .push(" ou ")
-                                .mention_command(command_ids.no.unwrap(), "no")
-                                .push('.')
-                                .build(),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez !yes ou !no"),
+                            MessageContext::Discord { command_ids, .. } => if let French = kind.language() {
+                                MessageBuilder::default()
+                                    .push("Désolé, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez ")
+                                    .mention_command(command_ids.yes.unwrap(), "yes")
+                                    .push(" ou ")
+                                    .mention_command(command_ids.no.unwrap(), "no")
+                                    .push('.')
+                                    .build()
+                            } else {
+                                MessageBuilder::default()
+                                    .push("Sorry, before the settings draft can continue, you first have to choose whether dungeons entrances should be mixed. Use ")
+                                    .mention_command(command_ids.yes.unwrap(), "yes")
+                                    .push(" or ")
+                                    .mention_command(command_ids.no.unwrap(), "no")
+                                    .push('.')
+                                    .build()
+                            },
+                            MessageContext::RaceTime { reply_to, .. } => if let French = kind.language() {
+                                format!("Désolé {reply_to}, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez !yes ou !no")
+                            } else {
+                                format!("Sorry {reply_to}, before the settings draft can continue, you first have to choose whether dungeons entrances should be mixed. Use !yes or !no")
+                            },
                         }),
                         StepKind::Done(_) => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Désolé, ce draft est terminé."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, ce draft est terminé."),
+                            MessageContext::Discord { .. } => if let French = kind.language() {
+                                format!("Désolé, ce draft est terminé.")
+                            } else {
+                                format!("Sorry, this settings draft is already completed.")
+                            },
+                            MessageContext::RaceTime { reply_to, .. } => if let French = kind.language() {
+                                format!("Désolé {reply_to}, ce draft est terminé.")
+                            } else {
+                                format!("Sorry {reply_to}, this settings draft is already completed.")
+                            },
                         }),
                     },
                     Action::Skip => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
@@ -2035,19 +2241,41 @@ impl Draft {
                         }),
                         StepKind::BooleanChoice { .. } => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
-                                .push("Désolé, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez ")
-                                .mention_command(command_ids.yes.unwrap(), "yes")
-                                .push(" ou ")
-                                .mention_command(command_ids.no.unwrap(), "no")
-                                .push('.')
-                                .build(),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez !yes ou !no"),
+                            MessageContext::Discord { command_ids, .. } => if let French = kind.language() {
+                                MessageBuilder::default()
+                                    .push("Désolé, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez ")
+                                    .mention_command(command_ids.yes.unwrap(), "yes")
+                                    .push(" ou ")
+                                    .mention_command(command_ids.no.unwrap(), "no")
+                                    .push('.')
+                                    .build()
+                            } else {
+                                MessageBuilder::default()
+                                    .push("Sorry, before the settings draft can continue, you first have to choose whether dungeons entrances should be mixed. Use ")
+                                    .mention_command(command_ids.yes.unwrap(), "yes")
+                                    .push(" or ")
+                                    .mention_command(command_ids.no.unwrap(), "no")
+                                    .push('.')
+                                    .build()
+                            },
+                            MessageContext::RaceTime { reply_to, .. } => if let French = kind.language() {
+                                format!("Désolé {reply_to}, avant que le draft ne puisse continuer, vous devez d'abord choisir si les donjons seront mixés ou non avec le reste. Utilisez !yes ou !no")
+                            } else {
+                                format!("Sorry {reply_to}, before the settings draft can continue, you first have to choose whether dungeons entrances should be mixed. Use !yes or !no")
+                            },
                         }),
                         StepKind::Done(_) => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Désolé, ce draft est terminé."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, ce draft est terminé."),
+                            MessageContext::Discord { .. } => if let French = kind.language() {
+                                format!("Désolé, ce draft est terminé.")
+                            } else {
+                                format!("Sorry, this settings draft is already completed.")
+                            },
+                            MessageContext::RaceTime { reply_to, .. } => if let French = kind.language() {
+                                format!("Désolé {reply_to}, ce draft est terminé.")
+                            } else {
+                                format!("Sorry {reply_to}, this settings draft is already completed.")
+                            },
                         }),
                     },
                     Action::BooleanChoice(value) => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
@@ -2055,25 +2283,52 @@ impl Draft {
                             self.settings.insert(Cow::Borrowed("mixed-dungeons"), Cow::Borrowed(if value { "mixed" } else { "separate" }));
                             Ok(match msg_ctx {
                                 MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
-                                MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
-                                    .mention_team(&mut *transaction, Some(*guild_id), team).await?
-                                    .push(if value {
-                                        " a choisi les trois ER mixés."
-                                    } else {
-                                        " a choisi de n'avoir que grottos et interior mixés."
-                                    })
-                                    .build(),
+                                MessageContext::Discord { transaction, guild_id, team, .. } => if let French = kind.language() {
+                                    MessageBuilder::default()
+                                        .mention_team(&mut *transaction, Some(*guild_id), team).await?
+                                        .push(if value {
+                                            " a choisi les trois ER mixés."
+                                        } else {
+                                            " a choisi de n'avoir que grottos et interior mixés."
+                                        })
+                                        .build()
+                                } else {
+                                    MessageBuilder::default()
+                                        .mention_team(&mut *transaction, Some(*guild_id), team).await?
+                                        .push(if value {
+                                            " has selected mixed dungeon entrances."
+                                        } else {
+                                            " has selected separate dungeon entrances."
+                                        })
+                                        .build()
+                                },
                             })
                         }
                         StepKind::Done(_) => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Désolé, ce draft est terminé."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, ce draft est terminé."),
+                            MessageContext::Discord { .. } => if let French = kind.language() {
+                                format!("Désolé, ce draft est terminé.")
+                            } else {
+                                format!("Sorry, this settings draft is already completed.")
+                            },
+                            MessageContext::RaceTime { reply_to, .. } => if let French = kind.language() {
+                                format!("Désolé {reply_to}, ce draft est terminé.")
+                            } else {
+                                format!("Sorry {reply_to}, this settings draft is already completed.")
+                            },
                         }),
                         _ => Err(match msg_ctx {
                             MessageContext::None => String::default(),
-                            MessageContext::Discord { .. } => format!("Désolé, vous n'avez pas à répondre oui ou non."),
-                            MessageContext::RaceTime { reply_to, .. } => format!("Désolé {reply_to}, vous n'avez pas à répondre oui ou non."),
+                            MessageContext::Discord { .. } => if let French = kind.language() {
+                                format!("Désolé, vous n'avez pas à répondre oui ou non.")
+                            } else {
+                                format!("Sorry, the current step is not a yes/no question.")
+                            },
+                            MessageContext::RaceTime { reply_to, .. } => if let French = kind.language() {
+                                format!("Désolé {reply_to}, vous n'avez pas à répondre oui ou non.")
+                            } else {
+                                format!("Sorry {reply_to}, the current step is not a yes/no question.")
+                            },
                         }),
                     },
                 }

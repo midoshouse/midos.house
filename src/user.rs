@@ -410,7 +410,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                         }
                         : " which belongs to a different Mido's House account. ";
                         @if discord_user.racetime.is_some() {
-                            : "That Mido's House account is also connected to a raceitme.gg account. If you would like to merge your accounts, please contact ";
+                            : "That Mido's House account is also connected to a racetime.gg account. If you would like to merge your accounts, please contact ";
                             : fenhl;
                             : ".";
                         } else {

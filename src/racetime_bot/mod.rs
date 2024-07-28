@@ -1119,9 +1119,9 @@ impl Goal {
                         _ => unreachable!(),
                     },
                     unlock_spoiler_log,
-                    language: French,
-                    article: "une",
-                    description: format!("seed avec {}", fr::display_draft_picks(all_settings, &settings)),
+                    language: self.language(),
+                    article: if let French = self.language() { "une" } else { "a" },
+                    description: format!("seed {} {}", if let French = self.language() { "avec" } else { "with" }, fr::display_draft_picks(self.language(), all_settings, &settings)),
                 }
             }
             Self::TriforceBlitz => match args {

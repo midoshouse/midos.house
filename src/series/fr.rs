@@ -122,7 +122,7 @@ pub(crate) const S4_SETTINGS: [Setting; 27] = [
     Setting { name: "reachable", display: "reachable locations", default: "all", default_display: "all locations reachable", other: &[("required", true, "required only")], description: "reachable: all (défaut) ou required (difficile)" },
 ];
 
-pub(crate) fn display_draft_picks(all_settings: &[Setting], picks: &draft::Picks) -> String {
+pub(crate) fn display_draft_picks(language: Language, all_settings: &[Setting], picks: &draft::Picks) -> String {
     let mut picks_display = Vec::default();
     if picks.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" || picks.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0") != "0" {
         let mq_dungeons_count = picks.get("mq_dungeons_count").map(|mq_dungeons_count| &**mq_dungeons_count).unwrap_or("0");
@@ -143,7 +143,7 @@ pub(crate) fn display_draft_picks(all_settings: &[Setting], picks: &draft::Picks
             },
             (_, _) => Cow::Borrowed(display),
         })));
-    French.join_str(picks_display).unwrap_or_else(|| format!("settings de base"))
+    language.join_str(picks_display).unwrap_or_else(|| format!("settings de base"))
 }
 
 pub(crate) fn resolve_s3_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
