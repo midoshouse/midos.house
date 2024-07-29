@@ -1215,7 +1215,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             } else {
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                     .ephemeral(true)
-                                    .content("Sorry, this Discord server is not associated with an ongoing Mido's House event.")
+                                    .content("Sorry, this thread is not associated with an ongoing Mido's House event.")
                                 )).await?;
                             }
                         } else if interaction.data.id == command_ids.schedule {

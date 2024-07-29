@@ -569,7 +569,7 @@ pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map
         },
         format!("empty_dungeons_count") => match bridge {
             "1precompleted" => json!(1),
-            "3precompleted" => json!(2),
+            "3precompleted" => json!(3),
             _ => json!(2),
         },
         format!("shuffle_interior_entrances") => if mixed_er == "on" {
