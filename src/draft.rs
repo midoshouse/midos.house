@@ -862,7 +862,11 @@ impl Draft {
                                         } else {
                                             (false, other.iter().all(|&(_, hard, _)| hard))
                                         };
-                                        (!is_empty).then(|| (is_hard, BanSetting { name, display, default, default_display, description: Cow::Borrowed(description) }))
+                                        (!is_empty).then(|| (is_hard, BanSetting {
+                                            display: if *display == "enemy souls" && !hard_settings_ok { "boss souls" } else { display },
+                                            description: Cow::Borrowed(description),
+                                            name, default, default_display,
+                                        }))
                                     })
                                     .partition::<Vec<_>, _>(|&(is_hard, _)| is_hard);
                                 let mut available_settings = vec![
@@ -928,11 +932,12 @@ impl Draft {
                                             (false, other.iter().filter(|(_, hard, _)| !hard).copied().collect_vec())
                                         };
                                         (!other.is_empty()).then(|| (is_hard, DraftSetting {
+                                            display: if display == "enemy souls" && !hard_settings_ok { "boss souls" } else { display },
                                             options: can_ban.then(|| DraftSettingChoice { name: default, display: default_display }).into_iter()
                                                 .chain(other.into_iter().map(|(name, _, display)| DraftSettingChoice { name, display }))
                                                 .collect(),
                                             description: Cow::Borrowed(description),
-                                            name, display,
+                                            name,
                                         }))
                                     })
                                     .partition::<Vec<_>, _>(|&(is_hard, _)| is_hard);
@@ -2026,6 +2031,7 @@ impl Draft {
                         }),
                         StepKind::Ban { available_settings, skippable, .. } => if let Some(setting) = available_settings.get(&setting) {
                             if value == setting.default {
+                                let hard_settings_ok = self.settings.get("hard_settings_ok").map(|hard_settings_ok| &**hard_settings_ok).unwrap_or("no") == "ok";
                                 self.settings.insert(Cow::Borrowed(setting.name), Cow::Borrowed(setting.default));
                                 Ok(match msg_ctx {
                                     MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
@@ -2033,14 +2039,14 @@ impl Draft {
                                         MessageBuilder::default()
                                             .mention_team(transaction, Some(*guild_id), team).await?
                                             .push(" a banni ")
-                                            .push(if setting.name == "camc" { "no CAMC" } else { setting.display })
+                                            .push(match setting.name { "camc" => "no CAMC", "souls" if !hard_settings_ok => "boss souls", _ => setting.display })
                                             .push('.')
                                             .build()
                                     } else {
                                         MessageBuilder::default()
                                             .mention_team(transaction, Some(*guild_id), team).await?
                                             .push(" has banned ")
-                                            .push(if setting.name == "camc" { "no CAMC" } else { setting.display })
+                                            .push(match setting.name { "camc" => "no CAMC", "souls" if !hard_settings_ok => "boss souls", _ => setting.display })
                                             .push('.')
                                             .build()
                                     },
@@ -2091,6 +2097,7 @@ impl Draft {
                         },
                         StepKind::Pick { available_choices, skippable, .. } => if let Some(setting) = available_choices.get(&setting) {
                             if let Some(option) = setting.options.iter().find(|option| option.name == value) {
+                                let hard_settings_ok = self.settings.get("hard_settings_ok").map(|hard_settings_ok| &**hard_settings_ok).unwrap_or("no") == "ok";
                                 let is_default = value == all_settings.iter().find(|&&fr::Setting { name, .. }| setting.name == name).unwrap().default;
                                 if !is_default {
                                     self.settings.insert(Cow::Borrowed(self.active_team(kind, game).await?.unwrap().choose("high_seed_has_picked", "low_seed_has_picked")), Cow::Borrowed("yes"));
@@ -2102,14 +2109,14 @@ impl Draft {
                                         MessageBuilder::default()
                                             .mention_team(transaction, Some(*guild_id), team).await?
                                             .push(if is_default { " a banni " } else { " a choisi " })
-                                            .push(if is_default { if setting.name == "camc" { "no CAMC" } else { setting.display } } else { option.display })
+                                            .push(if is_default { match setting.name { "camc" => "no CAMC", "souls" if !hard_settings_ok => "boss souls", _ => setting.display } } else { option.display })
                                             .push('.')
                                             .build()
                                     } else {
                                         MessageBuilder::default()
                                             .mention_team(transaction, Some(*guild_id), team).await?
                                             .push(if is_default { " has banned " } else { " has picked " })
-                                            .push(if is_default { if setting.name == "camc" { "no CAMC" } else { setting.display } } else { option.display })
+                                            .push(if is_default { match setting.name { "camc" => "no CAMC", "souls" if !hard_settings_ok => "boss souls", _ => setting.display } } else { option.display })
                                             .push('.')
                                             .build()
                                     },
