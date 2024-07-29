@@ -673,7 +673,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             };
             let reset_race = {
                 let idx = commands.len();
-                commands.push(CreateCommand::new("reset-race")
+                let mut command = CreateCommand::new("reset-race")
                     .kind(CommandType::ChatInput)
                     .dm_permission(false)
                     .description("Deletes selected data from a race.")
@@ -685,8 +685,24 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .min_int_value(1)
                         .max_int_value(255)
                         .required(false)
+                    );
+                if draft_kind.is_some() {
+                    command = command.add_option(CreateCommandOption::new(
+                        CommandOptionType::Boolean,
+                        "draft",
+                        "Reset the settings draft.",
                     )
+                        .required(false)
+                    );
+                }
+                command = command.add_option(CreateCommandOption::new(
+                    CommandOptionType::Boolean,
+                    "schedule",
+                    "Reset the schedule, race room, and seed.",
+                )
+                    .required(false)
                 );
+                commands.push(command);
                 idx
             };
             let schedule = {
@@ -1098,10 +1114,33 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     )).await?;
                                     return Ok(())
                                 }
-                                let game = interaction.data.options.get(0).map(|option| match option.value {
-                                    CommandDataOptionValue::Integer(game) => i16::try_from(game).expect("game number out of range"),
-                                    _ => panic!("unexpected slash command option type"),
-                                });
+                                let mut game = None;
+                                let mut reset_draft = false;
+                                let mut reset_schedule = false;
+                                for option in &interaction.data.options {
+                                    match &*option.name {
+                                        "draft" => match option.value {
+                                            CommandDataOptionValue::Boolean(value) => reset_draft = value,
+                                            _ => panic!("unexpected slash command option type"),
+                                        },
+                                        "game" => match option.value {
+                                            CommandDataOptionValue::Integer(value) => game = Some(i16::try_from(value).expect("game number out of range")),
+                                            _ => panic!("unexpected slash command option type"),
+                                        },
+                                        "schedule" => match option.value {
+                                            CommandDataOptionValue::Boolean(value) => reset_schedule = value,
+                                            _ => panic!("unexpected slash command option type"),
+                                        },
+                                        name => panic!("unexpected option for /reset-race: {name}"),
+                                    }
+                                }
+                                if !reset_draft && !reset_schedule {
+                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                        .ephemeral(true)
+                                        .content("Please specify at least one thing to delete using the slash command's options.")
+                                    )).await?;
+                                    return Ok(())
+                                }
                                 let http_client = {
                                     let data = ctx.data.read().await;
                                     data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone()
@@ -1120,7 +1159,28 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     }
                                     Ok(Some(race)) => {
                                         let race = Race {
-                                            // explicitly listing fields here instead of using `..race` so if the fields change they're kept/reset correctly
+                                            schedule: if reset_schedule { RaceSchedule::Unscheduled } else { race.schedule },
+                                            schedule_updated_at: if reset_schedule { Some(Utc::now()) } else { race.schedule_updated_at },
+                                            draft: if reset_draft {
+                                                if_chain! {
+                                                    if let Some(draft_kind) = event.draft_kind();
+                                                    if let Some(draft) = race.draft;
+                                                    if let Entrants::Two(entrants) = &race.entrants;
+                                                    if let Ok(low_seed) = entrants.iter()
+                                                        .filter_map(as_variant!(Entrant::MidosHouseTeam))
+                                                        .filter(|team| team.id != draft.high_seed)
+                                                        .exactly_one();
+                                                    then {
+                                                        Some(Draft::for_next_game(&mut transaction, draft_kind, draft.high_seed, low_seed.id).await?)
+                                                    } else {
+                                                        None
+                                                    }
+                                                }
+                                            } else {
+                                                race.draft
+                                            },
+                                            seed: if reset_schedule { seed::Data::default() } else { race.seed },
+                                            // explicitly listing remaining fields here instead of using `..race` so if the fields change they're kept/reset correctly
                                             id: race.id,
                                             series: race.series,
                                             event: race.event,
@@ -1130,10 +1190,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             round: race.round,
                                             game: race.game,
                                             scheduling_thread: race.scheduling_thread,
-                                            schedule: RaceSchedule::Unscheduled, //TODO add command parameter that needs to be specified to reset this
-                                            schedule_updated_at: Some(Utc::now()),
-                                            draft: race.draft, //TODO add command parameter to reset the draft state
-                                            seed: seed::Data::default(), //TODO keep if schedule is kept
                                             video_urls: race.video_urls,
                                             restreamers: race.restreamers,
                                             last_edited_by: race.last_edited_by,
