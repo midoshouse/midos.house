@@ -3,8 +3,8 @@ use {
     derive_more::From,
     image::{
         GenericImage as _,
+        ImageReader,
         RgbaImage,
-        io::Reader as ImageReader,
     },
     ootr_utils::camc::ChestAppearance,
     rocket::{

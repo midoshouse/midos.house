@@ -1533,7 +1533,7 @@ impl IsNetworkError for Error {
     }
 }
 
-static SHEETS_CACHE: Lazy<Mutex<HashMap<(String, String), (Instant, Vec<Vec<String>>)>>> = Lazy::new(|| Mutex::default());
+static SHEETS_CACHE: Lazy<Mutex<(Instant, HashMap<(String, String), (Instant, Vec<Vec<String>>)>)>> = Lazy::new(|| Mutex::new((Instant::now(), HashMap::default())));
 
 #[derive(Debug, thiserror::Error)]
 enum SheetsUncachedError {
@@ -1583,7 +1583,8 @@ async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str)
         values: Vec<Vec<String>>,
     }
 
-    async fn sheet_values_uncached(http_client: &reqwest::Client, sheet_id: &str, range: &str) -> Result<Vec<Vec<String>>, SheetsUncachedError> {
+    async fn sheet_values_uncached(http_client: &reqwest::Client, sheet_id: &str, range: &str, next_request: &mut Instant) -> Result<Vec<Vec<String>>, SheetsUncachedError> {
+        sleep_until(*next_request).await;
         let gsuite_secret = read_service_account_key("assets/google-client-secret.json").await.at("assets/google-client-secret.json")?;
         let auth = ServiceAccountAuthenticator::builder(gsuite_secret)
             .build().await.at_unknown()?;
@@ -1601,32 +1602,38 @@ async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str)
             .send().await?
             .detailed_error_for_status().await?
             .json_with_text_in_error::<ValueRange>().await?;
+        // from https://developers.google.com/sheets/api/limits#quota
+        // “Read requests […] Per minute per user per project […] 60”
+        *next_request = Instant::now() + Duration::from_secs(1);
         Ok(values)
     }
 
     let key = (sheet_id.to_owned(), range.to_owned());
-    lock!(cache = SHEETS_CACHE; Ok(match cache.entry(key) {
-        hash_map::Entry::Occupied(mut entry) => {
-            let (retrieved, values) = entry.get();
-            if retrieved.elapsed() < Duration::from_secs(5 * 60) {
-                values.clone()
-            } else {
-                match sheet_values_uncached(&http_client, sheet_id, range).await {
-                    Ok(values) => {
-                        entry.insert((Instant::now(), values.clone()));
-                        values
+    lock!(cache = SHEETS_CACHE; {
+        let (ref mut next_request, ref mut cache) = *cache;
+        Ok(match cache.entry(key) {
+            hash_map::Entry::Occupied(mut entry) => {
+                let (retrieved, values) = entry.get();
+                if retrieved.elapsed() < Duration::from_secs(5 * 60) {
+                    values.clone()
+                } else {
+                    match sheet_values_uncached(&http_client, sheet_id, range, next_request).await {
+                        Ok(values) => {
+                            entry.insert((Instant::now(), values.clone()));
+                            values
+                        }
+                        Err(e) if e.is_network_error() && retrieved.elapsed() < Duration::from_secs(60 * 60) => values.clone(),
+                        Err(source) => return Err(SheetsError { cache: SheetsCacheMissReason::Elapsed, source }),
                     }
-                    Err(e) if e.is_network_error() && retrieved.elapsed() < Duration::from_secs(60 * 60) => values.clone(),
-                    Err(source) => return Err(SheetsError { cache: SheetsCacheMissReason::Elapsed, source }),
                 }
             }
-        }
-        hash_map::Entry::Vacant(entry) => {
-            let values = sheet_values_uncached(&http_client, sheet_id, range).await.map_err(|source| SheetsError { cache: SheetsCacheMissReason::Vacant, source })?;
-            entry.insert((Instant::now(), values.clone()));
-            values
-        }
-    }))
+            hash_map::Entry::Vacant(entry) => {
+                let values = sheet_values_uncached(&http_client, sheet_id, range, next_request).await.map_err(|source| SheetsError { cache: SheetsCacheMissReason::Vacant, source })?;
+                entry.insert((Instant::now(), values.clone()));
+                values
+            }
+        })
+    })
 }
 
 trait IntoIcsTzid {
