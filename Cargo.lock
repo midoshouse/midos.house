@@ -2447,7 +2447,6 @@ dependencies = [
  "log",
  "log-lock",
  "noisy_float",
- "once_cell",
  "ootr-utils",
  "openssl",
  "racetime",

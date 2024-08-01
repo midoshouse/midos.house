@@ -251,7 +251,7 @@ impl<'a> Data<'a> {
     pub(crate) async fn chests(&self) -> wheel::Result<ChestAppearances> {
         macro_rules! from_file {
             ($path:literal) => {{
-                static WEIGHTS: Lazy<Vec<(ChestAppearances, usize)>> = Lazy::new(|| serde_json::from_str(include_str!($path)).expect("failed to parse chest weights"));
+                static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!($path)).expect("failed to parse chest weights"));
 
                 WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
             }};

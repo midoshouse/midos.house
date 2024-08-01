@@ -378,7 +378,7 @@ pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map
 }
 
 pub(crate) fn s3_chests(picks: &draft::Picks) -> ChestAppearances {
-    static WEIGHTS: Lazy<HashMap<String, Vec<(ChestAppearances, usize)>>> = Lazy::new(|| serde_json::from_str(include_str!("../../assets/event/mw/chests-3-6.2.181.json")).expect("failed to parse chest weights")); //TODO update to 6.2.205
+    static WEIGHTS: LazyLock<HashMap<String, Vec<(ChestAppearances, usize)>>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/mw/chests-3-6.2.181.json")).expect("failed to parse chest weights")); //TODO update to 6.2.205
 
     if let Some(settings_weights) = WEIGHTS.get(&display_s3_draft_picks(picks)) {
         settings_weights.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0

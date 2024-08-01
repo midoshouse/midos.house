@@ -28,7 +28,10 @@ pub(crate) use {
             pin,
         },
         str::FromStr,
-        sync::Arc,
+        sync::{
+            Arc,
+            LazyLock,
+        },
         time::Duration,
     },
     async_trait::async_trait,
@@ -65,7 +68,6 @@ pub(crate) use {
         regex_is_match,
     },
     log_lock::*,
-    once_cell::sync::Lazy,
     ootr_utils::{
         camc::ChestTexture,
         spoiler::{

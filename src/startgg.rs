@@ -4,7 +4,7 @@ use {
     crate::prelude::*,
 };
 
-static CACHE: Lazy<Mutex<(Instant, TypeMap)>> = Lazy::new(|| Mutex::new((Instant::now(), TypeMap::default())));
+static CACHE: LazyLock<Mutex<(Instant, TypeMap)>> = LazyLock::new(|| Mutex::new((Instant::now(), TypeMap::default())));
 
 struct QueryCache<T: GraphQLQuery> {
     _phantom: PhantomData<T>,

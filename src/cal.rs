@@ -1533,7 +1533,7 @@ impl IsNetworkError for Error {
     }
 }
 
-static SHEETS_CACHE: Lazy<Mutex<(Instant, HashMap<(String, String), (Instant, Vec<Vec<String>>)>)>> = Lazy::new(|| Mutex::new((Instant::now(), HashMap::default())));
+static SHEETS_CACHE: LazyLock<Mutex<(Instant, HashMap<(String, String), (Instant, Vec<Vec<String>>)>)>> = LazyLock::new(|| Mutex::new((Instant::now(), HashMap::default())));
 
 #[derive(Debug, thiserror::Error)]
 enum SheetsUncachedError {
