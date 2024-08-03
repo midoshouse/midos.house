@@ -2277,6 +2277,7 @@ enum RaceState {
 struct OfficialRaceData {
     cal_event: cal::Event,
     event: event::Data<'static>,
+    goal: Goal,
     restreams: HashMap<Url, RestreamState>,
     entrants: Vec<String>,
     fpa_invoked: bool,
@@ -2331,7 +2332,11 @@ impl Handler {
     fn is_official(&self) -> bool { self.official_data.is_some() }
 
     async fn goal(&self, ctx: &RaceContext<GlobalState>) -> Result<Goal, GoalFromStrError> {
-        ctx.data().await.goal.name.parse()
+        if let Some(OfficialRaceData { goal, .. }) = self.official_data {
+            Ok(goal)
+        } else {
+            ctx.data().await.goal.name.parse()
+        }
     }
 
     async fn can_monitor(&self, ctx: &RaceContext<GlobalState>, is_monitor: bool, msg: &ChatMessage) -> sqlx::Result<bool> {
@@ -2777,7 +2782,7 @@ impl RaceHandler<GlobalState> for Handler {
                     Some(OfficialRaceData {
                         fpa_invoked: false,
                         scores: HashMap::default(),
-                        cal_event, event, restreams, entrants,
+                        cal_event, event, goal, restreams, entrants,
                     }),
                     race_state,
                     high_seed_name,
