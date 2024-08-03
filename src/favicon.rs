@@ -36,8 +36,9 @@ impl ChestAppearances {
     pub(crate) const TOKENS: Self = Self([ChestAppearance { texture: ChestTexture::Token, big: false }; 4]);
 
     pub(crate) fn random() -> Self {
-        //TODO automatically keep up to date with the dev-mvp branch of the RSL script
-        static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../assets/chests-rsl-ba1fb7c.json")).expect("failed to parse chest weights"));
+        //TODO automatically keep up to date with the dev-mvp branch of the RSL script:
+        // ootrstats-supervisor --rsl --github-user=fenhl --branch=dev-mvp midos-house assets/chests-rsl-dev-mvp.json
+        static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../assets/chests-rsl-dev-mvp.json")).expect("failed to parse chest weights"));
 
         WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
     }

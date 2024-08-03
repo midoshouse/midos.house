@@ -506,6 +506,11 @@ pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map
             "5meds-meds" | "5meds-dungeons" => json!(5),
             _ => json!(6),
         },
+        format!("bridge_stones") => match bridge {
+            "1stones" => json!(1),
+            "2stones" => json!(2),
+            _ => json!(3),
+        },
         format!("bridge_rewards") => match bridge {
             "5dungeons" => json!(5),
             "6dungeons" => json!(6),
