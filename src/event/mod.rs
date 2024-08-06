@@ -740,8 +740,8 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 @match data.match_source() {
-                    MatchSource::Manual => a(class = "button", href = uri!(crate::cal::create_race(series, event, _)).to_string()) : "New Race";
-                    MatchSource::Challonge { .. } => a(class = "button", href = uri!(crate::cal::import_races(series, event)).to_string()) : "Import";
+                    MatchSource::Manual | MatchSource::Challonge { .. } => a(class = "button", href = uri!(crate::cal::create_race(series, event, _)).to_string()) : "New Race";
+                    //MatchSource::Challonge { .. } => a(class = "button", href = uri!(crate::cal::import_races(series, event)).to_string()) : "Import"; // disabled due to Challonge pagination bug
                     MatchSource::League => {}
                     MatchSource::StartGG(_) => @if !data.auto_import {
                         a(class = "button", href = uri!(crate::cal::import_races(series, event)).to_string()) : "Import";

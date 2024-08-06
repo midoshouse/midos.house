@@ -2186,8 +2186,8 @@ pub(crate) async fn race_table(
                             @if options.can_create {
                                 @if let Some(event) = event {
                                     @match event.match_source() {
-                                        MatchSource::Manual => a(class = "button", href = uri!(create_race(races[0].series, &*races[0].event, _)).to_string()) : "New Race";
-                                        MatchSource::Challonge { .. } => a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event)).to_string()) : "Import";
+                                        MatchSource::Manual | MatchSource::Challonge { .. } => a(class = "button", href = uri!(create_race(races[0].series, &*races[0].event, _)).to_string()) : "New Race";
+                                        //MatchSource::Challonge { .. } => a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event)).to_string()) : "Import"; // disabled due to Challonge pagination bug
                                         MatchSource::League => {}
                                         MatchSource::StartGG(_) => @if !event.auto_import {
                                             a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event)).to_string()) : "Import";
