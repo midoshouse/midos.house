@@ -636,7 +636,7 @@ impl Race {
                         .detailed_error_for_status().await?
                         .json_with_text_in_error::<league::Schedule>().await?;
                     for race in schedule.matches {
-                        if race.id <= 427 { continue } // seasons 5 and 6
+                        if race.id <= 417 { continue } // seasons 5 and 6
                         let id = Id::<Races>::new(&mut *transaction).await?;
                         add_or_update_race(&mut *transaction, &mut races, Self {
                             series: event.series,
