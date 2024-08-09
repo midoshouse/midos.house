@@ -2,6 +2,10 @@ use {
     std::{
         io::prelude::*,
         process::Stdio,
+        sync::atomic::{
+            self,
+            AtomicUsize,
+        },
     },
     git2::{
         BranchType,
@@ -39,11 +43,7 @@ use {
         UserId,
     },
     tokio::{
-        io::{
-            AsyncBufReadExt as _,
-            AsyncWriteExt as _,
-            BufReader,
-        },
+        io::AsyncWriteExt as _,
         sync::{
             Notify,
             Semaphore,
@@ -78,6 +78,8 @@ const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 4] = [
 ];
 
 const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
+
+static RSL_SEQUENCE_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ParseUserError {
@@ -1368,17 +1370,27 @@ impl GlobalState {
                 origin.fetch(&[branch_name], None, None)?;
                 repo.reset(&repo.find_branch(&format!("origin/{branch_name}"), BranchType::Remote)?.into_reference().peel_to_commit()?.into_object(), ResetType::Hard, None)?;
             }
-            // check required randomizer version
-            let local_version_path = rsl_script_path.join("rslversion.py");
-            let local_version_file = BufReader::new(File::open(&local_version_path).await?);
-            let mut lines = local_version_file.lines();
-            let version = loop {
-                let line = lines.next_line().await.at(&local_version_path)?.ok_or(RollError::RslVersion)?;
-                if let Some((_, local_version)) = regex_captures!("^randomizer_version = '(.+)'$", &line) {
-                    break local_version.parse::<rando::Version>()?
-                }
+            // check RSL script version
+            let rsl_version = Command::new(PYTHON)
+                .arg("-c")
+                .arg("import rslversion; print(rslversion.__version__)")
+                .current_dir(&rsl_script_path)
+                .check(PYTHON).await?
+                .stdout;
+            let supports_plando_filename_base = if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &String::from_utf8(rsl_version)?.trim()) {
+                (Version::new(major.parse()?, minor.parse()?, patch.parse()?), devmvp.parse()?) >= (Version::new(2, 6, 3), 4)
+            } else {
+                false
             };
-            let web_version = self.ootr_api_client.can_roll_on_web(Some(&preset), &VersionedBranch::Pinned(version.clone()), world_count, unlock_spoiler_log).await;
+            // check required randomizer version
+            let randomizer_version = Command::new(PYTHON)
+                .arg("-c")
+                .arg("import rslversion; print(rslversion.randomizer_version)")
+                .current_dir(&rsl_script_path)
+                .check(PYTHON).await?
+                .stdout;
+            let randomizer_version = String::from_utf8(randomizer_version)?.trim().parse::<rando::Version>()?;
+            let web_version = self.ootr_api_client.can_roll_on_web(Some(&preset), &VersionedBranch::Pinned(randomizer_version.clone()), world_count, unlock_spoiler_log).await;
             // run the RSL script
             let _ = update_tx.send(SeedRollUpdate::Started).await;
             let outer_tries = if web_version.is_some() { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script
@@ -1393,6 +1405,10 @@ impl GlobalState {
                 let mut rsl_cmd = Command::new(PYTHON);
                 rsl_cmd.arg("RandomSettingsGenerator.py");
                 rsl_cmd.arg("--no_log_errors");
+                if supports_plando_filename_base {
+                    // add a sequence ID to the names of temporary plando files to prevent name collisions
+                    rsl_cmd.arg(format!("--plando_filename_base=mh_{}", RSL_SEQUENCE_ID.fetch_add(1, atomic::Ordering::Relaxed)));
+                }
                 if !matches!(preset, VersionedRslPreset::Xopar { preset: rsl::Preset::League, .. }) {
                     rsl_cmd.arg(format!(
                         "--override={}{}_override.json",
@@ -1652,10 +1668,12 @@ pub(crate) enum RollError {
     #[error(transparent)] Git(#[from] git2::Error),
     #[error(transparent)] Header(#[from] reqwest::header::ToStrError),
     #[error(transparent)] Json(#[from] serde_json::Error),
+    #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
     #[error(transparent)] RaceTime(#[from] Error),
     #[error(transparent)] RandoVersion(#[from] rando::VersionParseError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Utf8(#[from] std::string::FromUtf8Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[cfg(unix)] #[error(transparent)] Xdg(#[from] xdg::BaseDirectoriesError),
     #[error("{display}")]
@@ -1687,6 +1705,7 @@ pub(crate) enum RollError {
     },
     #[error("failed to parse random settings script output")]
     RslScriptOutput,
+    #[cfg(unix)]
     #[error("failed to parse randomizer version from RSL script")]
     RslVersion,
     #[error("randomizer did not report spoiler log location")]
