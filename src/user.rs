@@ -35,6 +35,8 @@ pub(crate) enum RaceTimePronouns {
     SheThey,
     #[serde(rename = "he/they")]
     HeThey,
+    #[serde(rename = "any/all")]
+    AnyAll,
     #[serde(rename = "other/ask!")]
     Other,
 }
@@ -220,7 +222,7 @@ impl User {
         match self.racetime.as_ref().and_then(|racetime| racetime.pronouns) {
             Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => "he",
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "she",
-            Some(RaceTimePronouns::They | RaceTimePronouns::Other) | None => "they",
+            Some(RaceTimePronouns::They | RaceTimePronouns::AnyAll | RaceTimePronouns::Other) | None => "they",
         }
     }
 
@@ -228,7 +230,7 @@ impl User {
         match self.racetime.as_ref().and_then(|racetime| racetime.pronouns) {
             Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => false,
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => false,
-            Some(RaceTimePronouns::They | RaceTimePronouns::Other) | None => true,
+            Some(RaceTimePronouns::They | RaceTimePronouns::AnyAll | RaceTimePronouns::Other) | None => true,
         }
     }
 
@@ -236,7 +238,7 @@ impl User {
         match self.racetime.as_ref().and_then(|racetime| racetime.pronouns) {
             Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => "him",
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "her",
-            Some(RaceTimePronouns::They | RaceTimePronouns::Other) | None => "them",
+            Some(RaceTimePronouns::They | RaceTimePronouns::AnyAll | RaceTimePronouns::Other) | None => "them",
         }
     }
 
@@ -244,7 +246,7 @@ impl User {
         match self.racetime.as_ref().and_then(|racetime| racetime.pronouns) {
             Some(RaceTimePronouns::He | RaceTimePronouns::HeThey) => "his",
             Some(RaceTimePronouns::She | RaceTimePronouns::SheThey) => "her",
-            Some(RaceTimePronouns::They | RaceTimePronouns::Other) | None => "their",
+            Some(RaceTimePronouns::They | RaceTimePronouns::AnyAll | RaceTimePronouns::Other) | None => "their",
         }
     }
 
