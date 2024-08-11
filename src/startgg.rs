@@ -30,7 +30,7 @@ impl IsNetworkError for Error {
         match self {
             Self::Reqwest(e) => e.is_network_error(),
             Self::Wheel(e) => e.is_network_error(),
-            Self::GraphQL(_) => false,
+            Self::GraphQL(errors) => errors.iter().all(|graphql_client::Error { message, .. }| message == "An unknown error has occurred"),
             Self::NoDataNoErrors => false,
         }
     }
