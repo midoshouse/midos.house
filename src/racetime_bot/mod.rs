@@ -1542,12 +1542,21 @@ impl GlobalState {
                     ("version", version),
                 ],
             };
-            let response = self.http_client
-                .post("https://www.triforceblitz.com/generator")
-                .form(&form_data)
-                .timeout(Duration::from_secs(5 * 60))
-                .send().await?
-                .detailed_error_for_status().await?;
+            let mut attempts = 0;
+            let response = loop {
+                attempts += 1;
+                let response = self.http_client
+                    .post("https://www.triforceblitz.com/generator")
+                    .form(&form_data)
+                    .timeout(Duration::from_secs(5 * 60))
+                    .send().await?
+                    .detailed_error_for_status().await;
+                match response {
+                    Ok(response) => break response,
+                    Err(wheel::Error::ResponseStatus { inner, .. }) if attempts < 3 && inner.status().is_some_and(|status| status.is_server_error()) => continue,
+                    Err(e) => return Err(e.into()),
+                }
+            };
             let uuid = tfb::parse_seed_url(response.url()).ok_or(RollError::TfbUrl)?;
             let response_body = response.text().await?;
             let file_hash = kuchiki::parse_html().one(response_body)
