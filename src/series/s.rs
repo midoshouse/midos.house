@@ -151,37 +151,37 @@ pub(crate) fn resolve_s7_draft_settings(picks: &draft::Picks) -> serde_json::Map
     settings
 }
 
-pub(crate) fn next_friday_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
+pub(crate) fn next_kokiri_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
     let today = min_time.with_timezone(&America::New_York).date_naive();
     let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Fri).unwrap();
-    let time = date.and_hms_opt(20, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Friday weekly time");
+    let time = date.and_hms_opt(20, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Kokiri weekly time");
     if time <= min_time {
         let date = date.checked_add_days(Days::new(7)).unwrap();
-        date.and_hms_opt(20, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Friday weekly time")
+        date.and_hms_opt(20, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Kokiri weekly time")
     } else {
         time
     }
 }
 
-pub(crate) fn next_saturday_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
+pub(crate) fn next_goron_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
     let today = min_time.with_timezone(&Europe::Paris).date_naive();
     let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Sat).unwrap();
-    let time = date.and_hms_opt(20, 0, 0).unwrap().and_local_timezone(Europe::Paris).single_ok().expect("error determining Satuday weekly time");
+    let time = date.and_hms_opt(20, 0, 0).unwrap().and_local_timezone(Europe::Paris).single_ok().expect("error determining Goron weekly time");
     if time <= min_time {
         let date = date.checked_add_days(Days::new(7)).unwrap();
-        date.and_hms_opt(20, 0, 0).unwrap().and_local_timezone(Europe::Paris).single_ok().expect("error determining Satuday weekly time")
+        date.and_hms_opt(20, 0, 0).unwrap().and_local_timezone(Europe::Paris).single_ok().expect("error determining Goron weekly time")
     } else {
         time
     }
 }
 
-pub(crate) fn next_sunday_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
+pub(crate) fn next_zora_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
     let today = min_time.with_timezone(&America::New_York).date_naive();
     let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Sun).unwrap();
-    let time = date.and_hms_opt(17, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Sunday weekly time");
+    let time = date.and_hms_opt(17, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Zora weekly time");
     if time <= min_time {
         let date = date.checked_add_days(Days::new(7)).unwrap();
-        date.and_hms_opt(17, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Sunday weekly time")
+        date.and_hms_opt(17, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Zora weekly time")
     } else {
         time
     }
@@ -212,18 +212,18 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     p : "There are three races each week, each open to all participants:";
                     ol {
                         li {
-                            : "Fridays at 8PM Eastern Time (next: ";
-                            : format_datetime(next_friday_weekly_after(now), DateTimeFormat { long: true, running_text: false });
+                            : "The Kokiri weekly, Fridays at 8PM Eastern Time (next: ";
+                            : format_datetime(next_kokiri_weekly_after(now), DateTimeFormat { long: true, running_text: false });
                             : ")";
                         }
                         li {
-                            : "Saturdays at 20:00 Central European (Summer) Time (next: ";
-                            : format_datetime(next_saturday_weekly_after(now), DateTimeFormat { long: true, running_text: false });
+                            : "The Goron weekly, Saturdays at 20:00 Central European (Summer) Time (next: ";
+                            : format_datetime(next_goron_weekly_after(now), DateTimeFormat { long: true, running_text: false });
                             : ")";
                         }
                         li {
-                            : "Sundays at 5PM Eastern Time (next: ";
-                            : format_datetime(next_sunday_weekly_after(now), DateTimeFormat { long: true, running_text: false });
+                            : "The Zora weekly, Sundays at 5PM Eastern Time (next: ";
+                            : format_datetime(next_zora_weekly_after(now), DateTimeFormat { long: true, running_text: false });
                             : ")";
                         }
                     }
