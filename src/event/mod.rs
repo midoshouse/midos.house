@@ -291,6 +291,7 @@ impl<'a> Data<'a> {
             }
             (Series::Rsl, "6") => from_file!("../../assets/event/rsl/chests-6-248f8b5.json"),
             (Series::Scrubs, "5") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
+            (Series::Scrubs, "6") => from_file!("../../assets/event/scrubs/chests-6-8.1.73.json"),
             (Series::SongsOfHope, "1") => from_file!("../../assets/event/soh/chests-1-8.1.json"),
             (Series::SpeedGaming, "2023onl" | "2023live") => from_file!("../../assets/event/sgl/chests-2023-42da4aa.json"),
             (Series::SpeedGaming, "2024onl" | "2024live") => from_file!("../../assets/event/sgl/chests-2024-ee4d35b.json"),

@@ -769,6 +769,7 @@ impl Race {
             },
             Series::Scrubs => match &*event.event {
                 "5" => {}
+                "6" => {} //TODO add schedule sheet once available
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {
