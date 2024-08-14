@@ -1779,9 +1779,9 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                 cal.add_event(cal_event);
                 if let (Series::Standard, "w", Some(round)) = (event.series, &*event.event, &race.round) {
                     match &**round {
-                        "Friday Weekly" | "Kokiri Weekly" => latest_instantiated_kokiri_weekly = Some(start),
-                        "Saturday Weekly" | "Goron Weekly" => latest_instantiated_goron_weekly = Some(start),
-                        "Sunday Weekly" | "Zora Weekly" => latest_instantiated_zora_weekly = Some(start),
+                        "Kokiri Weekly" => latest_instantiated_kokiri_weekly = Some(start),
+                        "Goron Weekly" => latest_instantiated_goron_weekly = Some(start),
+                        "Zora Weekly" => latest_instantiated_zora_weekly = Some(start),
                         _ => {}
                     }
                 }

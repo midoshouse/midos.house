@@ -2708,9 +2708,9 @@ impl RaceHandler<GlobalState> for Handler {
                                 match (cal_event.race.phase.as_deref(), cal_event.race.round.as_deref()) {
                                     (Some("Qualifier"), Some(round)) => format!("qualifier {round}"),
                                     (Some("Live Qualifier"), Some(round)) => format!("live qualifier {round}"),
-                                    (None, Some("Friday Weekly" | "Kokiri Weekly")) => format!("the Kokiri weekly"),
-                                    (None, Some("Saturday Weekly" | "Goron Weekly")) => format!("the Goron weekly"),
-                                    (None, Some("Sunday Weekly" | "Zora Weekly")) => format!("the Zora weekly"),
+                                    (None, Some("Kokiri Weekly")) => format!("the Kokiri weekly"),
+                                    (None, Some("Goron Weekly")) => format!("the Goron weekly"),
+                                    (None, Some("Zora Weekly")) => format!("the Zora weekly"),
                                     (Some(phase), Some(round)) => format!("this {phase} {round} race"),
                                     (Some(phase), None) => format!("this {phase} race"),
                                     (None, Some(round)) => format!("this {round} race"),
