@@ -11,3 +11,11 @@ document.querySelectorAll('.daterange').forEach(function(dateRange) {
     var end = new Date(parseInt(dateRange.dataset.end));
     dateRange.textContent = Intl.DateTimeFormat([], {dateStyle: 'long'}).formatRange(start, end);
 });
+
+document.querySelectorAll('.timezone').forEach(function(timezone) {
+    timezone.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
+});
+
+document.querySelectorAll('.timezone-wrapper').forEach(function(timezoneWrapper) {
+    timezoneWrapper.classList.remove('timezone-wrapper');
+});

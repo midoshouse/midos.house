@@ -68,6 +68,10 @@ body > div {
     flex-grow: 0;
 }
 
+.timezone-wrapper {
+    display: none;
+}
+
 .center {
     text-align: center;
 }
