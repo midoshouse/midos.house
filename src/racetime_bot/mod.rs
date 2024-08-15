@@ -26,17 +26,9 @@ use {
         },
         model::*,
     },
-    reqwest::{
-        IntoUrl,
-        StatusCode,
-    },
+    reqwest::StatusCode,
     semver::Version,
     serde_json::Value as Json,
-    serde_plain::derive_deserialize_from_fromstr,
-    serde_with::{
-        DisplayFromStr,
-        json::JsonString,
-    },
     serenity::all::{
         CreateAllowedMentions,
         CreateMessage,
@@ -46,8 +38,6 @@ use {
         io::AsyncWriteExt as _,
         sync::{
             Notify,
-            Semaphore,
-            TryAcquireError,
             mpsc,
         },
         time::timeout,
@@ -68,16 +58,6 @@ mod report;
 #[cfg(windows)] const PYTHON: &str = "py";
 
 pub(crate) const CATEGORY: &str = "ootr";
-
-/// Randomizer versions that are known to exist on the ootrandomizer.com API despite not being listed by the version endpoint since supplementary versions weren't tracked at the time.
-const KNOWN_GOOD_WEB_VERSIONS: [rando::Version; 4] = [
-    rando::Version::from_branch(rando::Branch::DevR, 6, 2, 238, 1),
-    rando::Version::from_branch(rando::Branch::DevR, 7, 1, 83, 1), // commit 578a64f4c78a831cde4215e0ac31565d3bf9bc46
-    rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1), // commit 06390ece7e38fce1dd02ca60a28a7b1ff9fceb10
-    rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2),
-];
-
-const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
 
 static RSL_SEQUENCE_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -157,7 +137,7 @@ pub(crate) enum VersionedBranch {
 }
 
 impl VersionedBranch {
-    fn branch(&self) -> Option<rando::Branch> {
+    pub(crate) fn branch(&self) -> Option<rando::Branch> {
         match self {
             Self::Pinned(version) => Some(version.branch()),
             Self::Latest(branch) => Some(*branch),
@@ -1247,7 +1227,7 @@ pub(crate) struct GlobalState {
     pub(crate) http_client: reqwest::Client,
     #[allow(unused)] //TODO use for set reporting
     startgg_token: String,
-    ootr_api_client: OotrApiClient,
+    ootr_api_client: ootr_web::ApiClient,
     pub(crate) discord_ctx: RwFuture<DiscordCtx>,
     clean_shutdown: Arc<Mutex<CleanShutdown>>,
     seed_cache_tx: watch::Sender<()>,
@@ -1273,7 +1253,7 @@ impl GlobalState {
                 hostname: Cow::Borrowed(env.racetime_host()),
                 ..racetime::HostInfo::default()
             },
-            ootr_api_client: OotrApiClient::new(http_client.clone(), ootr_api_key, ootr_api_key_encryption),
+            ootr_api_client: ootr_web::ApiClient::new(http_client.clone(), ootr_api_key, ootr_api_key_encryption),
             new_room_lock, env, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown, seed_cache_tx,
         }
     }
@@ -1323,7 +1303,7 @@ impl GlobalState {
                             rsl_preset: None,
                             unlock_spoiler_log,
                         }).await?,
-                        Err(e) => update_tx.send(SeedRollUpdate::Error(e)).await?, //TODO fall back to rolling locally for network errors
+                        Err(e) => update_tx.send(SeedRollUpdate::Error(e.into())).await?, //TODO fall back to rolling locally for network errors
                     }
                 } else {
                     update_tx.send(SeedRollUpdate::Started).await?;
@@ -1453,8 +1433,8 @@ impl GlobalState {
                     }
                     let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), None /* always limit to 3 tries per settings */, web_version, true, unlock_spoiler_log, settings).await {
                         Ok(data) => data,
-                        Err(RollError::Retries { .. }) => continue,
-                        Err(e) => return Err(e), //TODO fall back to rolling locally for network errors
+                        Err(ootr_web::Error::Retries { .. }) => continue,
+                        Err(e) => return Err(e.into()), //TODO fall back to rolling locally for network errors
                     };
                     let _ = update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
@@ -1675,13 +1655,13 @@ pub(crate) enum RollError {
     #[error(transparent)] Clone(#[from] rando::CloneError),
     #[error(transparent)] Dir(#[from] rando::DirError),
     #[error(transparent)] Git(#[from] git2::Error),
-    #[error(transparent)] Header(#[from] reqwest::header::ToStrError),
     #[error(transparent)] Json(#[from] serde_json::Error),
+    #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
     #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
-    #[error(transparent)] RaceTime(#[from] Error),
+    #[cfg(unix)] #[error(transparent)] RaceTime(#[from] Error),
     #[error(transparent)] RandoVersion(#[from] rando::VersionParseError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
-    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[cfg(unix)] #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Utf8(#[from] std::string::FromUtf8Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[cfg(unix)] #[error(transparent)] Xdg(#[from] xdg::BaseDirectoriesError),
@@ -1699,8 +1679,6 @@ pub(crate) enum RollError {
     OsString(std::ffi::OsString),
     #[error("randomizer did not report patch location")]
     PatchPath,
-    #[error("attempted to roll a random settings seed on web, but this branch isn't available with hidden settings on web")]
-    RandomSettingsWeb,
     #[cfg(unix)]
     #[error("base rom not found")]
     RomPath,
@@ -1728,8 +1706,6 @@ pub(crate) enum RollError {
     TfbHtml,
     #[error("Triforce Blitz website returned unexpected URL")]
     TfbUrl,
-    #[error("seed status API endpoint returned unknown value {0}")]
-    UnespectedSeedStatus(u8),
     #[cfg(windows)]
     #[error("failed to access user directories")]
     UserDirs,
@@ -1986,273 +1962,6 @@ impl SeedRollUpdate {
             #[cfg(unix)] Self::Message(msg) => ctx.say(msg).await?,
         }
         Ok(())
-    }
-}
-
-struct OotrApiClient {
-    http_client: reqwest::Client,
-    api_key: String,
-    api_key_encryption: String,
-    next_request: Mutex<Instant>,
-    mw_seed_rollers: Semaphore,
-    waiting: Mutex<Vec<mpsc::UnboundedSender<()>>>,
-}
-
-struct VersionsResponse {
-    currently_active_version: Option<rando::Version>,
-    available_versions: Vec<rando::Version>,
-}
-
-impl OotrApiClient {
-    pub fn new(http_client: reqwest::Client, api_key: String, api_key_encryption: String) -> Self {
-        Self {
-            next_request: Mutex::new(Instant::now() + MULTIWORLD_RATE_LIMIT),
-            mw_seed_rollers: Semaphore::new(2), // we're allowed to roll a maximum of 2 multiworld seeds at the same time
-            waiting: Mutex::default(),
-            http_client, api_key, api_key_encryption,
-        }
-    }
-
-    async fn get(&self, uri: impl IntoUrl + Clone, query: Option<&(impl Serialize + ?Sized)>) -> reqwest::Result<reqwest::Response> {
-        lock!(next_request = self.next_request; {
-            sleep_until(*next_request).await;
-            let mut builder = self.http_client.get(uri.clone());
-            if let Some(query) = query {
-                builder = builder.query(query);
-            }
-            let res = builder.send().await;
-            *next_request = Instant::now() + Duration::from_millis(500);
-            res
-        })
-    }
-
-    async fn post(&self, uri: impl IntoUrl + Clone, query: Option<&(impl Serialize + ?Sized)>, json: Option<&(impl Serialize + ?Sized)>, rate_limit: Option<Duration>) -> reqwest::Result<reqwest::Response> {
-        lock!(next_request = self.next_request; {
-            sleep_until(*next_request).await;
-            let mut builder = self.http_client.post(uri.clone());
-            if let Some(query) = query {
-                builder = builder.query(query);
-            }
-            if let Some(json) = json {
-                builder = builder.json(json);
-            }
-            let res = builder.send().await;
-            *next_request = Instant::now() + rate_limit.unwrap_or_else(|| Duration::from_millis(500));
-            res
-        })
-    }
-
-    async fn get_versions(&self, branch: Option<rando::Branch>, random_settings: bool) -> Result<VersionsResponse, RollError> {
-        struct VersionsResponseVersion {
-            major: u8,
-            minor: u8,
-            patch: u8,
-            supplementary: Option<u8>,
-        }
-
-        #[derive(Debug, thiserror::Error)]
-        enum VersionsResponseVersionParseError {
-            #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
-            #[error("ootrandomizer.com API returned randomizer version in unexpected format")]
-            Format,
-        }
-
-        impl FromStr for VersionsResponseVersion {
-            type Err = VersionsResponseVersionParseError;
-
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                if let Some((_, major, minor, patch, supplementary)) = regex_captures!("^([0-9]+)\\.([0-9]+)\\.([0-9]+)-([0-9]+)$", s) {
-                    Ok(Self { major: major.parse()?, minor: minor.parse()?, patch: patch.parse()?, supplementary: Some(supplementary.parse()?) })
-                } else if let Some((_, major, minor, patch)) = regex_captures!("^([0-9]+)\\.([0-9]+)\\.([0-9]+)$", s) {
-                    Ok(Self { major: major.parse()?, minor: minor.parse()?, patch: patch.parse()?, supplementary: None })
-                } else {
-                    Err(VersionsResponseVersionParseError::Format)
-                }
-            }
-        }
-
-        derive_deserialize_from_fromstr!(VersionsResponseVersion, "randomizer version in ootrandomizer.com API format");
-
-        impl VersionsResponseVersion {
-            fn normalize(self, branch: Option<rando::Branch>) -> Option<rando::Version> {
-                if let Some(supplementary) = self.supplementary.filter(|&supplementary| supplementary != 0) {
-                    Some(rando::Version::from_branch(branch?, self.major, self.minor, self.patch, supplementary))
-                } else if branch.map_or(true, |branch| branch == rando::Branch::Dev) {
-                    Some(rando::Version::from_dev(self.major, self.minor, self.patch))
-                } else {
-                    None
-                }
-            }
-        }
-
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct RawVersionsResponse {
-            currently_active_version: VersionsResponseVersion,
-            available_versions: Vec<VersionsResponseVersion>,
-        }
-
-        let web_branch = if let Some(branch) = branch {
-            branch.latest_web_name(random_settings).ok_or(RollError::RandomSettingsWeb)?
-        } else {
-            // API lists releases under the “master” branch
-            "master"
-        };
-        let RawVersionsResponse { currently_active_version, available_versions } = self.get("https://ootrandomizer.com/api/version", Some(&[("key", &*self.api_key), ("branch", web_branch)])).await?
-            .detailed_error_for_status().await?
-            .json_with_text_in_error().await?;
-        Ok(VersionsResponse {
-            currently_active_version: currently_active_version.normalize(branch),
-            available_versions: available_versions.into_iter().filter_map(|ver| ver.normalize(branch)).collect(),
-        })
-    }
-
-    /// Checks if the given randomizer branch/version is available on web, and if so, which version to use.
-    async fn can_roll_on_web(&self, rsl_preset: Option<&VersionedRslPreset>, version: &VersionedBranch, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog) -> Option<rando::Version> {
-        if world_count > 3 { return None }
-        if let UnlockSpoilerLog::Progression = unlock_spoiler_log { return None }
-        if rsl_preset.is_some() && version.branch().map_or(true, |branch| branch.latest_web_name_random_settings().is_none()) { return None }
-        match version {
-            VersionedBranch::Pinned(version) => {
-                if matches!(rsl_preset, Some(VersionedRslPreset::Xopar { .. })) && *version == rando::Version::from_branch(rando::Branch::DevR, 7, 1, 181, 1) || *version == rando::Version::from_branch(rando::Branch::DevR, 8, 0, 1, 1) {
-                    return Some(rando::Version::from_branch(
-                        version.branch(),
-                        version.base().major.try_into().expect("taken from existing rando::Version"),
-                        version.base().minor.try_into().expect("taken from existing rando::Version"),
-                        version.base().patch.try_into().expect("taken from existing rando::Version"),
-                        0, // legacy devR/devRSL version which was not yet tagged with its supplementary version number but is only available in random settings mode (devRSL), not regularly (devR)
-                    ))
-                }
-                let is_available = KNOWN_GOOD_WEB_VERSIONS.contains(version)
-                    || self.get_versions((!version.is_release()).then(|| version.branch()), rsl_preset.is_some()).await
-                        // the version API endpoint sometimes returns HTML instead of the expected JSON, fallback to generating locally when that happens
-                        .is_ok_and(|VersionsResponse { available_versions, .. }| available_versions.contains(version));
-                is_available.then(|| version.clone())
-            }
-            VersionedBranch::Latest(branch) => self.get_versions(Some(*branch), rsl_preset.is_some()).await.ok().and_then(|response| response.currently_active_version),
-            VersionedBranch::Custom { .. } => None,
-        }
-    }
-
-    async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, version: rando::Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, settings: serde_json::Map<String, Json>) -> Result<(i64, DateTime<Utc>, [HashIcon; 5], String), RollError> {
-        #[serde_as]
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct CreateSeedResponse {
-            #[serde_as(as = "DisplayFromStr")]
-            id: i64,
-        }
-
-        #[derive(Deserialize)]
-        struct SeedStatusResponse {
-            status: u8,
-        }
-
-        #[derive(Deserialize)]
-        struct SettingsLog {
-            file_hash: [HashIcon; 5],
-        }
-
-        #[serde_as]
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct SeedDetailsResponse {
-            creation_timestamp: DateTime<Utc>,
-            #[serde_as(as = "JsonString")]
-            settings_log: SettingsLog,
-        }
-
-        let encrypt = version.is_release() && unlock_spoiler_log == UnlockSpoilerLog::Never;
-        let api_key = if encrypt { &*self.api_key_encryption } else { &*self.api_key };
-        let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
-        let mw_permit = if is_mw {
-            Some(match self.mw_seed_rollers.try_acquire() {
-                Ok(permit) => permit,
-                Err(TryAcquireError::Closed) => unreachable!(),
-                Err(TryAcquireError::NoPermits) => {
-                    let (mut pos, mut pos_rx) = lock!(waiting = self.waiting; {
-                        let pos = waiting.len();
-                        let (pos_tx, pos_rx) = mpsc::unbounded_channel();
-                        waiting.push(pos_tx);
-                        (pos, pos_rx)
-                    });
-                    update_tx.send(SeedRollUpdate::Queued(pos.try_into().unwrap())).await?;
-                    while pos > 0 {
-                        let () = pos_rx.recv().await.expect("queue position notifier closed");
-                        pos -= 1;
-                        update_tx.send(SeedRollUpdate::MovedForward(pos.try_into().unwrap())).await?;
-                    }
-                    lock!(waiting = self.waiting; {
-                        let permit = self.mw_seed_rollers.acquire().await.expect("seed queue semaphore closed");
-                        waiting.remove(0);
-                        for tx in &*waiting {
-                            let _ = tx.send(());
-                        }
-                        permit
-                    })
-                }
-            })
-        } else {
-            None
-        };
-        let mut last_id = None;
-        for attempt in 0.. {
-            if attempt >= 3 && delay_until.map_or(true, |delay_until| Utc::now() >= delay_until) {
-                drop(mw_permit);
-                return Err(RollError::Retries {
-                    num_retries: attempt,
-                    last_error: last_id.map(|id| format!("https://ootrandomizer.com/seed/get?id={id}")),
-                })
-            }
-            if attempt == 0 && !random_settings {
-                update_tx.send(SeedRollUpdate::Started).await?;
-            }
-            let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[
-                ("key", api_key),
-                ("version", &*version.to_string_web(random_settings).ok_or(RollError::RandomSettingsWeb)?),
-                if encrypt {
-                    ("encrypt", "1")
-                } else {
-                    ("locked", if let UnlockSpoilerLog::Now = unlock_spoiler_log { "0" } else { "1" })
-                },
-            ]), Some(&settings), is_mw.then_some(MULTIWORLD_RATE_LIMIT)).await?
-                .detailed_error_for_status().await?
-                .json_with_text_in_error().await?;
-            last_id = Some(id);
-            loop {
-                sleep(Duration::from_secs(1)).await;
-                let resp = self.get(
-                    "https://ootrandomizer.com/api/v2/seed/status",
-                    Some(&[("key", api_key), ("id", &*id.to_string())]),
-                ).await?;
-                if resp.status() == StatusCode::NO_CONTENT { continue }
-                resp.error_for_status_ref()?;
-                match resp.json_with_text_in_error::<SeedStatusResponse>().await?.status {
-                    0 => continue, // still generating
-                    1 => { // generated success
-                        drop(mw_permit);
-                        let SeedDetailsResponse { creation_timestamp, settings_log } = self.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", api_key), ("id", &*id.to_string())])).await?
-                            .detailed_error_for_status().await?
-                            .json_with_text_in_error().await?;
-                        let patch_response = self.get("https://ootrandomizer.com/api/v2/seed/patch", Some(&[("key", api_key), ("id", &*id.to_string())])).await?
-                            .detailed_error_for_status().await?;
-                        let (_, patch_file_name) = regex_captures!("^attachment; filename=(.+)$", patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION).ok_or(RollError::PatchPath)?.to_str()?).ok_or(RollError::PatchPath)?;
-                        let patch_file_name = patch_file_name.to_owned();
-                        let (_, patch_file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_file_name).ok_or(RollError::PatchPath)?;
-                        let patch_path = Path::new(seed::DIR).join(&patch_file_name);
-                        io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut File::create(&patch_path).await?).await.at(patch_path)?;
-                        return Ok((id, creation_timestamp, settings_log.file_hash, patch_file_stem.to_owned()))
-                    }
-                    2 => unreachable!(), // generated with link (not possible from API)
-                    3 => break, // failed to generate
-                    n => {
-                        drop(mw_permit);
-                        return Err(RollError::UnespectedSeedStatus(n))
-                    }
-                }
-            }
-        }
-        unreachable!()
     }
 }
 
@@ -2573,12 +2282,6 @@ impl Handler {
 
     /// Returns `false` if this race was already finished/cancelled.
     async fn unlock_spoiler_log(&self, ctx: &RaceContext<GlobalState>, goal: Goal) -> Result<bool, Error> {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct SeedDetailsResponse {
-            spoiler_log: String,
-        }
-
         lock!(@write state = self.race_state; {
             match *state {
                 RaceState::Rolled(seed::Data { files: Some(ref files), .. }) => if self.official_data.as_ref().map_or(true, |official_data| !official_data.cal_event.is_private_async_part()) {
@@ -2588,12 +2291,8 @@ impl Handler {
                                 fs::rename(locked_spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await.to_racetime()?;
                             },
                             seed::Files::OotrWeb { id, file_stem, .. } => {
-                                ctx.global_state.ootr_api_client.post("https://ootrandomizer.com/api/v2/seed/unlock", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &id.to_string())]), None::<&()>, None).await?
-                                    .detailed_error_for_status().await.to_racetime()?;
-                                let spoiler_log = ctx.global_state.ootr_api_client.get("https://ootrandomizer.com/api/v2/seed/details", Some(&[("key", &ctx.global_state.ootr_api_client.api_key), ("id", &id.to_string())])).await?
-                                    .detailed_error_for_status().await.to_racetime()?
-                                    .json_with_text_in_error::<SeedDetailsResponse>().await.to_racetime()?
-                                    .spoiler_log;
+                                ctx.global_state.ootr_api_client.unlock_spoiler_log(*id).await.to_racetime()?;
+                                let spoiler_log = ctx.global_state.ootr_api_client.seed_details(*id).await.to_racetime()?.spoiler_log;
                                 fs::write(Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json")), &spoiler_log).await.to_racetime()?;
                             }
                             seed::Files::TriforceBlitz { .. } | seed::Files::TfbSotd { .. } => {} // automatically unlocked by triforceblitz.com
@@ -2701,7 +2400,7 @@ impl RaceHandler<GlobalState> for Handler {
                         )
                     } else {
                         format!(
-                            "Welcome to {}! Learn more about the event at https://midos.house/event/{}/{}",
+                            "Welcome to {}! Learn more about the event at https://midos.house/event/{}/{}", //TODO for the weeklies, give a short settings summary instead of linking to the event
                             if event.is_single_race() {
                                 format!("the {}", event.display_name) //TODO remove “the” depending on event name
                             } else {
@@ -2831,15 +2530,13 @@ impl RaceHandler<GlobalState> for Handler {
                             });
                             break
                         } else if let Some((_, seed_id)) = regex_captures!(r"^Seed: https://ootrandomizer\.com/seed/get?id=([0-9]+)$", section) {
-                            let patch_response = ctx.global_state.ootr_api_client.get("https://ootrandomizer.com/api/v2/seed/patch", Some(&[("key", &*ctx.global_state.ootr_api_client.api_key), ("id", seed_id)])).await?
-                                .detailed_error_for_status().await.to_racetime()?;
-                            let (_, file_stem) = regex_captures!(r"^attachment; filename=(.+)\.zpfz?$", patch_response.headers().get(reqwest::header::CONTENT_DISPOSITION).ok_or(RollError::PatchPath).to_racetime()?.to_str()?).ok_or(RollError::PatchPath).to_racetime()?;
+                            let id = seed_id.parse().to_racetime()?;
                             race_state = RaceState::Rolled(seed::Data {
                                 file_hash: None,
                                 files: Some(seed::Files::OotrWeb {
-                                    id: seed_id.parse().to_racetime()?,
                                     gen_time: Utc::now(),
-                                    file_stem: Cow::Owned(file_stem.to_owned()),
+                                    file_stem: Cow::Owned(ctx.global_state.ootr_api_client.patch_file_stem(id).await.to_racetime()?),
+                                    id,
                                 }),
                             });
                             break

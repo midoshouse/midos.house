@@ -33,6 +33,7 @@ mod id;
 mod lang;
 #[macro_use] mod macros;
 mod notification;
+mod ootr_web;
 mod prelude;
 mod racetime_bot;
 mod seed;
