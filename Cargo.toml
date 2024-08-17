@@ -34,7 +34,7 @@ collect-mac = "0.1"
 convert_case = "0.6"
 csv = "1"
 derivative = "2"
-derive_more = { version = "0.99", default-features = false, features = ["from"] }
+derive_more = { version = "1", features = ["from"] }
 either = "1"
 enum-iterator = "2"
 futures = "0.3"
@@ -52,7 +52,7 @@ log = "0.4"
 log-lock = { git = "https://github.com/fenhl/log-lock", branch = "main" }
 noisy_float = "0.2"
 ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", branch = "main", features = ["sqlx"] }
-racetime = "0.21.5"
+racetime = "0.23"
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls", "stream"] }
 rocket = { git = "https://github.com/fenhl/Rocket", branch = "forms" }
