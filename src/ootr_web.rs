@@ -67,6 +67,14 @@ struct VersionsResponse {
     available_versions: Vec<ootr_utils::Version>,
 }
 
+pub(crate) struct SeedInfo {
+    pub(crate) id: i64,
+    pub(crate) gen_time: DateTime<Utc>,
+    pub(crate) file_hash: [HashIcon; 5],
+    pub(crate) file_stem: String,
+    pub(crate) password: Option<[OcarinaNote; 6]>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SeedDetailsResponse {
@@ -225,7 +233,7 @@ impl ApiClient {
         }
     }
 
-    pub(crate) async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, version: ootr_utils::Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, settings: serde_json::Map<String, Json>) -> Result<(i64, DateTime<Utc>, [HashIcon; 5], String), Error> {
+    pub(crate) async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, version: ootr_utils::Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, settings: serde_json::Map<String, Json>) -> Result<SeedInfo, Error> {
         #[serde_as]
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -253,9 +261,15 @@ impl ApiClient {
             settings_log: SettingsLog,
         }
 
+        #[derive(Deserialize)]
+        struct PasswordResponse {
+            pw: [OcarinaNote; 6],
+        }
+
         let encrypt = version.is_release() && unlock_spoiler_log == UnlockSpoilerLog::Never;
         let api_key = if encrypt { &*self.api_key_encryption } else { &*self.api_key };
         let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
+        let password_lock = settings.get("password_lock").map_or(false, |password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"));
         let mw_permit = if is_mw {
             Some(match self.mw_seed_rollers.try_acquire() {
                 Ok(permit) => permit,
@@ -287,7 +301,7 @@ impl ApiClient {
             None
         };
         let mut last_id = None;
-        for attempt in 0.. {
+        for attempt in 0u8.. {
             if attempt >= 3 && delay_until.map_or(true, |delay_until| Utc::now() >= delay_until) {
                 drop(mw_permit);
                 return Err(Error::Retries {
@@ -306,6 +320,7 @@ impl ApiClient {
                 } else {
                     ("locked", if let UnlockSpoilerLog::Now = unlock_spoiler_log { "0" } else { "1" })
                 },
+                ("passwordLock", if password_lock { "1" } else { "0" }),
             ]), Some(&settings), is_mw.then_some(MULTIWORLD_RATE_LIMIT)).await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error().await?;
@@ -332,7 +347,20 @@ impl ApiClient {
                         let (_, patch_file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_file_name).ok_or(Error::PatchPathHeader)?;
                         let patch_path = Path::new(seed::DIR).join(&patch_file_name);
                         io::copy_buf(&mut StreamReader::new(patch_response.bytes_stream().map_err(io_error_from_reqwest)), &mut File::create(&patch_path).await?).await.at(patch_path)?;
-                        return Ok((id, creation_timestamp, settings_log.file_hash, patch_file_stem.to_owned()))
+                        return Ok(SeedInfo {
+                            gen_time: creation_timestamp,
+                            file_hash: settings_log.file_hash,
+                            file_stem: patch_file_stem.to_owned(),
+                            password: if password_lock {
+                                let PasswordResponse { pw } = self.get("https://ootrandomizer.com/api/v2/seed/pw", Some(&[("key", api_key), ("id", &*id.to_string())])).await?
+                                    .detailed_error_for_status().await?
+                                    .json_with_text_in_error().await?;
+                                Some(pw)
+                            } else {
+                                None
+                            },
+                            id,
+                        })
                     }
                     2 => unreachable!(), // generated with link (not possible from API)
                     3 => break, // failed to generate
@@ -343,7 +371,10 @@ impl ApiClient {
                 }
             }
         }
-        unreachable!()
+        Err(Error::Retries {
+            num_retries: u8::MAX,
+            last_error: last_id.map(|id| format!("https://ootrandomizer.com/seed/get?id={id}")),
+        })
     }
 
     pub(crate) async fn patch_file_stem(&self, seed_id: i64) -> Result<String, Error> {

@@ -38,7 +38,7 @@ pub(crate) struct PgSnowflake<T>(pub(crate) T);
 
 impl<'r, T: From<NonZeroU64>, DB: Database> Decode<'r, DB> for PgSnowflake<T>
 where i64: Decode<'r, DB> {
-    fn decode(value: <DB as sqlx::database::HasValueRef<'r>>::ValueRef) -> Result<Self, Box<dyn std::error::Error + 'static + Send + Sync>> {
+    fn decode(value: <DB as Database>::ValueRef<'r>) -> Result<Self, Box<dyn std::error::Error + 'static + Send + Sync>> {
         let id = i64::decode(value)?;
         let id = NonZeroU64::try_from(id as u64)?;
         Ok(Self(id.into()))
@@ -47,11 +47,11 @@ where i64: Decode<'r, DB> {
 
 impl<'q, T: Copy + Into<i64>, DB: Database> Encode<'q, DB> for PgSnowflake<T>
 where i64: Encode<'q, DB> {
-    fn encode_by_ref(&self, buf: &mut <DB as sqlx::database::HasArguments<'q>>::ArgumentBuffer) -> sqlx::encode::IsNull {
+    fn encode_by_ref(&self, buf: &mut <DB as Database>::ArgumentBuffer<'q>) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
         self.0.into().encode(buf)
     }
 
-    fn encode(self, buf: &mut <DB as sqlx::database::HasArguments<'q>>::ArgumentBuffer) -> sqlx::encode::IsNull {
+    fn encode(self, buf: &mut <DB as Database>::ArgumentBuffer<'q>) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
         self.0.into().encode(buf)
     }
 

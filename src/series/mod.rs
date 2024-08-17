@@ -104,11 +104,11 @@ impl<'r> Decode<'r, Postgres> for Series {
 }
 
 impl<'q> Encode<'q, Postgres> for Series {
-    fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> sqlx::encode::IsNull {
+    fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
         Encode::<Postgres>::encode_by_ref(&self.to_str(), buf)
     }
 
-    fn encode(self, buf: &mut PgArgumentBuffer) -> sqlx::encode::IsNull {
+    fn encode(self, buf: &mut PgArgumentBuffer) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
         Encode::<Postgres>::encode(self.to_str(), buf)
     }
 

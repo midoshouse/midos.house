@@ -72,6 +72,7 @@ impl HashIconExt for HashIcon {
 #[cfg_attr(unix, derive(Protocol))]
 pub(crate) struct Data {
     pub(crate) file_hash: Option<[HashIcon; 5]>,
+    pub(crate) password: Option<[OcarinaNote; 6]>,
     pub(crate) files: Option<Files>,
 }
 
@@ -112,6 +113,7 @@ impl Data {
         hash3: Option<HashIcon>,
         hash4: Option<HashIcon>,
         hash5: Option<HashIcon>,
+        password: Option<&str>,
     ) -> Self {
         Self {
             file_hash: match (hash1, hash2, hash3, hash4, hash5) {
@@ -119,6 +121,7 @@ impl Data {
                 (None, None, None, None, None) => None,
                 _ => unreachable!("only some hash icons present, should be prevented by SQL constraint"),
             },
+            password: password.map(|pw| pw.chars().map(|note| note.try_into().expect("invalid ocarina note in password, should be prevented by SQL constraint")).collect_vec().try_into().expect("invalid password length, should be prevented by SQL constraint")),
             files: match (file_stem, locked_spoiler_log_path, web_id, web_gen_time, tfb_uuid) {
                 (_, _, _, _, Some(uuid)) => Some(Files::TriforceBlitz { uuid }),
                 (Some(file_stem), _, Some(id), Some(gen_time), None) => Some(Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
@@ -134,14 +137,15 @@ impl Data {
     }
 
     pub(crate) async fn extra(&self, now: DateTime<Utc>) -> Result<ExtraData, ExtraDataError> {
-        /// If some other part of the log like settings or version number can't be parsed, we may still be able to read the file hash from the log
+        /// If some other part of the log like settings or version number can't be parsed, we may still be able to read the file hash and password from the log
         #[derive(Deserialize)]
         struct SparseSpoilerLog {
             file_hash: [HashIcon; 5],
+            password: Option<[OcarinaNote; 6]>,
         }
 
         if_chain! {
-            if self.file_hash.is_none() || match self.files {
+            if self.file_hash.is_none() || self.password.is_none() || match self.files {
                 Some(Files::MidosHouse { .. }) => true,
                 Some(Files::OotrWeb { gen_time, .. }) => gen_time <= now - WEB_TIMEOUT,
                 Some(Files::TriforceBlitz { .. }) => false,
@@ -158,18 +162,17 @@ impl Data {
             };
             then {
                 let spoiler_path_exists = spoiler_path.exists();
-                let (file_hash, world_count) = if spoiler_path_exists {
+                let (file_hash, password, world_count) = if spoiler_path_exists {
                     let log = fs::read_to_string(&spoiler_path).await?;
                     if let Ok(log) = serde_json::from_str::<SpoilerLog>(&log) {
-                        (Some(log.file_hash), Some(log.settings[0].world_count))
+                        (Some(log.file_hash), log.password, Some(log.settings[0].world_count))
+                    } else if let Ok(log) = serde_json::from_str::<SparseSpoilerLog>(&log) {
+                        (Some(log.file_hash), self.password.or(log.password), None)
                     } else {
-                        (
-                            self.file_hash.or_else(|| serde_json::from_str::<SparseSpoilerLog>(&log).ok().map(|log| log.file_hash)),
-                            None,
-                        )
+                        (self.file_hash, self.password, None)
                     }
                 } else {
-                    (self.file_hash, None)
+                    (self.file_hash, self.password, None)
                 };
                 //TODO if file_hash.is_none() and a patch file is available, read the file hash from the patched rom?
                 return Ok(ExtraData {
@@ -182,7 +185,7 @@ impl Data {
                     } else {
                         SpoilerStatus::NotFound
                     },
-                    file_hash, world_count,
+                    file_hash, password, world_count,
                 })
             }
         }
@@ -190,6 +193,7 @@ impl Data {
         Ok(ExtraData {
             spoiler_status: SpoilerStatus::NotFound,
             file_hash: self.file_hash,
+            password: self.password,
             world_count: None,
         })
     }
@@ -213,6 +217,7 @@ impl IsNetworkError for ExtraDataError {
 pub(crate) struct ExtraData {
     spoiler_status: SpoilerStatus,
     pub(crate) file_hash: Option<[HashIcon; 5]>,
+    pub(crate) password: Option<[OcarinaNote; 6]>,
     pub(crate) world_count: Option<NonZeroU8>,
 }
 

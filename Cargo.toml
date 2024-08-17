@@ -66,7 +66,7 @@ serde_plain = "1"
 serde_with = { version = "3", features = ["json"] }
 serenity = { version = "=0.12.1", default-features = false, features = ["client", "gateway", "model", "rustls_backend", "temp_cache"] } # https://github.com/serenity-rs/serenity/issues/2883
 serenity-utils = { git = "https://github.com/fenhl/serenity-utils", branch = "main" }
-sqlx = { version = "0.7", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio-rustls", "uuid"] }
+sqlx = { version = "0.8", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio-rustls", "uuid"] }
 thiserror = "1"
 tokio = { version = "1", features = ["fs", "net", "parking_lot", "process", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["io"] }

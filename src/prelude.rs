@@ -72,6 +72,7 @@ pub(crate) use {
         camc::ChestTexture,
         spoiler::{
             HashIcon,
+            OcarinaNote,
             SpoilerLog,
         },
     },

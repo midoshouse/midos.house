@@ -836,7 +836,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                     p : "You have resigned from this event.";
                 } else {
                     @let async_info = if let Some(async_kind) = data.active_async(&mut transaction, Some(row.id)).await? {
-                        let async_row = sqlx::query!(r#"SELECT tfb_uuid, web_id, web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon" FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
+                        let async_row = sqlx::query!(r#"SELECT tfb_uuid, web_id, web_gen_time, file_stem, hash1 AS "hash1: HashIcon", hash2 AS "hash2: HashIcon", hash3 AS "hash3: HashIcon", hash4 AS "hash4: HashIcon", hash5 AS "hash5: HashIcon", seed_password FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3"#, data.series as _, &data.event, async_kind as _).fetch_one(&mut *transaction).await?;
                         if let Some(team_row) = sqlx::query!(r#"SELECT requested AS "requested!", submitted FROM async_teams WHERE team = $1 AND KIND = $2 AND requested IS NOT NULL"#, row.id as _, async_kind as _).fetch_optional(&mut *transaction).await? {
                             if team_row.submitted.is_some() {
                                 None
@@ -856,6 +856,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                                     async_row.hash3,
                                     async_row.hash4,
                                     async_row.hash5,
+                                    async_row.seed_password.as_deref(),
                                 );
                                 let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
                                 let ctx = ctx.take_submit_async();

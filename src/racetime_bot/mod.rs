@@ -700,7 +700,8 @@ impl Goal {
                         hash2 AS "hash2: HashIcon",
                         hash3 AS "hash3: HashIcon",
                         hash4 AS "hash4: HashIcon",
-                        hash5 AS "hash5: HashIcon"
+                        hash5 AS "hash5: HashIcon",
+                        seed_password
                     "#, self.as_str()).fetch_optional(&mut **transaction).await.to_racetime()? {
                         let _ = global_state.seed_cache_tx.send(());
                         SeedCommandParseResult::QueueExisting {
@@ -719,6 +720,7 @@ impl Goal {
                                 row.hash3,
                                 row.hash4,
                                 row.hash5,
+                                row.seed_password.as_deref(),
                             ),
                             language: self.language(),
                             article, description,
@@ -1135,6 +1137,7 @@ impl Goal {
                     };
                     SeedCommandParseResult::QueueExisting { data: seed::Data {
                         file_hash: Some(file_hash),
+                        password: None,
                         files: Some(seed::Files::TfbSotd { date, ordinal }),
                     }, language: English, article: "the", description: format!("Triforce Blitz seed of the day") }
                 }
@@ -1292,13 +1295,14 @@ impl GlobalState {
                         PrerollMode::Long => {}
                     }
                     match self.ootr_api_client.roll_seed_web(update_tx.clone(), delay_until, web_version, false, unlock_spoiler_log, settings).await {
-                        Ok((id, gen_time, file_hash, file_stem)) => update_tx.send(SeedRollUpdate::Done {
+                        Ok(ootr_web::SeedInfo { id, gen_time, file_hash, file_stem, password }) => update_tx.send(SeedRollUpdate::Done {
                             seed: seed::Data {
                                 file_hash: Some(file_hash),
                                 files: Some(seed::Files::OotrWeb {
                                     file_stem: Cow::Owned(file_stem),
                                     id, gen_time,
                                 }),
+                                password,
                             },
                             rsl_preset: None,
                             unlock_spoiler_log,
@@ -1312,7 +1316,7 @@ impl GlobalState {
                             Ok(locked_spoiler_log_path) => match regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) {
                                 Some((_, file_stem)) => SeedRollUpdate::Done {
                                     seed: seed::Data {
-                                        file_hash: None,
+                                        file_hash: None, password: None, // will be read from spoiler log
                                         files: Some(seed::Files::MidosHouse {
                                             file_stem: Cow::Owned(file_stem.to_owned()),
                                             locked_spoiler_log_path,
@@ -1431,7 +1435,7 @@ impl GlobalState {
                         let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
                         sleep(sleep_duration).await;
                     }
-                    let (seed_id, gen_time, file_hash, file_stem) = match self.ootr_api_client.roll_seed_web(update_tx.clone(), None /* always limit to 3 tries per settings */, web_version, true, unlock_spoiler_log, settings).await {
+                    let ootr_web::SeedInfo { id, gen_time, file_hash, file_stem, password } = match self.ootr_api_client.roll_seed_web(update_tx.clone(), None /* always limit to 3 tries per settings */, web_version, true, unlock_spoiler_log, settings).await {
                         Ok(data) => data,
                         Err(ootr_web::Error::Retries { .. }) => continue,
                         Err(e) => return Err(e.into()), //TODO fall back to rolling locally for network errors
@@ -1440,10 +1444,10 @@ impl GlobalState {
                         seed: seed::Data {
                             file_hash: Some(file_hash),
                             files: Some(seed::Files::OotrWeb {
-                                id: seed_id,
                                 file_stem: Cow::Owned(file_stem),
-                                gen_time,
+                                id, gen_time,
                             }),
+                            password,
                         },
                         rsl_preset: if let VersionedRslPreset::Xopar { preset, .. } = preset { Some(preset) } else { None },
                         unlock_spoiler_log,
@@ -1466,7 +1470,7 @@ impl GlobalState {
                     let _ = update_tx.send(match regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) {
                         Some((_, file_stem)) => SeedRollUpdate::Done {
                             seed: seed::Data {
-                                file_hash: None,
+                                file_hash: None, password: None, // will be read from spoiler log
                                 files: Some(seed::Files::MidosHouse {
                                     file_stem: Cow::Owned(file_stem.to_owned()),
                                     locked_spoiler_log_path: Some(spoiler_log_path.into_os_string().into_string()?),
@@ -1549,6 +1553,7 @@ impl GlobalState {
             let _ = update_tx.send(SeedRollUpdate::Done {
                 seed: seed::Data {
                     file_hash: Some(file_hash.try_into().map_err(|_| RollError::TfbHash)?),
+                    password: None,
                     files: Some(seed::Files::TriforceBlitz { uuid }),
                 },
                 rsl_preset: None,
@@ -1824,6 +1829,9 @@ impl SeedRollUpdate {
                             }
                         }
                     }
+                    if let Some(password) = extra.password {
+                        sqlx::query!("UPDATE races SET seed_password = $1 WHERE id = $2", password.into_iter().map(char::from).collect::<String>(), cal_event.race.id as _).execute(db_pool).await.to_racetime()?;
+                    }
                 }
                 let seed_url = match seed.files.as_ref().expect("received seed with no files") {
                     seed::Files::MidosHouse { file_stem, .. } => format!("https://midos.house/seed/{file_stem}"),
@@ -1969,6 +1977,10 @@ fn format_hash(file_hash: [HashIcon; 5]) -> impl fmt::Display {
     file_hash.into_iter().map(|icon| icon.to_racetime_emoji()).format(" ")
 }
 
+fn format_password(password: [OcarinaNote; 6]) -> impl fmt::Display {
+    password.into_iter().map(|icon| icon.to_racetime_emoji()).format(" ")
+}
+
 #[derive(Clone, Copy)]
 struct Breaks {
     duration: Duration,
@@ -2032,6 +2044,7 @@ struct Handler {
     official_data: Option<OfficialRaceData>,
     high_seed_name: String,
     low_seed_name: String,
+    seed_password: Option<[OcarinaNote; 6]>,
     breaks: Option<Breaks>,
     break_notifications: Option<tokio::task::JoinHandle<()>>,
     goal_notifications: Option<tokio::task::JoinHandle<()>>,
@@ -2523,6 +2536,7 @@ impl RaceHandler<GlobalState> for Handler {
                         if let Some((_, file_stem)) = regex_captures!(r"^Seed: https://midos\.house/seed/(.+)(?:\.zpfz?)?$", section) {
                             race_state = RaceState::Rolled(seed::Data {
                                 file_hash: None,
+                                password: None,
                                 files: Some(seed::Files::MidosHouse {
                                     file_stem: Cow::Owned(file_stem.to_owned()),
                                     locked_spoiler_log_path: None,
@@ -2533,6 +2547,7 @@ impl RaceHandler<GlobalState> for Handler {
                             let id = seed_id.parse().to_racetime()?;
                             race_state = RaceState::Rolled(seed::Data {
                                 file_hash: None,
+                                password: None,
                                 files: Some(seed::Files::OotrWeb {
                                     gen_time: Utc::now(),
                                     file_stem: Cow::Owned(ctx.global_state.ootr_api_client.patch_file_stem(id).await.to_racetime()?),
@@ -3131,6 +3146,7 @@ impl RaceHandler<GlobalState> for Handler {
         });
         let this = Self {
             breaks: None, //TODO default breaks for restreamed matches?
+            seed_password: None,
             break_notifications: None,
             goal_notifications: None,
             start_saved: false,
@@ -3801,6 +3817,10 @@ impl RaceHandler<GlobalState> for Handler {
             }
         }
         match data.status.value {
+            RaceStatusValue::Pending => if let Some(password) = self.seed_password {
+                //TODO set_bot_raceinfo
+                ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password))).await?;
+            },
             RaceStatusValue::InProgress => {
                 if let Some(breaks) = self.breaks {
                     self.break_notifications.get_or_insert_with(|| {
@@ -4260,10 +4280,20 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                                             match seed.files {
                                                 Some(seed::Files::MidosHouse { file_stem, locked_spoiler_log_path }) => {
                                                     sqlx::query!("INSERT INTO prerolled_seeds
-                                                        (goal_name, file_stem, locked_spoiler_log_path, hash1, hash2, hash3, hash4, hash5)
+                                                        (goal_name, file_stem, locked_spoiler_log_path, hash1, hash2, hash3, hash4, hash5, seed_password)
                                                     VALUES
-                                                        ($1, $2, $3, $4, $5, $6, $7, $8)
-                                                    ", goal.as_str(), &file_stem, locked_spoiler_log_path, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _).execute(&global_state.db_pool).await.to_racetime()?;
+                                                        ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                                                    ",
+                                                        goal.as_str(),
+                                                        &file_stem,
+                                                        locked_spoiler_log_path,
+                                                        hash1 as _,
+                                                        hash2 as _,
+                                                        hash3 as _,
+                                                        hash4 as _,
+                                                        hash5 as _,
+                                                        extra.password.map(|password| password.into_iter().map(char::from).collect::<String>()),
+                                                    ).execute(&global_state.db_pool).await.to_racetime()?;
                                                 }
                                                 _ => unimplemented!("unexpected seed files in prerolled seed"),
                                             }
