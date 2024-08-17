@@ -316,11 +316,11 @@ impl ApiClient {
                 ("key", api_key),
                 ("version", &*version.to_string_web(random_settings).ok_or(Error::RandomSettings)?),
                 if encrypt {
-                    ("encrypt", "1")
+                    ("encrypt", "true")
                 } else {
-                    ("locked", if let UnlockSpoilerLog::Now = unlock_spoiler_log { "0" } else { "1" })
+                    ("locked", if let UnlockSpoilerLog::Now = unlock_spoiler_log { "false" } else { "true" })
                 },
-                ("passwordLock", if password_lock { "1" } else { "0" }),
+                ("passwordLock", if password_lock { "true" } else { "false" }),
             ]), Some(&settings), is_mw.then_some(MULTIWORLD_RATE_LIMIT)).await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error().await?;
