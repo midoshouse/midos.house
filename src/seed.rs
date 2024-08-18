@@ -1,8 +1,5 @@
 use {
-    futures::stream::{
-        Stream,
-        StreamExt as _,
-    },
+    futures::stream::Stream,
     hyper::header::{
         CONTENT_DISPOSITION,
         LINK,

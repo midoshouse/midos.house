@@ -106,7 +106,7 @@ impl Team {
         })
     }
 
-    async fn member_ids(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<Id<Users>>> {
+    pub(crate) async fn member_ids(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Vec<Id<Users>>> {
         sqlx::query_scalar!(r#"SELECT member AS "member: Id<Users>" FROM team_members WHERE team = $1 ORDER BY role ASC"#, self.id as _).fetch_all(&mut **transaction).await
     }
 

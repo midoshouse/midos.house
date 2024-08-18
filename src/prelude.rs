@@ -58,6 +58,7 @@ pub(crate) use {
         },
         stream::{
             self,
+            StreamExt as _,
             TryStreamExt as _,
         },
     },
