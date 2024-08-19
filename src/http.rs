@@ -541,6 +541,7 @@ async fn robots_txt() -> RawText<&'static str> {
 
 #[rocket::catch(400)]
 async fn bad_request(request: &Request<'_>) -> PageResult {
+    eprintln!("responding with 400 Bad Request to request {request:?}");
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
     let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
@@ -579,8 +580,9 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
 
 #[rocket::catch(default)]
 async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
+    eprintln!("responding with unexpected HTTP status code {} {} to request {request:?}", status.code, status.reason_lossy());
     if request.guard::<&State<Environment>>().await.succeeded().map_or(true, |env| matches!(**env, Environment::Production)) {
-        wheel::night_report("/net/midoshouse/error", Some("responding with unexpected HTTP status code")).await?;
+        wheel::night_report("/net/midoshouse/error", Some(&format!("responding with unexpected HTTP status code: {} {}", status.code, status.reason_lossy()))).await?;
     }
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
