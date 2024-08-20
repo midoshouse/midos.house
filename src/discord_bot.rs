@@ -1287,10 +1287,16 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .content(msg)
                                                         )).await?;
                                                     } else {
-                                                        let response_content = MessageBuilder::default()
-                                                            .push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") })
-                                                            .push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " })
-                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                        let mut response_content = MessageBuilder::default();
+                                                        response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
+                                                        response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                                        response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                        if let Some(speedgaming_slug) = &event.speedgaming_slug {
+                                                            response_content.push(". Please also submit it to <https://speedgaming.org/");
+                                                            response_content.push(speedgaming_slug);
+                                                            response_content.push("/submit>");
+                                                        }
+                                                        let response_content = response_content
                                                             .push(". The race room will be opened momentarily.")
                                                             .build();
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1312,12 +1318,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .push('.')
                                                             .build()
                                                     } else {
-                                                        MessageBuilder::default()
-                                                            .push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") })
-                                                            .push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " })
-                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
-                                                            .push('.')
-                                                            .build()
+                                                        let mut response_content = MessageBuilder::default();
+                                                        response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
+                                                        response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                                        response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                        response_content.push('.');
+                                                        if let Some(speedgaming_slug) = &event.speedgaming_slug {
+                                                            response_content.push(" Please also submit it to <https://speedgaming.org/");
+                                                            response_content.push(speedgaming_slug);
+                                                            response_content.push("/submit>.");
+                                                        }
+                                                        response_content.build()
                                                     }
                                                 };
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1477,11 +1488,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .content(msg)
                                                         )).await?;
                                                     } else {
-                                                        let response_content = MessageBuilder::default()
-                                                            .push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " })
-                                                            .push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") })
-                                                            .push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " })
-                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
+                                                        let mut response_content = MessageBuilder::default();
+                                                        response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
+                                                        response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
+                                                        response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                                        response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                        if let Some(speedgaming_slug) = &event.speedgaming_slug {
+                                                            response_content.push(". Please also submit it to <https://speedgaming.org/");
+                                                            response_content.push(speedgaming_slug);
+                                                            response_content.push("/submit>");
+                                                        }
+                                                        let response_content = response_content
                                                             .push(". The race room will be opened momentarily.")
                                                             .build();
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1503,13 +1520,18 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .push('.')
                                                             .build()
                                                     } else {
-                                                        MessageBuilder::default()
-                                                            .push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " })
-                                                            .push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") })
-                                                            .push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " })
-                                                            .push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime)
-                                                            .push('.')
-                                                            .build()
+                                                        let mut response_content = MessageBuilder::default();
+                                                        response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
+                                                        response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
+                                                        response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                                        response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
+                                                        response_content.push('.');
+                                                        if let Some(speedgaming_slug) = &event.speedgaming_slug {
+                                                            response_content.push(" Please also submit it to <https://speedgaming.org/");
+                                                            response_content.push(speedgaming_slug);
+                                                            response_content.push("/submit>.");
+                                                        }
+                                                        response_content.build()
                                                     }
                                                 };
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -2054,7 +2076,7 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
             content.mention_command(command_ids.schedule, "schedule");
             content.push(" pour schedule votre race en live ou ");
             content.mention_command(command_ids.schedule_async, "schedule-async");
-            content.push(" pour schedule votre async. Vous devez insérer un timestamp Discord que vous pouvez créer sur <https://hammertime.cyou/>");
+            content.push(" pour schedule votre async. Vous devez insérer un timestamp Discord que vous pouvez créer sur <https://hammertime.cyou/>.");
         } else {
             for team in race.teams() {
                 content.mention_team(&mut transaction, Some(guild_id), team).await?;
@@ -2074,9 +2096,9 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
             if event.asyncs_allowed() {
                 content.push(" to schedule as a live race or ");
                 content.mention_command(command_ids.schedule_async, "schedule-async");
-                content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate at <https://hammertime.cyou/>");
+                content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate at <https://hammertime.cyou/>.");
             } else {
-                content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate at <https://hammertime.cyou/>");
+                content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate at <https://hammertime.cyou/>.");
             }
             if game_count > 1 {
                 content.push(". You can use the ");
