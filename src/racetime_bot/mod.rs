@@ -534,28 +534,29 @@ impl Goal {
     }
 
     /// Only returns a value for goals that only have one possible set of settings.
-    fn single_settings(&self) -> Option<serde_json::Map<String, Json>> {
+    /// Otherwise, the error value indicates whether seeds will be rolled with the `password_lock` setting enabled.
+    fn single_settings(&self) -> Result<serde_json::Map<String, Json>, bool> {
         match self {
-            Self::Cc7 => None, // settings draft
-            Self::CoOpS3 => Some(coop::s3_settings()),
-            Self::CopaDoBrasil => Some(br::s1_settings()),
-            Self::MixedPoolsS2 => Some(mp::s2_settings()),
-            Self::MixedPoolsS3 => Some(mp::s3_settings()),
-            Self::MultiworldS3 => None, // settings draft
-            Self::MultiworldS4 => None, // settings draft
-            Self::NineDaysOfSaws => None, // per-event settings
-            Self::Pic7 => Some(pic::race7_settings()),
-            Self::PicRs2 => None, // random settings
-            Self::Rsl => None, // random settings
-            Self::Sgl2023 => Some(sgl::settings_2023()),
-            Self::Sgl2024 => Some(sgl::settings_2024()),
-            Self::SongsOfHope => Some(soh::settings()),
-            Self::StandardRuleset => Some(s::weekly_settings_2024w34()), //TODO allow organizers to configure this
-            Self::TournoiFrancoS3 => None, // settings draft
-            Self::TournoiFrancoS4 => None, // settings draft
-            Self::TriforceBlitz => None, // per-event settings
-            Self::TriforceBlitzProgressionSpoiler => Some(tfb::progression_spoiler_settings()),
-            Self::WeTryToBeBetter => Some(wttbb::settings()),
+            Self::Cc7 => Err(false), // settings draft
+            Self::CoOpS3 => Ok(coop::s3_settings()),
+            Self::CopaDoBrasil => Ok(br::s1_settings()),
+            Self::MixedPoolsS2 => Ok(mp::s2_settings()),
+            Self::MixedPoolsS3 => Ok(mp::s3_settings()),
+            Self::MultiworldS3 => Err(false), // settings draft
+            Self::MultiworldS4 => Err(false), // settings draft
+            Self::NineDaysOfSaws => Err(false), // per-event settings
+            Self::Pic7 => Ok(pic::race7_settings()),
+            Self::PicRs2 => Err(false), // random settings
+            Self::Rsl => Err(false), // random settings
+            Self::Sgl2023 => Ok(sgl::settings_2023()),
+            Self::Sgl2024 => Ok(sgl::settings_2024()),
+            Self::SongsOfHope => Ok(soh::settings()),
+            Self::StandardRuleset => Ok(s::weekly_settings_2024w34()), //TODO allow organizers to configure this
+            Self::TournoiFrancoS3 => Err(false), // settings draft
+            Self::TournoiFrancoS4 => Err(false), // settings draft
+            Self::TriforceBlitz => Err(false), // per-event settings
+            Self::TriforceBlitzProgressionSpoiler => Ok(tfb::progression_spoiler_settings()),
+            Self::WeTryToBeBetter => Ok(wttbb::settings()),
         }
     }
 
@@ -3557,7 +3558,7 @@ impl RaceHandler<GlobalState> for Handler {
                         info_user: ctx.data().await.info_user.clone().unwrap_or_default(),
                         info_bot: ctx.data().await.info_bot.clone().unwrap_or_default(),
                         require_even_teams: true,
-                        start_delay: 15,
+                        start_delay: if matches!(cal_event.race.entrants, Entrants::Open) && goal.single_settings().map(|settings| settings.get("password_lock").map_or(false, |password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"))).unwrap_or_else(identity) { 30 } else { 15 },
                         time_limit: 24,
                         time_limit_auto_complete: false,
                         streaming_required: !cal_event.is_private_async_part(),
@@ -4255,7 +4256,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
     'outer: loop {
         let event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&global_state.db_pool).await.to_racetime()?;
         for goal in all::<Goal>() {
-            if let Some(settings) = goal.single_settings() {
+            if let Ok(settings) = goal.single_settings() {
                 if goal.preroll_seeds() == PrerollMode::Long && event_rows.iter().any(|row| goal.matches_event(row.series, &row.event)) {
                     if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM prerolled_seeds WHERE goal_name = $1) AS "exists!""#, goal.as_str()).fetch_one(&global_state.db_pool).await.to_racetime()? {
                         'seed: loop {
