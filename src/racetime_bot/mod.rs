@@ -108,7 +108,6 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
             if let Some(mut path_segments) = url.path_segments();
             if path_segments.next() == Some("user");
             if let Some(url_part) = path_segments.next();
-            if path_segments.next().is_none();
             then {
                 match http_client.get(format!("https://{host}/user/{url_part}/data"))
                     .send().await?
