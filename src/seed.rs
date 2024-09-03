@@ -430,9 +430,11 @@ pub(crate) async fn get(pool: &State<PgPool>, env: &State<Environment>, me: Opti
                         a(class = "button", href = format!("/seed/{file_stem}.{patch_suffix}")) : "Patch File";
                         a(class = "button", href = format!("/seed/{spoiler_filename}")) : "Spoiler Log";
                     }
-                    SpoilerStatus::Progression => div(class = "button-row") {
-                        a(class = "button", href = format!("/seed/{file_stem}.{patch_suffix}")) : "Patch File";
-                        a(class = "button", href = format!("/seed/{file_stem}_Progression.json")) : "Progression Spoiler";
+                    SpoilerStatus::Progression => {
+                        div(class = "button-row") {
+                            a(class = "button", href = format!("/seed/{file_stem}.{patch_suffix}")) : "Patch File";
+                            a(class = "button", href = format!("/seed/{file_stem}_Progression.json")) : "Progression Spoiler";
+                        }
                         p : "Full spoiler log locked (race is still in progress)";
                     }
                     SpoilerStatus::Locked => {
