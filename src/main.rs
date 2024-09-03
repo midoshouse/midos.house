@@ -153,7 +153,16 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
             .application_name("midos-house")
             .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(10))
         ).await?;
-        let rocket = http::rocket(db_pool.clone(), discord_builder.ctx_fut.clone(), http_client.clone(), config.clone(), env, port.unwrap_or_else(|| if env.is_dev() { 24814 } else { 24812 })).await?;
+        let seed_metadata = Arc::default();
+        let rocket = http::rocket(
+            db_pool.clone(),
+            discord_builder.ctx_fut.clone(),
+            http_client.clone(),
+            config.clone(),
+            env,
+            port.unwrap_or_else(|| if env.is_dev() { 24814 } else { 24812 }),
+            Arc::clone(&seed_metadata),
+        ).await?;
         let new_room_lock = Arc::default();
         let extra_room_tx = Arc::new(RwLock::new(mpsc::channel(1).0));
         let discord_builder = discord_bot::configure_builder(discord_builder, db_pool.clone(), http_client.clone(), config.clone(), env, Arc::clone(&new_room_lock), Arc::clone(&extra_room_tx), rocket.shutdown());
@@ -174,6 +183,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
             discord_builder.ctx_fut.clone(),
             Arc::clone(&clean_shutdown),
             seed_cache_tx,
+            seed_metadata,
         ).await);
         #[cfg(unix)] let unix_listener = unix_socket::listen(rocket.shutdown(), clean_shutdown, Arc::clone(&global_state));
         let racetime_task = tokio::spawn(racetime_bot::main(env, config.clone(), rocket.shutdown(), global_state, seed_cache_rx)).map(|res| match res {

@@ -860,6 +860,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                                     async_row.hash4,
                                     async_row.hash5,
                                     async_row.seed_password.as_deref(),
+                                    false, // no official races with progression spoilers so far
                                 );
                                 let seed_table = seed::table(stream::iter(iter::once(seed)), false).await?;
                                 let ctx = ctx.take_submit_async();

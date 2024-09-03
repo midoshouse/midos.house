@@ -77,7 +77,7 @@ wheel = { git = "https://github.com/fenhl/wheel", branch = "main", features = ["
 yup-oauth2 = "11"
 
 [target.'cfg(unix)'.dependencies]
-async-proto = { version = "0.22", features = ["chrono", "serde_json", "serenity", "uuid"] }
+async-proto = { version = "0.23", features = ["chrono", "serde_json", "serenity", "uuid"] }
 openssl = { version = "0.10", features = ["vendored"] }
 xdg = "2"
 

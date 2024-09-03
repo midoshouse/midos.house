@@ -20,6 +20,7 @@ use {
             self,
             Notification,
         },
+        racetime_bot::SeedMetadata,
         prelude::*,
     },
 };
@@ -598,7 +599,7 @@ async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
     }).await
 }
 
-pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: Config, env: Environment, port: u16) -> Result<Rocket<rocket::Ignite>, crate::Error> {
+pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: Config, env: Environment, port: u16, seed_metadata: Arc<RwLock<HashMap<String, SeedMetadata>>>) -> Result<Rocket<rocket::Ignite>, crate::Error> {
     let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
     let racetime_config = if env.is_dev() { &config.racetime_oauth_dev } else { &config.racetime_oauth_production };
     Ok(rocket::custom(rocket::Config::figment().merge(rocket::Config {
@@ -731,5 +732,6 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
     .manage(discord_ctx)
     .manage(http_client)
     .manage(api::schema(pool))
+    .manage(seed_metadata)
     .ignite().await?)
 }

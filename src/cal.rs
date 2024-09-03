@@ -517,6 +517,7 @@ impl Race {
                 row.hash4,
                 row.hash5,
                 row.seed_password.as_deref(),
+                false, // no official races with progression spoilers so far
             ),
             video_urls: all().filter_map(|language| match language {
                 English => row.video_url.clone(),
