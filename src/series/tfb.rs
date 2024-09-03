@@ -469,3 +469,93 @@ pub(crate) fn progression_spoiler_settings() -> serde_json::Map<String, Json> {
         ]),
     ]
 }
+
+#[serde_as]
+#[derive(Default, Serialize)]
+pub(crate) struct ProgressionSpoiler {
+    #[serde_as(as = "serde_with::Map<_, _>")]
+    locations: Vec<(String, String)>,
+    #[serde_as(as = "serde_with::Map<_, _>")]
+    gossip_stones: Vec<(String, String)>,
+}
+
+pub(crate) fn progression_spoiler(spoiler: Json) -> ProgressionSpoiler {
+    let mut spoiler_json = ProgressionSpoiler::default();
+    for (key, value) in spoiler["locations"].as_object().unwrap() {
+        let item_name = match value {
+            Json::String(value) => &**value,
+            _ => value["item"].as_str().unwrap(),
+        };
+        match item_name {
+            | "Progressive Strength Upgrade"
+            | "Nocturne of Shadow"
+            | "Small Key (Water Temple)"
+            | "Bombchus (10)"
+            | "Zora Tunic"
+            | "Small Key (Fire Temple)"
+            | "Bolero of Fire"
+            | "Bomb Bag"
+            | "Goron Tunic"
+            | "Small Key (Gerudo Training Ground)"
+            | "Zeldas Lullaby"
+            | "Sarias Song"
+            | "Iron Boots"
+            | "Prelude of Light"
+            | "Goron Ruby"
+            | "Song of Time"
+            | "Dins Fire"
+            | "Lens of Truth"
+            | "Hover Boots"
+            | "Shadow Medallion"
+            | "Mirror Shield"
+            | "Light Medallion"
+            | "Bombchus (5)"
+            | "Minuet of Forest"
+            | "Fire Arrows"
+            | "Song of Storms"
+            | "Rutos Letter"
+            | "Small Key (Spirit Temple)"
+            | "Progressive Scale"
+            | "Double Defense"
+            | "Suns Song"
+            | "Small Key (Bottom of the Well)"
+            | "Biggoron Sword"
+            | "Progressive Hookshot"
+            | "Kokiri Sword"
+            | "Magic Meter"
+            | "Bow"
+            | "Claim Check"
+            | "Requiem of Spirit"
+            | "Kokiri Emerald"
+            | "Water Medallion"
+            | "Small Key (Ganons Castle)"
+            | "Slingshot"
+            | "Bottle with Green Potion"
+            | "Bombchus (20)"
+            | "Fire Medallion"
+            | "Small Key (Forest Temple)"
+            | "Zora Sapphire"
+            | "Eponas Song"
+            | "Megaton Hammer"
+            | "Farores Wind"
+            | "Bottle with Red Potion"
+            | "Spirit Medallion"
+            | "Boomerang"
+            | "Serenade of Water"
+            | "Bottle with Fairy"
+            | "Progressive Wallet"
+            | "Small Key (Shadow Temple)"
+            | "Forest Medallion"
+                => spoiler_json.locations.push((key.clone(), item_name.to_owned())),
+            _ => {}
+        }
+    }
+    let mut duplicate_hints = HashSet::new();
+    for (key, value) in spoiler["gossip_stones"].as_object().unwrap() {
+        if !duplicate_hints.remove(&value["text"]) {
+            duplicate_hints.insert(value["text"].clone());
+            spoiler_json.gossip_stones.push((key.clone(), value["text"].as_str().unwrap().to_owned()));
+        }
+    }
+    spoiler_json
+}

@@ -61,6 +61,9 @@ rocket_csrf = { git = "https://github.com/fenhl/rocket_csrf", branch = "forms" }
 rocket_oauth2 = { git = "https://github.com/fenhl/rocket_oauth2", branch = "forms" }
 semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
+serde_json_inner = { package = "serde_json", version = "1", features = [
+    "preserve_order", # required to correctly render progression spoilers
+] }
 serde_json = { package = "serde_json_path_to_error", version = "0.1" }
 serde_plain = "1"
 serde_with = { version = "3", features = ["json"] }

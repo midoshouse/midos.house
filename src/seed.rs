@@ -338,6 +338,7 @@ pub(crate) enum GetResponse {
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum GetError {
     #[error(transparent)] ExtraData(#[from] ExtraDataError),
+    #[error(transparent)] Json(#[from] serde_json::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
@@ -365,7 +366,46 @@ pub(crate) async fn get(pool: &State<PgPool>, env: &State<Environment>, me: Opti
                 content_disposition: Header::new(CONTENT_DISPOSITION.as_str(), "attachment"),
             }
         }
-        Some("json") => {
+        Some("json") => if let Some(file_stem) = file_stem.strip_suffix("_Progression") {
+            let mut transaction = pool.begin().await?;
+            let SeedMetadata { locked_spoiler_log_path, progression_spoiler } = if let Some(info) = lock!(@read seed_metadata = seed_metadata; seed_metadata.get(file_stem).cloned()) {
+                info
+            } else if let Some(locked_spoiler_log_path) = sqlx::query_scalar!("SELECT locked_spoiler_log_path FROM races WHERE file_stem = $1", file_stem).fetch_optional(&mut *transaction).await? {
+                SeedMetadata { locked_spoiler_log_path, progression_spoiler: false /* no official races with progression spoilers so far */ }
+            } else {
+                SeedMetadata::default()
+            };
+            let seed = Data {
+                password: None, // not displayed
+                files: Some(Files::MidosHouse {
+                    file_stem: Cow::Owned(file_stem.to_owned()),
+                    locked_spoiler_log_path,
+                }),
+                file_hash: None,
+                progression_spoiler,
+            };
+            let extra = seed.extra(Utc::now()).await?;
+            match extra.spoiler_status {
+                SpoilerStatus::Unlocked(_) | SpoilerStatus::Progression => {}
+                SpoilerStatus::Locked | SpoilerStatus::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
+            }
+            let spoiler_path = if let Some(Files::MidosHouse { locked_spoiler_log_path: Some(path), .. }) = seed.files {
+                PathBuf::from(path)
+            } else {
+                Path::new(DIR).join(format!("{file_stem}.json"))
+            };
+            let spoiler = match fs::read_json(spoiler_path).await {
+                Ok(spoiler) => spoiler,
+                Err(wheel::Error::Io { inner, .. }) if inner.kind() == io::ErrorKind::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
+                Err(e) => return Err(e.into()),
+            };
+            GetResponse::Spoiler {
+                inner: RawJson(serde_json::to_vec_pretty(&tfb::progression_spoiler(spoiler))?),
+                content_disposition: Header::new(CONTENT_DISPOSITION.as_str(), "inline"),
+                // may not work in all browsers, see https://bugzilla.mozilla.org/show_bug.cgi?id=1185705
+                link: Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(Suffix(extra.chests.textures(), "png"))))),
+            }
+        } else {
             let spoiler = match fs::read(Path::new(DIR).join(format!("{file_stem}.json"))).await {
                 Ok(spoiler) => spoiler,
                 Err(wheel::Error::Io { inner, .. }) if inner.kind() == io::ErrorKind::NotFound => return Err(StatusOrError::Status(Status::NotFound)),
@@ -387,7 +427,7 @@ pub(crate) async fn get(pool: &State<PgPool>, env: &State<Environment>, me: Opti
                 // may not work in all browsers, see https://bugzilla.mozilla.org/show_bug.cgi?id=1185705
                 link: Header::new(LINK.as_str(), format!(r#"<{}>; rel="icon"; sizes="1024x1024""#, uri!(favicon::favicon_png(Suffix(chests.textures(), "png"))))),
             }
-        }
+        },
         Some(_) => return Err(StatusOrError::Status(Status::NotFound)),
         None => {
             let mut transaction = pool.begin().await?;

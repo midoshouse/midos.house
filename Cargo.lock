@@ -2497,6 +2497,7 @@ dependencies = [
  "rocket_oauth2",
  "semver",
  "serde",
+ "serde_json",
  "serde_json_path_to_error",
  "serde_plain",
  "serde_with",
@@ -4139,6 +4140,7 @@ version = "1.0.127"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8043c06d9f82bd7271361ed64f415fe5e12a77fdb52e573e7f06a516dea329ad"
 dependencies = [
+ "indexmap 2.5.0",
  "itoa 1.0.11",
  "memchr",
  "ryu",
