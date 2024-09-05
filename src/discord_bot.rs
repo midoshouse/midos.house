@@ -2101,7 +2101,7 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
                 content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate at <https://hammertime.cyou/>.");
             }
             if game_count > 1 {
-                content.push(". You can use the ");
+                content.push(" You can use the ");
                 content.push_mono("game:");
                 content.push(" parameter with these commands to schedule subsequent games ahead of time.");
             }
