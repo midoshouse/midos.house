@@ -330,7 +330,7 @@ impl Goal {
             Self::Sgl2023 => series == Series::SpeedGaming && event.starts_with("2023"),
             Self::Sgl2024 => series == Series::SpeedGaming && event.starts_with("2024"),
             Self::SongsOfHope => series == Series::SongsOfHope && event == "1",
-            Self::StandardRuleset => series == Series::Standard && event == "w",
+            Self::StandardRuleset => series == Series::Standard && matches!(event, "w" | "8"),
             Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
             Self::TournoiFrancoS4 => series == Series::TournoiFrancophone && event == "4",
             Self::TriforceBlitz => series == Series::TriforceBlitz,
@@ -454,7 +454,7 @@ impl Goal {
                 => PrerollMode::None,
             | Self::Cc7
             | Self::CoOpS3
-            | Self::StandardRuleset //TODO allow organizers to configure this
+            | Self::StandardRuleset //TODO allow organizers to configure this for weeklies
                 => PrerollMode::Short,
             | Self::CopaDoBrasil
             | Self::MultiworldS3
@@ -522,7 +522,7 @@ impl Goal {
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl2023),
             Self::Sgl2024 => VersionedBranch::Latest(rando::Branch::Sgl2024),
             Self::SongsOfHope => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
-            Self::StandardRuleset => VersionedBranch::Latest(rando::Branch::Dev), //TODO allow organizers to configure this
+            Self::StandardRuleset => VersionedBranch::Latest(rando::Branch::Dev), //TODO allow weekly organizers to configure this //TODO set S8 to 8.2
             Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
             Self::TournoiFrancoS4 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
@@ -550,7 +550,7 @@ impl Goal {
             Self::Sgl2023 => Ok(sgl::settings_2023()),
             Self::Sgl2024 => Ok(sgl::settings_2024()),
             Self::SongsOfHope => Ok(soh::settings()),
-            Self::StandardRuleset => Ok(s::weekly_settings_2024w34()), //TODO allow organizers to configure this
+            Self::StandardRuleset => Ok(s::weekly_settings_2024w34()), //TODO allow organizers to configure this //TODO separate settings for S8
             Self::TournoiFrancoS3 => Err(false), // settings draft
             Self::TournoiFrancoS4 => Err(false), // settings draft
             Self::TriforceBlitz => Err(false), // per-event settings
@@ -645,7 +645,7 @@ impl Goal {
                     rsl::Preset::Multiworld => "weights tuned for multiworld",
                 })).await?;
             },
-            Self::StandardRuleset => ctx.say("!seed: The current weekly settings").await?,
+            Self::StandardRuleset => ctx.say("!seed: The current weekly settings").await?, //TODO per-event settings
             Self::TournoiFrancoS3 => {
                 ctx.say("!seed base : Settings de base.").await?;
                 ctx.say("!seed random : Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.").await?;
@@ -684,7 +684,7 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::SongsOfHope
-            | Self::StandardRuleset
+            | Self::StandardRuleset //TODO per-event settings
             | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetter
                 => {
@@ -3246,7 +3246,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::Sgl2023
                             | Goal::Sgl2024
                             | Goal::SongsOfHope
-                            | Goal::StandardRuleset
+                            | Goal::StandardRuleset //TODO per-event settings
                             | Goal::TriforceBlitzProgressionSpoiler
                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                             | Goal::WeTryToBeBetter
