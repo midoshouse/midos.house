@@ -14,10 +14,6 @@ use {
     reqwest::StatusCode,
     rocket_util::Response,
     sqlx::types::Json,
-    yup_oauth2::{
-        ServiceAccountAuthenticator,
-        read_service_account_key,
-    },
     crate::{
         discord_bot,
         event::Tab,
@@ -682,52 +678,12 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::MixedPools => match &*event.event {
-                "1" | "2" => {}
-                "3" => for row in sheet_values(http_client.clone(), "1DqKrmcLhWwfIRpTMZ-NqGGFma_jgCSkyHyP8kaJg6OA", "Schedule!A2:F").await? {
-                    let [timestamp, p1, p2, round, date_et, time_et] = &*row else { continue };
-                    let id = Id::new(&mut *transaction).await?;
-                    let (phase, round) = match &**round {
-                        "Top 16" => (format!("Top 16"), format!("Round 1")),
-                        "Quarterfinals" => (format!("Top 16"), format!("Quarterfinal")),
-                        "Semifinals" => (format!("Top 16"), format!("Semifinal")),
-                        "Finals" => (format!("Top 16"), format!("Final")),
-                        _ => (format!("Swiss"), round.clone()),
-                    };
-                    add_or_update_race(&mut *transaction, &mut races, Self {
-                        series: event.series,
-                        event: event.event.to_string(),
-                        source: Source::Sheet { timestamp: NaiveDateTime::parse_from_str(timestamp, "%d.%m.%Y %H:%M:%S")? },
-                        entrants: Entrants::Two([
-                            Entrant::Named { name: p1.clone(), racetime_id: None, twitch_username: None },
-                            Entrant::Named { name: p2.clone(), racetime_id: None, twitch_username: None },
-                        ]),
-                        phase: Some(phase),
-                        round: Some(round),
-                        game: None,
-                        scheduling_thread: None,
-                        schedule: RaceSchedule::Live {
-                            start: NaiveDateTime::parse_from_str(&format!("{date_et} at {time_et}"), "%d.%m.%Y at %H:%M:%S")?.and_local_timezone(America::New_York).single_ok()?.to_utc(),
-                            end: None,
-                            room: None,
-                        },
-                        schedule_updated_at: None,
-                        draft: None,
-                        seed: seed::Data::default(),
-                        video_urls: HashMap::default(),
-                        restreamers: HashMap::default(),
-                        last_edited_by: None,
-                        last_edited_at: None,
-                        ignored: false,
-                        schedule_locked: false,
-                        id,
-                    }).await?;
-                },
+                "1" | "2" | "3" => {}
                 _ => unimplemented!(),
             },
             Series::Multiworld => match &*event.event {
                 "1" => {} // no match data available
-                "2" | "3" | "4" => {}
-                _ => unimplemented!(),
+                _ => {} // new events are scheduled via Mido's House
             },
             Series::NineDaysOfSaws | Series::Pictionary => {
                 let id = if let Some(id) = sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_optional(&mut **transaction).await? {
@@ -857,8 +813,7 @@ impl Race {
                     }
                 }
                 //TODO add archives of old Standard tournaments and Challenge Cups?
-                "6" | "7" | "7cc" => {}
-                _ => unimplemented!(),
+                _ => {} // new events are scheduled via Mido's House
             },
             | Series::CoOp //TODO add archives of seasons 1 and 2?
             | Series::CopaDoBrasil
@@ -1499,7 +1454,7 @@ pub(crate) enum Error {
     #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
-    #[error(transparent)] Sheets(#[from] SheetsError),
+    #[error(transparent)] Sheets(#[from] crate::sheets::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] StartGG(#[from] startgg::Error),
     #[error(transparent)] TimeFromLocal(#[from] wheel::traits::TimeFromLocalError<DateTime<Tz>>),
@@ -1536,109 +1491,6 @@ impl IsNetworkError for Error {
             Self::UnknownTeamStartGG(_) => false,
         }
     }
-}
-
-static SHEETS_CACHE: LazyLock<Mutex<(Instant, HashMap<(String, String), (Instant, Vec<Vec<String>>)>)>> = LazyLock::new(|| Mutex::new((Instant::now(), HashMap::default())));
-
-#[derive(Debug, thiserror::Error)]
-enum SheetsUncachedError {
-    #[error(transparent)] OAuth(#[from] yup_oauth2::Error),
-    #[error(transparent)] Reqwest(#[from] reqwest::Error),
-    #[error(transparent)] Wheel(#[from] wheel::Error),
-    #[error("empty token is not valid")]
-    EmptyToken,
-    #[error("OAuth token is expired")]
-    TokenExpired,
-}
-
-impl IsNetworkError for SheetsUncachedError {
-    fn is_network_error(&self) -> bool {
-        match self {
-            Self::OAuth(_) => false,
-            Self::Reqwest(e) => e.is_network_error(),
-            Self::Wheel(e) => e.is_network_error(),
-            Self::EmptyToken => false,
-            Self::TokenExpired => false,
-        }
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("{source}")]
-pub(crate) struct SheetsError {
-    source: SheetsUncachedError,
-    cache: SheetsCacheMissReason,
-}
-
-impl IsNetworkError for SheetsError {
-    fn is_network_error(&self) -> bool {
-        self.source.is_network_error()
-    }
-}
-
-#[derive(Debug)]
-enum SheetsCacheMissReason {
-    Elapsed,
-    Vacant,
-}
-
-async fn sheet_values(http_client: reqwest::Client, sheet_id: &str, range: &str) -> Result<Vec<Vec<String>>, SheetsError> {
-    #[derive(Deserialize)]
-    struct ValueRange {
-        values: Vec<Vec<String>>,
-    }
-
-    async fn sheet_values_uncached(http_client: &reqwest::Client, sheet_id: &str, range: &str, next_request: &mut Instant) -> Result<Vec<Vec<String>>, SheetsUncachedError> {
-        sleep_until(*next_request).await;
-        let gsuite_secret = read_service_account_key("assets/google-client-secret.json").await.at("assets/google-client-secret.json")?;
-        let auth = ServiceAccountAuthenticator::builder(gsuite_secret)
-            .build().await.at_unknown()?;
-        let token = auth.token(&["https://www.googleapis.com/auth/spreadsheets"]).await?;
-        if token.is_expired() { return Err(SheetsUncachedError::TokenExpired) }
-        let Some(token) = token.token() else { return Err(SheetsUncachedError::EmptyToken) };
-        if token.is_empty() { return Err(SheetsUncachedError::EmptyToken) }
-        let ValueRange { values } = http_client.get(&format!("https://sheets.googleapis.com/v4/spreadsheets/{sheet_id}/values/{range}"))
-            .bearer_auth(token)
-            .query(&[
-                ("valueRenderOption", "FORMATTED_VALUE"),
-                ("dateTimeRenderOption", "FORMATTED_STRING"),
-                ("majorDimension", "ROWS"),
-            ])
-            .send().await?
-            .detailed_error_for_status().await?
-            .json_with_text_in_error::<ValueRange>().await?;
-        // from https://developers.google.com/sheets/api/limits#quota
-        // “Read requests […] Per minute per user per project […] 60”
-        *next_request = Instant::now() + Duration::from_secs(1);
-        Ok(values)
-    }
-
-    let key = (sheet_id.to_owned(), range.to_owned());
-    lock!(cache = SHEETS_CACHE; {
-        let (ref mut next_request, ref mut cache) = *cache;
-        Ok(match cache.entry(key) {
-            hash_map::Entry::Occupied(mut entry) => {
-                let (retrieved, values) = entry.get();
-                if retrieved.elapsed() < Duration::from_secs(5 * 60) {
-                    values.clone()
-                } else {
-                    match sheet_values_uncached(&http_client, sheet_id, range, next_request).await {
-                        Ok(values) => {
-                            entry.insert((Instant::now(), values.clone()));
-                            values
-                        }
-                        Err(e) if e.is_network_error() && retrieved.elapsed() < Duration::from_secs(60 * 60) => values.clone(),
-                        Err(source) => return Err(SheetsError { cache: SheetsCacheMissReason::Elapsed, source }),
-                    }
-                }
-            }
-            hash_map::Entry::Vacant(entry) => {
-                let values = sheet_values_uncached(&http_client, sheet_id, range, next_request).await.map_err(|source| SheetsError { cache: SheetsCacheMissReason::Vacant, source })?;
-                entry.insert((Instant::now(), values.clone()));
-                values
-            }
-        })
-    })
 }
 
 trait IntoIcsTzid {

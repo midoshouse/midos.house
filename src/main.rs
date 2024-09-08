@@ -39,6 +39,7 @@ mod prelude;
 mod racetime_bot;
 mod seed;
 mod series;
+mod sheets;
 mod startgg;
 mod team;
 mod time;
