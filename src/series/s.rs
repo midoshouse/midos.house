@@ -314,9 +314,9 @@ pub(crate) fn weeklies_enter_form(me: Option<&User>) -> RawHtml<String> {
     }
 }
 
-pub(crate) fn weekly_settings_2024w34() -> serde_json::Map<String, Json> {
+pub(crate) fn weekly_settings_2024w37() -> serde_json::Map<String, Json> {
     collect![
-        format!("user_message") => json!("Standard Weekly (2024-08-30)"),
+        format!("user_message") => json!("Standard Weekly (2024-09-13)"),
         format!("bridge") => json!("vanilla"),
         format!("trials") => json!(0),
         format!("shuffle_ganon_bosskey") => json!("medallions"),
@@ -365,6 +365,7 @@ pub(crate) fn weekly_settings_2024w34() -> serde_json::Map<String, Json> {
         format!("fast_bunny_hood") => json!(true),
         format!("chicken_count") => json!(3),
         format!("big_poe_count") => json!(1),
+        format!("ruto_already_f1_jabu") => json!(true),
         format!("correct_chest_appearances") => json!("both"),
         format!("correct_potcrate_appearances") => json!("textures_content"),
         format!("hint_dist") => json!("weekly"),
