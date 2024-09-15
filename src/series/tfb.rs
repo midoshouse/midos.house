@@ -476,7 +476,15 @@ pub(crate) struct ProgressionSpoiler {
     #[serde_as(as = "serde_with::Map<_, _>")]
     locations: Vec<(String, String)>,
     #[serde_as(as = "serde_with::Map<_, _>")]
-    gossip_stones: Vec<(String, String)>,
+    gossip_stones_count: Vec<(String, String)>,
+    #[serde_as(as = "serde_with::Map<_, _>")]
+    gossip_stones_lock: Vec<(String, String)>,
+    #[serde_as(as = "serde_with::Map<_, _>")]
+    gossip_stones_path: Vec<(String, String)>,
+    #[serde_as(as = "serde_with::Map<_, _>")]
+    gossip_stones_foolish: Vec<(String, String)>,
+    #[serde_as(as = "serde_with::Map<_, _>")]
+    gossip_stones_other: Vec<(String, String)>,
 }
 
 pub(crate) fn progression_spoiler(spoiler: Json) -> ProgressionSpoiler {
@@ -487,6 +495,14 @@ pub(crate) fn progression_spoiler(spoiler: Json) -> ProgressionSpoiler {
             _ => value["item"].as_str().unwrap(),
         };
         match item_name {
+            | "Bottle"
+            | "Bottle with Milk"
+            | "Bottle with Poe"
+            | "Bottle with Big Poe"
+            | "Bottle with Bugs"
+            | "Bottle with Blue Fire"
+            | "Bottle with Fish"
+            | "Bottle with Blue Potion"
             | "Progressive Strength Upgrade"
             | "Nocturne of Shadow"
             | "Small Key (Water Temple)"
@@ -554,7 +570,20 @@ pub(crate) fn progression_spoiler(spoiler: Json) -> ProgressionSpoiler {
     for (key, value) in spoiler["gossip_stones"].as_object().unwrap() {
         if !duplicate_hints.remove(&value["text"]) {
             duplicate_hints.insert(value["text"].clone());
-            spoiler_json.gossip_stones.push((key.clone(), value["text"].as_str().unwrap().to_owned()));
+            let text = value["text"].as_str().unwrap().to_owned();
+            if !text.contains("echo") {
+                if text.contains("steps") {
+                    &mut spoiler_json.gossip_stones_count
+                } else if text.contains("unlocks") {
+                    &mut spoiler_json.gossip_stones_lock
+                } else if text.contains("is on the") {
+                    &mut spoiler_json.gossip_stones_path
+                } else if text.contains("foolish") {
+                    &mut spoiler_json.gossip_stones_foolish
+                } else {
+                    &mut spoiler_json.gossip_stones_other
+                }.push((key.clone(), text));
+            }
         }
     }
     spoiler_json

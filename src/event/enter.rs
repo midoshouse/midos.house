@@ -49,7 +49,7 @@ enum Requirement {
         #[serde_as(as = "Option<DeserializeRawHtml>")]
         text: Option<RawHtml<String>>,
     },
-    /// Muyust have a Twitch account connected to their racetime.gg account
+    /// Must have a Twitch account connected to their racetime.gg account
     Twitch,
     /// Must have a Discord account connected to their Mido's House account
     Discord,
