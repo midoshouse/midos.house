@@ -550,7 +550,7 @@ impl Goal {
             Self::Sgl2023 => Ok(sgl::settings_2023()),
             Self::Sgl2024 => Ok(sgl::settings_2024()),
             Self::SongsOfHope => Ok(soh::settings()),
-            Self::StandardRuleset => Ok(s::weekly_settings_2024w37()), //TODO allow organizers to configure this //TODO separate settings for S8
+            Self::StandardRuleset => Ok(s::weekly_settings_2024w38()), //TODO allow organizers to configure this //TODO separate settings for S8
             Self::TournoiFrancoS3 => Err(false), // settings draft
             Self::TournoiFrancoS4 => Err(false), // settings draft
             Self::TriforceBlitz => Err(false), // per-event settings

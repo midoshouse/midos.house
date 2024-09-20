@@ -314,9 +314,9 @@ pub(crate) fn weeklies_enter_form(me: Option<&User>) -> RawHtml<String> {
     }
 }
 
-pub(crate) fn weekly_settings_2024w37() -> serde_json::Map<String, Json> {
+pub(crate) fn weekly_settings_2024w38() -> serde_json::Map<String, Json> {
     collect![
-        format!("user_message") => json!("Standard Weekly (2024-09-13)"),
+        format!("user_message") => json!("Standard Weekly (2024-09-20)"),
         format!("bridge") => json!("vanilla"),
         format!("trials") => json!(0),
         format!("shuffle_ganon_bosskey") => json!("medallions"),
@@ -326,6 +326,9 @@ pub(crate) fn weekly_settings_2024w37() -> serde_json::Map<String, Json> {
         format!("open_door_of_time") => json!(true),
         format!("gerudo_fortress") => json!("fast"),
         format!("starting_age") => json!("random"),
+        format!("spawn_positions") => json!([
+            "child",
+        ]),
         format!("free_bombchu_drops") => json!(false),
         format!("disabled_locations") => json!([
             "Deku Theater Mask of Truth",
