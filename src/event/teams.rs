@@ -768,5 +768,5 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), content).await?)
 }

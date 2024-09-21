@@ -1981,7 +1981,7 @@ impl SeedRollUpdate {
             Self::Error(e) => {
                 eprintln!("seed roll error: {e} ({e:?})");
                 if let Environment::Production = ctx.global_state.env {
-                    wheel::night_report("/net/midoshouse/error", Some(&format!("seed roll error: {e} ({e:?})"))).await.to_racetime()?;
+                    wheel::night_report(&format!("{}/error", ctx.global_state.env.night_path()), Some(&format!("seed roll error: {e} ({e:?})"))).await.to_racetime()?;
                 }
                 ctx.say("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl and if necessary roll the seed manually.").await?;
             }
@@ -2370,7 +2370,7 @@ impl RaceHandler<GlobalState> for Handler {
                 } else {
                     eprintln!("race handler for https://{}{} panicked", global_state.env.racetime_host(), data.url);
                     if let Environment::Production = global_state.env {
-                        let _ = wheel::night_report("/net/midoshouse/error", Some(&format!("race handler for https://{}{} panicked", global_state.env.racetime_host(), data.url))).await;
+                        let _ = wheel::night_report(&format!("{}/error", global_state.env.night_path()), Some(&format!("race handler for https://{}{} panicked", global_state.env.racetime_host(), data.url))).await;
                     }
                 }
             });
@@ -4429,13 +4429,13 @@ async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRa
                 }
                 eprintln!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
                 if wait_time >= Duration::from_secs(16) {
-                    wheel::night_report("/net/midoshouse/error", Some(&format!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await.to_racetime()?;
+                    wheel::night_report(&format!("{}/error", global_state.env.night_path()), Some(&format!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await.to_racetime()?;
                 }
                 sleep(wait_time).await;
                 last_crash = Instant::now();
             }
             Err(e) => {
-                wheel::night_report("/net/midoshouse/error", Some(&format!("error handling racetime.gg rooms: {e} ({e:?})"))).await.to_racetime()?;
+                wheel::night_report(&format!("{}/error", global_state.env.night_path()), Some(&format!("error handling racetime.gg rooms: {e} ({e:?})"))).await.to_racetime()?;
                 break Err(e)
             }
         }

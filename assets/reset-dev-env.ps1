@@ -4,6 +4,9 @@ function ThrowOnNativeFailure {
     }
 }
 
+ssh midos.house env -C /opt/git/github.com/racetimeGG/racetime-app/main git pull
+ThrowOnNativeFailure
+
 ssh midos.house env -C /opt/git/github.com/racetimeGG/racetime-app/main docker compose up --build -d
 ThrowOnNativeFailure
 
@@ -43,7 +46,7 @@ ThrowOnNativeFailure
 ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO users (id, racetime_id, racetime_display_name, display_source, is_archivist) VALUES (5, ''mXBVxgoA2jz6MZO5'', ''Duck Hunt'', ''racetime'', FALSE);"'
 ThrowOnNativeFailure
 
-ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO events (series, event, display_name, start, listed, short_name, show_qualifier_times, default_game_count, min_schedule_notice, discord_guild, discord_race_room_channel, discord_race_results_channel, discord_organizer_channel, discord_scheduling_channel) VALUES (''mw'', ''3'', ''3rd Multiworld Tournament'', TIMESTAMPTZ ''2022-09-13 16:00:00Z'', TRUE, ''MW S3'', TRUE, 1, INTERVAL ''00:00:00'', 987565688820469781, 1064510809797038171, 1064510848833441833, 1064510908736491562, 1026055492788834324);"'
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO events (series, event, display_name, start, listed, short_name, show_qualifier_times, default_game_count, min_schedule_notice, discord_guild, discord_race_room_channel, discord_race_results_channel, discord_organizer_channel, discord_scheduling_channel, team_config) VALUES (''mw'', ''3'', ''3rd Multiworld Tournament'', TIMESTAMPTZ ''2022-09-13 16:00:00Z'', TRUE, ''MW S3'', TRUE, 1, INTERVAL ''00:00:00'', 987565688820469781, 1064510809797038171, 1064510848833441833, 1064510908736491562, 1026055492788834324, ''multiworld'');"'
 ThrowOnNativeFailure
 
 ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO organizers (series, event, organizer) VALUES (''mw'', ''3'', -3874943390487736167);"'
@@ -73,7 +76,7 @@ ThrowOnNativeFailure
 ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO team_members (team, member, status, role) VALUES (2, 5, ''confirmed'', ''courage'');"'
 ThrowOnNativeFailure
 
-ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO events (series, event, display_name, start, listed, short_name, show_qualifier_times, default_game_count, min_schedule_notice, discord_guild, discord_race_room_channel, discord_race_results_channel, discord_organizer_channel, discord_scheduling_channel) VALUES (''tfb'', ''2'', ''Triforce Blitz Season 2 Tournament'', TIMESTAMPTZ ''2023-04-08 19:00:00Z'', TRUE, ''TFB S2'', TRUE, 3, INTERVAL ''00:00:00'', 987565688820469781, 1064510809797038171, 1064510848833441833, 1064510908736491562, 1026055492788834324);"'
+ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO events (series, event, display_name, start, listed, short_name, show_qualifier_times, default_game_count, min_schedule_notice, discord_guild, discord_race_room_channel, discord_race_results_channel, discord_organizer_channel, discord_scheduling_channel, team_config) VALUES (''tfb'', ''2'', ''Triforce Blitz Season 2 Tournament'', TIMESTAMPTZ ''2023-04-08 19:00:00Z'', TRUE, ''TFB S2'', TRUE, 3, INTERVAL ''00:00:00'', 987565688820469781, 1064510809797038171, 1064510848833441833, 1064510908736491562, 1026055492788834324, ''solo'');"'
 ThrowOnNativeFailure
 
 ssh midos.house sudo -u mido psql fados_house -c '"INSERT INTO organizers (series, event, organizer) VALUES (''tfb'', ''2'', -3874943390487736167);"'

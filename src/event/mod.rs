@@ -251,7 +251,7 @@ impl<'a> Data<'a> {
     }
 
     /// Weights for chest appearances in Mido's house in this event, generated using <https://github.com/fenhl/ootrstats>
-    pub(crate) async fn chests(&self) -> wheel::Result<ChestAppearances> {
+    pub(crate) async fn chests(&self, env: Environment) -> wheel::Result<ChestAppearances> {
         macro_rules! from_file {
             ($path:literal) => {{
                 static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!($path)).expect("failed to parse chest weights"));
@@ -307,7 +307,7 @@ impl<'a> Data<'a> {
             (Series::TriforceBlitz, "3") => from_file!("../../assets/event/tfb/chests-3-8.1.32-blitz.57.json"),
             (Series::WeTryToBeBetter, "1") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
             (series, event) => {
-                wheel::night_report("/net/midoshouse/error", Some(&format!("no chest appearances specified for {series}/{event}, using random chests"))).await?;
+                wheel::night_report(&format!("{}/error", env.night_path()), Some(&format!("no chest appearances specified for {series}/{event}, using random chests"))).await?;
                 ChestAppearances::random()
             }
         })
@@ -705,7 +705,7 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &data.display_name, content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &data.display_name, content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races")]
@@ -755,7 +755,7 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Races — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &format!("Races — {}", data.display_name), content).await?)
 }
 
 pub(crate) enum StatusContext<'v> {
@@ -1122,7 +1122,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(env).await?, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
@@ -1196,7 +1196,7 @@ async fn find_team_form(mut transaction: Transaction<'_, Postgres>, env: Environ
     Ok(match data.team_config {
         TeamConfig::Solo => {
             let header = data.header(&mut transaction, env, me.as_ref(), Tab::FindTeam, false).await?;
-            page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+            page(transaction, &me, &uri, PageStyle { chests: data.chests(env).await?, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
                 : header;
                 : "This is a solo event.";
             }).await?
@@ -1365,14 +1365,14 @@ impl<E: Into<ResignError>> From<E> for StatusOrError<ResignError> {
 }
 
 #[rocket::get("/event/<series>/<event>/resign/<team>")]
-pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn resign(env: &State<Environment>, pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() {
         return Err(StatusOrError::Status(Status::Forbidden))
     }
     let is_started = data.is_started(&mut transaction).await?;
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
         p {
             @if is_started {
                 @if let TeamConfig::Solo = data.team_config {
@@ -1462,7 +1462,7 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFutu
 }
 
 #[rocket::get("/event/<series>/<event>/opt-out")]
-pub(crate) async fn opt_out(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn opt_out(env: &State<Environment>, pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() || me.as_ref().map_or(true, |me| me.racetime.is_none()) {
@@ -1484,7 +1484,7 @@ pub(crate) async fn opt_out(pool: &State<PgPool>, me: Option<User>, uri: Origin<
     } else {
         false
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
         @if opted_out {
             p : "You have already opted out.";
         } else if entered {
@@ -1843,7 +1843,7 @@ pub(crate) async fn volunteer(pool: &State<PgPool>, env: &State<Environment>, me
         },
         _ => unimplemented!(), //TODO ask other events' organizers if they want to show the Volunteer tab
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &data.display_name, html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &data.display_name, html! {
         : header;
         : content;
     }).await?)

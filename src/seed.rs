@@ -416,7 +416,7 @@ pub(crate) async fn get(pool: &State<PgPool>, env: &State<Environment>, me: Opti
                 Err(e) => {
                     eprintln!("failed to add favicon to {file_stem}.json: {e} ({e:?})");
                     if let Environment::Production = **env {
-                        wheel::night_report("/net/midoshouse/error", Some(&format!("failed to add favicon to {file_stem}.json: {e} ({e:?})"))).await?;
+                        wheel::night_report(&format!("{}/error", env.night_path()), Some(&format!("failed to add favicon to {file_stem}.json: {e} ({e:?})"))).await?;
                     }
                     ChestAppearances::random()
                 }

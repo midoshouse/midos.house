@@ -294,7 +294,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
             .then_with(|| race1.id.cmp(&race2.id))
     });
     let chests_event = upcoming_events.choose(&mut thread_rng());
-    let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
+    let chests = if let Some(event) = chests_event { event.chests(**env).await? } else { ChestAppearances::random() };
     let mut ongoing_events = Vec::default();
     for event in upcoming_events.drain(..).collect_vec() {
         if event.series != Series::Standard || event.event != "w" { // the weeklies are a perpetual event so we avoid always listing them
@@ -359,14 +359,14 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
 }
 
 #[rocket::get("/archive")]
-async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
+async fn archive(env: &State<Environment>, pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
     let mut transaction = pool.begin().await?;
     let mut past_events = Vec::default();
     for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE listed AND end_time IS NOT NULL AND end_time <= NOW() ORDER BY end_time DESC"#).fetch_all(&mut *transaction).await? {
         past_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction"));
     }
     let chests_event = past_events.choose(&mut thread_rng());
-    let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
+    let chests = if let Some(event) = chests_event { event.chests(**env).await? } else { ChestAppearances::random() };
     let page_content = html! {
         h1 : "Past events";
         ul {
@@ -567,8 +567,9 @@ async fn not_found(request: &Request<'_>) -> PageResult {
 
 #[rocket::catch(500)]
 async fn internal_server_error(request: &Request<'_>) -> PageResult {
-    if request.guard::<&State<Environment>>().await.succeeded().map_or(true, |env| matches!(**env, Environment::Production)) {
-        wheel::night_report("/net/midoshouse/error", Some("internal server error")).await?;
+    let env = request.guard::<&State<Environment>>().await.expect("missing environment");
+    if let Environment::Production = **env {
+        wheel::night_report(&format!("{}/error", env.night_path()), Some("internal server error")).await?;
     }
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
@@ -582,8 +583,9 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
 #[rocket::catch(default)]
 async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
     eprintln!("responding with unexpected HTTP status code {} {} to request {request:?}", status.code, status.reason_lossy());
-    if request.guard::<&State<Environment>>().await.succeeded().map_or(true, |env| matches!(**env, Environment::Production)) {
-        wheel::night_report("/net/midoshouse/error", Some(&format!("responding with unexpected HTTP status code: {} {}", status.code, status.reason_lossy()))).await?;
+    let env = request.guard::<&State<Environment>>().await.expect("missing environment");
+    if let Environment::Production = **env {
+        wheel::night_report(&format!("{}/error", env.night_path()), Some(&format!("responding with unexpected HTTP status code: {} {}", status.code, status.reason_lossy()))).await?;
     }
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();

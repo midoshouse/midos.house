@@ -884,7 +884,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
             : crate::notification::team_invite(&mut transaction, env, me.as_ref().expect("got a team invite while not logged in"), csrf, team_id).await?;
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(env).await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
         : header;
         : invites;
         : content;
@@ -987,7 +987,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                 }, errors, "Enter");
             }
         };
-        Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), page_content).await?)
+        Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(env).await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), page_content).await?)
     })
 }
 

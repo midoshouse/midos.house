@@ -64,6 +64,10 @@ impl Environment {
         }
     }
 
+    fn night_path(&self) -> &'static str {
+        if self.is_dev() { "/net/midoshouse/dev" } else { "/net/midoshouse" }
+    }
+
     fn racetime_host(&self) -> &'static str {
         if self.is_dev() { "racetime.midos.house" } else { "racetime.gg" }
     }
@@ -135,7 +139,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
         let default_panic_hook = std::panic::take_hook();
         if let Environment::Production = env {
             std::panic::set_hook(Box::new(move |info| {
-                let _ = wheel::night_report_sync("/net/midoshouse/error", Some("thread panic"));
+                let _ = wheel::night_report_sync(&format!("{}/error", env.night_path()), Some("thread panic"));
                 default_panic_hook(info)
             }));
         }
