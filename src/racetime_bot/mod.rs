@@ -1272,8 +1272,13 @@ impl GlobalState {
         }
     }
 
-    pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, allow_web: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, settings: serde_json::Map<String, Json>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, allow_web: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, mut settings: serde_json::Map<String, Json>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
+        let password_lock = settings.get("password_lock").map_or(false, |password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"));
+        settings.insert(format!("create_spoiler"), json!(match unlock_spoiler_log {
+            UnlockSpoilerLog::Now | UnlockSpoilerLog::Progression | UnlockSpoilerLog::After => true,
+            UnlockSpoilerLog::Never => password_lock, // spoiler log needs to be generated so the backend can read the password
+        }));
         let (update_tx, update_rx) = mpsc::channel(128);
         tokio::spawn(async move {
             if_chain! {
@@ -1627,13 +1632,6 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
     }
     settings.insert(format!("create_patch_file"), json!(true));
     settings.insert(format!("create_compressed_rom"), json!(false));
-    if settings.insert(format!("create_spoiler"), json!(match unlock_spoiler_log {
-        UnlockSpoilerLog::Now | UnlockSpoilerLog::Progression | UnlockSpoilerLog::After => true,
-        UnlockSpoilerLog::Never => false,
-    })).is_some() {
-        eprintln!("warning: overriding create_spoiler setting");
-        wheel::night_report("/net/midoshouse/error", Some("warning: overriding create_spoiler setting")).await?;
-    };
     let mut last_error = None;
     for attempt in 0.. {
         if attempt >= 3 && delay_until.map_or(true, |delay_until| Utc::now() >= delay_until) {
