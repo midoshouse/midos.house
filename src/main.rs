@@ -48,10 +48,11 @@ mod user;
 
 #[derive(Default, Clone, Copy, clap::ValueEnum)]
 enum Environment {
-    #[cfg_attr(not(debug_assertions), default)]
+    #[cfg_attr(any(feature = "production", not(any(feature = "dev", feature = "local", debug_assertions))), default)]
     Production,
-    #[cfg_attr(debug_assertions, default)]
+    #[cfg_attr(any(feature = "dev", all(debug_assertions, not(feature = "production"), not(feature = "local"))), default)]
     Dev,
+    #[cfg_attr(feature = "local", default)]
     Local,
 }
 
@@ -73,6 +74,10 @@ impl Environment {
     }
 }
 
+fn racetime_host() -> &'static str {
+    Environment::default().racetime_host()
+}
+
 fn parse_port(arg: &str) -> Result<u16, std::num::ParseIntError> {
     match arg {
         "production" => Ok(24812),
@@ -87,8 +92,6 @@ enum Subcommand {}
 
 #[derive(clap::Parser)]
 struct Args {
-    #[clap(long, value_enum, default_value_t)]
-    env: Environment,
     #[clap(long, value_parser = parse_port)]
     port: Option<u16>,
     #[clap(subcommand)]
@@ -113,7 +116,7 @@ enum Error {
 }
 
 #[wheel::main(rocket)]
-async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
+async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
     if let Some(subcommand) = subcommand {
         #[cfg(unix)] let mut sock = UnixStream::connect(unix_socket::PATH).await?;
         #[cfg(unix)] subcommand.write(&mut sock).await?;
@@ -136,6 +139,7 @@ async fn main(Args { env, port, subcommand }: Args) -> Result<(), Error> {
             }
         }
     } else {
+        let env = Environment::default();
         let default_panic_hook = std::panic::take_hook();
         if let Environment::Production = env {
             std::panic::set_hook(Box::new(move |info| {

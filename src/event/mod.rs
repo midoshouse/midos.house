@@ -550,7 +550,7 @@ impl<'a> Data<'a> {
                     a(class = "button", href = url.to_string()) {
                         : favicon(url);
                         @match url.host_str() {
-                            Some("racetime.gg") => : "Race Room";
+                            Some("racetime.gg" | "racetime.midos.house") => : "Race Room";
                             Some("challonge.com" | "www.challonge.com" | "start.gg" | "www.start.gg") => : "Brackets";
                             _ => : "Website";
                         }
@@ -813,7 +813,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
                         : "You are signed up as part of ";
                         //TODO use Team type
                         @if let Some(racetime_slug) = row.racetime_slug {
-                            a(href = format!("https://racetime.gg/team/{racetime_slug}")) {
+                            a(href = format!("https://{}/team/{racetime_slug}", racetime_host())) {
                                 @if let Some(name) = row.name {
                                     i {
                                         bdi : name;

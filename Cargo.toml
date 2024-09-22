@@ -3,6 +3,10 @@ name = "midos-house"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+lto = true
+strip = true
+
 [lints.rust]
 rust_2018_idioms = "deny"
 unsafe_code = "forbid"
@@ -13,9 +17,10 @@ unused_lifetimes = "deny"
 unused_qualifications = "deny"
 warnings = "deny"
 
-[profile.release]
-lto = true
-strip = true
+[features]
+dev = []
+production = []
+local = []
 
 [build-dependencies]
 git2 = "0.19"
@@ -52,7 +57,7 @@ log = "0.4"
 log-lock = { git = "https://github.com/fenhl/log-lock", branch = "main" }
 noisy_float = "0.2"
 ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", branch = "main", features = ["sqlx"] }
-racetime = "0.23"
+racetime = "0.24"
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls", "stream"] }
 rocket = { git = "https://github.com/fenhl/Rocket", branch = "forms" }

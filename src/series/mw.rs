@@ -1103,7 +1103,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: 
     let header = data.header(&mut transaction, env, me.as_ref(), Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(env).await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
         if let Some(ref racetime) = me.racetime {
-            let racetime_user = client.get(format!("https://racetime.gg/user/{}/data", racetime.id))
+            let racetime_user = client.get(format!("https://{}/user/{}/data", racetime_host(), racetime.id))
                 .send().await?
                 .detailed_error_for_status().await?
                 .json_with_text_in_error::<RaceTimeUser>().await?;
@@ -1113,7 +1113,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: 
                     : header;
                     article {
                         p {
-                            a(href = "https://racetime.gg/account/teams/create") : "Create a racetime.gg team";
+                            a(href = format!("https://{}/account/teams/create", racetime_host())) : "Create a racetime.gg team";
                             : " to enter this event.";
                         }
                     }
@@ -1131,7 +1131,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: 
                             }
                             label(class = "help") {
                                 : "(Or ";
-                                a(href = "https://racetime.gg/account/teams/create") : "create a new team";
+                                a(href = format!("https://{}/account/teams/create", racetime_host())) : "create a new team";
                                 : ", then come back here.)";
                             }
                         });
@@ -1203,7 +1203,7 @@ impl<'v> EnterFormStep2Defaults<'v> {
         match self {
             Self::Context(ctx) => if let Some(team_slug) = ctx.field_value("racetime_team") {
                 let client = client.clone();
-                let url = format!("https://racetime.gg/team/{team_slug}/data");
+                let url = format!("https://{}/team/{team_slug}/data", racetime_host());
                 async move {
                     Ok(client.get(url)
                         .send().await?

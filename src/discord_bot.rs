@@ -108,13 +108,13 @@ impl MessageBuilderExt for MessageBuilder {
                 self.role(team_role);
             } else if let Some(team_name) = team.name(transaction).await? {
                 if let Some(ref racetime_slug) = team.racetime_slug {
-                    self.push_named_link_safe_no_preview(team_name, format!("https://racetime.gg/team/{racetime_slug}"));
+                    self.push_named_link_safe_no_preview(team_name, format!("https://{}/team/{racetime_slug}", racetime_host()));
                 } else {
                     self.push_italic_safe(team_name);
                 }
             } else {
                 if let Some(ref racetime_slug) = team.racetime_slug {
-                    self.push_named_link_safe_no_preview("an unnamed team", format!("https://racetime.gg/team/{racetime_slug}"));
+                    self.push_named_link_safe_no_preview("an unnamed team", format!("https://{}/team/{racetime_slug}", racetime_host()));
                 } else {
                     self.push("an unnamed team");
                 }

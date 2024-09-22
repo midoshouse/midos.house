@@ -306,7 +306,7 @@ pub(crate) fn weeklies_enter_form(me: Option<&User>) -> RawHtml<String> {
                     : "You don't need to sign up beforehand.";
                 } else {
                     : "You will need a ";
-                    a(href = "https://racetime.gg/") : "racetime.gg";
+                    a(href = format!("https://{}/", racetime_host())) : "racetime.gg";
                     : " account to participate.";
                 }
             }

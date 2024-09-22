@@ -226,6 +226,7 @@ pub(crate) use {
         macros::*,
         ootr_web,
         racetime_bot,
+        racetime_host,
         seed,
         series::*,
         startgg,

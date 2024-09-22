@@ -300,7 +300,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
         html! {
             p {
                 : "racetime.gg: ";
-                a(href = format!("https://racetime.gg/user/{}", racetime.id)) {
+                a(href = format!("https://{}/user/{}", racetime_host(), racetime.id)) {
                     bdi : racetime.display_name;
                     @if let Some(discriminator) = racetime.discriminator {
                         : "#";
@@ -318,7 +318,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                     p {
                         @let racetime = racetime_user.racetime.expect("racetime.gg user without racetime.gg ID");
                         : "You are also signed in via racetime.gg as ";
-                        a(href = format!("https://racetime.gg/user/{}", racetime.id)) {
+                        a(href = format!("https://{}/user/{}", racetime_host(), racetime.id)) {
                             bdi : racetime.display_name;
                             @if let Some(discriminator) = racetime.discriminator {
                                 : "#";
@@ -341,7 +341,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                 html! {
                     p {
                         : "You are also signed in via racetime.gg as ";
-                        a(href = format!("https://racetime.gg/user/{}", racetime_user.id)) {
+                        a(href = format!("https://{}/user/{}", racetime_host(), racetime_user.id)) {
                             bdi : racetime_user.name;
                             @if let Some(discriminator) = racetime_user.discriminator {
                                 : "#";

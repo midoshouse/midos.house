@@ -73,7 +73,7 @@ impl Entrant {
             Self::MidosHouseTeam(team) => team.to_html(transaction, env, running_text).await?,
             Self::Discord { id, racetime_id, .. } => {
                 let url = if let Some(racetime_id) = racetime_id {
-                    format!("https://racetime.gg/user/{racetime_id}")
+                    format!("https://{}/user/{racetime_id}", racetime_host())
                 } else {
                     format!("https://discord.com/users/{id}")
                 };
@@ -93,7 +93,7 @@ impl Entrant {
                 }
             }
             Self::Named { name, racetime_id: Some(racetime_id), .. } => html! {
-                a(href = format!("https://racetime.gg/user/{racetime_id}")) {
+                a(href = format!("https://{}/user/{racetime_id}", racetime_host())) {
                     bdi : name;
                 }
             },
@@ -2838,7 +2838,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                 if !value.room.is_empty() {
                     match Url::parse(&value.room) {
                         Ok(room) => if let Some(host) = room.host_str() {
-                            if host == "racetime.gg" {
+                            if host == racetime_host() {
                                 valid_room_urls.insert("room", room);
                             } else {
                                 form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("room"));
@@ -2866,7 +2866,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                 if !value.async_room1.is_empty() {
                     match Url::parse(&value.async_room1) {
                         Ok(room) => if let Some(host) = room.host_str() {
-                            if host == "racetime.gg" {
+                            if host == racetime_host() {
                                 valid_room_urls.insert("async_room1", room);
                             } else {
                                 form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room1"));
@@ -2880,7 +2880,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                 if !value.async_room2.is_empty() {
                     match Url::parse(&value.async_room2) {
                         Ok(room) => if let Some(host) = room.host_str() {
-                            if host == "racetime.gg" {
+                            if host == racetime_host() {
                                 valid_room_urls.insert("async_room2", room);
                             } else {
                                 form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room2"));
@@ -2894,7 +2894,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                 if !value.async_room3.is_empty() {
                     match Url::parse(&value.async_room3) {
                         Ok(room) => if let Some(host) = room.host_str() {
-                            if host == "racetime.gg" {
+                            if host == racetime_host() {
                                 valid_room_urls.insert("async_room3", room);
                             } else {
                                 form.context.push_error(form::Error::validation("Race room must be a racetime.gg URL.").with_name("async_room3"));

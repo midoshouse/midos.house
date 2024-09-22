@@ -200,6 +200,7 @@ impl Requirement {
                 let teams = teams::signups_sorted(transaction, http_client, Some(me), data, match (data.series, &*data.event) {
                     (Series::SpeedGaming, "2023onl") => teams::QualifierKind::Sgl2023Online,
                     (Series::SpeedGaming, "2024onl") => teams::QualifierKind::Sgl2024Online,
+                    (Series::Standard, "8") => teams::QualifierKind::Standard,
                     (_, _) => unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series, data.event),
                 }).await?;
                 if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| match member.user {
@@ -770,7 +771,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                                                     : "You don't need to sign up beforehand.";
                                                 } else {
                                                     : "You will need a ";
-                                                    a(href = "https://racetime.gg/") : "racetime.gg";
+                                                    a(href = format!("https://{}/", racetime_host())) : "racetime.gg";
                                                     : " account to participate.";
                                                 }
                                             }
@@ -785,7 +786,11 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                                 article {
                                     p {
                                         a(href = uri!(auth::login(Some(uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
-                                        : " to enter this event.";
+                                        : " to enter";
+                                        @if data.show_opt_out {
+                                            : " or opt out of";
+                                        }
+                                        : " this event.";
                                     }
                                 }
                             }
@@ -906,7 +911,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                     : form_field("racetime_team", &mut errors, html! {
                         label(for = "racetime_team") {
                             : "racetime.gg Team: ";
-                            a(href = format!("https://racetime.gg/team/{}", defaults.racetime_team_slug().expect("missing racetime team slug"))) : defaults.racetime_team_name().expect("missing racetime team name");
+                            a(href = format!("https://{}/team/{}", racetime_host(), defaults.racetime_team_slug().expect("missing racetime team slug"))) : defaults.racetime_team_name().expect("missing racetime team name");
                             : " • ";
                             a(href = uri!(get(data.series, &*data.event, _, _)).to_string()) : "Change";
                         }
@@ -1166,12 +1171,12 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
             team_config => {
                 let racetime_team = if let Some(ref racetime_team) = value.racetime_team {
                     if let Some(ref racetime) = me.racetime {
-                        let user = client.get(format!("https://racetime.gg/user/{}/data", racetime.id))
+                        let user = client.get(format!("https://{}/user/{}/data", racetime_host(), racetime.id))
                             .send().await?
                             .detailed_error_for_status().await?
                             .json_with_text_in_error::<mw::RaceTimeUser>().await?;
                         if user.teams.iter().any(|team| team.slug == *racetime_team) {
-                            let team = client.get(format!("https://racetime.gg/team/{racetime_team}/data"))
+                            let team = client.get(format!("https://{}/team/{racetime_team}/data", racetime_host()))
                                 .send().await?
                                 .detailed_error_for_status().await?
                                 .json_with_text_in_error::<mw::RaceTimeTeamData>().await?;

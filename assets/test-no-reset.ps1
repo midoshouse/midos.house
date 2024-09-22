@@ -5,19 +5,19 @@ if (-not $?)
     throw 'Native Failure'
 }
 
-wsl env -C /home/fenhl/wslgit/github.com/midoshouse/midos.house cargo build --target=x86_64-unknown-linux-musl
+wsl env -C /home/fenhl/wslgit/github.com/midoshouse/midos.house cargo build --target=x86_64-unknown-linux-musl --release --features=dev
 if (-not $?)
 {
     throw 'Native Failure'
 }
 
-wsl mkdir -p /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/target/wsl/debug
+wsl mkdir -p /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/target/wsl/release
 if (-not $?)
 {
     throw 'Native Failure'
 }
 
-wsl cp /home/fenhl/wslgit/github.com/midoshouse/midos.house/target/x86_64-unknown-linux-musl/debug/midos-house /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/target/wsl/debug/midos-house
+wsl cp /home/fenhl/wslgit/github.com/midoshouse/midos.house/target/x86_64-unknown-linux-musl/release/midos-house /mnt/c/Users/fenhl/git/github.com/midoshouse/midos.house/stage/target/wsl/release/midos-house
 if (-not $?)
 {
     throw 'Native Failure'
@@ -25,9 +25,7 @@ if (-not $?)
 
 ssh midos.house sudo -u mido killall -9 midos-house-dev
 
-.\assets\reset-dev-env.ps1
-
-scp .\target\wsl\debug\midos-house midos.house:bin/midos-house-dev
+scp .\target\wsl\release\midos-house midos.house:bin/midos-house-dev
 if (-not $?)
 {
     throw 'Native Failure'

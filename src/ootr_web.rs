@@ -233,7 +233,7 @@ impl ApiClient {
         }
     }
 
-    pub(crate) async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, version: ootr_utils::Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, settings: serde_json::Map<String, Json>) -> Result<SeedInfo, Error> {
+    pub(crate) async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, version: ootr_utils::Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, mut settings: serde_json::Map<String, Json>) -> Result<SeedInfo, Error> {
         #[serde_as]
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -269,7 +269,7 @@ impl ApiClient {
         let encrypt = version.is_release() && unlock_spoiler_log == UnlockSpoilerLog::Never;
         let api_key = if encrypt { &*self.api_key_encryption } else { &*self.api_key };
         let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
-        let password_lock = settings.get("password_lock").map_or(false, |password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"));
+        let password_lock = settings.remove("password_lock").map_or(false, |password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"));
         let mw_permit = if is_mw {
             Some(match self.mw_seed_rollers.try_acquire() {
                 Ok(permit) => permit,

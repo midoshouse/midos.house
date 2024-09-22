@@ -79,7 +79,7 @@ pub(crate) fn favicon(url: &Url) -> RawHtml<String> {
         Some("discord.gg") => html! {
             img(class = "favicon", alt = "external link (discord.gg)", src = static_url!("discord-favicon.ico"));
         },
-        Some("racetime.gg") => html! {
+        Some("racetime.gg" | "racetime.midos.house") => html! {
             img(class = "favicon", alt = "external link (racetime.gg)", src = static_url!("racetimeGG-favicon.svg"));
         },
         Some("start.gg" | "www.start.gg") => html! {
