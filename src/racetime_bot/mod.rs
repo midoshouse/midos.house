@@ -1885,11 +1885,7 @@ impl SeedRollUpdate {
                     },
                     UnlockSpoilerLog::Never => {}
                 }
-                ctx.set_bot_raceinfo(&format!(
-                    "{}{}{seed_url}",
-                    if let Some(preset) = rsl_preset { format!("{}\n", preset.race_info()) } else { String::default() },
-                    extra.file_hash.map(|file_hash| format!("{}\n", format_hash(file_hash))).unwrap_or_default(),
-                )).await?;
+                set_bot_raceinfo(ctx, &seed, rsl_preset, false).await?;
                 if let Some(OfficialRaceData { cal_event, event, .. }) = official_data {
                     // send multiworld rooms
                     let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
@@ -1999,6 +1995,24 @@ fn format_password(password: [OcarinaNote; 6]) -> impl fmt::Display {
     password.into_iter().map(|icon| icon.to_racetime_emoji()).format(" ")
 }
 
+async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl_preset: Option<rsl::Preset>, show_password: bool) -> Result<(), Error> {
+    let extra = seed.extra(Utc::now()).await.to_racetime()?;
+    ctx.set_bot_raceinfo(&format!(
+        "{rsl_preset}{file_hash}{sep}{password}{newline}{seed_url}",
+        rsl_preset = rsl_preset.map(|preset| format!("{}\n", preset.race_info())).unwrap_or_default(),
+        file_hash = extra.file_hash.map(|hash| format_hash(hash).to_string()).unwrap_or_default(),
+        sep = if extra.file_hash.is_some() && extra.password.is_some() && show_password { " | " } else { "" },
+        password = extra.password.map(|password| format_password(password).to_string()).unwrap_or_default(),
+        newline = if extra.file_hash.is_some() || extra.password.is_some() && show_password { "\n" } else { "" },
+        seed_url = match seed.files.as_ref().expect("received seed with no files") {
+            seed::Files::MidosHouse { file_stem, .. } => format!("https://midos.house/seed/{file_stem}"),
+            seed::Files::OotrWeb { id, .. } => format!("https://ootrandomizer.com/seed/get?id={id}"),
+            seed::Files::TriforceBlitz { uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
+            seed::Files::TfbSotd { ordinal, .. } => format!("https://www.triforceblitz.com/seed/daily/{ordinal}"),
+        },
+    )).await
+}
+
 #[derive(Clone, Copy)]
 struct Breaks {
     duration: Duration,
@@ -2062,7 +2076,6 @@ struct Handler {
     official_data: Option<OfficialRaceData>,
     high_seed_name: String,
     low_seed_name: String,
-    seed_password: Option<[OcarinaNote; 6]>,
     breaks: Option<Breaks>,
     break_notifications: Option<tokio::task::JoinHandle<()>>,
     goal_notifications: Option<tokio::task::JoinHandle<()>>,
@@ -3167,7 +3180,6 @@ impl RaceHandler<GlobalState> for Handler {
         });
         let this = Self {
             breaks: None, //TODO default breaks for restreamed matches?
-            seed_password: None,
             break_notifications: None,
             goal_notifications: None,
             start_saved: false,
@@ -3246,7 +3258,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::SongsOfHope
                             | Goal::StandardRuleset //TODO per-event settings
                             | Goal::TriforceBlitzProgressionSpoiler
-                               => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                             | Goal::WeTryToBeBetter
                                 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
                             Goal::Rsl => unreachable!("no official race rooms"),
@@ -3840,10 +3852,13 @@ impl RaceHandler<GlobalState> for Handler {
             }
         }
         match data.status.value {
-            RaceStatusValue::Pending => if let Some(password) = self.seed_password {
-                //TODO set_bot_raceinfo
-                ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password))).await?;
-            },
+            RaceStatusValue::Pending => lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
+                let extra = seed.extra(Utc::now()).await.to_racetime()?;
+                if let Some(password) = extra.password {
+                    ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password))).await?;
+                    set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
+                }
+            }),
             RaceStatusValue::InProgress => {
                 if let Some(breaks) = self.breaks {
                     self.break_notifications.get_or_insert_with(|| {

@@ -178,6 +178,20 @@ input[type="submit"] {
     vertical-align: sub;
 }
 
+.toc {
+    display: flex;
+}
+
+.toc nav {
+    display: block;
+    position: sticky;
+    border: 1px solid;
+    margin: 8px;
+    padding: 8px;
+    top: 16px;
+    white-space: nowrap;
+}
+
 article,
 form {
     border: 1px solid;
@@ -380,6 +394,14 @@ footer,
 }
 
 @media not (min-width: 768px) {
+    .toc {
+        flex-direction: column-reverse;
+    }
+
+    .toc nav {
+        white-space: wrap;
+    }
+
     .large-table-content {
         display: none;
     }
@@ -400,7 +422,7 @@ footer,
     }
 }
 
-@media (max-width: 1023px) {
+@media not (min-width: 1024px) {
     .button-row.large-button-row {
         display: grid;
     }

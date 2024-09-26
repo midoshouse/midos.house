@@ -144,10 +144,10 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 // https://docs.google.com/document/d/1IHrOGxFQpt3HpQ-9kQ6AVAARc04x6c96N1aHnHfHaKM/edit
                                 let t_average = finish_times[0..7].iter().sum::<Duration>() / 7;
                                 let t_j_h = Duration::from_secs(8 * 60).mul_f64(1.0.min(0.0.max((Duration::from_secs((2 * 60 + 30) * 60) - t_average).div_duration_f64(Duration::from_secs((2 * 60 + 30) * 60) - Duration::from_secs((60 + 40) * 60)))));
-                                let t_jet = Duration::from_secs(8 * 60).min(t_j_h.mul_f64(0.0.max(((finish_time - t_average).div_duration_f64(Duration::from_secs(8 * 60))) * 0.35)));
+                                let t_jet = Duration::from_secs(8 * 60).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(Duration::from_secs(8 * 60)) * 0.35)));
                                 let t_g_h = Duration::from_secs_f64(finish_times[0..7].iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / 7.0);
                                 let sigma_finish = t_g_h.div_duration_f64(t_average);
-                                let t_gamble = Duration::from_secs(5 * 60).min(t_g_h.mul_f64(0.0.max(((finish_time - t_average).div_duration_f64(t_g_h)) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
+                                let t_gamble = Duration::from_secs(5 * 60).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
                                 ((1.0 - (finish_time - t_average - t_jet - t_gamble).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0)
                             }
                             QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
