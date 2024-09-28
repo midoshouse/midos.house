@@ -165,6 +165,8 @@ pub(crate) struct Data<'a> {
     pub(crate) show_qualifier_times: bool,
     pub(crate) default_game_count: i16,
     pub(crate) min_schedule_notice: Duration,
+    pub(crate) open_stream_delay: Duration,
+    pub(crate) invitational_stream_delay: Duration,
     pub(crate) retime_window: Duration,
     pub(crate) auto_import: bool,
     pub(crate) language: Language,
@@ -209,6 +211,8 @@ impl<'a> Data<'a> {
             show_qualifier_times,
             default_game_count,
             min_schedule_notice,
+            open_stream_delay,
+            invitational_stream_delay,
             retime_window,
             auto_import,
             language AS "language: Language"
@@ -238,6 +242,8 @@ impl<'a> Data<'a> {
                 show_qualifier_times: row.show_qualifier_times,
                 default_game_count: row.default_game_count,
                 min_schedule_notice: decode_pginterval(row.min_schedule_notice)?,
+                open_stream_delay: decode_pginterval(row.open_stream_delay)?,
+                invitational_stream_delay: decode_pginterval(row.invitational_stream_delay)?,
                 retime_window: decode_pginterval(row.retime_window)?,
                 auto_import: row.auto_import,
                 language: row.language,
@@ -466,7 +472,12 @@ impl<'a> Data<'a> {
                 a(class = "nav", href? = (!matches!(tab, Tab::Info) || is_subpage).then(|| uri!(info(self.series, &*self.event)).to_string())) : &self.display_name;
             }
             @if let Some(start) = self.start(&mut *transaction).await? {
-                h2 : format_datetime(start, DateTimeFormat { long: true, running_text: false });
+                h2 {
+                    @if let (Series::Standard, "8") = (self.series, &*self.event) {
+                        : "Bracket phase: ";
+                    }
+                    : format_datetime(start, DateTimeFormat { long: true, running_text: false });
+                }
             }
             div(class = "button-row") {
                 @if let Tab::Info = tab {

@@ -173,7 +173,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                 let mut rx = match goal.parse_seed_command(&mut transaction, &global_state, is_official, spoiler_seed, &args).await {
                                     Ok(SeedCommandParseResult::Regular { settings, unlock_spoiler_log, description, .. }) => {
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
-                                        global_state.clone().roll_seed(goal.preroll_seeds(), true, None, goal.rando_version(), settings, unlock_spoiler_log)
+                                        global_state.clone().roll_seed(goal.preroll_seeds(), true, None, goal.rando_version(None /*TODO replace is_official parameter with optional series and event*/), settings, unlock_spoiler_log)
                                     }
                                     Ok(SeedCommandParseResult::Rsl { preset, world_count, unlock_spoiler_log, description, .. }) => {
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");

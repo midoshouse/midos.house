@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT\n            display_name,\n            short_name,\n            start,\n            end_time,\n            url,\n            challonge_community,\n            speedgaming_slug,\n            hide_races_tab,\n            hide_teams_tab,\n            teams_url,\n            enter_url,\n            video_url,\n            discord_guild AS \"discord_guild: PgSnowflake<GuildId>\",\n            discord_invite_url,\n            discord_race_room_channel AS \"discord_race_room_channel: PgSnowflake<ChannelId>\",\n            discord_race_results_channel AS \"discord_race_results_channel: PgSnowflake<ChannelId>\",\n            discord_organizer_channel AS \"discord_organizer_channel: PgSnowflake<ChannelId>\",\n            discord_scheduling_channel AS \"discord_scheduling_channel: PgSnowflake<ChannelId>\",\n            team_config AS \"team_config: TeamConfig\",\n            enter_flow AS \"enter_flow: Json<enter::Flow>\",\n            show_opt_out,\n            show_qualifier_times,\n            default_game_count,\n            min_schedule_notice,\n            retime_window,\n            auto_import,\n            language AS \"language: Language\"\n        FROM events WHERE series = $1 AND event = $2",
+  "query": "SELECT\n            display_name,\n            short_name,\n            start,\n            end_time,\n            url,\n            challonge_community,\n            speedgaming_slug,\n            hide_races_tab,\n            hide_teams_tab,\n            teams_url,\n            enter_url,\n            video_url,\n            discord_guild AS \"discord_guild: PgSnowflake<GuildId>\",\n            discord_invite_url,\n            discord_race_room_channel AS \"discord_race_room_channel: PgSnowflake<ChannelId>\",\n            discord_race_results_channel AS \"discord_race_results_channel: PgSnowflake<ChannelId>\",\n            discord_organizer_channel AS \"discord_organizer_channel: PgSnowflake<ChannelId>\",\n            discord_scheduling_channel AS \"discord_scheduling_channel: PgSnowflake<ChannelId>\",\n            team_config AS \"team_config: TeamConfig\",\n            enter_flow AS \"enter_flow: Json<enter::Flow>\",\n            show_opt_out,\n            show_qualifier_times,\n            default_game_count,\n            min_schedule_notice,\n            open_stream_delay,\n            invitational_stream_delay,\n            retime_window,\n            auto_import,\n            language AS \"language: Language\"\n        FROM events WHERE series = $1 AND event = $2",
   "describe": {
     "columns": [
       {
@@ -137,16 +137,26 @@
       },
       {
         "ordinal": 24,
-        "name": "retime_window",
+        "name": "open_stream_delay",
         "type_info": "Interval"
       },
       {
         "ordinal": 25,
+        "name": "invitational_stream_delay",
+        "type_info": "Interval"
+      },
+      {
+        "ordinal": 26,
+        "name": "retime_window",
+        "type_info": "Interval"
+      },
+      {
+        "ordinal": 27,
         "name": "auto_import",
         "type_info": "Bool"
       },
       {
-        "ordinal": 26,
+        "ordinal": 28,
         "name": "language: Language",
         "type_info": {
           "Custom": {
@@ -196,8 +206,10 @@
       false,
       false,
       false,
+      false,
+      false,
       false
     ]
   },
-  "hash": "8719abef24bfafc820218d55d1491d5ae4e8abd39b9014608518badfa0877d2d"
+  "hash": "0bc2c2ab53b4d6328e34210be43059973cba2c25bbf3b3e74199288bf97afe39"
 }

@@ -30,7 +30,7 @@ use {
     },
 };
 
-const FENHL: UserId = UserId::new(86841168427495424);
+pub(crate) const FENHL: UserId = UserId::new(86841168427495424);
 const BUTTONS_PER_PAGE: usize = 25;
 
 #[derive(Debug)]
@@ -1476,7 +1476,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                                 channel.say(ctx, &msg).await?;
                                                             } else {
                                                                 // DM Fenhl
-                                                                UserId::new(86841168427495424).create_dm_channel(ctx).await?.say(ctx, &msg).await?;
+                                                                FENHL.create_dm_channel(ctx).await?.say(ctx, &msg).await?;
                                                             }
                                                         } else {
                                                             if let Some(channel) = event.discord_race_room_channel {

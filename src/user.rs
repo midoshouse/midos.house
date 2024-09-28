@@ -63,6 +63,8 @@ pub(crate) struct User {
     pub(crate) racetime: Option<UserRaceTime>,
     pub(crate) discord: Option<UserDiscord>,
     pub(crate) challonge_id: Option<String>,
+    /// The start.gg user ID as returned by the GraphQL query `currentUser { id }` after OAuth.
+    /// Not to be confused with the alphanumeric slug used in the profile page URL and on the profile page itself.
     pub(crate) startgg_id: Option<startgg::ID>,
     pub(crate) is_archivist: bool,
 }

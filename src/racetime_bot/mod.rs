@@ -32,7 +32,6 @@ use {
     serenity::all::{
         CreateAllowedMentions,
         CreateMessage,
-        UserId,
     },
     tokio::{
         io::AsyncWriteExt as _,
@@ -46,6 +45,7 @@ use {
     crate::{
         cal::Entrant,
         config::ConfigRaceTime,
+        discord_bot::FENHL,
         prelude::*,
     },
 };
@@ -508,7 +508,7 @@ impl Goal {
         }
     }
 
-    pub(crate) fn rando_version(&self) -> VersionedBranch {
+    pub(crate) fn rando_version(&self, event: Option<(Series, &str)>) -> VersionedBranch {
         match self {
             Self::Cc7 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::CoOpS3 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
@@ -522,7 +522,11 @@ impl Goal {
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl2023),
             Self::Sgl2024 => VersionedBranch::Latest(rando::Branch::Sgl2024),
             Self::SongsOfHope => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
-            Self::StandardRuleset => VersionedBranch::Latest(rando::Branch::Dev), //TODO allow weekly organizers to configure this //TODO set S8 to 8.2
+            Self::StandardRuleset => if let Some((Series::Standard, "8")) = event {
+                VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0))
+            } else {
+                VersionedBranch::Latest(rando::Branch::Dev) //TODO allow weekly organizers to configure this
+            },
             Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
             Self::TournoiFrancoS4 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
@@ -645,7 +649,7 @@ impl Goal {
                     rsl::Preset::Multiworld => "weights tuned for multiworld",
                 })).await?;
             },
-            Self::StandardRuleset => ctx.say("!seed: The current weekly settings").await?, //TODO per-event settings
+            Self::StandardRuleset => ctx.say("!seed: The settings for season 8 of the main tournament (which are also the current weekly settings)").await?, //TODO per-event settings
             Self::TournoiFrancoS3 => {
                 ctx.say("!seed base : Settings de base.").await?;
                 ctx.say("!seed random : Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.").await?;
@@ -2002,7 +2006,7 @@ async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl
         rsl_preset = rsl_preset.map(|preset| format!("{}\n", preset.race_info())).unwrap_or_default(),
         file_hash = extra.file_hash.map(|hash| format_hash(hash).to_string()).unwrap_or_default(),
         sep = if extra.file_hash.is_some() && extra.password.is_some() && show_password { " | " } else { "" },
-        password = extra.password.map(|password| format_password(password).to_string()).unwrap_or_default(),
+        password = extra.password.filter(|_| show_password).map(|password| format_password(password).to_string()).unwrap_or_default(),
         newline = if extra.file_hash.is_some() || extra.password.is_some() && show_password { "\n" } else { "" },
         seed_url = match seed.files.as_ref().expect("received seed with no files") {
             seed::Files::MidosHouse { file_stem, .. } => format!("https://midos.house/seed/{file_stem}"),
@@ -2082,6 +2086,7 @@ struct Handler {
     start_saved: bool,
     fpa_enabled: bool,
     locked: bool,
+    password_sent: bool,
     race_state: ArcRwLock<RaceState>,
 }
 
@@ -2181,7 +2186,7 @@ impl Handler {
             } else {
                 ("a", format!("seed with {}", step.message))
             };
-            self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), settings, unlock_spoiler_log, goal.language(), article, description).await;
+            self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(self.official_data.as_ref().map(|OfficialRaceData { event, .. }| (event.series, &*event.event))), settings, unlock_spoiler_log, goal.language(), article, description).await;
             return Ok(())
         } else {
             ctx.say(step.message).await?;
@@ -2515,24 +2520,30 @@ impl RaceHandler<GlobalState> for Handler {
                     restreamer_racetime_id: cal_event.race.restreamers.get(&language).cloned(),
                     ready: false,
                 })).collect();
-                if let Series::SpeedGaming = event.series {
-                    let delay_until = cal_event.start().expect("handling room for official race without start time") - TimeDelta::minutes(20);
+                let stream_delay = match cal_event.race.entrants {
+                    Entrants::Open | Entrants::Count { .. } => event.open_stream_delay,
+                    Entrants::Two(_) | Entrants::Three(_) | Entrants::Named(_) => event.invitational_stream_delay,
+                };
+                if !stream_delay.is_zero() {
+                    let delay_until = cal_event.start().expect("handling room for official race without start time") - stream_delay - TimeDelta::minutes(5);
                     if let Ok(delay) = (delay_until - Utc::now()).to_std() {
                         let ctx = ctx.clone();
-                        let requires_emote_only = cal_event.race.phase.as_ref().map_or(false, |phase| phase == "Bracket");
+                        let requires_emote_only = event.series == Series::SpeedGaming && cal_event.race.phase.as_ref().map_or(false, |phase| phase == "Bracket");
                         tokio::spawn(async move {
                             sleep_until(Instant::now() + delay).await;
                             if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
-                            ctx.say(if requires_emote_only {
-                                "@entrants Remember to go live with a 15 minute (900 second) delay and set your chat to emote only!"
-                            } else {
-                                "@entrants Remember to go live with a 15 minute (900 second) delay!"
-                            }).await.expect("failed to send stream delay notice");
-                            sleep(Duration::from_secs(15 * 60)).await;
-                            let data = ctx.data().await;
-                            if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await { return }
-                            if let RaceStatusValue::Open = data.status.value {
-                                ctx.set_invitational().await.expect("failed to make the room invitational");
+                            ctx.say(format!("@entrants Remember to go live with a delay of {} ({} seconds){}!",
+                                English.format_duration(stream_delay, true),
+                                stream_delay.as_secs(),
+                                if requires_emote_only { " and set your chat to emote only" } else { "" },
+                            )).await.expect("failed to send stream delay notice");
+                            if let Series::SpeedGaming = event.series {
+                                sleep(Duration::from_secs(15 * 60)).await;
+                                let data = ctx.data().await;
+                                if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await { return }
+                                if let RaceStatusValue::Open = data.status.value {
+                                    ctx.set_invitational().await.expect("failed to make the room invitational");
+                                }
                             }
                         });
                     }
@@ -3184,6 +3195,7 @@ impl RaceHandler<GlobalState> for Handler {
             goal_notifications: None,
             start_saved: false,
             locked: false,
+            password_sent: false,
             race_state: ArcRwLock::new(race_state),
             official_data, high_seed_name, low_seed_name, fpa_enabled,
         };
@@ -3258,9 +3270,9 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::SongsOfHope
                             | Goal::StandardRuleset //TODO per-event settings
                             | Goal::TriforceBlitzProgressionSpoiler
-                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(this.official_data.as_ref().map(|OfficialRaceData { event, .. }| (event.series, &*event.event))), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                             | Goal::WeTryToBeBetter
-                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
+                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(this.official_data.as_ref().map(|OfficialRaceData { event, .. }| (event.series, &*event.event))), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
                             Goal::Rsl => unreachable!("no official race rooms"),
                             Goal::Cc7 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::TournoiFrancoS3 | Goal::TournoiFrancoS4 => unreachable!("should have draft state set"),
                             Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
@@ -3736,7 +3748,7 @@ impl RaceHandler<GlobalState> for Handler {
                     } else {
                         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
                         match goal.parse_seed_command(&mut transaction, &ctx.global_state, self.is_official(), cmd_name.to_ascii_lowercase() == "spoilerseed", &args).await.to_racetime()? {
-                            SeedCommandParseResult::Regular { settings, unlock_spoiler_log, language, article, description } => self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(), settings, unlock_spoiler_log, language, article, description).await,
+                            SeedCommandParseResult::Regular { settings, unlock_spoiler_log, language, article, description } => self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(self.official_data.as_ref().map(|OfficialRaceData { event, .. }| (event.series, &*event.event))), settings, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::Rsl { preset, world_count, unlock_spoiler_log, language, article, description } => self.roll_rsl_seed(ctx, preset, world_count, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::Tfb { version, unlock_spoiler_log, language, article, description } => self.roll_tfb_seed(ctx, version, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::QueueExisting { data, language, article, description } => self.queue_existing_seed(ctx, data, language, article, description).await,
@@ -3852,13 +3864,16 @@ impl RaceHandler<GlobalState> for Handler {
             }
         }
         match data.status.value {
-            RaceStatusValue::Pending => lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
-                let extra = seed.extra(Utc::now()).await.to_racetime()?;
-                if let Some(password) = extra.password {
-                    ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password))).await?;
-                    set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
-                }
-            }),
+            RaceStatusValue::Pending => if !self.password_sent {
+                lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
+                    let extra = seed.extra(Utc::now()).await.to_racetime()?;
+                    if let Some(password) = extra.password {
+                        ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password))).await?;
+                        set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
+                    }
+                });
+                self.password_sent = true;
+            },
             RaceStatusValue::InProgress => {
                 if let Some(breaks) = self.breaks {
                     self.break_notifications.get_or_insert_with(|| {
@@ -4299,7 +4314,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                                 PrerollMode::Long,
                                 false,
                                 None,
-                                goal.rando_version(),
+                                goal.rando_version(None),
                                 settings.clone(),
                                 goal.unlock_spoiler_log(false, false),
                             );
@@ -4390,7 +4405,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                     channel.say(&*ctx, &msg).await.to_racetime()?;
                                 } else {
                                     // DM Fenhl
-                                    UserId::new(86841168427495424).create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, &msg).await.to_racetime()?;
+                                    FENHL.create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, &msg).await.to_racetime()?;
                                 }
                                 for team in cal_event.active_teams() {
                                     for member in team.members(&mut transaction).await.to_racetime()? {
@@ -4413,7 +4428,7 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                     channel.say(&*ctx, msg).await.to_racetime()?;
                                 } else {
                                     // DM Fenhl
-                                    UserId::new(86841168427495424).create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, msg).await.to_racetime()?;
+                                    FENHL.create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, msg).await.to_racetime()?;
                                 }
                             }
                         }

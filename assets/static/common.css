@@ -68,6 +68,12 @@ body > div {
     flex-grow: 0;
 }
 
+.section-list {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 40px;
+}
+
 .timezone-wrapper {
     display: none;
 }

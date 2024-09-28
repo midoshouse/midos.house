@@ -2,6 +2,7 @@ use {
     lazy_regex::Regex,
     serde_with::DeserializeAs,
     crate::{
+        discord_bot::FENHL,
         event::{
             Data,
             DataError,
@@ -17,6 +18,7 @@ use {
 #[derive(Debug, Clone, Deserialize)]
 pub(super) struct Flow {
     requirements: Vec<Requirement>,
+    closes: Option<DateTime<Utc>>,
 }
 
 enum DeserializeRawHtml {}
@@ -712,6 +714,8 @@ pub(crate) struct EnterForm {
     teammate: Option<Id<Users>>,
     step2: bool,
     roles: HashMap<String, Role>,
+    /// Mapping from racetime.gg user IDs to start.gg user slugs.
+    /// Slugs are used in the profile URL and on the profile page itself; not to be confused with the start.gg user IDs returned by the GraphQL API.
     startgg_id: HashMap<String, String>,
     mw_impl: Option<mw::Impl>,
     startgg_radio: Option<BoolRadio>,
@@ -740,11 +744,10 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
     } else {
         match (data.series, &*data.event) {
             (Series::BattleRoyale, "1") => ohko::enter_form(),
-            (Series::Standard, "7") => s::enter_form(),
             (Series::Standard, "w") => s::weeklies_enter_form(me.as_ref()),
             _ => match data.team_config {
                 TeamConfig::Solo => {
-                    if let Some(Flow { ref requirements }) = data.enter_flow {
+                    if let Some(Flow { ref requirements, closes }) = data.enter_flow {
                         let opted_out = if let Some(racetime) = me.as_ref().and_then(|me| me.racetime.as_ref()) {
                             sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM opt_outs WHERE series = $1 AND event = $2 AND racetime_id = $3) AS "exists!""#, data.series as _, &data.event, racetime.id).fetch_one(&mut *transaction).await?
                         } else {
@@ -754,6 +757,12 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                             html! {
                                 article {
                                     p : "You can no longer enter this event since you have already opted out.";
+                                }
+                            }
+                        } else if closes.is_some_and(|closes| closes <= Utc::now()) {
+                            html! {
+                                article {
+                                    p : "The deadline to enter this event has passed.";
                                 }
                             }
                         } else if requirements.is_empty() {
@@ -1016,8 +1025,10 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
         match data.team_config {
             TeamConfig::Solo => {
                 let mut request_qualifier = None;
-                if let Some(Flow { ref requirements }) = data.enter_flow {
-                    if requirements.is_empty() {
+                if let Some(Flow { ref requirements, closes }) = data.enter_flow {
+                    if closes.is_some_and(|closes| closes <= Utc::now()) {
+                        form.context.push_error(form::Error::validation("The deadline to enter this event has passed."));
+                    } else if requirements.is_empty() {
                         if data.is_single_race() {
                             form.context.push_error(form::Error::validation("Signups for this event are not handled by Mido's House."));
                         }
@@ -1078,6 +1089,43 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                             if let Ok(member) = discord_guild.member(&*discord_ctx, discord_user.id).await {
                                 member.add_role(&*discord_ctx, participant_role).await?;
                             }
+                        }
+                    }
+                    let Flow { ref requirements, .. } = data.enter_flow.expect("checked above");
+                    for requirement in requirements {
+                        if let Requirement::StartGG { optional } = requirement {
+                            let discord_ctx = discord_ctx.read().await;
+                            if !optional || value.startgg_radio == Some(BoolRadio::Yes) {
+                                //TODO enter event on start.gg with user ID (probably generateRegistrationToken → registerForTournament)
+                                // temporary workaround until this is automated:
+                                let msg = MessageBuilder::default()
+                                    .mention_user(&me)
+                                    .push(" signed up for ")
+                                    .push_safe(&data.display_name)
+                                    .push(" with start.gg user ID ")
+                                    .push_mono_safe(&me.startgg_id.as_ref().expect("checked by requirement").0)
+                                    .build();
+                                if let Some(organizer_channel) = data.discord_organizer_channel {
+                                    organizer_channel.say(&*discord_ctx, msg).await?;
+                                } else {
+                                    FENHL.create_dm_channel(&*discord_ctx).await?.say(&*discord_ctx, msg).await?;
+                                }
+                            } else {
+                                //TODO enter event on start.gg anonymously (probably registerForTournament)
+                                // temporary workaround until this is automated:
+                                let msg = MessageBuilder::default()
+                                    .mention_user(&me)
+                                    .push(" signed up for ")
+                                    .push_safe(&data.display_name)
+                                    .push(" without start.gg user ID ")
+                                    .build();
+                                if let Some(organizer_channel) = data.discord_organizer_channel {
+                                    organizer_channel.say(&*discord_ctx, msg).await?;
+                                } else {
+                                    FENHL.create_dm_channel(&*discord_ctx).await?.say(&*discord_ctx, msg).await?;
+                                }
+                            }
+                            //TODO record participant's entrant ID for the singleton start.gg event as team.startgg_id
                         }
                     }
                     transaction.commit().await?;

@@ -309,27 +309,33 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
             a(href = uri!(mw).to_string()) : "Mido's House Multiworld";
             : " app.";
         }
-        h1 : "Ongoing events";
-        ul {
-            @if ongoing_events.is_empty() {
-                i : "(none currently)";
-            } else {
-                @for event in ongoing_events {
-                    li : event;
+        div(class = "section-list") {
+            div {
+                h1 : "Ongoing events";
+                ul {
+                    @if ongoing_events.is_empty() {
+                        i : "(none currently)";
+                    } else {
+                        @for event in ongoing_events {
+                            li : event;
+                        }
+                    }
                 }
             }
-        }
-        h1 : "Upcoming events";
-        ul {
-            @if upcoming_events.is_empty() {
-                i : "(none currently)";
-            } else {
-                @for event in upcoming_events {
-                    li {
-                        : event;
-                        @if let Some(start) = event.start(&mut transaction).await? {
-                            : " — ";
-                            : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+            div {
+                h1 : "Upcoming events";
+                ul {
+                    @if upcoming_events.is_empty() {
+                        i : "(none currently)";
+                    } else {
+                        @for event in upcoming_events {
+                            li {
+                                : event;
+                                @if let Some(start) = event.start(&mut transaction).await? {
+                                    : " — ";
+                                    : format_datetime(start, DateTimeFormat { long: false, running_text: false });
+                                }
+                            }
                         }
                     }
                 }
