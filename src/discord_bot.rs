@@ -1266,7 +1266,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             race.schedule_updated_at = Some(Utc::now());
                                             race.save(&mut transaction).await?;
                                             let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
-                                            if cal_event.should_create_room(&mut transaction, &event).await? && start - Utc::now() < TimeDelta::minutes(30) {
+                                            if start - Utc::now() < TimeDelta::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
                                                     let data = ctx.data.read().await;
                                                     (
@@ -1453,7 +1453,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 _ => panic!("tried to schedule race with not 2 or 3 MH teams as async"),
                                             };
                                             let cal_event = cal::Event { race, kind };
-                                            if cal_event.should_create_room(&mut transaction, &event).await? && event.team_config.is_racetime_team_format() && start - Utc::now() < TimeDelta::minutes(30) {
+                                            if event.team_config.is_racetime_team_format() && start - Utc::now() < TimeDelta::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
                                                     let data = ctx.data.read().await;
                                                     (

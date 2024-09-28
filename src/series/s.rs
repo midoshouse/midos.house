@@ -284,19 +284,6 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
     })
 }
 
-pub(crate) fn enter_form() -> RawHtml<String> {
-    html! {
-        article {
-            p : "Play in the qualifiers to enter this tournament.";
-            p {
-                : "Note: This page is not official. See ";
-                a(href = "https://docs.google.com/document/d/1iN1q3NArRoQhean5W0qfoTSM2xLlj9QjuWkzDO0xME0/edit") : "the official document";
-                : " for details.";
-            }
-        }
-    }
-}
-
 pub(crate) fn weeklies_enter_form(me: Option<&User>) -> RawHtml<String> {
     html! {
         article {

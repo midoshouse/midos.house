@@ -1436,14 +1436,24 @@ impl Event {
         }
     }
 
-    pub(crate) async fn should_create_room(&self, transaction: &mut Transaction<'_, Postgres>, event: &event::Data<'_>) -> Result<bool, event::DataError> {
-        Ok(racetime_bot::Goal::for_event(self.race.series, &self.race.event).map_or(false, |goal| goal.should_create_rooms()) && (
-            // don't create racetime.gg rooms for in-person races
-            self.race.series != Series::SpeedGaming
-            || !self.race.event.ends_with("live")
-            || !event.is_started(transaction).await?
-        ))
+    pub(crate) async fn should_create_room(&self, transaction: &mut Transaction<'_, Postgres>, event: &event::Data<'_>) -> Result<RaceHandleMode, event::DataError> {
+        Ok(if racetime_bot::Goal::for_event(self.race.series, &self.race.event).map_or(false, |goal| goal.should_create_rooms()) {
+            if self.race.series == Series::SpeedGaming && self.race.event.ends_with("live") && event.is_started(transaction).await? {
+                // don't create racetime.gg rooms for in-person races
+                RaceHandleMode::Notify
+            } else {
+                RaceHandleMode::Room
+            }
+        } else {
+            RaceHandleMode::None
+        })
     }
+}
+
+pub(crate) enum RaceHandleMode {
+    None,
+    Notify,
+    Room,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
