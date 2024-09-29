@@ -474,7 +474,7 @@ impl<'a> Data<'a> {
             @if let Some(start) = self.start(&mut *transaction).await? {
                 h2 {
                     @if let (Series::Standard, "8") = (self.series, &*self.event) {
-                        : "Bracket phase: ";
+                        : "Brackets: ";
                     }
                     : format_datetime(start, DateTimeFormat { long: true, running_text: false });
                 }

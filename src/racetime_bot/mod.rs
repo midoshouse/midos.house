@@ -554,7 +554,7 @@ impl Goal {
             Self::Sgl2023 => Ok(sgl::settings_2023()),
             Self::Sgl2024 => Ok(sgl::settings_2024()),
             Self::SongsOfHope => Ok(soh::settings()),
-            Self::StandardRuleset => Ok(s::weekly_settings_2024w38()), //TODO allow organizers to configure this //TODO separate settings for S8
+            Self::StandardRuleset => Ok(s::s8_settings()), //TODO allow weekly organizers to configure this (separately from S8)
             Self::TournoiFrancoS3 => Err(false), // settings draft
             Self::TournoiFrancoS4 => Err(false), // settings draft
             Self::TriforceBlitz => Err(false), // per-event settings
@@ -4014,6 +4014,16 @@ impl RaceHandler<GlobalState> for Handler {
                 }
             },
             RaceStatusValue::Cancelled => {
+                if !self.password_sent {
+                    lock!(@read state = self.race_state; if let RaceState::Rolled(ref seed) = *state {
+                        let extra = seed.extra(Utc::now()).await.to_racetime()?;
+                        if let Some(password) = extra.password {
+                            ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}", format_password(password))).await?;
+                            set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
+                        }
+                    });
+                    self.password_sent = true;
+                }
                 if let Some(OfficialRaceData { ref event, .. }) = self.official_data {
                     if let Some(organizer_channel) = event.discord_organizer_channel {
                         organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
