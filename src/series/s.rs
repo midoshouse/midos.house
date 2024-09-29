@@ -464,7 +464,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         a(href = uri!(event::races(Series::Standard, "8")).to_string()) : "Season 8 Qualifier Schedule";
                     }
                     p {
-                        img(src = static_url!("event/s/8-qualifier-schedule.png"), style = "max-width: 100%; max-height: 100%;");
+                        img(src = static_url!("event/s/8-qualifier-schedule.png"), style = "max-width: min(100%, 100vw); max-height: min(100%, 100vh);");
                     }
                     p {
                         strong : "Note: Qualifiers will be force-started at the designated starting time. Any participant who is not ready at that time will be removed from the race. Race rooms will be automatically opened 1 hour before the scheduled start time by the Mido's House bot. Mido will then provide a seed 15 minutes before the race is due to start.";
