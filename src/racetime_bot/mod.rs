@@ -508,7 +508,7 @@ impl Goal {
         }
     }
 
-    pub(crate) fn rando_version(&self, event: Option<(Series, &str)>) -> VersionedBranch {
+    pub(crate) fn rando_version(&self, #[allow(unused)] /* will be useful once weeklies are no longer on S8 settings */ event: Option<(Series, &str)>) -> VersionedBranch {
         match self {
             Self::Cc7 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::CoOpS3 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
@@ -522,11 +522,7 @@ impl Goal {
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl2023),
             Self::Sgl2024 => VersionedBranch::Latest(rando::Branch::Sgl2024),
             Self::SongsOfHope => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
-            Self::StandardRuleset => if let Some((Series::Standard, "8")) = event {
-                VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0))
-            } else {
-                VersionedBranch::Latest(rando::Branch::Dev) //TODO allow weekly organizers to configure this
-            },
+            Self::StandardRuleset => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0)), //TODO allow weekly organizers to configure this
             Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
             Self::TournoiFrancoS4 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
