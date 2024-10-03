@@ -1196,6 +1196,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             last_edited_at: race.last_edited_at,
                                             ignored: race.ignored,
                                             schedule_locked: race.schedule_locked,
+                                            notified: race.notified && !reset_schedule,
                                         };
                                         race.save(&mut transaction).await?;
                                         transaction.commit().await?;

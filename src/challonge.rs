@@ -110,6 +110,7 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
                     last_edited_at: None,
                     ignored: false,
                     schedule_locked: false,
+                    notified: false,
                 });
             }
         }

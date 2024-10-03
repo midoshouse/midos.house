@@ -4309,8 +4309,11 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                 if !is_weekly {
                     msg.push('>');
                 }
+            } else if cal_event.race.notified {
+                return Ok(None)
             } else {
                 msg.push(" — please get your equipment and report to the tournament room");
+                sqlx::query!("UPDATE races SET notified = TRUE WHERE id = $1", cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?;
             }
             msg.build()
         }
