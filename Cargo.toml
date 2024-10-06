@@ -33,7 +33,7 @@ async-graphql-rocket = { git = "https://github.com/fenhl/async-graphql", branch 
 async-trait = "0.1"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
-chrono-tz = "0.9"
+chrono-tz = "0.10"
 clap = { version = "4", features = ["derive"] }
 collect-mac = "0.1"
 convert_case = "0.6"
@@ -57,7 +57,7 @@ log = "0.4"
 log-lock = { git = "https://github.com/fenhl/log-lock", branch = "main" }
 noisy_float = "0.2"
 ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", branch = "main", features = ["sqlx"] }
-racetime = "0.24"
+racetime = "0.25"
 rand = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["charset", "hickory-dns", "http2", "json", "macos-system-configuration", "rustls-tls", "stream"] }
 rocket = { git = "https://github.com/fenhl/Rocket", branch = "forms" }
