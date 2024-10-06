@@ -1477,8 +1477,28 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFutu
 pub(crate) async fn opt_out(env: &State<Environment>, pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    if data.is_ended() || me.as_ref().map_or(true, |me| me.racetime.is_none()) {
-        return Err(StatusOrError::Status(Status::Forbidden))
+    if data.is_ended() {
+        return Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
+            p {
+                : "You can no longer opt out of participating in ";
+                : data;
+                : " since it has already ended.";
+            }
+        }).await?)
+    }
+    if let Some(ref me) = me {
+        if me.racetime.is_none() {
+            return Err(StatusOrError::Status(Status::Forbidden)) //TODO ask to connect a racetime.gg account
+        }
+    } else {
+        return Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
+            p {
+                a(href = uri!(auth::login(Some(uri!(opt_out(series, event))))).to_string()) : "Sign in or create a Mido's House account";
+                : " to opt out of participating in ";
+                : data;
+                : ".";
+            }
+        }).await?)
     }
     let opted_out = if let Some(racetime) = me.as_ref().and_then(|me| me.racetime.as_ref()) {
         sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM opt_outs WHERE series = $1 AND event = $2 AND racetime_id = $3) AS "exists!""#, data.series as _, &data.event, racetime.id).fetch_one(&mut *transaction).await?
