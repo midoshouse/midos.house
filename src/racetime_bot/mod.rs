@@ -1885,6 +1885,9 @@ impl SeedRollUpdate {
                     },
                     UnlockSpoilerLog::Never => {}
                 }
+                if extra.password.is_some() {
+                    ctx.say("Please note that this seed is password protected. You will receive the password to start a file ingame as soon as the countdown starts.").await?;
+                }
                 set_bot_raceinfo(ctx, &seed, rsl_preset, false).await?;
                 if let Some(OfficialRaceData { cal_event, event, .. }) = official_data {
                     // send multiworld rooms
