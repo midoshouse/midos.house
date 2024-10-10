@@ -1,5 +1,5 @@
 use {
-    chrono::Days,
+    //chrono::Days,
     serde_json::Value as Json,
     crate::{
         event::{
@@ -151,6 +151,7 @@ pub(crate) fn resolve_s7_draft_settings(picks: &draft::Picks) -> serde_json::Map
     settings
 }
 
+/*
 pub(crate) fn next_kokiri_weekly_after(min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
     let today = min_time.with_timezone(&America::New_York).date_naive();
     let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), Weekday::Fri).unwrap();
@@ -186,6 +187,7 @@ pub(crate) fn next_zora_weekly_after(min_time: DateTime<impl TimeZone>) -> DateT
         time
     }
 }
+*/
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     Ok(match &*data.event {
@@ -199,7 +201,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             let main_tournament = Data::new(transaction, Series::Standard, main_tournament_season.to_string()).await?.expect("database changed during transaction");
             let main_tournament_organizers = main_tournament.organizers(transaction).await?;
             let (main_tournament_organizers, race_mods) = organizers.into_iter().partition::<Vec<_>, _>(|organizer| main_tournament_organizers.contains(organizer));
-            let now = Utc::now();
+            //let now = Utc::now();
             Some(html! {
                 article {
                     p {
@@ -207,9 +209,10 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         : English.join_html(race_mods);
                         : ") and main tournament organizers (";
                         : English.join_html(main_tournament_organizers);
-                        : ") in cooperation with ZeldaSpeedRuns."; //TODO list organizers
+                        : ") in cooperation with ZeldaSpeedRuns. The races are open to all participants.";
                     }
-                    p : "There are three races each week, each open to all participants:";
+                    /*
+                    p : "There are three races each week:";
                     ol {
                         li {
                             : "The Kokiri weekly, Fridays at 8PM Eastern Time (next: ";
@@ -231,6 +234,19 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         : "Settings are typically changed once per month and posted in ";
                         a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
                         : " on Discord.";
+                    }
+                    */
+                    p {
+                        : "With the ";
+                        : main_tournament;
+                        : " coming up soon, the weekly races will be running on a rotating schedule matching the tournament's weekend qualifiers. Please see ";
+                        a(href = uri!(event::races(data.series, &*data.event)).to_string()) : "the schedule";
+                        : " for a list of the upcoming weeklies in your time zone. During the qualifier phase of the tournament, the weeklies will be on hiatus — you can join the qualifiers instead, even if you don't intend to participate in later phases of the tournament.";
+                    }
+                    p {
+                        : "Current settings match those for the ";
+                        : main_tournament;
+                        : ".";
                     }
                 }
             })
