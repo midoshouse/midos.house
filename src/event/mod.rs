@@ -574,7 +574,7 @@ impl<'a> Data<'a> {
                         : "Discord Server";
                     }
                 }
-                @if let (MatchSource::StartGG(_), Some(me)) = (self.match_source(), me) {
+                @if let Some(me) = me {
                     @if !self.is_ended() && self.organizers(transaction).await?.contains(me) {
                         @if let Tab::Configure = tab {
                             a(class = "button selected", href? = is_subpage.then(|| uri!(configure::get(self.series, &*self.event)).to_string())) : "Configure";
