@@ -164,7 +164,7 @@ pub(crate) use {
         traits::{
             IoResultExt as _,
             IsNetworkError,
-            //LocalResultExt as _,
+            LocalResultExt as _,
             ReqwestResponseExt as _,
         },
     },
