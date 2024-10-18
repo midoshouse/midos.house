@@ -13,6 +13,12 @@ use {
     },
     reqwest::StatusCode,
     rocket_util::Response,
+    serenity::all::{
+        CreateMessage,
+        CreateSelectMenu,
+        CreateSelectMenuKind,
+        CreateSelectMenuOption,
+    },
     sqlx::types::Json,
     crate::{
         discord_bot,
@@ -36,6 +42,9 @@ pub(crate) enum Source {
     StartGG {
         event: String,
         set: startgg::ID,
+    },
+    SpeedGaming {
+        id: i64,
     },
 }
 
@@ -335,6 +344,7 @@ impl Race {
             sheet_timestamp,
             startgg_event,
             startgg_set AS "startgg_set: startgg::ID",
+            speedgaming_id,
             game,
             team1 AS "team1: Id<Teams>",
             team2 AS "team2: Id<Teams>",
@@ -400,6 +410,8 @@ impl Race {
             Source::Sheet { timestamp }
         } else if let (Some(event), Some(set)) = (row.startgg_event, row.startgg_set) {
             Source::StartGG { event, set }
+        } else if let Some(id) = row.speedgaming_id {
+            Source::SpeedGaming { id }
         } else {
             Source::Manual
         };
@@ -541,19 +553,28 @@ impl Race {
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
         async fn update_race(transaction: &mut Transaction<'_, Postgres>, found_race: &mut Race, race: Race) -> sqlx::Result<()> {
             if found_race.source != race.source { //TODO temporary code to add source data to existing races, remove once this has been applied
-                let (challonge_match, league_id, sheet_timestamp, startgg_event, startgg_set) = match race.source {
-                    Source::Manual => (None, None, None, None, None),
-                    Source::Challonge { id } => (Some(id), None, None, None, None),
-                    Source::League { id } => (None, Some(id), None, None, None),
-                    Source::Sheet { timestamp } => (None, None, Some(timestamp), None, None),
-                    Source::StartGG { ref event, ref set } => (None, None, None, Some(event), Some(set)),
+                let (challonge_match, league_id, sheet_timestamp, startgg_event, startgg_set, speedgaming_id) = match race.source {
+                    Source::Manual => (None, None, None, None, None, None),
+                    Source::Challonge { id } => (Some(id), None, None, None, None, None),
+                    Source::League { id } => (None, Some(id), None, None, None, None),
+                    Source::Sheet { timestamp } => (None, None, Some(timestamp), None, None, None),
+                    Source::StartGG { ref event, ref set } => (None, None, None, Some(event), Some(set), None),
+                    Source::SpeedGaming { id } => (None, None, None, None, None, Some(id)),
                 };
-                sqlx::query!("UPDATE races SET challonge_match = $1, league_id = $2, sheet_timestamp = $3, startgg_event = $4, startgg_set = $5 WHERE id = $6",
+                sqlx::query!("UPDATE races SET
+                    challonge_match = $1,
+                    league_id = $2,
+                    sheet_timestamp = $3,
+                    startgg_event = $4,
+                    startgg_set = $5,
+                    speedgaming_id = $6
+                WHERE id = $7",
                     challonge_match,
                     league_id,
                     sheet_timestamp,
                     startgg_event,
                     startgg_set as _,
+                    speedgaming_id,
                     found_race.id as _,
                 ).execute(&mut **transaction).await?;
             }
@@ -1156,12 +1177,13 @@ impl Race {
     }
 
     pub(crate) async fn save(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
-        let (challonge_match, league_id, sheet_timestamp, startgg_event, startgg_set) = match self.source {
-            Source::Manual => (None, None, None, None, None),
-            Source::Challonge { ref id } => (Some(id), None, None, None, None),
-            Source::League { id } => (None, Some(id), None, None, None),
-            Source::Sheet { timestamp } => (None, None, Some(timestamp), None, None),
-            Source::StartGG { ref event, ref set } => (None, None, None, Some(event), Some(set)),
+        let (challonge_match, league_id, sheet_timestamp, startgg_event, startgg_set, speedgaming_id) = match self.source {
+            Source::Manual => (None, None, None, None, None, None),
+            Source::Challonge { ref id } => (Some(id), None, None, None, None, None),
+            Source::League { id } => (None, Some(id), None, None, None, None),
+            Source::Sheet { timestamp } => (None, None, Some(timestamp), None, None, None),
+            Source::StartGG { ref event, ref set } => (None, None, None, Some(event), Some(set), None),
+            Source::SpeedGaming { id } => (None, None, None, None, None, Some(id)),
         };
         let ([team1, team2, team3], [p1, p2, p3], [p1_discord, p2_discord], [p1_racetime, p2_racetime], [p1_twitch, p2_twitch], [total, finished]) = self.entrants.to_db();
         let (start, [async_start1, async_start2, async_start3], end, [async_end1, async_end2, async_end3], room, [async_room1, async_room2, async_room3]) = match self.schedule {
@@ -1177,10 +1199,10 @@ impl Race {
             None => (None, None, None, None, None),
         };
         sqlx::query!("
-            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match, seed_password, notified)
-            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,            $29,            $30,       $31,   $32,   $33, $34,           $35,               $36,   $37,      $38,      $39,          $40,        $41,           $42,                     $43,          $44,           $45,       $46,       $47,        $48,        $49,   $50,                 $51,          $52,           $53,             $54,       $55,         $56,         $57,          $58,         $59,        $60,             $61,           $62)
-            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match, seed_password, notified)
-            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,            $29,            $30,       $31,   $32,   $33, $34,           $35,               $36,   $37,      $38,      $39,          $40,        $41,           $42,                     $43,          $44,           $45,       $46,       $47,        $48,        $49,   $50,                 $51,          $52,           $53,             $54,       $55,         $56,         $57,          $58,         $59,        $60,             $61,           $62)
+            INSERT INTO races              (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match, seed_password, notified, speedgaming_id)
+            VALUES                         ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,            $29,            $30,       $31,   $32,   $33, $34,           $35,               $36,   $37,      $38,      $39,          $40,        $41,           $42,                     $43,          $44,           $45,       $46,       $47,        $48,        $49,   $50,                 $51,          $52,           $53,             $54,       $55,         $56,         $57,          $58,         $59,        $60,             $61,           $62,      $63)
+            ON CONFLICT (id) DO UPDATE SET (startgg_set, start, series, event, async_start2, async_start1, room, async_room1, async_room2, draft_state, async_end1, async_end2, end_time, team1, team2, web_id, web_gen_time, file_stem, hash1, hash2, hash3, hash4, hash5, game, id,  p1,  p2,  last_edited_by, last_edited_at, video_url, phase, round, p3,  startgg_event, scheduling_thread, total, finished, tfb_uuid, video_url_fr, restreamer, restreamer_fr, locked_spoiler_log_path, video_url_pt, restreamer_pt, p1_twitch, p2_twitch, p1_discord, p2_discord, team3, schedule_updated_at, video_url_de, restreamer_de, sheet_timestamp, league_id, p1_racetime, p2_racetime, async_start3, async_room3, async_end3, challonge_match, seed_password, notified, speedgaming_id)
+            =                              ($1,          $2,    $3,     $4,    $5,           $6,           $7,   $8,          $9,          $10,         $11,        $12,        $13,      $14,   $15,   $16,    $17,          $18,       $19,   $20,   $21,   $22,   $23,   $24,  $25, $26, $27, $28,            $29,            $30,       $31,   $32,   $33, $34,           $35,               $36,   $37,      $38,      $39,          $40,        $41,           $42,                     $43,          $44,           $45,       $46,       $47,        $48,        $49,   $50,                 $51,          $52,           $53,             $54,       $55,         $56,         $57,          $58,         $59,        $60,             $61,           $62,      $63)
         ",
             startgg_set as _,
             start,
@@ -1244,6 +1266,7 @@ impl Race {
             challonge_match,
             self.seed.password.map(|password| password.into_iter().map(char::from).collect::<String>()),
             self.notified,
+            speedgaming_id,
         ).execute(&mut **transaction).await?;
         Ok(())
     }
@@ -2497,16 +2520,126 @@ async fn import_race<'a>(mut transaction: Transaction<'a, Postgres>, discord_ctx
 async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, env: Environment, config: Config, mut shutdown: rocket::Shutdown, discord_ctx: RwFuture<DiscordCtx>) -> Result<(), event::Error> {
     loop {
         let mut transaction = db_pool.begin().await?;
-        for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE auto_import AND start IS NOT NULL AND start <= NOW() AND (end_time IS NULL OR end_time > NOW())"#).fetch_all(&mut *transaction).await? {
+        for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&mut *transaction).await? {
             let event = event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction");
-            match event.match_source() {
-                MatchSource::Manual => {}
-                MatchSource::Challonge { .. } => {} // Challonge's API doesn't provide enough data to automate race imports
-                MatchSource::League => {}
-                MatchSource::StartGG(event_slug) => {
-                    let (races, _) = startgg::races_to_import(&mut transaction, &http_client, env, &config, &event, event_slug).await?;
-                    for race in races {
-                        transaction = import_race(transaction, &*discord_ctx.read().await, race).await?;
+            if event.auto_import && event.is_started(&mut transaction).await? {
+                match event.match_source() {
+                    MatchSource::Manual => {}
+                    MatchSource::Challonge { .. } => {} // Challonge's API doesn't provide enough data to automate race imports
+                    MatchSource::League => {}
+                    MatchSource::StartGG(event_slug) => {
+                        let (races, _) = startgg::races_to_import(&mut transaction, &http_client, env, &config, &event, event_slug).await?;
+                        for race in races {
+                            transaction = import_race(transaction, &*discord_ctx.read().await, race).await?;
+                        }
+                    }
+                }
+            }
+            if let Some(ref speedgaming_slug) = event.speedgaming_slug {
+                let schedule = sgl::schedule(&http_client, speedgaming_slug).await?;
+                let races = Race::for_event(&mut transaction, &http_client, &event).await?;
+                let (mut existing_races, mut unassigned_races) = races.into_iter().partition::<Vec<_>, _>(|race| matches!(race.source, Source::SpeedGaming { .. }));
+                existing_races.sort_unstable_by_key(|race| {
+                    let Source::SpeedGaming { id } = race.source else { unreachable!("partitioned above") };
+                    id
+                });
+                let disambiguation_messages = sqlx::query_scalar!(
+                    "SELECT speedgaming_id FROM speedgaming_disambiguation_messages WHERE speedgaming_id = ANY($1) ORDER BY speedgaming_id ASC",
+                    &schedule.iter().flat_map(|restream| restream.matches()).map(|restream_match| restream_match.id).collect_vec(),
+                ).fetch_all(&mut *transaction).await?;
+                for restream in schedule {
+                    for restream_match in restream.matches() {
+                        if let Ok(idx) = existing_races.binary_search_by_key(&restream_match.id, |race| {
+                            let Source::SpeedGaming { id } = race.source else { unreachable!("partitioned above") };
+                            id
+                        }) {
+                            // this match is already assigned to a race, update it in case it got rescheduled or its restream info got changed
+                            let race = &mut existing_races[idx];
+                            restream.update_race(race, restream_match.id)?;
+                            race.save(&mut transaction).await?;
+                        } else if disambiguation_messages.binary_search(&restream_match.id).is_ok() {
+                            // this match is pending manual assignment, ignore it for now
+                        } else {
+                            let mut matching_races = Vec::default();
+                            for (idx, race) in unassigned_races.iter().enumerate() {
+                                if restream_match.matches(&mut transaction, env, &http_client, race).await? {
+                                    matching_races.push((idx, race));
+                                }
+                            }
+                            match matching_races.into_iter().at_most_one() {
+                                Ok(None) => {
+                                    if let Some(organizer_channel) = event.discord_organizer_channel {
+                                        let msg = MessageBuilder::default()
+                                            .push("could not find any races matching SpeedGaming match ")
+                                            .push_mono(restream_match.id.to_string())
+                                            //TODO describe match
+                                            //TODO instructions for how to fix?
+                                            .build();
+                                        let notification = organizer_channel.say(&*discord_ctx.read().await, msg).await?;
+                                        sqlx::query!(
+                                            "INSERT INTO speedgaming_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
+                                            restream_match.id, PgSnowflake(notification.id) as _,
+                                        ).execute(&mut *transaction).await?;
+                                    }
+                                }
+                                Ok(Some((idx, _))) => {
+                                    let mut race = unassigned_races.swap_remove(idx);
+                                    restream.update_race(&mut race, restream_match.id)?;
+                                    race.save(&mut transaction).await?;
+                                }
+                                Err(races) => {
+                                    if let Some(organizer_channel) = event.discord_organizer_channel {
+                                        let msg = MessageBuilder::default()
+                                            .push("found multiple races matching SpeedGaming match ")
+                                            .push_mono(restream_match.id.to_string())
+                                            //TODO describe match
+                                            .push(", please select one to assign it to:")
+                                            .build();
+                                        let mut options = Vec::with_capacity(races.size_hint().0);
+                                        for (_, race) in races {
+                                            let info_prefix = format!("{}{}{}",
+                                                race.phase.as_deref().unwrap_or(""),
+                                                if race.phase.is_none() || race.round.is_none() { "" } else { " " },
+                                                race.round.as_deref().unwrap_or(""),
+                                            );
+                                            let summary = match race.entrants {
+                                                Entrants::Open | Entrants::Count { .. } => if info_prefix.is_empty() { format!("Untitled Race") } else { info_prefix },
+                                                Entrants::Named(ref entrants) => format!("{info_prefix}{}{entrants}", if info_prefix.is_empty() { "" } else { ": " }),
+                                                Entrants::Two([ref team1, ref team2]) => format!(
+                                                    "{info_prefix}{}{} vs {}",
+                                                    if info_prefix.is_empty() { "" } else { ": " },
+                                                    team1.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                    team2.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                ),
+                                                Entrants::Three([ref team1, ref team2, ref team3]) => format!(
+                                                    "{info_prefix}{}{} vs {} vs {}",
+                                                    if info_prefix.is_empty() { "" } else { ": " },
+                                                    team1.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                    team2.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                    team3.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
+                                                ),
+                                            };
+                                            options.push(CreateSelectMenuOption::new(if let Some(game) = race.game {
+                                                format!("{summary}, game {game}")
+                                            } else {
+                                                summary
+                                            }, race.id.to_string()));
+                                        }
+                                        let notification = organizer_channel.send_message(&*discord_ctx.read().await, CreateMessage::default()
+                                            .content(msg)
+                                            .select_menu(
+                                                CreateSelectMenu::new(format!("sgdisambig_{}", restream_match.id), CreateSelectMenuKind::String { options })
+                                                    .placeholder("Select Race")
+                                            )
+                                        ).await?;
+                                        sqlx::query!(
+                                            "INSERT INTO speedgaming_disambiguation_messages (speedgaming_id, message_id) VALUES ($1, $2)",
+                                            restream_match.id, PgSnowflake(notification.id) as _,
+                                        ).execute(&mut *transaction).await?;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2514,7 +2647,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
         transaction.commit().await?;
         select! {
             () = &mut shutdown => break,
-            () = sleep(Duration::from_secs(5 * 60)) => {}
+            () = sleep(Duration::from_secs(60)) => {}
         }
     }
     Ok(())
@@ -2673,6 +2806,10 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                     : "start.gg match: ";
                     : set;
                 }
+            }
+            Source::SpeedGaming { id } => p {
+                : "SpeedGaming match: ";
+                : id;
             }
         }
         @match race.entrants {

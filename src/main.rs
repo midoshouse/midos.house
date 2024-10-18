@@ -149,7 +149,7 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
         }
         let config = Config::load().await?;
         let http_client = reqwest::Client::builder()
-            .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION"), " (https://github.com/midoshouse/midos.house)"))
             .timeout(Duration::from_secs(30))
             .use_rustls_tls()
             .hickory_dns(true)

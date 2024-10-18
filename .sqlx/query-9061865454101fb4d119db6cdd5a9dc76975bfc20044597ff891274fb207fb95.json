@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE races SET\n                    challonge_match = $1,\n                    league_id = $2,\n                    sheet_timestamp = $3,\n                    startgg_event = $4,\n                    startgg_set = $5,\n                    speedgaming_id = $6\n                WHERE id = $7",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int4",
+        "Timestamp",
+        "Text",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9061865454101fb4d119db6cdd5a9dc76975bfc20044597ff891274fb207fb95"
+}

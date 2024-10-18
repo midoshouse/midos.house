@@ -1975,6 +1975,24 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         }
                     } else if let Some((setting, value)) = custom_id.strip_prefix("draft_option_").and_then(|setting_value| setting_value.split_once("__")) {
                         draft_action(ctx, interaction, draft::Action::Pick { setting: setting.to_owned(), value: value.to_owned() }).await?;
+                    } else if let Some(speedgaming_id) = custom_id.strip_prefix("sgdisambig_") {
+                        let (mut transaction, http_client) = {
+                            let data = ctx.data.read().await;
+                            (
+                                data.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?,
+                                data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
+                            )
+                        };
+                        let speedgaming_id = speedgaming_id.parse()?;
+                        let ComponentInteractionDataKind::StringSelect { ref values } = interaction.data.kind else { panic!("sgdisambig interaction with unexpected payload") };
+                        let race_id = values.iter().exactly_one().expect("sgdisambig interaction with unexpected payload").parse()?;
+                        let mut race = Race::from_id(&mut transaction, &http_client, race_id).await?;
+                        let Some(speedgaming_slug) = race.event(&mut transaction).await?.speedgaming_slug else { panic!("sgdisambig interaction for race from non-SpeedGaming event") };
+                        let schedule = sgl::schedule(&http_client, &speedgaming_slug).await?;
+                        let restream = schedule.into_iter().find(|restream| restream.matches().any(|restream_match| restream_match.id == speedgaming_id)).expect("no such SpeedGaming match ID");
+                        restream.update_race(&mut race, speedgaming_id)?;
+                        race.save(&mut transaction).await?;
+                        transaction.commit().await?;
                     } else {
                         panic!("received message component interaction with unknown custom ID {custom_id:?}")
                     },
@@ -2124,7 +2142,7 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
     race.scheduling_thread = Some(if let Some(ChannelType::Forum) = scheduling_channel.to_channel(ctx).await?.guild().map(|c| c.kind) {
         scheduling_channel.create_forum_post(ctx, CreateForumPost::new(
             title,
-            CreateMessage::new().content(content.build()),
+            CreateMessage::default().content(content.build()),
         ).auto_archive_duration(AutoArchiveDuration::OneWeek)).await?.id
     } else {
         let thread = scheduling_channel.create_thread(ctx, CreateThread::new(

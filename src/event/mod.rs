@@ -1823,7 +1823,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
                         message.quote_rest();
                         message.push_safe(&value.fpa);
                     }
-                    discord_channel.send_message(&*discord_ctx.read().await, CreateMessage::new()
+                    discord_channel.send_message(&*discord_ctx.read().await, CreateMessage::default()
                         .content(message.build())
                         .flags(MessageFlags::SUPPRESS_EMBEDS)
                     ).await?;

@@ -12,7 +12,12 @@ use {
     crate::prelude::*,
 };
 
-static CACHE: LazyLock<Mutex<(Instant, HashMap<(String, String), (Instant, Vec<Vec<String>>)>)>> = LazyLock::new(|| Mutex::new((Instant::now(), HashMap::default())));
+/// from <https://developers.google.com/sheets/api/limits#quota>:
+///
+/// > Read requests […] Per minute per user per project […] 60
+const RATE_LIMIT: Duration = Duration::from_secs(1);
+
+static CACHE: LazyLock<Mutex<(Instant, HashMap<(String, String), (Instant, Vec<Vec<String>>)>)>> = LazyLock::new(|| Mutex::new((Instant::now() + RATE_LIMIT, HashMap::default())));
 
 #[derive(Debug, thiserror::Error)]
 enum UncachedError {
@@ -81,9 +86,7 @@ pub(crate) async fn values(http_client: reqwest::Client, sheet_id: &str, range: 
             .send().await?
             .detailed_error_for_status().await?
             .json_with_text_in_error::<ValueRange>().await?;
-        // from https://developers.google.com/sheets/api/limits#quota
-        // “Read requests […] Per minute per user per project […] 60”
-        *next_request = Instant::now() + Duration::from_secs(1);
+        *next_request = Instant::now() + RATE_LIMIT;
         Ok(values)
     }
 

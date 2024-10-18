@@ -4,7 +4,12 @@ use {
     crate::prelude::*,
 };
 
-static CACHE: LazyLock<Mutex<(Instant, TypeMap)>> = LazyLock::new(|| Mutex::new((Instant::now(), TypeMap::default())));
+/// From https://dev.start.gg/docs/rate-limits:
+///
+/// > You may not average more than 80 requests per 60 seconds.
+const RATE_LIMIT: Duration = Duration::from_millis(60_000 / 80);
+
+static CACHE: LazyLock<Mutex<(Instant, TypeMap)>> = LazyLock::new(|| Mutex::new((Instant::now() + RATE_LIMIT, TypeMap::default())));
 
 struct QueryCache<T: GraphQLQuery> {
     _phantom: PhantomData<T>,
@@ -122,9 +127,7 @@ where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Se
         .send().await?
         .detailed_error_for_status().await?
         .json_with_text_in_error::<graphql_client::Response<T::ResponseData>>().await?;
-    // from https://dev.start.gg/docs/rate-limits
-    // “You may not average more than 80 requests per 60 seconds.”
-    *next_request = Instant::now() + Duration::from_millis(60_000 / 80);
+    *next_request = Instant::now() + RATE_LIMIT;
     match (data, errors) {
         (Some(_), Some(errors)) if !errors.is_empty() => Err(Error::GraphQL(errors)),
         (Some(data), _) => Ok(data),
