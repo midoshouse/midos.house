@@ -3615,7 +3615,7 @@ impl RaceHandler<GlobalState> for Handler {
                         allow_comments: true,
                         hide_comments: true,
                         allow_prerace_chat: true,
-                        allow_midrace_chat: true,
+                        allow_midrace_chat: event.series != Series::Standard || event.event != "8",
                         allow_non_entrant_chat: false,
                         chat_message_delay: 0,
                     }.edit_with_host(&ctx.global_state.host_info, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
@@ -3661,7 +3661,7 @@ impl RaceHandler<GlobalState> for Handler {
                                             allow_comments: true,
                                             hide_comments: true,
                                             allow_prerace_chat: true,
-                                            allow_midrace_chat: true,
+                                            allow_midrace_chat: event.series != Series::Standard || event.event != "8",
                                             allow_non_entrant_chat: false,
                                             chat_message_delay: 0,
                                         }.edit_with_host(&ctx.global_state.host_info, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
@@ -4189,7 +4189,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                     allow_comments: true,
                     hide_comments: true,
                     allow_prerace_chat: true,
-                    allow_midrace_chat: true,
+                    allow_midrace_chat: event.series != Series::Standard || event.event != "8",
                     allow_non_entrant_chat: false, // only affects the race while it's ongoing, so !monitor still works
                     chat_message_delay: 0,
                     info_user,
