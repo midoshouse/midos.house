@@ -1016,7 +1016,7 @@ pub(crate) fn weeklies_enter_form(me: Option<&User>) -> RawHtml<String> {
     html! {
         article {
             p {
-                : "The room for each race will be opened 1 hour before the scheduled starting time. ";
+                : "The room for each race will be opened 30 minutes before the scheduled starting time. ";
                 @if me.as_ref().map_or(false, |me| me.racetime.is_some()) {
                     : "You don't need to sign up beforehand.";
                 } else {
