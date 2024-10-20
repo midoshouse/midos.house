@@ -142,51 +142,26 @@ struct RequirementStatus {
 }
 
 impl Requirement {
-    fn requires_sign_in(&self) -> bool {
-        match self {
-            Self::RaceTime => true,
-            Self::RaceTimeInvite { .. } => true,
-            Self::Twitch => true,
-            Self::Discord => true,
-            Self::DiscordGuild { .. } => true,
-            Self::Challonge => true,
-            Self::StartGG { .. } => true,
-            Self::TextField { .. } => true,
-            Self::TextField2 { .. } => true,
-            Self::YesNo { .. } => true,
-            Self::Rules { .. } => true,
-            Self::RestreamConsent { .. } => true,
-            Self::Qualifier { .. } => true,
-            Self::TripleQualifier { .. } => true,
-            Self::QualifierPlacement { .. } => false,
-            Self::External { .. } => false,
-        }
-    }
-
-    async fn is_checked(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: Option<&User>, data: &Data<'_>) -> Result<Option<bool>, Error> {
+    async fn is_checked(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>) -> Result<Option<bool>, Error> {
         Ok(match self {
-            Self::RaceTime => Some(me.map_or(false, |me| me.racetime.is_some())),
-            Self::RaceTimeInvite { invites, .. } => Some(me.and_then(|me| me.racetime.as_ref()).map_or(false, |racetime| invites.contains(&racetime.id))),
-            Self::Twitch => Some(if_chain! {
-                if let Some(me) = me;
-                if let Some(racetime_user_data) = me.racetime_user_data(env, http_client).await?;
-                then {
-                    racetime_user_data.twitch_channel.is_some()
-                } else {
-                    false
-                }
+            Self::RaceTime => Some(me.racetime.is_some()),
+            Self::RaceTimeInvite { invites, .. } => Some(me.racetime.as_ref().is_some_and(|racetime| invites.contains(&racetime.id))),
+            Self::Twitch => Some(if let Some(racetime_user_data) = me.racetime_user_data(env, http_client).await? {
+                racetime_user_data.twitch_channel.is_some()
+            } else {
+                false
             }),
-            Self::Discord => Some(me.map_or(false, |me| me.discord.is_some())),
+            Self::Discord => Some(me.discord.is_some()),
             Self::DiscordGuild { .. } => Some({
                 let discord_guild = data.discord_guild.ok_or(Error::DiscordGuild)?;
-                if let Some(discord) = me.and_then(|me| me.discord.as_ref()) {
+                if let Some(ref discord) = me.discord {
                     discord_guild.member(&*discord_ctx.read().await, discord.id).await.is_ok()
                 } else {
                     false
                 }
             }),
-            Self::Challonge => Some(me.map_or(false, |me| me.challonge_id.is_some())),
-            Self::StartGG { .. } => Some(me.map_or(false, |me| me.startgg_id.is_some())),
+            Self::Challonge => Some(me.challonge_id.is_some()),
+            Self::StartGG { .. } => Some(me.startgg_id.is_some()),
             Self::TextField { .. } => Some(false),
             Self::TextField2 { .. } => Some(false),
             Self::YesNo { .. } => Some(false),
@@ -198,7 +173,6 @@ impl Requirement {
                 // All qualifiers must be completed to ensure the qualifier placements are final.
                 //TODO This could be relaxed by calculating whether the player has secured a spot ahead of time.
                 if Race::for_event(&mut *transaction, http_client, data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.is_ended());
-                if let Some(me) = me;
                 let teams = teams::signups_sorted(transaction, http_client, Some(me), data, match (data.series, &*data.event) {
                     (Series::SpeedGaming, "2023onl") => teams::QualifierKind::Sgl2023Online,
                     (Series::SpeedGaming, "2024onl") => teams::QualifierKind::Sgl2024Online,
@@ -586,11 +560,11 @@ impl Requirement {
 
     async fn check_form(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
         match self {
-            Self::StartGG { optional: false } => if !self.is_checked(transaction, env, http_client, discord_ctx, Some(me), data).await?.unwrap_or(false) {
+            Self::StartGG { optional: false } => if !self.is_checked(transaction, env, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation("A start.gg account is required to enter this event.")); //TODO link to /login/startgg
             },
             Self::StartGG { optional: true } => match value.startgg_radio {
-                Some(BoolRadio::Yes) => if !self.is_checked(transaction, env, http_client, discord_ctx, Some(me), data).await?.unwrap_or(false) {
+                Some(BoolRadio::Yes) => if !self.is_checked(transaction, env, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
                     form_ctx.push_error(form::Error::validation("Sign in with start.gg or opt out of start.gg integration.").with_name("startgg_radio")); //TODO link to /login/startgg
                 },
                 Some(BoolRadio::No) => {}
@@ -645,7 +619,7 @@ impl Requirement {
                 }
             }
             Self::External { .. } => form_ctx.push_error(form::Error::validation("Please complete event entry via the external method.")),
-            _ => if !self.is_checked(transaction, env, http_client, discord_ctx, Some(me), data).await?.unwrap_or(false) {
+            _ => if !self.is_checked(transaction, env, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation(match self {
                     Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your Mido's House profile and select “Connect a racetime.gg account”.", //TODO direct link?
                     Self::RaceTimeInvite { .. } => if me.racetime.is_some() {
@@ -790,26 +764,13 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                             } else {
                                 full_form(uri!(post(data.series, &*data.event)), csrf, html! {}, defaults.errors(), "Enter")
                             }
-                        } else if requirements.iter().any(Requirement::requires_sign_in) && me.is_none() {
-                            html! {
-                                article {
-                                    p {
-                                        a(href = uri!(auth::login(Some(uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
-                                        : " to enter";
-                                        @if data.show_opt_out {
-                                            : " or opt out of";
-                                        }
-                                        : " this event.";
-                                    }
-                                }
-                            }
-                        } else {
+                        } else if let Some(ref me) = me {
                             let mut can_submit = true;
                             let mut requirements_display = Vec::with_capacity(requirements.len());
                             for requirement in requirements {
-                                let status = requirement.check_get(env, &data, requirement.is_checked(&mut transaction, env, http_client, discord_ctx, me.as_ref(), &data).await?, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults)?;
+                                let status = requirement.check_get(env, &data, requirement.is_checked(&mut transaction, env, http_client, discord_ctx, me, &data).await?, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults)?;
                                 if status.blocks_submit { can_submit = false }
-                                requirements_display.push((requirement.is_checked(&mut transaction, env, http_client, discord_ctx, me.as_ref(), &data).await?, status.html_content));
+                                requirements_display.push((requirement.is_checked(&mut transaction, env, http_client, discord_ctx, me, &data).await?, status.html_content));
                             }
                             let preface = html! {
                                 @if data.show_opt_out {
@@ -855,6 +816,19 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                                                 div : html_content(&mut Vec::default());
                                             }
                                         }
+                                    }
+                                }
+                            }
+                        } else {
+                            html! {
+                                article {
+                                    p {
+                                        a(href = uri!(auth::login(Some(uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
+                                        : " to enter";
+                                        @if data.show_opt_out {
+                                            : " or opt out of";
+                                        }
+                                        : " this event.";
                                     }
                                 }
                             }
