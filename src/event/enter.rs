@@ -170,22 +170,21 @@ impl Requirement {
             Self::Qualifier { .. } => Some(false),
             Self::TripleQualifier { .. } => Some(false),
             Self::QualifierPlacement { num_players, min_races } => Some(if_chain! {
-                // All qualifiers must be completed to ensure the qualifier placements are final.
-                //TODO This could be relaxed by calculating whether the player has secured a spot ahead of time.
-                if Race::for_event(&mut *transaction, http_client, data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.is_ended());
+                // call signups_sorted with worst_case_extrapolation = true to calculate whether the player has secured a spot ahead of time
                 let teams = teams::signups_sorted(transaction, http_client, Some(me), data, match (data.series, &*data.event) {
                     (Series::SpeedGaming, "2023onl") => teams::QualifierKind::Sgl2023Online,
                     (Series::SpeedGaming, "2024onl") => teams::QualifierKind::Sgl2024Online,
                     (Series::Standard, "8") => teams::QualifierKind::Standard,
                     (_, _) => unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series, data.event),
-                }).await?;
-                if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| match member.user {
-                    teams::MemberUser::MidosHouse(ref user) => user == me,
-                    teams::MemberUser::RaceTime { ref id, .. } => me.racetime.as_ref().map_or(false, |racetime| racetime.id == *id),
-                }));
+                }, true).await?;
+                if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| member.user == *me));
                 if let teams::Qualification::Multiple { num_qualifiers, .. } = team.qualification;
                 then {
-                    placement < *num_players //TODO adjust for opt-outs
+                    teams.iter()
+                        .enumerate()
+                        .find(|(_, team)| team.members.iter().any(|member| member.user == teams::MemberUser::Newcomer))
+                        .is_none_or(|(newcomer_placement, _)| placement < newcomer_placement) // Newcomer can represent any number of teams
+                    && placement < *num_players
                     && num_qualifiers >= *min_races
                 } else {
                     false

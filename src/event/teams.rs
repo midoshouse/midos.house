@@ -1,7 +1,10 @@
 use {
     std::hash::Hasher,
     noisy_float::prelude::*,
-    racetime::model::RaceStatusValue,
+    racetime::model::{
+        EntrantStatusValue,
+        RaceStatusValue,
+    },
     crate::{
         event::{
             Data,
@@ -34,14 +37,23 @@ pub(crate) enum MemberUser {
         url: String,
         name: String,
     },
+    /// A user who represents someone new joining future qualifiers, for worst-case placement calculation.
+    Newcomer,
 }
 
 impl PartialEq for MemberUser {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::MidosHouse(user1), Self::MidosHouse(user2)) => user1.id == user2.id,
-            (Self::MidosHouse(_), Self::RaceTime { .. }) | (Self::RaceTime { .. }, Self::MidosHouse(_)) => false,
             (Self::RaceTime { id: id1, .. }, Self::RaceTime { id: id2, .. }) => id1 == id2,
+            (Self::Newcomer, Self::Newcomer) => true,
+            | (Self::MidosHouse(_), Self::RaceTime { .. })
+            | (Self::MidosHouse(_), Self::Newcomer)
+            | (Self::RaceTime { .. }, Self::MidosHouse(_))
+            | (Self::RaceTime { .. }, Self::Newcomer)
+            | (Self::Newcomer, Self::MidosHouse(_))
+            | (Self::Newcomer, Self::RaceTime { .. })
+                => false,
         }
     }
 }
@@ -52,12 +64,15 @@ impl Hash for MemberUser {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
             Self::MidosHouse(user) => {
-                false.hash(state);
+                0u8.hash(state);
                 user.id.hash(state);
             }
             Self::RaceTime { id, .. } => {
-                true.hash(state);
+                1u8.hash(state);
                 id.hash(state);
+            }
+            Self::Newcomer => {
+                2u8.hash(state);
             }
         }
     }
@@ -74,8 +89,23 @@ impl Ord for MemberUser {
         match (self, other) {
             (Self::MidosHouse(user1), Self::MidosHouse(user2)) => user1.id.cmp(&user2.id),
             (Self::MidosHouse(_), Self::RaceTime { .. }) => Less,
+            (Self::MidosHouse(_), Self::Newcomer) => Less,
             (Self::RaceTime { .. }, Self::MidosHouse(_)) => Greater,
             (Self::RaceTime { id: id1, .. }, Self::RaceTime { id: id2, .. }) => id1.cmp(id2),
+            (Self::RaceTime { .. }, Self::Newcomer) => Less,
+            (Self::Newcomer, Self::MidosHouse(_)) => Greater,
+            (Self::Newcomer, Self::RaceTime { .. }) => Greater,
+            (Self::Newcomer, Self::Newcomer) => Equal,
+        }
+    }
+}
+
+impl PartialEq<User> for MemberUser {
+    fn eq(&self, other: &User) -> bool {
+        match self {
+            Self::MidosHouse(user) => user == other,
+            Self::RaceTime { id, .. } => other.racetime.as_ref().is_some_and(|racetime| racetime.id == *id),
+            Self::Newcomer => false,
         }
     }
 }
@@ -111,7 +141,7 @@ pub(crate) struct SignupsTeam {
     mq_ok: bool,
 }
 
-pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind) -> Result<Vec<SignupsTeam>, cal::Error> {
+pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind, worst_case_extrapolation: bool) -> Result<Vec<SignupsTeam>, cal::Error> {
     let mut signups = match qualifier_kind {
         QualifierKind::Standard | QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
             let mut scores = HashMap::<_, Vec<_>>::default();
@@ -122,44 +152,95 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     .send().await?
                     .detailed_error_for_status().await?
                     .json_with_text_in_error::<RaceData>().await?;
-                if room_data.status.value != RaceStatusValue::Finished { continue }
-                let mut entrants = room_data.entrants;
-                if let QualifierKind::Sgl2023Online = qualifier_kind {
-                    entrants.retain(|entrant| entrant.user.id != "yMewn83Vj3405Jv7"); // user was banned
-                    if race.id == Id::from(17171498007470059483_u64) {
-                        entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
-                    }
-                }
-                entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
-                let num_entrants = entrants.len();
-                let finish_times = entrants.iter().filter_map(|entrant| entrant.finish_time).collect_vec();
-                for entrant in entrants {
-                    scores.entry(MemberUser::RaceTime {
-                        id: entrant.user.id,
-                        url: entrant.user.url,
-                        name: entrant.user.name,
-                    }).or_default().push(r64(if let Some(finish_time) = entrant.finish_time {
-                        match qualifier_kind {
-                            QualifierKind::Standard => {
-                                // https://docs.google.com/document/d/1IHrOGxFQpt3HpQ-9kQ6AVAARc04x6c96N1aHnHfHaKM/edit
-                                let t_average = finish_times[0..7].iter().sum::<Duration>() / 7;
-                                let t_j_h = Duration::from_secs(8 * 60).mul_f64(1.0.min(0.0.max((Duration::from_secs((2 * 60 + 30) * 60) - t_average).div_duration_f64(Duration::from_secs((2 * 60 + 30) * 60) - Duration::from_secs((60 + 40) * 60)))));
-                                let t_jet = Duration::from_secs(8 * 60).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(Duration::from_secs(8 * 60)) * 0.35)));
-                                let t_g_h = Duration::from_secs_f64(finish_times[0..7].iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / 7.0);
-                                let sigma_finish = t_g_h.div_duration_f64(t_average);
-                                let t_gamble = Duration::from_secs(5 * 60).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
-                                ((1.0 - (finish_time - t_average - t_jet - t_gamble).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0)
-                            }
-                            QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
-                                let par_cutoff = if num_entrants < 20 { 3 } else { 4 };
-                                let par_time = finish_times[0..par_cutoff].iter().sum::<Duration>() / par_cutoff as u32;
-                                (100.0 * (2.0 - (finish_time.as_secs_f64() / par_time.as_secs_f64()))).clamp(10.0, 110.0)
-                            }
-                            _ => unreachable!("checked by outer match"),
+                if !worst_case_extrapolation && room_data.status.value != RaceStatusValue::Finished { continue }
+                match room_data.status.value {
+                    RaceStatusValue::Open => {
+                        scores.entry(MemberUser::Newcomer).or_default();
+                        for (user, score) in &mut scores {
+                            score.push(r64(if me.is_some_and(|me| user == me) {
+                                0.0
+                            } else {
+                                match qualifier_kind {
+                                    QualifierKind::Standard => 1100.0,
+                                    QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => 110.0,
+                                    _ => unreachable!("checked by outer match"),
+                                }
+                            }));
                         }
-                    } else {
-                        0.0
-                    }));
+                    }
+                    RaceStatusValue::Invitational | RaceStatusValue::Pending | RaceStatusValue::InProgress => {
+                        for entrant in room_data.entrants {
+                            let user = MemberUser::RaceTime {
+                                id: entrant.user.id,
+                                url: entrant.user.url,
+                                name: entrant.user.name,
+                            };
+                            let score = r64(match entrant.status.value {
+                                | EntrantStatusValue::Requested
+                                    => continue,
+                                | EntrantStatusValue::Invited
+                                | EntrantStatusValue::NotReady
+                                | EntrantStatusValue::Ready
+                                | EntrantStatusValue::InProgress
+                                | EntrantStatusValue::Done
+                                    => if me.is_some_and(|me| user == *me) {
+                                        0.0
+                                    } else {
+                                        match qualifier_kind {
+                                            QualifierKind::Standard => 1100.0,
+                                            QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => 110.0,
+                                            _ => unreachable!("checked by outer match"),
+                                        }
+                                    },
+                                | EntrantStatusValue::Declined
+                                | EntrantStatusValue::Dnf
+                                | EntrantStatusValue::Dq
+                                    => 0.0,
+                            });
+                            scores.entry(user).or_default().push(score);
+                        }
+                    }
+                    RaceStatusValue::Finished => {
+                        let mut entrants = room_data.entrants;
+                        if let QualifierKind::Sgl2023Online = qualifier_kind {
+                            entrants.retain(|entrant| entrant.user.id != "yMewn83Vj3405Jv7"); // user was banned
+                            if race.id == Id::from(17171498007470059483_u64) {
+                                entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
+                            }
+                        }
+                        entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
+                        let num_entrants = entrants.len();
+                        let finish_times = entrants.iter().filter_map(|entrant| entrant.finish_time).collect_vec();
+                        for entrant in entrants {
+                            scores.entry(MemberUser::RaceTime {
+                                id: entrant.user.id,
+                                url: entrant.user.url,
+                                name: entrant.user.name,
+                            }).or_default().push(r64(if let Some(finish_time) = entrant.finish_time {
+                                match qualifier_kind {
+                                    QualifierKind::Standard => {
+                                        // https://docs.google.com/document/d/1IHrOGxFQpt3HpQ-9kQ6AVAARc04x6c96N1aHnHfHaKM/edit
+                                        let t_average = finish_times[0..7].iter().sum::<Duration>() / 7;
+                                        let t_j_h = Duration::from_secs(8 * 60).mul_f64(1.0.min(0.0.max((Duration::from_secs((2 * 60 + 30) * 60) - t_average).div_duration_f64(Duration::from_secs((2 * 60 + 30) * 60) - Duration::from_secs((60 + 40) * 60)))));
+                                        let t_jet = Duration::from_secs(8 * 60).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(Duration::from_secs(8 * 60)) * 0.35)));
+                                        let t_g_h = Duration::from_secs_f64(finish_times[0..7].iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / 7.0);
+                                        let sigma_finish = t_g_h.div_duration_f64(t_average);
+                                        let t_gamble = Duration::from_secs(5 * 60).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
+                                        ((1.0 - (finish_time - t_average - t_jet - t_gamble).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0)
+                                    }
+                                    QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
+                                        let par_cutoff = if num_entrants < 20 { 3 } else { 4 };
+                                        let par_time = finish_times[0..par_cutoff].iter().sum::<Duration>() / par_cutoff as u32;
+                                        (100.0 * (2.0 - (finish_time.as_secs_f64() / par_time.as_secs_f64()))).clamp(10.0, 110.0)
+                                    }
+                                    _ => unreachable!("checked by outer match"),
+                                }
+                            } else {
+                                0.0
+                            }));
+                        }
+                    }
+                    RaceStatusValue::Cancelled => {}
                 }
             }
             let teams = Team::for_event(&mut *transaction, data.series, &data.event).await?;
@@ -177,7 +258,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     scores.into_iter()
                         .filter(move |(user, _)| match user {
                             MemberUser::RaceTime { id, .. } => !opt_outs.contains(id),
-                            MemberUser::MidosHouse(_) => true,
+                            MemberUser::MidosHouse(_) | MemberUser::Newcomer => true,
                         })
                 )
             };
@@ -204,6 +285,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 }
                                 false
                             }
+                            MemberUser::Newcomer => false, // unused
                         },
                         qualifier_time: None,
                         qualifier_vod: None,
@@ -267,6 +349,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 None,
             }
 
+            if worst_case_extrapolation { unimplemented!("worst-case extrapolation for QualifierKind::SongsOfHope") } //TODO
             let mut entrant_data = HashMap::<_, (u8, _)>::default();
             for race in Race::for_event(transaction, http_client, data).await? {
                 if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
@@ -579,7 +662,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
         false
     };
     let roles = data.team_config.roles();
-    let signups = signups_sorted(&mut transaction, http_client, me.as_ref(), &data, qualifier_kind).await?;
+    let signups = signups_sorted(&mut transaction, http_client, me.as_ref(), &data, qualifier_kind, false).await?;
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config { "Entrants" } else { "Teams" };
     let mut column_headers = Vec::default();
@@ -751,6 +834,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                             }
                                         }
                                         MemberUser::RaceTime { url, name, .. } => a(href = format!("https://{}{url}", env.racetime_host())) : name;
+                                        MemberUser::Newcomer => @unreachable // only returned if signups_sorted is called with worst_case_extrapolation = true, which it isn't above
                                     }
                                 }
                             }
