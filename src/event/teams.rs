@@ -654,7 +654,18 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                     }
                 } else {
                     @for (signup_idx, SignupsTeam { team, members, qualification, hard_settings_ok, mq_ok }) in signups.into_iter().enumerate() {
-                        tr {
+                        @let is_dimmed = match qualification {
+                            Qualification::Single { qualified } | Qualification::TriforceBlitz { qualified, .. } => !qualified,
+                            Qualification::Multiple { num_qualifiers, score } => match qualifier_kind {
+                                QualifierKind::None => false,
+                                QualifierKind::Rank => false, // unknown cutoff
+                                QualifierKind::Single { .. } => false, // need to be qualified to be listed
+                                QualifierKind::Standard => num_qualifiers < 5,
+                                QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => num_qualifiers < 3,
+                                QualifierKind::SongsOfHope => false, //TODO
+                            },
+                        };
+                        tr(class? = is_dimmed.then_some("dimmed")) {
                             @match qualifier_kind {
                                 QualifierKind::Rank => td : team.as_ref().and_then(|team| team.qualifier_rank);
                                 QualifierKind::Standard | QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => td : (signup_idx + 1).to_string();
