@@ -638,7 +638,7 @@ impl Goal {
                     _ => format!(" {}", preset.name()),
                 }, match preset {
                     rsl::Preset::League => "official Random Settings League weights",
-                    rsl::Preset::Beginner => "random settings for beginners, see https://ootr.fenhl.net/static/rsl-beginner-weights.html for details",
+                    rsl::Preset::Beginner => "random settings for beginners, see https://zsr.link/mKzPO for details",
                     rsl::Preset::Intermediate => "a step between Beginner and League",
                     rsl::Preset::Ddr => "League but always normal damage and with cutscenes useful for tricks in the DDR ruleset",
                     rsl::Preset::CoOp => "weights tuned for co-op play",

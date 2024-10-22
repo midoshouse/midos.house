@@ -34,7 +34,7 @@ impl Preset {
     pub(crate) fn race_info(&self) -> &'static str {
         match self {
             Self::League => "Random Settings League",
-            Self::Beginner => "Random Settings for Beginners",
+            Self::Beginner => "Random Settings Lite",
             Self::Intermediate => "Intermediate Random Settings",
             Self::Ddr => "Random Settings DDR",
             Self::CoOp => "Random Settings Co-Op",
@@ -49,7 +49,7 @@ impl FromStr for Preset {
     fn from_str(s: &str) -> Result<Self, ()> {
         Ok(match &*s.to_ascii_lowercase() {
             "league" | "rsl" | "solo" | "advanced" => Self::League,
-            "beginner" => Self::Beginner,
+            "beginner" | "lite" => Self::Beginner,
             "intermediate" => Self::Intermediate,
             "ddr" => Self::Ddr,
             "coop" | "co-op" => Self::CoOp,
