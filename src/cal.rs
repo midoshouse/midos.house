@@ -1079,6 +1079,7 @@ impl Race {
         self.cal_events().filter(move |event| all_ended || !event.is_private_async_part()).filter_map(|event| event.room().cloned())
     }
 
+    /// Returns an iterator over all entrants that are Mido's House teams, skipping any that aren't.
     pub(crate) fn teams(&self) -> impl Iterator<Item = &Team> + Send {
         match self.entrants {
             Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => Box::new(iter::empty()) as Box<dyn Iterator<Item = &Team> + Send>,
@@ -1087,6 +1088,7 @@ impl Race {
         }
     }
 
+    /// If all entrants are Mido's House teams, returns `Some` with an iterator over them.
     pub(crate) fn teams_opt(&self) -> Option<impl Iterator<Item = &Team> + Send> {
         match self.entrants {
             Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => Some(Box::new([team1, team2].into_iter()) as Box<dyn Iterator<Item = &Team> + Send>),
@@ -2313,8 +2315,12 @@ pub(crate) async fn race_table(
                         }
                         @if options.show_restream_consent {
                             td {
-                                @if race.teams().all(|team| team.restream_consent) {
-                                    : "✓";
+                                @if let Some(mut teams) = race.teams_opt() {
+                                    @if teams.all(|team| team.restream_consent) {
+                                        : "✓";
+                                    }
+                                } else {
+                                    : "?";
                                 }
                             }
                         }
