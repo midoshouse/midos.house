@@ -1227,7 +1227,23 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
                                 let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
-                                if team.is_some() || is_organizer {
+                                let was_scheduled = !matches!(race.schedule, RaceSchedule::Unscheduled);
+                                if let Some(speedgaming_slug) = &event.speedgaming_slug {
+                                    let response_content = if was_scheduled {
+                                        format!("Please contact a tournament organizer to reschedule this race.")
+                                    } else {
+                                        MessageBuilder::default()
+                                            .push("Please use <https://speedgaming.org/")
+                                            .push(speedgaming_slug)
+                                            .push("/submit> to schedule races for this event.")
+                                            .build()
+                                    };
+                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                        .ephemeral(true)
+                                        .content(response_content)
+                                    )).await?;
+                                    transaction.rollback().await?;
+                                } else if team.is_some() || is_organizer {
                                     let start = match interaction.data.options[0].value {
                                         CommandDataOptionValue::String(ref start) => start,
                                         _ => panic!("unexpected slash command option type"),
@@ -1262,7 +1278,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             )).await?;
                                             transaction.rollback().await?;
                                         } else {
-                                            let was_scheduled = !matches!(race.schedule, RaceSchedule::Unscheduled);
                                             race.schedule.set_live_start(start);
                                             race.schedule_updated_at = Some(Utc::now());
                                             race.save(&mut transaction).await?;
@@ -1292,11 +1307,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
                                                         response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
                                                         response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
-                                                        if let Some(speedgaming_slug) = &event.speedgaming_slug {
-                                                            response_content.push(". Please also submit it to <https://speedgaming.org/");
-                                                            response_content.push(speedgaming_slug);
-                                                            response_content.push("/submit>");
-                                                        }
                                                         let response_content = response_content
                                                             .push(". The race room will be opened momentarily.")
                                                             .build();
@@ -1324,11 +1334,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
                                                         response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                         response_content.push('.');
-                                                        if let Some(speedgaming_slug) = &event.speedgaming_slug {
-                                                            response_content.push(" Please also submit it to <https://speedgaming.org/");
-                                                            response_content.push(speedgaming_slug);
-                                                            response_content.push("/submit>.");
-                                                        }
                                                         response_content.build()
                                                     }
                                                 };
@@ -1369,7 +1374,23 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
                                 let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
-                                if team.is_some() && event.asyncs_allowed() || is_organizer {
+                                let was_scheduled = !matches!(race.schedule, RaceSchedule::Unscheduled);
+                                if let Some(speedgaming_slug) = &event.speedgaming_slug {
+                                    let response_content = if was_scheduled {
+                                        format!("Please contact a tournament organizer to reschedule this race.")
+                                    } else {
+                                        MessageBuilder::default()
+                                            .push("Please use <https://speedgaming.org/")
+                                            .push(speedgaming_slug)
+                                            .push("/submit> to schedule races for this event.")
+                                            .build()
+                                    };
+                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                        .ephemeral(true)
+                                        .content(response_content)
+                                    )).await?;
+                                    transaction.rollback().await?;
+                                } else if team.is_some() && event.asyncs_allowed() || is_organizer {
                                     let start = match interaction.data.options[0].value {
                                         CommandDataOptionValue::String(ref start) => start,
                                         _ => panic!("unexpected slash command option type"),
@@ -1494,11 +1515,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });
                                                         response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
                                                         response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
-                                                        if let Some(speedgaming_slug) = &event.speedgaming_slug {
-                                                            response_content.push(". Please also submit it to <https://speedgaming.org/");
-                                                            response_content.push(speedgaming_slug);
-                                                            response_content.push("/submit>");
-                                                        }
                                                         let response_content = response_content
                                                             .push(". The race room will be opened momentarily.")
                                                             .build();
@@ -1527,11 +1543,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
                                                         response_content.push_timestamp(start, serenity_utils::message::TimestampStyle::LongDateTime);
                                                         response_content.push('.');
-                                                        if let Some(speedgaming_slug) = &event.speedgaming_slug {
-                                                            response_content.push(" Please also submit it to <https://speedgaming.org/");
-                                                            response_content.push(speedgaming_slug);
-                                                            response_content.push("/submit>.");
-                                                        }
                                                         response_content.build()
                                                     }
                                                 };
@@ -1576,7 +1587,13 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
                                 let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
-                                if team.is_some() || is_organizer {
+                                if event.speedgaming_slug.is_some() {
+                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                        .ephemeral(true)
+                                        .content("Please contact a tournament organizer to reschedule this race.")
+                                    )).await?;
+                                    transaction.rollback().await?;
+                                } else if team.is_some() || is_organizer {
                                     if !is_organizer && race.has_room_for(team.as_ref().expect("checked above")) {
                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                             .ephemeral(true)
