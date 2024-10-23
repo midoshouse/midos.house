@@ -4336,7 +4336,30 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
         for goal in all::<Goal>() {
             if let Ok(settings) = goal.single_settings() {
                 if goal.preroll_seeds() == PrerollMode::Long && event_rows.iter().any(|row| goal.matches_event(row.series, &row.event)) {
-                    if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM prerolled_seeds WHERE goal_name = $1) AS "exists!""#, goal.as_str()).fetch_one(&global_state.db_pool).await.to_racetime()? {
+                    loop {
+                        let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
+                        let mut num_wanted_seeds = 1;
+                        for row in &event_rows {
+                            if goal.matches_event(row.series, &row.event) {
+                                let Some(event) = event::Data::new(&mut transaction, row.series, &row.event).await.to_racetime()? else { continue };
+                                num_wanted_seeds += Race::for_event(&mut transaction, &global_state.http_client, &event).await.to_racetime()?
+                                    .into_iter()
+                                    .filter(|race| race
+                                        .cal_events()
+                                        .filter_map(|cal_event| cal_event.start())
+                                        .min()
+                                        .is_some_and(|start| {
+                                            let now = Utc::now();
+                                            start > now && start <= now + TimeDelta::days(1)
+                                        })
+                                    )
+                                    .count();
+                            }
+                        }
+                        transaction.commit().await.to_racetime()?;
+                        let num_prerolled_seeds = sqlx::query_scalar!("SELECT 1 FROM prerolled_seeds WHERE goal_name = $1", goal.as_str()).fetch(&global_state.db_pool)
+                            .try_fold(0, |acc, _| future::ok(acc + 1)).await.to_racetime()?;
+                        if num_prerolled_seeds >= num_wanted_seeds { break }
                         'seed: loop {
                             let mut seed_rx = global_state.clone().roll_seed(
                                 PrerollMode::Long,
@@ -4402,7 +4425,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
         }
         select! {
             () = &mut shutdown => break,
-            res = timeout(Duration::from_secs(24 * 60 * 60), seed_cache_rx.changed().then(|res| if let Ok(()) = res { Either::Left(future::ready(())) } else { Either::Right(future::pending()) })) => {
+            res = timeout(Duration::from_secs(60 * 60), seed_cache_rx.changed().then(|res| if let Ok(()) = res { Either::Left(future::ready(())) } else { Either::Right(future::pending()) })) => {
                 let (Ok(()) | Err(_)) = res;
             }
         }
