@@ -2128,18 +2128,28 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
                 content.push(' ');
             }
             content.push("match. Use ");
-            content.mention_command(command_ids.schedule, "schedule");
-            if event.asyncs_allowed() {
-                content.push(" to schedule as a live race or ");
-                content.mention_command(command_ids.schedule_async, "schedule-async");
-                content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate at <https://hammertime.cyou/>.");
+            if let Some(speedgaming_slug) = &event.speedgaming_slug {
+                content.push("<https://speedgaming.org/");
+                content.push(speedgaming_slug);
+                if game_count > 1 {
+                    content.push("/submit> to schedule your races.");
+                } else {
+                    content.push("/submit> to schedule your race.");
+                }
             } else {
-                content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate at <https://hammertime.cyou/>.");
-            }
-            if game_count > 1 {
-                content.push(" You can use the ");
-                content.push_mono("game:");
-                content.push(" parameter with these commands to schedule subsequent games ahead of time.");
+                content.mention_command(command_ids.schedule, "schedule");
+                if event.asyncs_allowed() {
+                    content.push(" to schedule as a live race or ");
+                    content.mention_command(command_ids.schedule_async, "schedule-async");
+                    content.push(" to schedule as an async. These commands take a Discord timestamp, which you can generate at <https://hammertime.cyou/>.");
+                } else {
+                    content.push(" to schedule your race. This command takes a Discord timestamp, which you can generate at <https://hammertime.cyou/>.");
+                }
+                if game_count > 1 {
+                    content.push(" You can use the ");
+                    content.push_mono("game:");
+                    content.push(" parameter with these commands to schedule subsequent games ahead of time.");
+                }
             }
         }
     };
