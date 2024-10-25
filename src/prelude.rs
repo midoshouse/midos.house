@@ -224,6 +224,7 @@ pub(crate) use {
             *,
         },
         macros::*,
+        night_path,
         ootr_web,
         racetime_bot,
         racetime_host,

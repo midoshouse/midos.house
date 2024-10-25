@@ -80,7 +80,7 @@ pub(crate) enum ParseUserError {
     UrlNotFound,
 }
 
-pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, host: &str, id_or_url: &str) -> Result<String, ParseUserError> {
+pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, id_or_url: &str) -> Result<String, ParseUserError> {
     if let Ok(id) = id_or_url.parse() {
         return if let Some(user) = User::from_id(&mut **transaction, id).await? {
             if let Some(racetime) = user.racetime {
@@ -93,7 +93,7 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
         }
     }
     if regex_is_match!("^[0-9A-Za-z]+$", id_or_url) {
-        return match http_client.get(format!("https://{host}/user/{id_or_url}/data"))
+        return match http_client.get(format!("https://{}/user/{id_or_url}/data", racetime_host()))
             .send().await?
             .detailed_error_for_status().await
         {
@@ -109,7 +109,7 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
             if path_segments.next() == Some("user");
             if let Some(url_part) = path_segments.next();
             then {
-                match http_client.get(format!("https://{host}/user/{url_part}/data"))
+                match http_client.get(format!("https://{}/user/{url_part}/data", racetime_host()))
                     .send().await?
                     .detailed_error_for_status().await
                 {
@@ -1231,7 +1231,6 @@ pub(crate) struct SeedMetadata {
 pub(crate) struct GlobalState {
     /// Locked while event rooms are being created. Wait with handling new rooms while it's held.
     new_room_lock: Arc<Mutex<()>>,
-    pub(crate) env: Environment,
     host_info: racetime::HostInfo,
     racetime_config: ConfigRaceTime,
     extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>,
@@ -1256,7 +1255,6 @@ impl GlobalState {
         ootr_api_key: String,
         ootr_api_key_encryption: String,
         startgg_token: String,
-        env: Environment,
         discord_ctx: RwFuture<DiscordCtx>,
         clean_shutdown: Arc<Mutex<CleanShutdown>>,
         seed_cache_tx: watch::Sender<()>,
@@ -1264,11 +1262,11 @@ impl GlobalState {
     ) -> Self {
         Self {
             host_info: racetime::HostInfo {
-                hostname: Cow::Borrowed(env.racetime_host()),
+                hostname: Cow::Borrowed(racetime_host()),
                 ..racetime::HostInfo::default()
             },
             ootr_api_client: ootr_web::ApiClient::new(http_client.clone(), ootr_api_key, ootr_api_key_encryption),
-            new_room_lock, env, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown, seed_cache_tx, seed_metadata,
+            new_room_lock, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown, seed_cache_tx, seed_metadata,
         }
     }
 
@@ -1834,13 +1832,13 @@ impl SeedRollUpdate {
                                 seed::Files::MidosHouse { file_stem, .. } => {
                                     sqlx::query!(
                                         "INSERT INTO rsl_seeds (room, file_stem, preset, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-                                        format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url), &file_stem, preset as _, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
+                                        format!("https://{}{}", racetime_host(), ctx.data().await.url), &file_stem, preset as _, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
                                     ).execute(db_pool).await.to_racetime()?;
                                 }
                                 seed::Files::OotrWeb { id, gen_time, file_stem } => {
                                     sqlx::query!(
                                         "INSERT INTO rsl_seeds (room, file_stem, preset, web_id, web_gen_time, hash1, hash2, hash3, hash4, hash5) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
-                                        format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url), &file_stem, preset as _, *id as i64, gen_time, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
+                                        format!("https://{}{}", racetime_host(), ctx.data().await.url), &file_stem, preset as _, *id as i64, gen_time, hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _,
                                     ).execute(db_pool).await.to_racetime()?;
                                 }
                                 seed::Files::TriforceBlitz { .. } | seed::Files::TfbSotd { .. } => unreachable!(), // no such thing as random settings Triforce Blitz
@@ -1979,8 +1977,8 @@ impl SeedRollUpdate {
             }
             Self::Error(e) => {
                 eprintln!("seed roll error: {e} ({e:?})");
-                if let Environment::Production = ctx.global_state.env {
-                    wheel::night_report(&format!("{}/error", ctx.global_state.env.night_path()), Some(&format!("seed roll error: {e} ({e:?})"))).await.to_racetime()?;
+                if let Environment::Production = Environment::default() {
+                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("seed roll error: {e} ({e:?})"))).await.to_racetime()?;
                 }
                 ctx.say("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl and if necessary roll the seed manually.").await?;
             }
@@ -2317,7 +2315,7 @@ impl Handler {
     async fn roll_tfb_seed(&self, ctx: &RaceContext<GlobalState>, version: &'static str, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
-        self.roll_seed_inner(ctx, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(delay_until, version, Some(format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url)), unlock_spoiler_log), language, article, description).await;
+        self.roll_seed_inner(ctx, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(delay_until, version, Some(format!("https://{}{}", racetime_host(), ctx.data().await.url)), unlock_spoiler_log), language, article, description).await;
     }
 
     async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
@@ -2373,7 +2371,7 @@ impl RaceHandler<GlobalState> for Handler {
     async fn task(global_state: Arc<GlobalState>, race_data: Arc<tokio::sync::RwLock<RaceData>>, join_handle: tokio::task::JoinHandle<()>) -> Result<(), Error> {
         let race_data = ArcRwLock::from(race_data);
         tokio::spawn(async move {
-            lock!(@read data = race_data; println!("race handler for https://{}{} started", global_state.env.racetime_host(), data.url));
+            lock!(@read data = race_data; println!("race handler for https://{}{} started", racetime_host(), data.url));
             let res = join_handle.await;
             lock!(@read data = race_data; {
                 lock!(clean_shutdown = global_state.clean_shutdown; {
@@ -2383,11 +2381,11 @@ impl RaceHandler<GlobalState> for Handler {
                     }
                 });
                 if let Ok(()) = res {
-                    println!("race handler for https://{}{} stopped", global_state.env.racetime_host(), data.url);
+                    println!("race handler for https://{}{} stopped", racetime_host(), data.url);
                 } else {
-                    eprintln!("race handler for https://{}{} panicked", global_state.env.racetime_host(), data.url);
-                    if let Environment::Production = global_state.env {
-                        let _ = wheel::night_report(&format!("{}/error", global_state.env.night_path()), Some(&format!("race handler for https://{}{} panicked", global_state.env.racetime_host(), data.url))).await;
+                    eprintln!("race handler for https://{}{} panicked", racetime_host(), data.url);
+                    if let Environment::Production = Environment::default() {
+                        let _ = wheel::night_report(&format!("{}/error", night_path()), Some(&format!("race handler for https://{}{} panicked", racetime_host(), data.url))).await;
                     }
                 }
             });
@@ -2400,7 +2398,7 @@ impl RaceHandler<GlobalState> for Handler {
         let goal = data.goal.name.parse::<Goal>().to_racetime()?;
         let (existing_seed, official_data, race_state, high_seed_name, low_seed_name, fpa_enabled) = lock!(new_room_lock = ctx.global_state.new_room_lock; { // make sure a new room isn't handled before it's added to the database
             let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-            let new_data = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url).parse()?).await.to_racetime()? {
+            let new_data = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, format!("https://{}{}", racetime_host(), ctx.data().await.url).parse()?).await.to_racetime()? {
                 let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
                 let mut entrants = Vec::default();
                 for team in cal_event.active_teams() {
@@ -3639,7 +3637,7 @@ impl RaceHandler<GlobalState> for Handler {
                         };
                         if let Ok(restream_url) = restream_url {
                             let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                            match parse_user(&mut transaction, &ctx.global_state.http_client, ctx.global_state.env.racetime_host(), restreamer).await {
+                            match parse_user(&mut transaction, &ctx.global_state.http_client, restreamer).await {
                                 Ok(restreamer_racetime_id) => {
                                     if restreams.is_empty() {
                                         let (access_token, _) = racetime::authorize_with_host(&ctx.global_state.host_info, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
@@ -3864,7 +3862,7 @@ impl RaceHandler<GlobalState> for Handler {
         }
         if !self.start_saved {
             if let (Goal::Rsl, Some(start)) = (goal, data.started_at) {
-                sqlx::query!("UPDATE rsl_seeds SET start = $1 WHERE room = $2", start, format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
+                sqlx::query!("UPDATE rsl_seeds SET start = $1 WHERE room = $2", start, format!("https://{}{}", racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
                 self.start_saved = true;
             }
         }
@@ -4034,7 +4032,7 @@ impl RaceHandler<GlobalState> for Handler {
                         organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
                             //TODO mention organizer role
                             .push("race cancelled: <https://")
-                            .push(ctx.global_state.env.racetime_host())
+                            .push(racetime_host())
                             .push(&ctx.data().await.url)
                             .push('>')
                             .build()
@@ -4043,7 +4041,7 @@ impl RaceHandler<GlobalState> for Handler {
                 }
                 self.unlock_spoiler_log(ctx, goal).await?;
                 if let Goal::Rsl = goal {
-                    sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", ctx.global_state.env.racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
+                    sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
                 }
             }
             _ => {}
@@ -4509,24 +4507,24 @@ async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRa
                 }
                 eprintln!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
                 if wait_time >= Duration::from_secs(16) {
-                    wheel::night_report(&format!("{}/error", global_state.env.night_path()), Some(&format!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await.to_racetime()?;
+                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await.to_racetime()?;
                 }
                 sleep(wait_time).await;
                 last_crash = Instant::now();
             }
             Err(e) => {
-                wheel::night_report(&format!("{}/error", global_state.env.night_path()), Some(&format!("error handling racetime.gg rooms: {e} ({e:?})"))).await.to_racetime()?;
+                wheel::night_report(&format!("{}/error", night_path()), Some(&format!("error handling racetime.gg rooms: {e} ({e:?})"))).await.to_racetime()?;
                 break Err(e)
             }
         }
     }
 }
 
-pub(crate) async fn main(env: Environment, config: Config, shutdown: rocket::Shutdown, global_state: Arc<GlobalState>, seed_cache_rx: watch::Receiver<()>) -> Result<(), Error> {
+pub(crate) async fn main(config: Config, shutdown: rocket::Shutdown, global_state: Arc<GlobalState>, seed_cache_rx: watch::Receiver<()>) -> Result<(), Error> {
     let ((), (), ()) = tokio::try_join!(
         prepare_seeds(global_state.clone(), seed_cache_rx, shutdown.clone()),
         create_rooms(global_state.clone(), shutdown.clone()),
-        handle_rooms(global_state, if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }, shutdown),
+        handle_rooms(global_state, if Environment::default().is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }, shutdown),
     )?;
     Ok(())
 }

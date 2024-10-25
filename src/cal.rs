@@ -78,9 +78,9 @@ impl Entrant {
         })
     }
 
-    pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, discord_ctx: &DiscordCtx, running_text: bool) -> Result<RawHtml<String>, discord_bot::Error> {
+    pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, running_text: bool) -> Result<RawHtml<String>, discord_bot::Error> {
         Ok(match self {
-            Self::MidosHouseTeam(team) => team.to_html(transaction, env, running_text).await?,
+            Self::MidosHouseTeam(team) => team.to_html(transaction, running_text).await?,
             Self::Discord { id, racetime_id, .. } => {
                 let url = if let Some(racetime_id) = racetime_id {
                     format!("https://{}/user/{racetime_id}", racetime_host())
@@ -1097,13 +1097,13 @@ impl Race {
         }
     }
 
-    pub(crate) async fn multistream_url(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Option<Url>, Error> {
-        async fn entrant_twitch_names<'a>(transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, event: &event::Data<'_>, entrant: &'a Entrant) -> Result<Option<Vec<Cow<'a, str>>>, Error> {
+    pub(crate) async fn multistream_url(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Option<Url>, Error> {
+        async fn entrant_twitch_names<'a>(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>, entrant: &'a Entrant) -> Result<Option<Vec<Cow<'a, str>>>, Error> {
             let mut channels = Vec::default();
             match entrant {
                 Entrant::MidosHouseTeam(team) => for (member, role) in team.members_roles(&mut *transaction).await? {
                     if event.team_config.role_is_racing(role) {
-                        if let Some(twitch_name) = member.racetime_user_data(env, http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_name) {
+                        if let Some(twitch_name) = member.racetime_user_data(http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_name) {
                             channels.push(Cow::Owned(twitch_name));
                         } else {
                             return Ok(None)
@@ -1112,7 +1112,7 @@ impl Race {
                 },
                 Entrant::Discord { twitch_username: Some(twitch_name), .. } | Entrant::Named { twitch_username: Some(twitch_name), .. } => channels.push(Cow::Borrowed(&**twitch_name)),
                 Entrant::Discord { twitch_username: None, racetime_id: Some(racetime_id), .. } | Entrant::Named { twitch_username: None, racetime_id: Some(racetime_id), .. } => {
-                    let racetime_user_data = http_client.get(format!("https://{}/user/{racetime_id}/data", env.racetime_host()))
+                    let racetime_user_data = http_client.get(format!("https://{}/user/{racetime_id}/data", racetime_host()))
                         .send().await?
                         .detailed_error_for_status().await?
                         .json_with_text_in_error::<racetime::model::UserData>().await?;
@@ -1124,7 +1124,7 @@ impl Race {
                 }
                 Entrant::Discord { twitch_username: None, racetime_id: None, id } => if_chain! {
                     if let Some(user) = User::from_discord(&mut **transaction, *id).await?;
-                    if let Some(racetime_user_data) = user.racetime_user_data(env, http_client).await?;
+                    if let Some(racetime_user_data) = user.racetime_user_data(http_client).await?;
                     if let Some(twitch_name) = racetime_user_data.twitch_name;
                     then {
                         channels.push(Cow::Owned(twitch_name));
@@ -1143,7 +1143,7 @@ impl Race {
                 Entrants::Two(ref entrants) => {
                     let mut channels = Vec::default();
                     for entrant in entrants {
-                        if let Some(twitch_names) = entrant_twitch_names(&mut *transaction, env, http_client, event, entrant).await? {
+                        if let Some(twitch_names) = entrant_twitch_names(&mut *transaction, http_client, event, entrant).await? {
                             channels.extend(twitch_names);
                         } else {
                             return Ok(None)
@@ -1162,7 +1162,7 @@ impl Race {
                 Entrants::Three(ref entrants) => {
                     let mut channels = Vec::default();
                     for entrant in entrants {
-                        if let Some(twitch_names) = entrant_twitch_names(&mut *transaction, env, http_client, event, entrant).await? {
+                        if let Some(twitch_names) = entrant_twitch_names(&mut *transaction, http_client, event, entrant).await? {
                             channels.extend(twitch_names);
                         } else {
                             return Ok(None)
@@ -1839,8 +1839,8 @@ pub(crate) async fn for_event(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &
     Ok(Response(cal))
 }
 
-pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>, is_3p: bool) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, env, me.as_ref(), Tab::Races, true).await?;
+pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>, is_3p: bool) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let form = if me.is_some() {
         let teams = Team::for_event(&mut transaction, event.series, &event.event).await?;
         let mut team_data = Vec::with_capacity(teams.len());
@@ -1940,7 +1940,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(env).await?, ..PageStyle::default() }, &format!("New Race — {}", event.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("New Race — {}", event.display_name), html! {
         : header;
         h2 : "Create race";
         : form;
@@ -1948,7 +1948,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
 }
 
 #[rocket::get("/event/<series>/<event>/races/new?<players>")]
-pub(crate) async fn create_race(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String, players: Option<NonZeroU8>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn create_race(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String, players: Option<NonZeroU8>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let is_3p = match players.unwrap_or_else(|| NonZeroU8::new(2).unwrap()).get() {
         2 => false,
         3 => true,
@@ -1956,7 +1956,7 @@ pub(crate) async fn create_race(pool: &State<PgPool>, env: &State<Environment>, 
     };
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(RedirectOrContent::Content(create_race_form(transaction, **env, me, uri, csrf.as_ref(), event, Context::default(), is_3p).await?))
+    Ok(RedirectOrContent::Content(create_race_form(transaction, me, uri, csrf.as_ref(), event, Context::default(), is_3p).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1976,7 +1976,7 @@ pub(crate) struct CreateRaceForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/new", data = "<form>")]
-pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, CreateRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -2015,7 +2015,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
             None
         };
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(create_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, form.context, team3.is_some()).await?)
+            RedirectOrContent::Content(create_race_form(transaction, Some(me), uri, csrf.as_ref(), event, form.context, team3.is_some()).await?)
         } else {
             let (phase, round) = if value.phase_round.is_empty() {
                 (
@@ -2083,7 +2083,7 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, env: &State<Environme
         }
     } else {
         let is_3p = form.context.field_value("team3").is_some();
-        RedirectOrContent::Content(create_race_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, form.context, is_3p).await?)
+        RedirectOrContent::Content(create_race_form(transaction, Some(me), uri, csrf.as_ref(), event, form.context, is_3p).await?)
     })
 }
 
@@ -2099,7 +2099,6 @@ pub(crate) struct RaceTableOptions<'a> {
 pub(crate) async fn race_table(
     transaction: &mut Transaction<'_, Postgres>,
     discord_ctx: &DiscordCtx,
-    env: Environment,
     http_client: &reqwest::Client,
     event: Option<&event::Data<'_>>,
     options: RaceTableOptions<'_>,
@@ -2235,7 +2234,7 @@ pub(crate) async fn race_table(
                             }
                             Entrants::Two([ref team1, ref team2]) => {
                                 td(class = "vs1", colspan = "3") {
-                                    : team1.to_html(&mut *transaction, env, discord_ctx, false).await?;
+                                    : team1.to_html(&mut *transaction, discord_ctx, false).await?;
                                     @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {
                                         br;
                                         small {
@@ -2244,7 +2243,7 @@ pub(crate) async fn race_table(
                                     }
                                 }
                                 td(class = "vs2", colspan = "3") {
-                                    : team2.to_html(&mut *transaction, env, discord_ctx, false).await?;
+                                    : team2.to_html(&mut *transaction, discord_ctx, false).await?;
                                     @if let RaceSchedule::Async { start2: Some(start), .. } = race.schedule {
                                         br;
                                         small {
@@ -2255,7 +2254,7 @@ pub(crate) async fn race_table(
                             }
                             Entrants::Three([ref team1, ref team2, ref team3]) => {
                                 td(colspan = "2") {
-                                    : team1.to_html(&mut *transaction, env, discord_ctx, false).await?;
+                                    : team1.to_html(&mut *transaction, discord_ctx, false).await?;
                                     @if let RaceSchedule::Async { start1: Some(start), .. } = race.schedule {
                                         br;
                                         small {
@@ -2264,7 +2263,7 @@ pub(crate) async fn race_table(
                                     }
                                 }
                                 td(colspan = "2") {
-                                    : team2.to_html(&mut *transaction, env, discord_ctx, false).await?;
+                                    : team2.to_html(&mut *transaction, discord_ctx, false).await?;
                                     @if let RaceSchedule::Async { start2: Some(start), .. } = race.schedule {
                                         br;
                                         small {
@@ -2273,7 +2272,7 @@ pub(crate) async fn race_table(
                                     }
                                 }
                                 td(colspan = "2") {
-                                    : team3.to_html(&mut *transaction, env, discord_ctx, false).await?;
+                                    : team3.to_html(&mut *transaction, discord_ctx, false).await?;
                                     @if let RaceSchedule::Async { start3: Some(start), .. } = race.schedule {
                                         br;
                                         small {
@@ -2289,7 +2288,7 @@ pub(crate) async fn race_table(
                                     a(class = "favicon", title = format!("{language} restream"), href = video_url.to_string()) : favicon(video_url);
                                 }
                                 @if options.show_multistreams && race.video_urls.is_empty() {
-                                    @if let Some(multistream_url) = race.multistream_url(&mut *transaction, env, http_client, &event).await? {
+                                    @if let Some(multistream_url) = race.multistream_url(&mut *transaction, http_client, &event).await? {
                                         a(class = "favicon", title = "multistream", href = multistream_url.to_string()) : favicon(&multistream_url);
                                     }
                                 }
@@ -2338,8 +2337,8 @@ pub(crate) async fn race_table(
     })
 }
 
-pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, discord_ctx: &DiscordCtx, env: Environment, config: &Config, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, env, me.as_ref(), Tab::Races, true).await?;
+pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, discord_ctx: &DiscordCtx, config: &Config, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let form = match event.match_source() {
         MatchSource::Manual => html! {
             article {
@@ -2375,7 +2374,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                     }
                 }
             } else {
-                let table = race_table(&mut transaction, discord_ctx, env, http_client, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: Some(ctx.clone()) }, &races).await?;
+                let table = race_table(&mut transaction, discord_ctx, http_client, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: Some(ctx.clone()) }, &races).await?;
                 let errors = ctx.errors().collect_vec();
                 full_form(uri!(import_races_post(event.series, &*event.event)), csrf, html! {
                     p : "The following races will be imported:";
@@ -2413,7 +2412,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                 }
             }
         } else if me.is_some() {
-            let (races, skips) = startgg::races_to_import(&mut transaction, http_client, env, config, &event, event_slug).await?;
+            let (races, skips) = startgg::races_to_import(&mut transaction, http_client, config, &event, event_slug).await?;
             if races.is_empty() {
                 html! {
                     article {
@@ -2441,7 +2440,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                     }
                 }
             } else {
-                let table = race_table(&mut transaction, discord_ctx, env, http_client, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: None }, &races).await?;
+                let table = race_table(&mut transaction, discord_ctx, http_client, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: None }, &races).await?;
                 let errors = ctx.errors().collect_vec();
                 full_form(uri!(import_races_post(event.series, &*event.event)), csrf, html! {
                     p : "The following races will be imported:";
@@ -2459,7 +2458,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
             }
         },
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(env).await?, ..PageStyle::default() }, &format!("Import Races — {}", event.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Import Races — {}", event.display_name), html! {
         : header;
         h2 : "Import races";
         : form;
@@ -2467,10 +2466,10 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
 }
 
 #[rocket::get("/event/<series>/<event>/races/import")]
-pub(crate) async fn import_races(config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn import_races(config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(RedirectOrContent::Content(import_races_form(transaction, http_client, &*discord_ctx.read().await, **env, config, me, uri, csrf.as_ref(), event, Context::default()).await?))
+    Ok(RedirectOrContent::Content(import_races_form(transaction, http_client, &*discord_ctx.read().await, config, me, uri, csrf.as_ref(), event, Context::default()).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -2488,7 +2487,7 @@ pub(crate) struct ImportRacesForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/import", data = "<form>")]
-pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ImportRacesForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>, config: &State<Config>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ImportRacesForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -2534,7 +2533,7 @@ pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>,
                 Vec::default()
             }
             MatchSource::StartGG(event_slug) => {
-                let (races, skips) = startgg::races_to_import(&mut transaction, http_client, **env, config, &event, event_slug).await?;
+                let (races, skips) = startgg::races_to_import(&mut transaction, http_client, config, &event, event_slug).await?;
                 if races.is_empty() {
                     if skips.is_empty() {
                         form.context.push_error(form::Error::validation("start.gg did not list any matches for this event."));
@@ -2546,7 +2545,7 @@ pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>,
             }
         };
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(import_races_form(transaction, http_client, &*discord_ctx.read().await, **env, config, Some(me), uri, csrf.as_ref(), event, form.context).await?)
+            RedirectOrContent::Content(import_races_form(transaction, http_client, &*discord_ctx.read().await, config, Some(me), uri, csrf.as_ref(), event, form.context).await?)
         } else {
             for race in races {
                 transaction = import_race(transaction, &*discord_ctx.read().await, race).await?;
@@ -2555,7 +2554,7 @@ pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>,
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(import_races_form(transaction, http_client, &*discord_ctx.read().await, **env, config, Some(me), uri, csrf.as_ref(), event, form.context).await?)
+        RedirectOrContent::Content(import_races_form(transaction, http_client, &*discord_ctx.read().await, config, Some(me), uri, csrf.as_ref(), event, form.context).await?)
     })
 }
 
@@ -2578,7 +2577,7 @@ async fn import_race<'a>(mut transaction: Transaction<'a, Postgres>, discord_ctx
     Ok(transaction)
 }
 
-async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, env: Environment, config: Config, mut shutdown: rocket::Shutdown, discord_ctx: RwFuture<DiscordCtx>) -> Result<(), event::Error> {
+async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, config: Config, mut shutdown: rocket::Shutdown, discord_ctx: RwFuture<DiscordCtx>) -> Result<(), event::Error> {
     loop {
         let mut transaction = db_pool.begin().await?;
         for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&mut *transaction).await? {
@@ -2589,7 +2588,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                     MatchSource::Challonge { .. } => {} // Challonge's API doesn't provide enough data to automate race imports
                     MatchSource::League => {}
                     MatchSource::StartGG(event_slug) => {
-                        let (races, _) = startgg::races_to_import(&mut transaction, &http_client, env, &config, &event, event_slug).await?;
+                        let (races, _) = startgg::races_to_import(&mut transaction, &http_client, &config, &event, event_slug).await?;
                         for race in races {
                             transaction = import_race(transaction, &*discord_ctx.read().await, race).await?;
                         }
@@ -2623,7 +2622,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                         } else {
                             let mut matching_races = Vec::default();
                             for (idx, race) in unassigned_races.iter().enumerate() {
-                                if restream_match.matches(&mut transaction, env, &http_client, race).await? {
+                                if restream_match.matches(&mut transaction, &http_client, race).await? {
                                     matching_races.push((idx, race));
                                 }
                             }
@@ -2714,11 +2713,11 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
     Ok(())
 }
 
-pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Client, env: Environment, config: Config, shutdown: rocket::Shutdown, discord_ctx: RwFuture<DiscordCtx>) -> Result<(), event::Error> {
+pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Client, config: Config, shutdown: rocket::Shutdown, discord_ctx: RwFuture<DiscordCtx>) -> Result<(), event::Error> {
     let mut last_crash = Instant::now();
     let mut wait_time = Duration::from_secs(1);
     loop {
-        match auto_import_races_inner(db_pool.clone(), http_client.clone(), env, config.clone(), shutdown.clone(), discord_ctx.clone()).await {
+        match auto_import_races_inner(db_pool.clone(), http_client.clone(), config.clone(), shutdown.clone(), discord_ctx.clone()).await {
             Ok(()) => break Ok(()),
             Err(e) if e.is_network_error() => {
                 if last_crash.elapsed() >= Duration::from_secs(60 * 60 * 24) {
@@ -2729,22 +2728,22 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
                 if wait_time >= Duration::from_secs(2 * 60) {
                     eprintln!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
                     if wait_time >= Duration::from_secs(10 * 60) {
-                        wheel::night_report(&format!("{}/error", env.night_path()), Some(&format!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await?;
+                        wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to auto-import races (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await?;
                     }
                 }
                 sleep(wait_time).await;
                 last_crash = Instant::now();
             }
             Err(e) => {
-                wheel::night_report(&format!("{}/error", env.night_path()), Some(&format!("failed to auto-import races: {e} ({e:?})"))).await?;
+                wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to auto-import races: {e} ({e:?})"))).await?;
                 break Err(e)
             }
         }
     }
 }
 
-pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, env, me.as_ref(), Tab::Races, true).await?;
+pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let fenhl = User::from_id(&mut *transaction, Id::<Users>::from(14571800683221815449_u64)).await?.ok_or(PageError::FenhlUserData)?;
     let form = if me.is_some() {
         let mut errors = ctx.as_ref().map(|ctx| ctx.errors().collect()).unwrap_or_default();
@@ -2888,16 +2887,16 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
             Entrants::Two([ref p1, ref p2]) => {
                 p : "Entrants:";
                 ol {
-                    li : p1.to_html(&mut transaction, env, discord_ctx, false).await?;
-                    li : p2.to_html(&mut transaction, env, discord_ctx, false).await?;
+                    li : p1.to_html(&mut transaction, discord_ctx, false).await?;
+                    li : p2.to_html(&mut transaction, discord_ctx, false).await?;
                 }
             }
             Entrants::Three([ref p1, ref p2, ref p3]) => {
                 p : "Entrants:";
                 ol {
-                    li : p1.to_html(&mut transaction, env, discord_ctx, false).await?;
-                    li : p2.to_html(&mut transaction, env, discord_ctx, false).await?;
-                    li : p3.to_html(&mut transaction, env, discord_ctx, false).await?;
+                    li : p1.to_html(&mut transaction, discord_ctx, false).await?;
+                    li : p2.to_html(&mut transaction, discord_ctx, false).await?;
+                    li : p3.to_html(&mut transaction, discord_ctx, false).await?;
                 }
             }
         }
@@ -2997,18 +2996,18 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
         }
         : form;
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(env).await?, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit")]
-pub(crate) async fn edit_race(env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn edit_race(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let race = Race::from_id(&mut transaction, http_client, id).await?;
     if race.series != event.series || race.event != event.event {
         return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(edit_race(race.series, race.event, id)))))
     }
-    Ok(RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, **env, me, uri, csrf.as_ref(), event, race, None).await?))
+    Ok(RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, me, uri, csrf.as_ref(), event, race, None).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -3030,7 +3029,7 @@ pub(crate) struct EditRaceForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit", data = "<form>")]
-pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let race = Race::from_id(&mut transaction, http_client, id).await?;
@@ -3263,7 +3262,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
                                     form.context.push_error(form::Error::validation("A racetime.gg account is required to restream races. Go to your profile and select “Connect a racetime.gg account”.").with_name(format!("restreamers.{}", language.short_code()))); //TODO direct link
                                 }
                             } else {
-                                match racetime_bot::parse_user(&mut transaction, http_client, env.racetime_host(), restreamer).await {
+                                match racetime_bot::parse_user(&mut transaction, http_client, restreamer).await {
                                     Ok(racetime_id) => { restreamers.insert(language, racetime_id); }
                                     Err(e @ (racetime_bot::ParseUserError::Format | racetime_bot::ParseUserError::IdNotFound | racetime_bot::ParseUserError::InvalidUrl | racetime_bot::ParseUserError::MidosHouseId | racetime_bot::ParseUserError::MidosHouseUserNoRacetime | racetime_bot::ParseUserError::UrlNotFound)) => {
                                         form.context.push_error(form::Error::validation(e.to_string()).with_name(format!("restreamers.{}", language.short_code())));
@@ -3283,7 +3282,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
             }
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, **env, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
+            RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
         } else {
             sqlx::query!(
                 "UPDATE races SET
@@ -3336,12 +3335,12 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, en
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, **env, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
+        RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
     })
 }
 
-pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, env, me.as_ref(), Tab::Races, true).await?;
+pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let form = if me.is_some() {
         let mut errors = ctx.errors().collect();
         full_form(uri!(add_file_hash_post(event.series, &*event.event, race.id)), csrf, html! {
@@ -3437,18 +3436,18 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
         }
         : form;
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(env).await?, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races/<id>/edit-hash")]
-pub(crate) async fn add_file_hash(env: &State<Environment>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn add_file_hash(pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let race = Race::from_id(&mut transaction, http_client, id).await?;
     if race.series != event.series || race.event != event.event {
         return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(add_file_hash(race.series, race.event, id)))))
     }
-    Ok(RedirectOrContent::Content(add_file_hash_form(transaction, **env, me, uri, csrf.as_ref(), event, race, Context::default()).await?))
+    Ok(RedirectOrContent::Content(add_file_hash_form(transaction, me, uri, csrf.as_ref(), event, race, Context::default()).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -3463,7 +3462,7 @@ pub(crate) struct AddFileHashForm {
 }
 
 #[rocket::post("/event/<series>/<event>/races/<id>/edit-hash", data = "<form>")]
-pub(crate) async fn add_file_hash_post(env: &State<Environment>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, AddFileHashForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn add_file_hash_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, AddFileHashForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let race = Race::from_id(&mut transaction, http_client, id).await?;
@@ -3507,7 +3506,7 @@ pub(crate) async fn add_file_hash_post(env: &State<Environment>, pool: &State<Pg
             None
         };
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(add_file_hash_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
+            RedirectOrContent::Content(add_file_hash_form(transaction, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
         } else {
             sqlx::query!(
                 "UPDATE races SET hash1 = $1, hash2 = $2, hash3 = $3, hash4 = $4, hash5 = $5 WHERE id = $6",
@@ -3517,6 +3516,6 @@ pub(crate) async fn add_file_hash_post(env: &State<Environment>, pool: &State<Pg
             RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
         }
     } else {
-        RedirectOrContent::Content(add_file_hash_form(transaction, **env, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
+        RedirectOrContent::Content(add_file_hash_form(transaction, Some(me), uri, csrf.as_ref(), event, race, form.context).await?)
     })
 }

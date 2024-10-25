@@ -503,9 +503,9 @@ impl<'v> EnterFormDefaults<'v> {
 }
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
-pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, defaults: EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
-    let header = data.header(&mut transaction, env, me.as_ref(), Tab::Enter, false).await?;
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(env).await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
+pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, defaults: EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if me.is_some() {
         let mut errors = defaults.errors();
         html! {
             : header;
@@ -548,8 +548,8 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, env: 
 }
 
 #[allow(unused_qualifications)] // rocket endpoint and uri macros don't work with relative module paths
-pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
-    let header = data.header(&mut transaction, env, me.as_ref(), Tab::FindTeam, false).await?;
+pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+    let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
     let mut my_role = None;
     let mut looking_for_team = Vec::default();
     for row in sqlx::query!(r#"SELECT user_id AS "user: Id<Users>", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {
@@ -607,7 +607,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, e
             },
         })))
         .collect_vec();
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(env).await?, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
         : header;
         : form;
         table {

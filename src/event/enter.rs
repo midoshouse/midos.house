@@ -142,11 +142,11 @@ struct RequirementStatus {
 }
 
 impl Requirement {
-    async fn is_checked(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>) -> Result<Option<bool>, Error> {
+    async fn is_checked(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>) -> Result<Option<bool>, Error> {
         Ok(match self {
             Self::RaceTime => Some(me.racetime.is_some()),
             Self::RaceTimeInvite { invites, .. } => Some(me.racetime.as_ref().is_some_and(|racetime| invites.contains(&racetime.id))),
-            Self::Twitch => Some(if let Some(racetime_user_data) = me.racetime_user_data(env, http_client).await? {
+            Self::Twitch => Some(if let Some(racetime_user_data) = me.racetime_user_data(http_client).await? {
                 racetime_user_data.twitch_channel.is_some()
             } else {
                 false
@@ -194,7 +194,7 @@ impl Requirement {
         })
     }
 
-    fn check_get(&self, env: Environment, data: &Data<'_>, is_checked: Option<bool>, redirect_uri: rocket::http::uri::Origin<'_>, defaults: &pic::EnterFormDefaults<'_>) -> Result<RequirementStatus, Error> {
+    fn check_get(&self, data: &Data<'_>, is_checked: Option<bool>, redirect_uri: rocket::http::uri::Origin<'_>, defaults: &pic::EnterFormDefaults<'_>) -> Result<RequirementStatus, Error> {
         Ok(match self {
             Self::RaceTime => {
                 let mut html_content = html! {
@@ -230,7 +230,7 @@ impl Requirement {
                 };
                 if !is_checked.unwrap() {
                     html_content = html! {
-                        a(href = format!("https://{}/account/connections", env.racetime_host())) : html_content;
+                        a(href = format!("https://{}/account/connections", racetime_host())) : html_content;
                     };
                 }
                 RequirementStatus {
@@ -557,13 +557,13 @@ impl Requirement {
         })
     }
 
-    async fn check_form(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
+    async fn check_form(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: &User, data: &Data<'_>, form_ctx: &mut Context<'_>, value: &EnterForm) -> Result<(), Error> {
         match self {
-            Self::StartGG { optional: false } => if !self.is_checked(transaction, env, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
+            Self::StartGG { optional: false } => if !self.is_checked(transaction, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation("A start.gg account is required to enter this event.")); //TODO link to /login/startgg
             },
             Self::StartGG { optional: true } => match value.startgg_radio {
-                Some(BoolRadio::Yes) => if !self.is_checked(transaction, env, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
+                Some(BoolRadio::Yes) => if !self.is_checked(transaction, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
                     form_ctx.push_error(form::Error::validation("Sign in with start.gg or opt out of start.gg integration.").with_name("startgg_radio")); //TODO link to /login/startgg
                 },
                 Some(BoolRadio::No) => {}
@@ -618,7 +618,7 @@ impl Requirement {
                 }
             }
             Self::External { .. } => form_ctx.push_error(form::Error::validation("Please complete event entry via the external method.")),
-            _ => if !self.is_checked(transaction, env, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
+            _ => if !self.is_checked(transaction, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation(match self {
                     Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your Mido's House profile and select “Connect a racetime.gg account”.", //TODO direct link?
                     Self::RaceTimeInvite { .. } => if me.racetime.is_some() {
@@ -701,7 +701,7 @@ pub(crate) struct EnterForm {
     text_field2: String,
 }
 
-async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, discord_ctx: &RwFuture<DiscordCtx>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, client: &reqwest::Client, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
+async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, client: &reqwest::Client, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
     //TODO if already entered, redirect to status page
     let my_invites = if let Some(ref me) = me {
         sqlx::query_scalar!(r#"SELECT team AS "team: Id<Teams>" FROM teams, team_members WHERE series = $1 AND event = $2 AND member = $3 AND status = 'unconfirmed'"#, data.series as _, &*data.event, me.id as _).fetch_all(&mut *transaction).await?
@@ -767,9 +767,9 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                             let mut can_submit = true;
                             let mut requirements_display = Vec::with_capacity(requirements.len());
                             for requirement in requirements {
-                                let status = requirement.check_get(env, &data, requirement.is_checked(&mut transaction, env, http_client, discord_ctx, me, &data).await?, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults)?;
+                                let status = requirement.check_get(&data, requirement.is_checked(&mut transaction, http_client, discord_ctx, me, &data).await?, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults)?;
                                 if status.blocks_submit { can_submit = false }
-                                requirements_display.push((requirement.is_checked(&mut transaction, env, http_client, discord_ctx, me, &data).await?, status.html_content));
+                                requirements_display.push((requirement.is_checked(&mut transaction, http_client, discord_ctx, me, &data).await?, status.html_content));
                             }
                             let preface = html! {
                                 @if data.show_opt_out {
@@ -860,28 +860,28 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                         }
                     }
                 }
-                TeamConfig::Pictionary => return Ok(pic::enter_form(transaction, env, me, uri, csrf, data, defaults).await?),
-                TeamConfig::CoOp | TeamConfig::Multiworld => return Ok(mw::enter_form(transaction, env, me, uri, csrf, data, defaults.into_context(), client).await?),
+                TeamConfig::Pictionary => return Ok(pic::enter_form(transaction, me, uri, csrf, data, defaults).await?),
+                TeamConfig::CoOp | TeamConfig::Multiworld => return Ok(mw::enter_form(transaction, me, uri, csrf, data, defaults.into_context(), client).await?),
             },
         }
     };
-    let header = data.header(&mut transaction, env, me.as_ref(), Tab::Enter, false).await?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
     let invites = html! {
         @for team_id in my_invites {
-            : crate::notification::team_invite(&mut transaction, env, me.as_ref().expect("got a team invite while not logged in"), csrf, team_id).await?;
+            : crate::notification::team_invite(&mut transaction, me.as_ref().expect("got a team invite while not logged in"), csrf, team_id).await?;
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(env).await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
         : header;
         : invites;
         : content;
     }).await?)
 }
 
-fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, env: Environment, me: Option<User>, uri: Origin<'b>, client: &reqwest::Client, csrf: Option<&'a CsrfToken>, data: Data<'c>, defaults: mw::EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
+fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, me: Option<User>, uri: Origin<'b>, client: &reqwest::Client, csrf: Option<&'a CsrfToken>, data: Data<'c>, defaults: mw::EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
     let team_members = defaults.racetime_members(client);
     Box::pin(async move {
-        let header = data.header(&mut transaction, env, me.as_ref(), Tab::Enter, true).await?;
+        let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, true).await?;
         let page_content = {
             let team_config = data.team_config;
             let team_members = team_members.await?;
@@ -974,19 +974,19 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                 }, errors, "Enter");
             }
         };
-        Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(env).await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), page_content).await?)
+        Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), page_content).await?)
     })
 }
 
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
-pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<pic::Role>, teammate: Option<Id<Users>>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<pic::Role>, teammate: Option<Id<Users>>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(enter_form(transaction, http_client, **env, discord_ctx, me, uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
+    Ok(enter_form(transaction, http_client, discord_ctx, me, uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
 }
 
 #[rocket::post("/event/<series>/<event>/enter", data = "<form>")]
-pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1007,7 +1007,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                         }
                     } else {
                         for requirement in requirements {
-                            requirement.check_form(&mut transaction, **env, http_client, discord_ctx, &me, &data, &mut form.context, value).await?;
+                            requirement.check_form(&mut transaction, http_client, discord_ctx, &me, &data, &mut form.context, value).await?;
                             match requirement {
                                 Requirement::Qualifier { .. } => request_qualifier = Some(AsyncKind::Qualifier1),
                                 Requirement::TripleQualifier { async_starts, async_ends, .. } => {
@@ -1358,14 +1358,14 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                         transaction.commit().await?;
                         RedirectOrContent::Redirect(Redirect::to(uri!(super::status(series, event))))
                     } else {
-                        RedirectOrContent::Content(enter_form_step2(transaction, **env, Some(me), uri, client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?)
+                        RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?)
                     })
                 }
             }
         }
         if value.step2 {
-            return Ok(RedirectOrContent::Content(enter_form_step2(transaction, **env, Some(me), uri, client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Context(form.context)).await?))
+            return Ok(RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Context(form.context)).await?))
         }
     }
-    Ok(RedirectOrContent::Content(enter_form(transaction, http_client, **env, discord_ctx, Some(me), uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Context(form.context)).await?))
+    Ok(RedirectOrContent::Content(enter_form(transaction, http_client, discord_ctx, Some(me), uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Context(form.context)).await?))
 }

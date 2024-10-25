@@ -75,7 +75,7 @@ impl Team {
         })
     }
 
-    pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, running_text: bool) -> sqlx::Result<RawHtml<String>> {
+    pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, running_text: bool) -> sqlx::Result<RawHtml<String>> {
         Ok(if let Ok(member) = self.members(transaction).await?.into_iter().exactly_one() {
             member.to_html()
         } else {
@@ -98,7 +98,7 @@ impl Team {
             };
             html! {
                 @if let Some(ref racetime_slug) = self.racetime_slug {
-                    a(href = format!("https://{}/team/{racetime_slug}", env.racetime_host())) : inner;
+                    a(href = format!("https://{}/team/{racetime_slug}", racetime_host())) : inner;
                 } else {
                     : inner;
                 }

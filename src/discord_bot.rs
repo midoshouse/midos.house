@@ -510,17 +510,17 @@ fn parse_timestamp(timestamp: &str) -> Option<DateTime<Utc>> {
 }
 
 #[allow(deprecated)] //TODO remove use of CreateCommand::dm_permission once CreateCommand::contexts is no longer unstable Discord API
-pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_pool: PgPool, http_client: reqwest::Client, config: Config, env: Environment, new_room_lock: Arc<Mutex<()>>, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
+pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_pool: PgPool, http_client: reqwest::Client, config: Config, new_room_lock: Arc<Mutex<()>>, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
     discord_builder
         .error_notifier(ErrorNotifier::User(FENHL))
         .data::<DbPool>(db_pool)
         .data::<HttpClient>(http_client)
         .data::<RacetimeHost>(racetime::HostInfo {
-            hostname: Cow::Borrowed(env.racetime_host()),
+            hostname: Cow::Borrowed(racetime_host()),
             ..racetime::HostInfo::default()
         })
-        .data::<ConfigRaceTime>(if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone())
-        .data::<StartggToken>(if env.is_dev() { config.startgg_dev } else { config.startgg_production })
+        .data::<ConfigRaceTime>(if Environment::default().is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone())
+        .data::<StartggToken>(if Environment::default().is_dev() { config.startgg_dev } else { config.startgg_production })
         .data::<NewRoomLock>(new_room_lock)
         .data::<ExtraRoomTx>(extra_room_tx)
         .on_guild_create(false, |ctx, guild, _| Box::pin(async move {

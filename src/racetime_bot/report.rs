@@ -283,7 +283,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                         let mut msg = MessageBuilder::default();
                         //TODO mention organizer role
                         msg.push("failed to report race result to start.gg: <https://");
-                        msg.push(ctx.global_state.env.racetime_host());
+                        msg.push(racetime_host());
                         msg.push(&ctx.data().await.url);
                         msg.push("> (winner has no start.gg entrant ID)");
                         organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
@@ -384,7 +384,7 @@ impl Handler {
                 organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
                     //TODO mention organizer role
                     .push("first half of async finished: <https://")
-                    .push(ctx.global_state.env.racetime_host())
+                    .push(racetime_host())
                     .push(&ctx.data().await.url)
                     .push('>')
                     .build()
@@ -395,7 +395,7 @@ impl Handler {
                 let mut msg = MessageBuilder::default();
                 //TODO mention organizer role
                 msg.push("race finished with FPA call: <https://");
-                msg.push(ctx.global_state.env.racetime_host());
+                msg.push(racetime_host());
                 msg.push(&ctx.data().await.url);
                 msg.push('>');
                 if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. }) {
@@ -419,12 +419,12 @@ impl Handler {
             match event.team_config {
                 TeamConfig::Solo => match cal_event.race.entrants {
                     Entrants::Open | Entrants::Count { .. } => {
-                        let room = Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?;
+                        let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
                         report_ffa(ctx, cal_event, event, room).await?;
                     }
                     Entrants::Named(_) => unimplemented!(),
                     Entrants::Two(_) | Entrants::Three(_) => {
-                        let room = Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?;
+                        let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
                         if let Some(mut tfb_scores) = tfb_scores {
                             let mut teams = Vec::with_capacity(data.entrants.len());
                             for entrant in &data.entrants {
@@ -455,7 +455,7 @@ impl Handler {
                 TeamConfig::Pictionary => unimplemented!(), //TODO calculate like solo but report as teams
                 _ => match cal_event.race.entrants {
                     Entrants::Open | Entrants::Count { .. } => {
-                        let room = Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?;
+                        let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
                         report_ffa(ctx, cal_event, event, room).await?;
                     }
                     Entrants::Named(_) => unimplemented!(),
@@ -481,7 +481,7 @@ impl Handler {
                                 }
                             }
                             let active_team = cal_event.active_teams().exactly_one().map_err(|_| Error::Custom(Box::new(ExactlyOneError)))?;
-                            team_rooms.insert(active_team.racetime_slug.clone().expect("non-racetime.gg team"), Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?);
+                            team_rooms.insert(active_team.racetime_slug.clone().expect("non-racetime.gg team"), Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?);
                             for entrant in &data.entrants {
                                 team_times.entry(active_team.racetime_slug.clone().expect("non-racetime.gg team")).or_default().push(entrant.finish_time);
                             }
@@ -489,7 +489,7 @@ impl Handler {
                             for entrant in &data.entrants {
                                 if let Some(ref team) = entrant.team {
                                     if let hash_map::Entry::Vacant(entry) = team_rooms.entry(team.slug.clone()) {
-                                        entry.insert(Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?);
+                                        entry.insert(Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?);
                                     }
                                     team_times.entry(team.slug.clone()).or_default().push(entrant.finish_time);
                                 } else {
@@ -508,7 +508,7 @@ impl Handler {
                         if let Ok(teams) = teams.try_into() {
                             transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
                         } else { //TODO separate function for reporting 3-entrant results
-                            let room = Url::parse(&format!("https://{}{}", ctx.global_state.env.racetime_host(), data.url)).to_racetime()?;
+                            let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
                             report_ffa(ctx, cal_event, event, room).await?;
                         }
                     }

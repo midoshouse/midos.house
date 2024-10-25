@@ -192,7 +192,7 @@ impl fmt::Display for ImportSkipReason {
 ///   The caller is expected to duplicate this race to get the different games of the match, and create a single scheduling thread for the match.
 ///   A `game` value of `None` should be treated like `Some(1)`.
 /// * A list of start.gg set IDs that were not imported, along with the reasons they were skipped.
-pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, event_slug: &str) -> Result<(Vec<Race>, Vec<(ID, ImportSkipReason)>), cal::Error> {
+pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, config: &Config, event: &event::Data<'_>, event_slug: &str) -> Result<(Vec<Race>, Vec<(ID, ImportSkipReason)>), cal::Error> {
     async fn process_set(
         transaction: &mut Transaction<'_, Postgres>,
         http_client: &reqwest::Client,
@@ -246,8 +246,8 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
         Ok(None)
     }
 
-    async fn process_page(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, env: Environment, config: &Config, event: &event::Data<'_>, event_slug: &str, page: i64, races: &mut Vec<Race>, skips: &mut Vec<(ID, ImportSkipReason)>) -> Result<i64, cal::Error> {
-        let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+    async fn process_page(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, config: &Config, event: &event::Data<'_>, event_slug: &str, page: i64, races: &mut Vec<Race>, skips: &mut Vec<(ID, ImportSkipReason)>) -> Result<i64, cal::Error> {
+        let startgg_token = if Environment::default().is_dev() { &config.startgg_dev } else { &config.startgg_production };
         if let TeamConfig::Solo = event.team_config {
             let solo_event_sets_query::ResponseData {
                 event: Some(solo_event_sets_query::SoloEventSetsQueryEvent {
@@ -333,9 +333,9 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
 
     let mut races = Vec::default();
     let mut skips = Vec::default();
-    let total_pages = process_page(&mut *transaction, http_client, env, config, event, event_slug, 1, &mut races, &mut skips).await?;
+    let total_pages = process_page(&mut *transaction, http_client, config, event, event_slug, 1, &mut races, &mut skips).await?;
     for page in 2..=total_pages {
-        process_page(&mut *transaction, http_client, env, config, event, event_slug, page, &mut races, &mut skips).await?;
+        process_page(&mut *transaction, http_client, config, event, event_slug, page, &mut races, &mut skips).await?;
     }
     Ok((races, skips))
 }

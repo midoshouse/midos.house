@@ -280,7 +280,7 @@ pub(crate) struct Mutation;
     async fn set_race_restreamer(&self, ctx: &Context<'_>, id: GqlId, language: Language, restreamer: String) -> Result<Race> {
         db!(db = ctx; {
             let mut race = cal::Race::from_id(&mut *db, ctx.data_unchecked(), id.try_into()?).await?;
-            race.restreamers.insert(language, crate::racetime_bot::parse_user(&mut *db, ctx.data_unchecked(), ctx.data_unchecked::<Environment>().racetime_host(), &restreamer).await?);
+            race.restreamers.insert(language, crate::racetime_bot::parse_user(&mut *db, ctx.data_unchecked(), &restreamer).await?);
             let me = &ctx.data::<ApiKey>().map_err(|e| Error {
                 message: format!("This query requires an API key. Provide one using the X-API-Key header."),
                 source: Some(Arc::new(e)),
@@ -489,10 +489,9 @@ impl<'r> FromRequest<'r> for ApiKey {
 }
 
 #[rocket::get("/api/v1/graphql?<query..>")]
-pub(crate) async fn graphql_query(env: &State<Environment>, config: &State<Config>, db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, schema: &State<MidosHouseSchema>, api_key: Option<ApiKey>, query: GraphQLQuery) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
+pub(crate) async fn graphql_query(config: &State<Config>, db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, schema: &State<MidosHouseSchema>, api_key: Option<ApiKey>, query: GraphQLQuery) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
     let transaction = Arc::new(Mutex::new(db_pool.begin().await?));
     let mut request = GraphQLRequest::from(query)
-        .data::<Environment>(**env)
         .data::<Config>((*config).clone())
         .data::<ArcTransaction>(transaction.clone())
         .data::<reqwest::Client>((*http_client).clone());
@@ -505,10 +504,9 @@ pub(crate) async fn graphql_query(env: &State<Environment>, config: &State<Confi
 }
 
 #[rocket::post("/api/v1/graphql", data = "<request>", format = "application/json")]
-pub(crate) async fn graphql_request(env: &State<Environment>, config: &State<Config>, db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, schema: &State<MidosHouseSchema>, api_key: Option<ApiKey>, request: GraphQLRequest) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
+pub(crate) async fn graphql_request(config: &State<Config>, db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, schema: &State<MidosHouseSchema>, api_key: Option<ApiKey>, request: GraphQLRequest) -> Result<GraphQLResponse, rocket_util::Error<sqlx::Error>> {
     let transaction = Arc::new(Mutex::new(db_pool.begin().await?));
     let mut request = request
-        .data::<Environment>(**env)
         .data::<Config>((*config).clone())
         .data::<ArcTransaction>(transaction.clone())
         .data::<reqwest::Client>((*http_client).clone());
@@ -544,7 +542,7 @@ impl<E: Into<CsvError>> From<E> for StatusOrError<CsvError> {
 }
 
 #[rocket::get("/api/v1/event/<series>/<event>/entrants.csv?<api_key>")]
-pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, series: crate::series::Series, event: &str, api_key: &str) -> Result<(ContentType, Vec<u8>), StatusOrError<CsvError>> {
+pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<reqwest::Client>, series: crate::series::Series, event: &str, api_key: &str) -> Result<(ContentType, Vec<u8>), StatusOrError<CsvError>> {
     let mut transaction = db_pool.begin().await?;
     let me = Scopes { entrants_read: true, ..Scopes::default() }.validate(&mut transaction, api_key).await?.ok_or(StatusOrError::Status(Status::Forbidden))?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
@@ -575,7 +573,7 @@ pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<re
                 csv.serialize(Row {
                     id: member.id,
                     display_name: member.display_name(),
-                    twitch_display_name: member.racetime_user_data(**env, http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_display_name),
+                    twitch_display_name: member.racetime_user_data(http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_display_name),
                     discord_display_name: member.discord.as_ref().map(|discord| &*discord.display_name),
                     discord_discriminator: member.discord.as_ref().and_then(|discord| discord.username_or_discriminator.as_ref().right()).copied(),
                     racetime_id: member.racetime.as_ref().map(|racetime| &*racetime.id),

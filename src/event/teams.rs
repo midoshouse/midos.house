@@ -627,10 +627,10 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
 }
 
 #[rocket::get("/event/<series>/<event>/teams")]
-pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Teams, false).await?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Teams, false).await?;
     let mut show_confirmed = false;
     let qualifier_kind = match (data.series, &*data.event) {
         (Series::SongsOfHope, "1") => QualifierKind::SongsOfHope,
@@ -760,7 +760,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                             @if !matches!(data.team_config, TeamConfig::Solo) {
                                 td {
                                     @if let Some(ref team) = team {
-                                        : team.to_html(&mut transaction, **env, false).await?;
+                                        : team.to_html(&mut transaction, false).await?;
                                     }
                                     @if let (QualifierKind::Single { show_times: true }, Qualification::Single { qualified: true } | Qualification::TriforceBlitz { qualified: true, .. }) = (qualifier_kind, qualification) {
                                         br;
@@ -833,7 +833,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                                 }
                                             }
                                         }
-                                        MemberUser::RaceTime { url, name, .. } => a(href = format!("https://{}{url}", env.racetime_host())) : name;
+                                        MemberUser::RaceTime { url, name, .. } => a(href = format!("https://{}{url}", racetime_host())) : name;
                                         MemberUser::Newcomer => @unreachable // only returned if signups_sorted is called with worst_case_extrapolation = true, which it isn't above
                                     }
                                 }
@@ -899,5 +899,5 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), content).await?)
 }

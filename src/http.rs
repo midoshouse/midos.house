@@ -260,7 +260,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
 }
 
 #[rocket::get("/")]
-async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
+async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
     let mut transaction = pool.begin().await?;
     let mut upcoming_events = Vec::default();
     let mut races = Vec::default();
@@ -294,7 +294,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
             .then_with(|| race1.id.cmp(&race2.id))
     });
     let chests_event = upcoming_events.choose(&mut thread_rng());
-    let chests = if let Some(event) = chests_event { event.chests(**env).await? } else { ChestAppearances::random() };
+    let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
     let mut ongoing_events = Vec::default();
     for event in upcoming_events.drain(..).collect_vec() {
         if event.series != Series::Standard || event.event != "w" { // the weeklies are a perpetual event so we avoid always listing them
@@ -358,21 +358,21 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environmen
         @if races.is_empty() {
             i : "(none currently)";
         } else {
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, None, cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create: false, can_edit: me.as_ref().is_some_and(|me| me.is_archivist), show_restream_consent: false, challonge_import_ctx: None }, &races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, None, cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create: false, can_edit: me.as_ref().is_some_and(|me| me.is_archivist), show_restream_consent: false, challonge_import_ctx: None }, &races).await?;
         }
     };
     Ok(page(transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", page_content).await?)
 }
 
 #[rocket::get("/archive")]
-async fn archive(env: &State<Environment>, pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
+async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
     let mut transaction = pool.begin().await?;
     let mut past_events = Vec::default();
     for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE listed AND end_time IS NOT NULL AND end_time <= NOW() ORDER BY end_time DESC"#).fetch_all(&mut *transaction).await? {
         past_events.push(event::Data::new(&mut transaction, row.series, row.event).await?.expect("event deleted during transaction"));
     }
     let chests_event = past_events.choose(&mut thread_rng());
-    let chests = if let Some(event) = chests_event { event.chests(**env).await? } else { ChestAppearances::random() };
+    let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
     let page_content = html! {
         h1 : "Past events";
         ul {
@@ -573,9 +573,8 @@ async fn not_found(request: &Request<'_>) -> PageResult {
 
 #[rocket::catch(500)]
 async fn internal_server_error(request: &Request<'_>) -> PageResult {
-    let env = request.guard::<&State<Environment>>().await.expect("missing environment");
-    if let Environment::Production = **env {
-        wheel::night_report(&format!("{}/error", env.night_path()), Some("internal server error")).await?;
+    if let Environment::Production = Environment::default() {
+        wheel::night_report(&format!("{}/error", night_path()), Some("internal server error")).await?;
     }
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
@@ -589,9 +588,8 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
 #[rocket::catch(default)]
 async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
     eprintln!("responding with unexpected HTTP status code {} {} to request {request:?}", status.code, status.reason_lossy());
-    let env = request.guard::<&State<Environment>>().await.expect("missing environment");
-    if let Environment::Production = **env {
-        wheel::night_report(&format!("{}/error", env.night_path()), Some(&format!("responding with unexpected HTTP status code: {} {}", status.code, status.reason_lossy()))).await?;
+    if let Environment::Production = Environment::default() {
+        wheel::night_report(&format!("{}/error", night_path()), Some(&format!("responding with unexpected HTTP status code: {} {}", status.code, status.reason_lossy()))).await?;
     }
     let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
     let me = request.guard::<User>().await.succeeded();
@@ -607,9 +605,9 @@ async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
     }).await
 }
 
-pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: Config, env: Environment, port: u16, seed_metadata: Arc<RwLock<HashMap<String, SeedMetadata>>>) -> Result<Rocket<rocket::Ignite>, crate::Error> {
-    let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
-    let racetime_config = if env.is_dev() { &config.racetime_oauth_dev } else { &config.racetime_oauth_production };
+pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: Config, port: u16, seed_metadata: Arc<RwLock<HashMap<String, SeedMetadata>>>) -> Result<Rocket<rocket::Ignite>, crate::Error> {
+    let discord_config = if Environment::default().is_dev() { &config.discord_dev } else { &config.discord_production };
+    let racetime_config = if Environment::default().is_dev() { &config.racetime_oauth_dev } else { &config.racetime_oauth_production };
     Ok(rocket::custom(rocket::Config::figment().merge(rocket::Config {
         secret_key: SecretKey::from(&BASE64.decode(&config.secret_key)?),
         log_level: Some(rocket::config::Level::ERROR),
@@ -687,12 +685,12 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
     .attach(rocket_csrf::Fairing::default())
     .attach(OAuth2::<auth::RaceTime>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
         rocket_oauth2::StaticProvider {
-            auth_uri: format!("https://{}/o/authorize", env.racetime_host()).into(),
-            token_uri: format!("https://{}/o/token", env.racetime_host()).into(),
+            auth_uri: format!("https://{}/o/authorize", racetime_host()).into(),
+            token_uri: format!("https://{}/o/token", racetime_host()).into(),
         },
         racetime_config.client_id.clone(),
         racetime_config.client_secret.clone(),
-        Some(match env {
+        Some(match Environment::default() {
             Environment::Local => uri!("http://localhost:24814", auth::racetime_callback),
             Environment::Dev => uri!("https://dev.midos.house", auth::racetime_callback),
             Environment::Production => uri!("https://midos.house", auth::racetime_callback),
@@ -702,7 +700,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         rocket_oauth2::StaticProvider::Discord,
         discord_config.client_id.to_string(),
         discord_config.client_secret.to_string(),
-        Some(match env {
+        Some(match Environment::default() {
             Environment::Local => uri!("http://localhost:24814", auth::discord_callback),
             Environment::Dev => uri!("https://dev.midos.house", auth::discord_callback),
             Environment::Production => uri!("https://midos.house", auth::discord_callback),
@@ -715,7 +713,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         },
         config.challonge.client_id.to_string(),
         config.challonge.client_secret.to_string(),
-        Some(match env {
+        Some(match Environment::default() {
             Environment::Local => uri!("http://localhost:24814", auth::challonge_callback),
             Environment::Dev => uri!("https://dev.midos.house", auth::challonge_callback),
             Environment::Production => uri!("https://midos.house", auth::challonge_callback),
@@ -728,14 +726,13 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         },
         config.startgg_oauth.client_id.to_string(),
         config.startgg_oauth.client_secret.to_string(),
-        Some(match env {
+        Some(match Environment::default() {
             Environment::Local => uri!("http://localhost:24814", auth::startgg_callback),
             Environment::Dev => uri!("https://dev.midos.house", auth::startgg_callback),
             Environment::Production => uri!("https://midos.house", auth::startgg_callback),
         }.to_string()),
     )))
     .manage(config)
-    .manage(env)
     .manage(pool.clone())
     .manage(discord_ctx)
     .manage(http_client)

@@ -22,7 +22,7 @@ pub(crate) struct RestreamMatch {
 }
 
 impl RestreamMatch {
-    pub(crate) async fn matches(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, race: &Race) -> Result<bool, cal::Error> {
+    pub(crate) async fn matches(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, race: &Race) -> Result<bool, cal::Error> {
         Ok(if race.phase.as_ref().is_some_and(|phase| phase == "Qualifier") {
             let Some((_, match_round)) = regex_captures!("^Qualifier #([0-9]+)$", &self.title) else { return Ok(false) };
             race.round.as_ref().is_some_and(|race_round| race_round == match_round)
@@ -33,7 +33,7 @@ impl RestreamMatch {
                     if self.players.len() == 2 {
                         for players in self.players.iter().permutations(2) {
                             for (entrant, player) in entrants.iter().zip_eq(players) {
-                                if !player.matches(&mut *transaction, env, http_client, entrant).await? {
+                                if !player.matches(&mut *transaction, http_client, entrant).await? {
                                     return Ok(false)
                                 }
                             }
@@ -46,7 +46,7 @@ impl RestreamMatch {
                     if self.players.len() == 2 {
                         for players in self.players.iter().permutations(3) {
                             for (entrant, player) in entrants.iter().zip_eq(players) {
-                                if !player.matches(&mut *transaction, env, http_client, entrant).await? {
+                                if !player.matches(&mut *transaction, http_client, entrant).await? {
                                     return Ok(false)
                                 }
                             }
@@ -73,11 +73,11 @@ struct Player {
 }
 
 impl Player {
-    async fn matches(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, http_client: &reqwest::Client, entrant: &Entrant) -> Result<bool, cal::Error> {
+    async fn matches(&self, transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, entrant: &Entrant) -> Result<bool, cal::Error> {
         Ok(match entrant {
             Entrant::MidosHouseTeam(team) => if_chain! {
                 if let Ok(member) = team.members(transaction).await?.into_iter().exactly_one();
-                if let Some(user_data) = member.racetime_user_data(env, http_client).await?;
+                if let Some(user_data) = member.racetime_user_data(http_client).await?;
                 if let Some(twitch_name) = user_data.twitch_name;
                 then {
                     twitch_name.to_ascii_lowercase() == self.streaming_from.to_ascii_lowercase()

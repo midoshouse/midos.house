@@ -351,7 +351,7 @@ impl<E: Into<GetError>> From<E> for StatusOrError<GetError> {
 }
 
 #[rocket::get("/seed/<filename>")]
-pub(crate) async fn get(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, seed_metadata: &State<Arc<RwLock<HashMap<String, SeedMetadata>>>>, filename: OptSuffix<'_, &str>) -> Result<GetResponse, StatusOrError<GetError>> {
+pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, seed_metadata: &State<Arc<RwLock<HashMap<String, SeedMetadata>>>>, filename: OptSuffix<'_, &str>) -> Result<GetResponse, StatusOrError<GetError>> {
     let OptSuffix(file_stem, suffix) = filename;
     if !regex_is_match!("^[0-9A-Za-z_-]+$", file_stem) { return Err(StatusOrError::Status(Status::NotFound)) }
     Ok(match suffix {
@@ -415,8 +415,8 @@ pub(crate) async fn get(pool: &State<PgPool>, env: &State<Environment>, me: Opti
                 Ok(spoiler) => ChestAppearances::from(spoiler),
                 Err(e) => {
                     eprintln!("failed to add favicon to {file_stem}.json: {e} ({e:?})");
-                    if let Environment::Production = **env {
-                        wheel::night_report(&format!("{}/error", env.night_path()), Some(&format!("failed to add favicon to {file_stem}.json: {e} ({e:?})"))).await?;
+                    if let Environment::Production = Environment::default() {
+                        wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to add favicon to {file_stem}.json: {e} ({e:?})"))).await?;
                     }
                     ChestAppearances::random()
                 }

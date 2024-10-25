@@ -114,7 +114,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                     if !clean_shutdown.open_rooms.is_empty() {
                                         println!("preparing to stop Mido's House: waiting for {} rooms to close:", clean_shutdown.open_rooms.len());
                                         for room_url in &clean_shutdown.open_rooms {
-                                            println!("https://{}{room_url}", global_state.env.racetime_host());
+                                            println!("https://{}{room_url}", racetime_host());
                                         }
                                         let notifier = Arc::clone(&clean_shutdown.notifier);
                                         unlock!();

@@ -74,6 +74,10 @@ impl Environment {
     }
 }
 
+fn night_path() -> &'static str {
+    Environment::default().night_path()
+}
+
 fn racetime_host() -> &'static str {
     Environment::default().racetime_host()
 }
@@ -139,11 +143,10 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
             }
         }
     } else {
-        let env = Environment::default();
         let default_panic_hook = std::panic::take_hook();
-        if let Environment::Production = env {
+        if let Environment::Production = Environment::default() {
             std::panic::set_hook(Box::new(move |info| {
-                let _ = wheel::night_report_sync(&format!("{}/error", env.night_path()), Some("thread panic"));
+                let _ = wheel::night_report_sync(&format!("{}/error", night_path()), Some("thread panic"));
                 default_panic_hook(info)
             }));
         }
@@ -155,11 +158,11 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
             .hickory_dns(true)
             .https_only(true)
             .build()?;
-        let discord_config = if env.is_dev() { &config.discord_dev } else { &config.discord_production };
+        let discord_config = if Environment::default().is_dev() { &config.discord_dev } else { &config.discord_production };
         let discord_builder = serenity_utils::builder(discord_config.bot_token.clone()).await?;
         let db_pool = PgPool::connect_with(PgConnectOptions::default()
             .username("mido")
-            .database(if env.is_dev() { "fados_house" } else { "midos_house" })
+            .database(if Environment::default().is_dev() { "fados_house" } else { "midos_house" })
             .application_name("midos-house")
             .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(10))
         ).await?;
@@ -169,16 +172,15 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
             discord_builder.ctx_fut.clone(),
             http_client.clone(),
             config.clone(),
-            env,
-            port.unwrap_or_else(|| if env.is_dev() { 24814 } else { 24812 }),
+            port.unwrap_or_else(|| if Environment::default().is_dev() { 24814 } else { 24812 }),
             Arc::clone(&seed_metadata),
         ).await?;
         let new_room_lock = Arc::default();
         let extra_room_tx = Arc::new(RwLock::new(mpsc::channel(1).0));
-        let discord_builder = discord_bot::configure_builder(discord_builder, db_pool.clone(), http_client.clone(), config.clone(), env, Arc::clone(&new_room_lock), Arc::clone(&extra_room_tx), rocket.shutdown());
+        let discord_builder = discord_bot::configure_builder(discord_builder, db_pool.clone(), http_client.clone(), config.clone(), Arc::clone(&new_room_lock), Arc::clone(&extra_room_tx), rocket.shutdown());
         let clean_shutdown = Arc::default();
-        let racetime_config = if env.is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone();
-        let startgg_token = if env.is_dev() { &config.startgg_dev } else { &config.startgg_production };
+        let racetime_config = if Environment::default().is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone();
+        let startgg_token = if Environment::default().is_dev() { &config.startgg_dev } else { &config.startgg_production };
         let (seed_cache_tx, seed_cache_rx) = watch::channel(());
         let global_state = Arc::new(racetime_bot::GlobalState::new(
             new_room_lock,
@@ -189,19 +191,18 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
             config.ootr_api_key.clone(),
             config.ootr_api_key_encryption.clone(),
             startgg_token.clone(),
-            env,
             discord_builder.ctx_fut.clone(),
             Arc::clone(&clean_shutdown),
             seed_cache_tx,
             seed_metadata,
         ).await);
         #[cfg(unix)] let unix_listener = unix_socket::listen(rocket.shutdown(), clean_shutdown, Arc::clone(&global_state));
-        let racetime_task = tokio::spawn(racetime_bot::main(env, config.clone(), rocket.shutdown(), global_state, seed_cache_rx)).map(|res| match res {
+        let racetime_task = tokio::spawn(racetime_bot::main(config.clone(), rocket.shutdown(), global_state, seed_cache_rx)).map(|res| match res {
             Ok(Ok(())) => Ok(()),
             Ok(Err(e)) => Err(Error::from(e)),
             Err(e) => Err(Error::from(e)),
         });
-        let import_task = tokio::spawn(cal::auto_import_races(db_pool, http_client, env, config, rocket.shutdown(), discord_builder.ctx_fut.clone())).map(|res| match res {
+        let import_task = tokio::spawn(cal::auto_import_races(db_pool, http_client, config, rocket.shutdown(), discord_builder.ctx_fut.clone())).map(|res| match res {
             Ok(Ok(())) => Ok(()),
             Ok(Err(e)) => Err(Error::from(e)),
             Err(e) => Err(Error::from(e)),

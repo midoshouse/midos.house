@@ -257,7 +257,7 @@ impl<'a> Data<'a> {
     }
 
     /// Weights for chest appearances in Mido's house in this event, generated using <https://github.com/fenhl/ootrstats>
-    pub(crate) async fn chests(&self, env: Environment) -> wheel::Result<ChestAppearances> {
+    pub(crate) async fn chests(&self) -> wheel::Result<ChestAppearances> {
         macro_rules! from_file {
             ($path:literal) => {{
                 static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!($path)).expect("failed to parse chest weights"));
@@ -314,7 +314,7 @@ impl<'a> Data<'a> {
             (Series::TriforceBlitz, "3") => from_file!("../../assets/event/tfb/chests-3-8.1.32-blitz.57.json"),
             (Series::WeTryToBeBetter, "1") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
             (series, event) => {
-                wheel::night_report(&format!("{}/chestsError", env.night_path()), Some(&format!("no chest appearances specified for {series}/{event}, using random chests"))).await?;
+                wheel::night_report(&format!("{}/chestsError", night_path()), Some(&format!("no chest appearances specified for {series}/{event}, using random chests"))).await?;
                 ChestAppearances::random()
             }
         })
@@ -455,7 +455,7 @@ impl<'a> Data<'a> {
         Ok(None)
     }
 
-    pub(crate) async fn header(&self, transaction: &mut Transaction<'_, Postgres>, env: Environment, me: Option<&User>, tab: Tab, is_subpage: bool) -> Result<RawHtml<String>, Error> {
+    pub(crate) async fn header(&self, transaction: &mut Transaction<'_, Postgres>, me: Option<&User>, tab: Tab, is_subpage: bool) -> Result<RawHtml<String>, Error> {
         let signed_up = if let Some(me) = me {
             sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
                 id = team
@@ -532,7 +532,7 @@ impl<'a> Data<'a> {
                 }
                 @if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event) {
                     @if goal.is_custom() { //TODO also support non-custom goals, needs either a list of the internal goal IDs or an adjustment to the startrace page's GET parameter parsing
-                        @let mut practice_url = Url::parse(&format!("https://{}/{}/startrace", env.racetime_host(), racetime_bot::CATEGORY))?;
+                        @let mut practice_url = Url::parse(&format!("https://{}/{}/startrace", racetime_host(), racetime_bot::CATEGORY))?;
                         @let practice_url = practice_url
                             .query_pairs_mut()
                             .append_pair(if goal.is_custom() { "custom_goal" } else { "goal" }, goal.as_str())
@@ -671,10 +671,10 @@ impl<E: Into<InfoError>> From<E> for StatusOrError<InfoError> {
 }
 
 #[rocket::get("/event/<series>/<event>")]
-pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
+pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<InfoError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Info, false).await?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Info, false).await?;
     let content = match data.series {
         Series::BattleRoyale => ohko::info(&mut transaction, &data).await?,
         Series::CoOp => coop::info(&mut transaction, &data).await?,
@@ -717,14 +717,14 @@ pub(crate) async fn info(pool: &State<PgPool>, env: &State<Environment>, me: Opt
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &data.display_name, content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &data.display_name, content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/races")]
-pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State<Environment>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Races, false).await?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Races, false).await?;
     let (mut past_races, ongoing_and_upcoming_races) = Race::for_event(&mut transaction, http_client, &data).await?
         .into_iter()
         .partition::<Vec<_>, _>(|race| race.is_ended());
@@ -747,13 +747,13 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
         //TODO copiable calendar link (with link to index for explanation?)
         @if any_races_ongoing_or_upcoming {
             //TODO split into ongoing and upcoming, show headers for both
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create, can_edit, show_restream_consent, challonge_import_ctx: None }, &ongoing_and_upcoming_races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: true, can_create, can_edit, show_restream_consent, challonge_import_ctx: None }, &ongoing_and_upcoming_races).await?;
         }
         @if !past_races.is_empty() {
             @if any_races_ongoing_or_upcoming {
                 h2 : "Past races";
             }
-            : cal::race_table(&mut transaction, &*discord_ctx.read().await, **env, http_client, Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: false, can_create: can_create && !any_races_ongoing_or_upcoming, can_edit, show_restream_consent: false, challonge_import_ctx: None }, &past_races).await?;
+            : cal::race_table(&mut transaction, &*discord_ctx.read().await, http_client, Some(&data), cal::RaceTableOptions { game_count: false, show_multistreams: false, can_create: can_create && !any_races_ongoing_or_upcoming, can_edit, show_restream_consent: false, challonge_import_ctx: None }, &past_races).await?;
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 @match data.match_source() {
@@ -767,7 +767,7 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, env: &State
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &format!("Races — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Races — {}", data.display_name), content).await?)
 }
 
 pub(crate) enum StatusContext<'v> {
@@ -808,8 +808,8 @@ impl<'v> StatusContext<'v> {
     }
 }
 
-async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, mut ctx: StatusContext<'_>) -> Result<RawHtml<String>, Error> {
-    let header = data.header(&mut transaction, env, me.as_ref(), Tab::MyStatus, false).await?;
+async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, mut ctx: StatusContext<'_>) -> Result<RawHtml<String>, Error> {
+    let header = data.header(&mut transaction, me.as_ref(), Tab::MyStatus, false).await?;
     let content = if let Some(ref me) = me {
         if let Some(row) = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, role AS "role: Role", resigned, restream_consent FROM teams, team_members WHERE
             id = team
@@ -1134,14 +1134,14 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, env: Environmen
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(env).await?, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), content).await?)
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("My Status — {}", data.display_name), content).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/status")]
-pub(crate) async fn status(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn status(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(status_page(transaction, **env, me, uri, csrf.as_ref(), data, StatusContext::None).await?)
+    Ok(status_page(transaction, me, uri, csrf.as_ref(), data, StatusContext::None).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1152,7 +1152,7 @@ pub(crate) struct StatusForm {
 }
 
 #[rocket::post("/event/<series>/<event>/status", data = "<form>")]
-pub(crate) async fn status_post(env: &State<Environment>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, StatusForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn status_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, StatusForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1176,14 +1176,14 @@ pub(crate) async fn status_post(env: &State<Environment>, pool: &State<PgPool>, 
             }
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(status_page(transaction, **env, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
+            RedirectOrContent::Content(status_page(transaction, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
         } else {
             sqlx::query!("UPDATE teams SET restream_consent = $1 WHERE id = $2", value.restream_consent, row.id as _).execute(&mut *transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(status(series, event))))
         }
     } else {
-        RedirectOrContent::Content(status_page(transaction, **env, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
+        RedirectOrContent::Content(status_page(transaction, Some(me), uri, csrf.as_ref(), data, StatusContext::Edit(form.context)).await?)
     })
 }
 
@@ -1204,25 +1204,25 @@ impl<E: Into<FindTeamError>> From<E> for StatusOrError<FindTeamError> {
     }
 }
 
-async fn find_team_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
+async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, FindTeamError> {
     Ok(match data.team_config {
         TeamConfig::Solo => {
-            let header = data.header(&mut transaction, env, me.as_ref(), Tab::FindTeam, false).await?;
-            page(transaction, &me, &uri, PageStyle { chests: data.chests(env).await?, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
+            let header = data.header(&mut transaction, me.as_ref(), Tab::FindTeam, false).await?;
+            page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Find Teammates — {}", data.display_name), html! {
                 : header;
                 : "This is a solo event.";
             }).await?
         }
-        TeamConfig::Pictionary => pic::find_team_form(transaction, env, me, uri, csrf, data, ctx).await?,
-        TeamConfig::CoOp | TeamConfig::Multiworld => mw::find_team_form(transaction, env, me, uri, csrf, data, ctx).await?,
+        TeamConfig::Pictionary => pic::find_team_form(transaction, me, uri, csrf, data, ctx).await?,
+        TeamConfig::CoOp | TeamConfig::Multiworld => mw::find_team_form(transaction, me, uri, csrf, data, ctx).await?,
     })
 }
 
 #[rocket::get("/event/<series>/<event>/find-team")]
-pub(crate) async fn find_team(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
+pub(crate) async fn find_team(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<FindTeamError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(find_team_form(transaction, **env, me, uri, csrf.as_ref(), data, Context::default()).await?)
+    Ok(find_team_form(transaction, me, uri, csrf.as_ref(), data, Context::default()).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -1237,7 +1237,7 @@ pub(crate) struct FindTeamForm {
 }
 
 #[rocket::post("/event/<series>/<event>/find-team", data = "<form>")]
-pub(crate) async fn find_team_post(pool: &State<PgPool>, env: &State<Environment>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
+pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, FindTeamForm>>) -> Result<RedirectOrContent, StatusOrError<FindTeamError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1263,14 +1263,14 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, env: &State<Environment
             form.context.push_error(form::Error::validation("You are already signed up for this event."));
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(find_team_form(transaction, **env, Some(me), uri, csrf.as_ref(), data, form.context).await?)
+            RedirectOrContent::Content(find_team_form(transaction, Some(me), uri, csrf.as_ref(), data, form.context).await?)
         } else {
             sqlx::query!("INSERT INTO looking_for_team (series, event, user_id, role, availability, notes) VALUES ($1, $2, $3, $4, $5, $6)", series as _, event, me.id as _, value.role.unwrap_or_default() as _, value.availability, value.notes).execute(&mut *transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(find_team(series, event))))
         }
     } else {
-        RedirectOrContent::Content(find_team_form(transaction, **env, Some(me), uri, csrf.as_ref(), data, form.context).await?)
+        RedirectOrContent::Content(find_team_form(transaction, Some(me), uri, csrf.as_ref(), data, form.context).await?)
     })
 }
 
@@ -1377,14 +1377,14 @@ impl<E: Into<ResignError>> From<E> for StatusOrError<ResignError> {
 }
 
 #[rocket::get("/event/<series>/<event>/resign/<team>")]
-pub(crate) async fn resign(env: &State<Environment>, pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() {
         return Err(StatusOrError::Status(Status::Forbidden))
     }
     let is_started = data.is_started(&mut transaction).await?;
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Resign — {}", data.display_name), html! {
         p {
             @if is_started {
                 @if let TeamConfig::Solo = data.team_config {
@@ -1474,11 +1474,11 @@ pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFutu
 }
 
 #[rocket::get("/event/<series>/<event>/opt-out")]
-pub(crate) async fn opt_out(env: &State<Environment>, pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn opt_out(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() {
-        return Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
+        return Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
             p {
                 : "You can no longer opt out of participating in ";
                 : data;
@@ -1491,7 +1491,7 @@ pub(crate) async fn opt_out(env: &State<Environment>, pool: &State<PgPool>, me: 
             return Err(StatusOrError::Status(Status::Forbidden)) //TODO ask to connect a racetime.gg account
         }
     } else {
-        return Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
+        return Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
             p {
                 a(href = uri!(auth::login(Some(uri!(opt_out(series, event))))).to_string()) : "Sign in or create a Mido's House account";
                 : " to opt out of participating in ";
@@ -1516,7 +1516,7 @@ pub(crate) async fn opt_out(env: &State<Environment>, pool: &State<PgPool>, me: 
     } else {
         false
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
         @if opted_out {
             p : "You have already opted out.";
         } else if entered {
@@ -1598,7 +1598,7 @@ pub(crate) struct RequestAsyncForm {
 }
 
 #[rocket::post("/event/<series>/<event>/request-async", data = "<form>")]
-pub(crate) async fn request_async(pool: &State<PgPool>, env: &State<Environment>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, RequestAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn request_async(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, RequestAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1633,7 +1633,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, env: &State<Environment>
         }
         if form.context.errors().next().is_some() {
             transaction.rollback().await?;
-            RedirectOrContent::Content(status_page(pool.begin().await?, **env, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
+            RedirectOrContent::Content(status_page(pool.begin().await?, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
         } else {
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
@@ -1643,7 +1643,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, env: &State<Environment>
         }
     } else {
         transaction.rollback().await?;
-        RedirectOrContent::Content(status_page(pool.begin().await?, **env, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
+        RedirectOrContent::Content(status_page(pool.begin().await?, Some(me), uri, csrf.as_ref(), data, StatusContext::RequestAsync(form.context)).await?)
     })
 }
 
@@ -1669,7 +1669,7 @@ pub(crate) struct SubmitAsyncForm {
 }
 
 #[rocket::post("/event/<series>/<event>/submit-async", data = "<form>")]
-pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, SubmitAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, SubmitAsyncForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1743,7 +1743,7 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
         ];
         if form.context.errors().next().is_some() {
             transaction.rollback().await?;
-            RedirectOrContent::Content(status_page(pool.begin().await?, **env, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
+            RedirectOrContent::Content(status_page(pool.begin().await?, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
         } else {
             let team = team.expect("validated");
             let async_kind = async_kind.expect("validated");
@@ -1834,15 +1834,15 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, env: &State<Environment>,
         }
     } else {
         transaction.rollback().await?;
-        RedirectOrContent::Content(status_page(pool.begin().await?, **env, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
+        RedirectOrContent::Content(status_page(pool.begin().await?, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
     })
 }
 
 #[rocket::get("/event/<series>/<event>/volunteer")]
-pub(crate) async fn volunteer(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn volunteer(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let header = data.header(&mut transaction, **env, me.as_ref(), Tab::Volunteer, false).await?;
+    let header = data.header(&mut transaction, me.as_ref(), Tab::Volunteer, false).await?;
     let content = match data.series {
         Series::League => html! {
             @let chuckles = User::from_id(&mut *transaction, Id::from(3480396938053963767_u64)).await?.ok_or(Error::OrganizerUserData)?;
@@ -1875,7 +1875,7 @@ pub(crate) async fn volunteer(pool: &State<PgPool>, env: &State<Environment>, me
         },
         _ => unimplemented!(), //TODO ask other events' organizers if they want to show the Volunteer tab
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests(**env).await?, ..PageStyle::default() }, &data.display_name, html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &data.display_name, html! {
         : header;
         : content;
     }).await?)

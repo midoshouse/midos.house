@@ -6,8 +6,8 @@ use crate::{
     prelude::*,
 };
 
-async fn configure_form(mut transaction: Transaction<'_, Postgres>, env: Environment, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
-    let header = event.header(&mut transaction, env, me.as_ref(), Tab::Configure, true).await?;
+async fn configure_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
+    let header = event.header(&mut transaction, me.as_ref(), Tab::Configure, true).await?;
     let form = if event.is_ended() {
         html! {
             article {
@@ -48,17 +48,17 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, env: Environ
             }
         }
     };
-    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests(env).await?, ..PageStyle::default() }, &format!("Configure — {}", event.display_name), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Configure — {}", event.display_name), html! {
         : header;
         : form;
     }).await?)
 }
 
 #[rocket::get("/event/<series>/<event>/configure")]
-pub(crate) async fn get(pool: &State<PgPool>, env: &State<Environment>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(RedirectOrContent::Content(configure_form(transaction, **env, me, uri, csrf.as_ref(), data, Context::default()).await?))
+    Ok(RedirectOrContent::Content(configure_form(transaction, me, uri, csrf.as_ref(), data, Context::default()).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -71,7 +71,7 @@ pub(crate) struct ConfigureForm {
 }
 
 #[rocket::post("/event/<series>/<event>/configure", data = "<form>")]
-pub(crate) async fn post(env: &State<Environment>, pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ConfigureForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, ConfigureForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -90,7 +90,7 @@ pub(crate) async fn post(env: &State<Environment>, pool: &State<PgPool>, me: Use
             None
         };
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(configure_form(transaction, **env, Some(me), uri, csrf.as_ref(), data, form.context).await?)
+            RedirectOrContent::Content(configure_form(transaction, Some(me), uri, csrf.as_ref(), data, form.context).await?)
         } else {
             if let Some(auto_import) = value.auto_import {
                 sqlx::query!("UPDATE events SET auto_import = $1 WHERE series = $2 AND event = $3", auto_import, data.series as _, &data.event).execute(&mut *transaction).await?;
@@ -102,6 +102,6 @@ pub(crate) async fn post(env: &State<Environment>, pool: &State<PgPool>, me: Use
             RedirectOrContent::Redirect(Redirect::to(uri!(super::info(series, event))))
         }
     } else {
-        RedirectOrContent::Content(configure_form(transaction, **env, Some(me), uri, csrf.as_ref(), data, form.context).await?)
+        RedirectOrContent::Content(configure_form(transaction, Some(me), uri, csrf.as_ref(), data, form.context).await?)
     })
 }

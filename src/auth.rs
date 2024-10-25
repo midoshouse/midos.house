@@ -52,13 +52,11 @@ pub(crate) enum UserFromRequestError {
     GraphQLQueryResponse,
     #[error("missing HTTP client")]
     HttpClient,
-    #[error("failed to get racetime.gg host from environment")]
-    RaceTimeHost,
     #[error("user to view as does not exist")]
     ViewAsNoSuchUser,
 }
 
-async fn handle_racetime_token_response(env: &State<Environment>, client: &reqwest::Client, cookies: &CookieJar<'_>, token: &TokenResponse<RaceTime>) -> Result<RaceTimeUser, UserFromRequestError> {
+async fn handle_racetime_token_response(client: &reqwest::Client, cookies: &CookieJar<'_>, token: &TokenResponse<RaceTime>) -> Result<RaceTimeUser, UserFromRequestError> {
     let mut cookie = Cookie::build(("racetime_token", token.access_token().to_owned()))
         .same_site(SameSite::Lax);
     if let Some(expires_in) = token.expires_in() {
@@ -70,7 +68,7 @@ async fn handle_racetime_token_response(env: &State<Environment>, client: &reqwe
             .same_site(SameSite::Lax)
             .permanent());
     }
-    Ok(client.get(format!("https://{}/o/userinfo", env.racetime_host()))
+    Ok(client.get(format!("https://{}/o/userinfo", racetime_host()))
         .bearer_auth(token.access_token())
         .send().await?
         .detailed_error_for_status().await?
@@ -210,29 +208,25 @@ impl<'r> FromRequest<'r> for RaceTimeUser {
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, UserFromRequestError> {
         match req.guard::<&CookieJar<'_>>().await {
             Outcome::Success(cookies) => match req.guard::<&State<reqwest::Client>>().await {
-                Outcome::Success(client) => match req.guard::<&State<Environment>>().await {
-                    Outcome::Success(env) => if let Some(token) = cookies.get_private("racetime_token") {
-                        match client.get(format!("https://{}/o/userinfo", env.racetime_host()))
-                            .bearer_auth(token.value())
-                            .send()
-                            .err_into::<UserFromRequestError>()
-                            .and_then(|response| response.detailed_error_for_status().err_into())
-                            .await
-                        {
-                            Ok(response) => Outcome::Success(guard_try!(response.json_with_text_in_error().await)),
-                            Err(e) => Outcome::Error((Status::BadGateway, e.into())),
-                        }
-                    } else if let Some(token) = cookies.get_private("racetime_refresh_token") {
-                        match req.guard::<OAuth2<RaceTime>>().await {
-                            Outcome::Success(oauth) => Outcome::Success(guard_try!(handle_racetime_token_response(env, client, cookies, &guard_try!(oauth.refresh(token.value()).await)).await)),
-                            Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::Cookie)),
-                            Outcome::Forward(status) => Outcome::Forward(status),
-                        }
-                    } else {
-                        Outcome::Error((Status::Unauthorized, UserFromRequestError::Cookie))
-                    },
-                    Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::RaceTimeHost)),
-                    Outcome::Forward(status) => Outcome::Forward(status),
+                Outcome::Success(client) => if let Some(token) = cookies.get_private("racetime_token") {
+                    match client.get(format!("https://{}/o/userinfo", racetime_host()))
+                        .bearer_auth(token.value())
+                        .send()
+                        .err_into::<UserFromRequestError>()
+                        .and_then(|response| response.detailed_error_for_status().err_into())
+                        .await
+                    {
+                        Ok(response) => Outcome::Success(guard_try!(response.json_with_text_in_error().await)),
+                        Err(e) => Outcome::Error((Status::BadGateway, e.into())),
+                    }
+                } else if let Some(token) = cookies.get_private("racetime_refresh_token") {
+                    match req.guard::<OAuth2<RaceTime>>().await {
+                        Outcome::Success(oauth) => Outcome::Success(guard_try!(handle_racetime_token_response(client, cookies, &guard_try!(oauth.refresh(token.value()).await)).await)),
+                        Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::Cookie)),
+                        Outcome::Forward(status) => Outcome::Forward(status),
+                    }
+                } else {
+                    Outcome::Error((Status::Unauthorized, UserFromRequestError::Cookie))
                 },
                 Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::HttpClient)),
                 Outcome::Forward(status) => Outcome::Forward(status),
@@ -422,9 +416,9 @@ pub(crate) enum RaceTimeCallbackError {
 }
 
 #[rocket::get("/auth/racetime")]
-pub(crate) async fn racetime_callback(env: &State<Environment>, pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<Redirect, RaceTimeCallbackError> {
+pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<Redirect, RaceTimeCallbackError> {
     let mut transaction = pool.begin().await?;
-    let racetime_user = handle_racetime_token_response(env, client, cookies, &token).await?;
+    let racetime_user = handle_racetime_token_response(client, cookies, &token).await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(if User::from_racetime(&mut *transaction, &racetime_user.id).await?.is_some() {
         Redirect::to(redirect_uri)
