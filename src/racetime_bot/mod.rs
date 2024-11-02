@@ -1016,7 +1016,7 @@ impl Goal {
                 };
                 let (article, description) = match preset {
                     rsl::Preset::League => ("a", format!("Random Settings League seed")),
-                    rsl::Preset::Beginner => ("a", format!("random settings Beginner seed")),
+                    rsl::Preset::Beginner => ("an", format!("RSL-Lite seed")),
                     rsl::Preset::Intermediate => ("a", format!("random settings Intermediate seed")),
                     rsl::Preset::Ddr => ("a", format!("random settings DDR seed")),
                     rsl::Preset::CoOp => ("a", format!("random settings co-op seed")),

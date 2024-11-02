@@ -34,7 +34,7 @@ impl Preset {
     pub(crate) fn race_info(&self) -> &'static str {
         match self {
             Self::League => "Random Settings League",
-            Self::Beginner => "Random Settings Lite",
+            Self::Beginner => "RSL-Lite",
             Self::Intermediate => "Intermediate Random Settings",
             Self::Ddr => "Random Settings DDR",
             Self::CoOp => "Random Settings Co-Op",
