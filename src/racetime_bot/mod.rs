@@ -3612,8 +3612,8 @@ impl RaceHandler<GlobalState> for Handler {
                         auto_start: true,
                         allow_comments: true,
                         hide_comments: true,
-                        allow_prerace_chat: true,
-                        allow_midrace_chat: event.series != Series::Standard || event.event != "8",
+                        allow_prerace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
+                        allow_midrace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
                         allow_non_entrant_chat: false,
                         chat_message_delay: 0,
                     }.edit_with_host(&ctx.global_state.host_info, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
@@ -3658,8 +3658,8 @@ impl RaceHandler<GlobalState> for Handler {
                                             auto_start: false,
                                             allow_comments: true,
                                             hide_comments: true,
-                                            allow_prerace_chat: true,
-                                            allow_midrace_chat: event.series != Series::Standard || event.event != "8",
+                                            allow_prerace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
+                                            allow_midrace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
                                             allow_non_entrant_chat: false,
                                             chat_message_delay: 0,
                                         }.edit_with_host(&ctx.global_state.host_info, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
@@ -4186,8 +4186,8 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                     auto_start: cal_event.is_private_async_part() || cal_event.race.video_urls.is_empty(),
                     allow_comments: true,
                     hide_comments: true,
-                    allow_prerace_chat: true,
-                    allow_midrace_chat: event.series != Series::Standard || event.event != "8",
+                    allow_prerace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
+                    allow_midrace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
                     allow_non_entrant_chat: false, // only affects the race while it's ongoing, so !monitor still works
                     chat_message_delay: 0,
                     info_user,
