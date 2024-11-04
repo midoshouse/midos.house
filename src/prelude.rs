@@ -90,7 +90,10 @@ pub(crate) use {
             Contextual,
             Form,
         },
-        http::Status,
+        http::{
+            Status,
+            ext::IntoOwned as _,
+        },
         request::{
             self,
             FromParam,

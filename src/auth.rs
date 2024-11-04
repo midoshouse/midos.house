@@ -5,7 +5,6 @@ use {
             Cookie,
             CookieJar,
             SameSite,
-            ext::IntoOwned as _,
         },
         outcome::Outcome,
     },

@@ -2100,6 +2100,7 @@ pub(crate) async fn race_table(
     transaction: &mut Transaction<'_, Postgres>,
     discord_ctx: &DiscordCtx,
     http_client: &reqwest::Client,
+    uri: &Origin<'_>,
     event: Option<&event::Data<'_>>,
     options: RaceTableOptions<'_>,
     races: &[Race],
@@ -2326,7 +2327,7 @@ pub(crate) async fn race_table(
                         @if has_buttons {
                             td {
                                 @if options.can_edit {
-                                    a(class = "button", href = uri!(crate::cal::edit_race(race.series, &race.event, race.id)).to_string()) : "Edit";
+                                    a(class = "button", href = uri!(crate::cal::edit_race(race.series, &race.event, race.id, Some(uri))).to_string()) : "Edit";
                                 }
                             }
                         }
@@ -2374,7 +2375,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                     }
                 }
             } else {
-                let table = race_table(&mut transaction, discord_ctx, http_client, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: Some(ctx.clone()) }, &races).await?;
+                let table = race_table(&mut transaction, discord_ctx, http_client, &uri, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: Some(ctx.clone()) }, &races).await?;
                 let errors = ctx.errors().collect_vec();
                 full_form(uri!(import_races_post(event.series, &*event.event)), csrf, html! {
                     p : "The following races will be imported:";
@@ -2440,7 +2441,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
                     }
                 }
             } else {
-                let table = race_table(&mut transaction, discord_ctx, http_client, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: None }, &races).await?;
+                let table = race_table(&mut transaction, discord_ctx, http_client, &uri, Some(&event), RaceTableOptions { game_count: true, show_multistreams: false, can_create: false, can_edit: false, show_restream_consent: false, challonge_import_ctx: None }, &races).await?;
                 let errors = ctx.errors().collect_vec();
                 full_form(uri!(import_races_post(event.series, &*event.event)), csrf, html! {
                     p : "The following races will be imported:";
@@ -2742,12 +2743,12 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
     }
 }
 
-pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
+pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, redirect_to: Option<Origin<'_>>, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
     let header = event.header(&mut transaction, me.as_ref(), Tab::Races, true).await?;
     let fenhl = User::from_id(&mut *transaction, Id::<Users>::from(14571800683221815449_u64)).await?.ok_or(PageError::FenhlUserData)?;
     let form = if me.is_some() {
         let mut errors = ctx.as_ref().map(|ctx| ctx.errors().collect()).unwrap_or_default();
-        full_form(uri!(edit_race_post(event.series, &*event.event, race.id)), csrf, html! {
+        full_form(uri!(edit_race_post(event.series, &*event.event, race.id, redirect_to)), csrf, html! {
             @match race.schedule {
                 RaceSchedule::Unscheduled => {}
                 RaceSchedule::Live { ref room, .. } => : form_field("room", &mut errors, html! {
@@ -2836,7 +2837,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
         html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(edit_race(event.series, &*event.event, race.id))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(edit_race(event.series, &*event.event, race.id, redirect_to))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to edit this race.";
                 }
             }
@@ -2999,15 +3000,15 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
     Ok(page(transaction, &me, &uri, PageStyle { chests: event.chests().await?, ..PageStyle::default() }, &format!("Edit Race — {}", event.display_name), content).await?)
 }
 
-#[rocket::get("/event/<series>/<event>/races/<id>/edit")]
-pub(crate) async fn edit_race(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+#[rocket::get("/event/<series>/<event>/races/<id>/edit?<redirect_to>")]
+pub(crate) async fn edit_race(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let race = Race::from_id(&mut transaction, http_client, id).await?;
     if race.series != event.series || race.event != event.event {
-        return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(edit_race(race.series, race.event, id)))))
+        return Ok(RedirectOrContent::Redirect(Redirect::permanent(uri!(edit_race(race.series, race.event, id, redirect_to)))))
     }
-    Ok(RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, me, uri, csrf.as_ref(), event, race, None).await?))
+    Ok(RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, me, uri, csrf.as_ref(), event, race, redirect_to, None).await?))
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -3028,8 +3029,8 @@ pub(crate) struct EditRaceForm {
     restreamers: HashMap<Language, String>,
 }
 
-#[rocket::post("/event/<series>/<event>/races/<id>/edit", data = "<form>")]
-pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+#[rocket::post("/event/<series>/<event>/races/<id>/edit?<redirect_to>", data = "<form>")]
+pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let race = Race::from_id(&mut transaction, http_client, id).await?;
@@ -3282,7 +3283,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
             }
         }
         if form.context.errors().next().is_some() {
-            RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
+            RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), event, race, redirect_to, Some(form.context)).await?)
         } else {
             sqlx::query!(
                 "UPDATE races SET
@@ -3332,10 +3333,10 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
                 sqlx::query!("UPDATE races SET file_stem = $1 WHERE id = $2", file_stem, id as _).execute(&mut *transaction).await?;
             }
             transaction.commit().await?;
-            RedirectOrContent::Redirect(Redirect::to(uri!(event::races(event.series, &*event.event))))
+            RedirectOrContent::Redirect(Redirect::to(redirect_to.map(|Origin(uri)| uri.into_owned()).unwrap_or_else(|| uri!(event::races(event.series, &*event.event)))))
         }
     } else {
-        RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), event, race, Some(form.context)).await?)
+        RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), event, race, redirect_to, Some(form.context)).await?)
     })
 }
 
@@ -3390,7 +3391,7 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
         html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(edit_race(event.series, &*event.event, race.id))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(add_file_hash(event.series, &*event.event, race.id))))).to_string()) : "Sign in or create a Mido's House account";
                     : " to edit this race.";
                 }
             }
