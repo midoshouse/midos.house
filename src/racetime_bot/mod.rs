@@ -1996,6 +1996,29 @@ fn format_password(password: [OcarinaNote; 6]) -> impl fmt::Display {
     password.into_iter().map(|icon| icon.to_racetime_emoji()).format(" ")
 }
 
+async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Event, info_user: String, info_bot: String, auto_start: bool) -> racetime::StartRace {
+    racetime::StartRace {
+        goal: goal.as_str().to_owned(),
+        goal_is_custom: goal.is_custom(),
+        team_race: event.team_config.is_racetime_team_format() && matches!(cal_event.kind, cal::EventKind::Normal),
+        invitational: !matches!(cal_event.race.entrants, Entrants::Open),
+        unlisted: cal_event.is_private_async_part(),
+        ranked: event.series != Series::TriforceBlitz && !matches!(cal_event.race.schedule, RaceSchedule::Async { .. }),
+        require_even_teams: true,
+        start_delay: if matches!(cal_event.race.entrants, Entrants::Open) && goal.single_settings().map(|settings| settings.get("password_lock").map_or(false, |password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"))).unwrap_or_else(identity) { 30 } else { 15 },
+        time_limit: 24,
+        time_limit_auto_complete: false,
+        streaming_required: !Environment::default().is_dev() && !cal_event.is_private_async_part(),
+        allow_comments: true,
+        hide_comments: true,
+        allow_prerace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
+        allow_midrace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
+        allow_non_entrant_chat: false, // only affects the race while it's ongoing, so !monitor still works
+        chat_message_delay: 0,
+        info_user, info_bot, auto_start,
+    }
+}
+
 async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl_preset: Option<rsl::Preset>, show_password: bool) -> Result<(), Error> {
     let extra = seed.extra(Utc::now()).await.to_racetime()?;
     ctx.set_bot_raceinfo(&format!(
@@ -3596,28 +3619,12 @@ impl RaceHandler<GlobalState> for Handler {
                         }
                     }).await?;
                     let (access_token, _) = racetime::authorize_with_host(&ctx.global_state.host_info, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
-                    racetime::StartRace {
-                        goal: goal.as_str().to_owned(),
-                        goal_is_custom: goal.is_custom(),
-                        team_race: event.team_config.is_racetime_team_format(),
-                        invitational: !matches!(cal_event.race.entrants, Entrants::Open),
-                        unlisted: cal_event.is_private_async_part(),
-                        ranked: event.series != Series::TriforceBlitz && !matches!(cal_event.race.schedule, RaceSchedule::Async { .. }),
-                        info_user: ctx.data().await.info_user.clone().unwrap_or_default(),
-                        info_bot: ctx.data().await.info_bot.clone().unwrap_or_default(),
-                        require_even_teams: true,
-                        start_delay: if matches!(cal_event.race.entrants, Entrants::Open) && goal.single_settings().map(|settings| settings.get("password_lock").map_or(false, |password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"))).unwrap_or_else(identity) { 30 } else { 15 },
-                        time_limit: 24,
-                        time_limit_auto_complete: false,
-                        streaming_required: !Environment::default().is_dev() && !cal_event.is_private_async_part(),
-                        auto_start: true,
-                        allow_comments: true,
-                        hide_comments: true,
-                        allow_prerace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
-                        allow_midrace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
-                        allow_non_entrant_chat: false,
-                        chat_message_delay: 0,
-                    }.edit_with_host(&ctx.global_state.host_info, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
+                    room_options(
+                        goal, event, cal_event,
+                        ctx.data().await.info_user.clone().unwrap_or_default(),
+                        ctx.data().await.info_bot.clone().unwrap_or_default(),
+                        true,
+                    ).await.edit_with_host(&ctx.global_state.host_info, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
                 } else {
                     ctx.say(format!("Restream ready, still waiting for other restreams.")).await?;
                 }
@@ -3642,28 +3649,12 @@ impl RaceHandler<GlobalState> for Handler {
                                 Ok(restreamer_racetime_id) => {
                                     if restreams.is_empty() {
                                         let (access_token, _) = racetime::authorize_with_host(&ctx.global_state.host_info, &ctx.global_state.racetime_config.client_id, &ctx.global_state.racetime_config.client_secret, &ctx.global_state.http_client).await?;
-                                        racetime::StartRace {
-                                            goal: goal.as_str().to_owned(),
-                                            goal_is_custom: goal.is_custom(),
-                                            team_race: event.team_config.is_racetime_team_format(),
-                                            invitational: !matches!(cal_event.race.entrants, Entrants::Open),
-                                            unlisted: cal_event.is_private_async_part(),
-                                            ranked: event.series != Series::TriforceBlitz && !matches!(cal_event.race.schedule, RaceSchedule::Async { .. }),
-                                            info_user: ctx.data().await.info_user.clone().unwrap_or_default(),
-                                            info_bot: ctx.data().await.info_bot.clone().unwrap_or_default(),
-                                            require_even_teams: true,
-                                            start_delay: 15,
-                                            time_limit: 24,
-                                            time_limit_auto_complete: false,
-                                            streaming_required: !Environment::default().is_dev() && !cal_event.is_private_async_part(),
-                                            auto_start: false,
-                                            allow_comments: true,
-                                            hide_comments: true,
-                                            allow_prerace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
-                                            allow_midrace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
-                                            allow_non_entrant_chat: false,
-                                            chat_message_delay: 0,
-                                        }.edit_with_host(&ctx.global_state.host_info, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
+                                        room_options(
+                                            goal, event, cal_event,
+                                            ctx.data().await.info_user.clone().unwrap_or_default(),
+                                            ctx.data().await.info_bot.clone().unwrap_or_default(),
+                                            false,
+                                        ).await.edit_with_host(&ctx.global_state.host_info, &access_token, &ctx.global_state.http_client, CATEGORY, &ctx.data().await.slug).await?;
                                     }
                                     restreams.entry(restream_url).or_default().restreamer_racetime_id = Some(restreamer_racetime_id.clone());
                                     ctx.say("Restreamer assigned. Use “!ready” once the restream is ready. Auto-start will be unlocked once all restreams are ready.").await?; //TODO mention restreamer
@@ -4171,28 +4162,12 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                     }
                 };
                 let Some(goal) = Goal::for_event(cal_event.race.series, &cal_event.race.event) else { return Ok(None) };
-                let race_slug = racetime::StartRace {
-                    goal: goal.as_str().to_owned(),
-                    goal_is_custom: goal.is_custom(),
-                    team_race: event.team_config.is_racetime_team_format() && matches!(cal_event.kind, cal::EventKind::Normal),
-                    invitational: !matches!(cal_event.race.entrants, Entrants::Open),
-                    unlisted: cal_event.is_private_async_part(),
-                    ranked: event.series != Series::TriforceBlitz && !matches!(cal_event.race.schedule, RaceSchedule::Async { .. }),
-                    info_bot: String::default(),
-                    require_even_teams: true,
-                    start_delay: 15,
-                    time_limit: 24,
-                    time_limit_auto_complete: false,
-                    streaming_required: !Environment::default().is_dev() && !cal_event.is_private_async_part(),
-                    auto_start: cal_event.is_private_async_part() || cal_event.race.video_urls.is_empty(),
-                    allow_comments: true,
-                    hide_comments: true,
-                    allow_prerace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
-                    allow_midrace_chat: event.series != Series::Standard || event.event != "8" || cal_event.race.phase.as_ref().is_none_or(|phase| phase != "Qualifier"),
-                    allow_non_entrant_chat: false, // only affects the race while it's ongoing, so !monitor still works
-                    chat_message_delay: 0,
+                let race_slug = room_options(
+                    goal, event, cal_event,
                     info_user,
-                }.start_with_host(host_info, &access_token, &http_client, CATEGORY).await?;
+                    String::default(),
+                    cal_event.is_private_async_part() || cal_event.race.video_urls.is_empty(),
+                ).await.start_with_host(host_info, &access_token, &http_client, CATEGORY).await?;
                 let room_url = Url::parse(&format!("https://{}/{CATEGORY}/{race_slug}", host_info.hostname))?;
                 match cal_event.kind {
                     cal::EventKind::Normal => { sqlx::query!("UPDATE races SET room = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?; }
