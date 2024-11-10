@@ -2532,6 +2532,7 @@ impl RaceHandler<GlobalState> for Handler {
                     if let Ok(delay) = (delay_until - Utc::now()).to_std() {
                         let ctx = ctx.clone();
                         let requires_emote_only = event.series == Series::SpeedGaming && cal_event.race.phase.as_ref().map_or(false, |phase| phase == "Bracket");
+                        let prevent_late_joins = event.series == Series::SpeedGaming || event.series == Series::Standard && event.event == "8"; //TODO move to database
                         tokio::spawn(async move {
                             sleep_until(Instant::now() + delay).await;
                             if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
@@ -2540,8 +2541,8 @@ impl RaceHandler<GlobalState> for Handler {
                                 stream_delay.as_secs(),
                                 if requires_emote_only { " and set your chat to emote only" } else { "" },
                             )).await.expect("failed to send stream delay notice");
-                            if let Series::SpeedGaming = event.series {
-                                sleep(Duration::from_secs(15 * 60)).await;
+                            if prevent_late_joins {
+                                sleep(stream_delay).await;
                                 let data = ctx.data().await;
                                 if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await { return }
                                 if let RaceStatusValue::Open = data.status.value {
