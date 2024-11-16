@@ -4230,7 +4230,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             msg.push('>');
             msg.build()
         } else {
-            let is_weekly = event.series == Series::Standard && event.event == "w";
+            let ping_standard = event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(GuildId::new(274180765816848384)); // OoTR Discord
             let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
                 (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
                 (Some(phase), None) => Some(phase.clone()),
@@ -4238,7 +4238,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                 (None, None) => None,
             };
             let mut msg = MessageBuilder::default();
-            if is_weekly {
+            if ping_standard {
                 msg.mention(&RoleId::new(640750480246571014)); // @Standard
                 msg.push(' ');
             }
@@ -4285,11 +4285,11 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             }
             if let Some(room_url) = room_url {
                 msg.push(' ');
-                if !is_weekly {
+                if !ping_standard {
                     msg.push('<');
                 }
                 msg.push(room_url);
-                if !is_weekly {
+                if !ping_standard {
                     msg.push('>');
                 }
             } else if cal_event.race.notified {
