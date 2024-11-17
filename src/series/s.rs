@@ -673,6 +673,11 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         a(href = "https://twitch.tv/papy_grant") : "twitch.tv/papy_grant";
                     }
                     p {
+                        : "German Coverage:";
+                        br;
+                        a(href = "https://twitch.tv/utzstauder") : "twitch.tv/utzstauder";
+                    }
+                    p {
                         : "Brazilian Portuguese:";
                         br;
                         : "RandoBrasil ";
