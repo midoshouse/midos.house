@@ -3,6 +3,36 @@ use {
     crate::prelude::*,
 };
 
+const NANOS_PER_SEC: u32 = 1_000_000_000;
+
+pub(crate) trait TimeDeltaExt: Sized {
+    fn as_secs_f64(&self) -> f64;
+    fn from_secs_f64(secs: f64) -> Self;
+    fn abs_diff(self, other: Self) -> Self;
+
+    fn div_duration_f64(self, rhs: Self) -> f64 {
+        self.as_secs_f64() / rhs.as_secs_f64()
+    }
+
+    fn mul_f64(self, rhs: f64) -> Self {
+        Self::from_secs_f64(rhs * self.as_secs_f64())
+    }
+}
+
+impl TimeDeltaExt for TimeDelta {
+    fn as_secs_f64(&self) -> f64 {
+        (self.num_seconds() as f64) + (self.subsec_nanos() as f64) / (NANOS_PER_SEC as f64)
+    }
+
+    fn from_secs_f64(secs: f64) -> Self {
+        Self::seconds(secs.trunc() as i64) + Self::nanoseconds((secs.fract() * (NANOS_PER_SEC as f64)) as i64)
+    }
+
+    fn abs_diff(self, other: Self) -> Self {
+        (self - other).abs()
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum PgIntervalDecodeError {
     #[error(transparent)] TryFromInt(#[from] std::num::TryFromIntError),
