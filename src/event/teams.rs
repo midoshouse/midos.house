@@ -142,19 +142,14 @@ pub(crate) struct SignupsTeam {
 }
 
 pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind, worst_case_extrapolation: bool) -> Result<Vec<SignupsTeam>, cal::Error> {
+    let now = Utc::now();
     let mut signups = match qualifier_kind {
         QualifierKind::Standard | QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
             let mut scores = HashMap::<_, Vec<_>>::default();
             for race in Race::for_event(transaction, http_client, data).await? {
                 if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
-                let Ok(room) = race.rooms().exactly_one() else { continue };
-                let room_data = http_client.get(format!("{room}/data"))
-                    .send().await?
-                    .detailed_error_for_status().await?
-                    .json_with_text_in_error::<RaceData>().await?;
-                if !worst_case_extrapolation && room_data.status.value != RaceStatusValue::Finished { continue }
-                match room_data.status.value {
-                    RaceStatusValue::Open => {
+                let Ok(room) = race.rooms().exactly_one() else {
+                    if worst_case_extrapolation {
                         scores.entry(MemberUser::Newcomer).or_default();
                         for (user, score) in &mut scores {
                             score.push(r64(if me.is_some_and(|me| user == me) {
@@ -168,39 +163,29 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             }));
                         }
                     }
-                    RaceStatusValue::Invitational | RaceStatusValue::Pending | RaceStatusValue::InProgress => {
-                        for entrant in room_data.entrants {
-                            let user = MemberUser::RaceTime {
-                                id: entrant.user.id,
-                                url: entrant.user.url,
-                                name: entrant.user.name,
-                            };
-                            let score = r64(match entrant.status.value {
-                                | EntrantStatusValue::Requested
-                                    => continue,
-                                | EntrantStatusValue::Invited
-                                | EntrantStatusValue::NotReady
-                                | EntrantStatusValue::Ready
-                                | EntrantStatusValue::InProgress
-                                | EntrantStatusValue::Done
-                                    => if me.is_some_and(|me| user == *me) {
-                                        0.0
-                                    } else {
-                                        match qualifier_kind {
-                                            QualifierKind::Standard => 1100.0,
-                                            QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => 110.0,
-                                            _ => unreachable!("checked by outer match"),
-                                        }
-                                    },
-                                | EntrantStatusValue::Declined
-                                | EntrantStatusValue::Dnf
-                                | EntrantStatusValue::Dq
-                                    => 0.0,
-                            });
-                            scores.entry(user).or_default().push(score);
+                    continue
+                };
+                let room_data = http_client.get(format!("{room}/data"))
+                    .send().await?
+                    .detailed_error_for_status().await?
+                    .json_with_text_in_error::<RaceData>().await?;
+                match room_data.status.value {
+                    RaceStatusValue::Open => if worst_case_extrapolation {
+                        scores.entry(MemberUser::Newcomer).or_default();
+                        for (user, score) in &mut scores {
+                            score.push(r64(if me.is_some_and(|me| user == me) {
+                                0.0
+                            } else {
+                                match qualifier_kind {
+                                    QualifierKind::Standard => 1100.0,
+                                    QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => 110.0,
+                                    _ => unreachable!("checked by outer match"),
+                                }
+                            }));
                         }
-                    }
-                    RaceStatusValue::Finished => {
+                    },
+                    RaceStatusValue::Cancelled => {}
+                    RaceStatusValue::Invitational | RaceStatusValue::Pending | RaceStatusValue::InProgress | RaceStatusValue::Finished => {
                         let mut entrants = room_data.entrants;
                         if let QualifierKind::Sgl2023Online = qualifier_kind {
                             entrants.retain(|entrant| entrant.user.id != "yMewn83Vj3405Jv7"); // user was banned
@@ -208,10 +193,60 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
                             }
                         }
+                        if worst_case_extrapolation {
+                            for entrant in &mut entrants {
+                                let user = MemberUser::RaceTime {
+                                    id: entrant.user.id.clone(),
+                                    url: entrant.user.url.clone(),
+                                    name: entrant.user.name.clone(),
+                                };
+                                match entrant.status.value {
+                                    | EntrantStatusValue::Requested
+                                        => {}
+                                    | EntrantStatusValue::Invited
+                                    | EntrantStatusValue::NotReady
+                                    | EntrantStatusValue::Ready
+                                    | EntrantStatusValue::InProgress
+                                        => if me.is_some_and(|me| user == *me) {
+                                            entrant.status.value = EntrantStatusValue::Dnf;
+                                        } else {
+                                            entrant.status.value = EntrantStatusValue::Done;
+                                            entrant.finish_time = Some(room_data.started_at.and_then(|started_at| (now - started_at).to_std().ok()).unwrap_or_default());
+                                        },
+                                    | EntrantStatusValue::Done
+                                    | EntrantStatusValue::Declined
+                                    | EntrantStatusValue::Dnf
+                                    | EntrantStatusValue::Dq
+                                        => {}
+                                }
+                            }
+                        }
                         entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
                         let num_entrants = entrants.len();
                         let finish_times = entrants.iter().filter_map(|entrant| entrant.finish_time).collect_vec();
+                        let num_finishers = finish_times.len();
+                        let par_cutoff = match qualifier_kind {
+                            QualifierKind::Standard => 7u8,
+                            QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => if num_entrants < 20 { 3 } else { 4 },
+                            _ => unreachable!("checked by outer match"),
+                        };
+                        if !worst_case_extrapolation && room_data.status.value != RaceStatusValue::Finished && num_finishers < usize::from(par_cutoff) {
+                            continue // scores are not yet accurate
+                        }
                         for entrant in entrants {
+                            match entrant.status.value {
+                                | EntrantStatusValue::Requested
+                                | EntrantStatusValue::Invited
+                                | EntrantStatusValue::NotReady
+                                | EntrantStatusValue::Ready
+                                | EntrantStatusValue::InProgress
+                                    => continue, // score not yet determined
+                                | EntrantStatusValue::Done
+                                | EntrantStatusValue::Declined
+                                | EntrantStatusValue::Dnf
+                                | EntrantStatusValue::Dq
+                                    => {}
+                            }
                             scores.entry(MemberUser::RaceTime {
                                 id: entrant.user.id,
                                 url: entrant.user.url,
@@ -221,7 +256,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                     QualifierKind::Standard => {
                                         // https://docs.google.com/document/d/1IHrOGxFQpt3HpQ-9kQ6AVAARc04x6c96N1aHnHfHaKM/edit
                                         let finish_time = TimeDelta::from_std(finish_time).expect("finish time out of range");
-                                        let par_cutoff = 7.min(num_entrants);
+                                        let par_cutoff = usize::from(par_cutoff).min(num_entrants);
                                         let par_times = finish_times[0..par_cutoff].iter().map(|&finish_time| TimeDelta::from_std(finish_time).expect("finish time out of range")).collect_vec();
                                         let t_average = par_times.iter().sum::<TimeDelta>() / i32::try_from(par_cutoff).expect("too many entrants");
                                         let t_j_h = TimeDelta::minutes(8).mul_f64(1.0.min(0.0.max((TimeDelta::hours(2) + TimeDelta::minutes(30) - t_average).div_duration_f64(TimeDelta::hours(2) + TimeDelta::minutes(30) - (TimeDelta::hours(1) + TimeDelta::minutes(40))))));
@@ -232,7 +267,6 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                         ((1.0 - (finish_time - t_average - t_jet - t_gamble).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0)
                                     }
                                     QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
-                                        let par_cutoff = if num_entrants < 20 { 3u8 } else { 4 };
                                         let par_time = finish_times[0..usize::from(par_cutoff)].iter().sum::<Duration>() / u32::from(par_cutoff);
                                         (100.0 * (2.0 - (finish_time.as_secs_f64() / par_time.as_secs_f64()))).clamp(10.0, 110.0)
                                     }
@@ -243,7 +277,6 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             }));
                         }
                     }
-                    RaceStatusValue::Cancelled => {}
                 }
             }
             let teams = Team::for_event(&mut *transaction, data.series, &data.event).await?;
