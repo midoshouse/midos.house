@@ -2550,20 +2550,22 @@ impl RaceHandler<GlobalState> for Handler {
                     Entrants::Open | Entrants::Count { .. } => event.open_stream_delay,
                     Entrants::Two(_) | Entrants::Three(_) | Entrants::Named(_) => event.invitational_stream_delay,
                 };
-                if !stream_delay.is_zero() {
+                let prevent_late_joins = event.series == Series::SpeedGaming || event.series == Series::Standard && event.event == "8"; //TODO move to database
+                if !stream_delay.is_zero() || prevent_late_joins {
                     let delay_until = cal_event.start().expect("handling room for official race without start time") - stream_delay - TimeDelta::minutes(5);
                     if let Ok(delay) = (delay_until - Utc::now()).to_std() {
                         let ctx = ctx.clone();
                         let requires_emote_only = event.series == Series::SpeedGaming && cal_event.race.phase.as_ref().map_or(false, |phase| phase == "Bracket");
-                        let prevent_late_joins = event.series == Series::SpeedGaming || event.series == Series::Standard && event.event == "8"; //TODO move to database
                         tokio::spawn(async move {
                             sleep_until(Instant::now() + delay).await;
                             if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
-                            ctx.say(format!("@entrants Remember to go live with a delay of {} ({} seconds){}!",
-                                English.format_duration(stream_delay, true),
-                                stream_delay.as_secs(),
-                                if requires_emote_only { " and set your chat to emote only" } else { "" },
-                            )).await.expect("failed to send stream delay notice");
+                            if !stream_delay.is_zero() {
+                                ctx.say(format!("@entrants Remember to go live with a delay of {} ({} seconds){}!",
+                                    English.format_duration(stream_delay, true),
+                                    stream_delay.as_secs(),
+                                    if requires_emote_only { " and set your chat to emote only" } else { "" },
+                                )).await.expect("failed to send stream delay notice");
+                            }
                             if prevent_late_joins {
                                 sleep(stream_delay).await;
                                 let data = ctx.data().await;
