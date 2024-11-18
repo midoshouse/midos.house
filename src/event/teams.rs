@@ -193,32 +193,33 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
                             }
                         }
-                        if worst_case_extrapolation {
-                            for entrant in &mut entrants {
-                                let user = MemberUser::RaceTime {
-                                    id: entrant.user.id.clone(),
-                                    url: entrant.user.url.clone(),
-                                    name: entrant.user.name.clone(),
-                                };
-                                match entrant.status.value {
-                                    | EntrantStatusValue::Requested
-                                        => {}
-                                    | EntrantStatusValue::Invited
-                                    | EntrantStatusValue::NotReady
-                                    | EntrantStatusValue::Ready
-                                    | EntrantStatusValue::InProgress
-                                        => if me.is_some_and(|me| user == *me) {
+                        for entrant in &mut entrants {
+                            match entrant.status.value {
+                                | EntrantStatusValue::Requested
+                                    => {}
+                                | EntrantStatusValue::Invited
+                                | EntrantStatusValue::NotReady
+                                | EntrantStatusValue::Ready
+                                | EntrantStatusValue::InProgress
+                                    => if worst_case_extrapolation {
+                                        let user = MemberUser::RaceTime {
+                                            id: entrant.user.id.clone(),
+                                            url: entrant.user.url.clone(),
+                                            name: entrant.user.name.clone(),
+                                        };
+                                        if me.is_some_and(|me| user == *me) {
                                             entrant.status.value = EntrantStatusValue::Dnf;
                                         } else {
                                             entrant.status.value = EntrantStatusValue::Done;
                                             entrant.finish_time = Some(room_data.started_at.and_then(|started_at| (now - started_at).to_std().ok()).unwrap_or_default());
-                                        },
-                                    | EntrantStatusValue::Done
-                                    | EntrantStatusValue::Declined
-                                    | EntrantStatusValue::Dnf
-                                    | EntrantStatusValue::Dq
-                                        => {}
-                                }
+                                        }
+                                    },
+                                | EntrantStatusValue::Done
+                                    => {}
+                                | EntrantStatusValue::Declined
+                                | EntrantStatusValue::Dnf
+                                | EntrantStatusValue::Dq
+                                    => entrant.finish_time = None,
                             }
                         }
                         entrants.sort_unstable_by_key(|entrant| (entrant.finish_time.is_none(), entrant.finish_time));
