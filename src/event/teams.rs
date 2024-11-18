@@ -332,7 +332,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             let num_qualifiers = scores.len();
                             scores.truncate(8); // only count the first 8 qualifiers chronologically
                             scores.sort_unstable();
-                            if num_qualifiers >= 5 {
+                            if num_qualifiers >= 2 {
                                 scores.pop(); // remove best score
                             }
                             scores.truncate(4); // remove up to 3 worst scores
@@ -632,11 +632,12 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     Qualification::Multiple { num_qualifiers, score } => (num_qualifiers, score),
                     _ => unreachable!("QualifierKind::Multiple must use Qualification::Multiple"),
                 };
-                num2.min(3).cmp(&num1.min(match qualifier_kind { // list racers closer to reaching the required number of qualifiers first
+                let required_qualifiers = match qualifier_kind {
                     QualifierKind::Standard => 5,
                     QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => 3,
                     _ => unreachable!("checked by outer match"),
-                }))
+                };
+                num2.min(required_qualifiers).cmp(&num1.min(required_qualifiers)) // list racers closer to reaching the required number of qualifiers first
                 .then_with(|| score2.cmp(&score1)) // list racers with higher scores first
                 .then_with(|| members1.iter().map(|member| &member.user).cmp(members2.iter().map(|member| &member.user)))
             }
