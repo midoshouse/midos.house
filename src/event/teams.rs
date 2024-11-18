@@ -329,8 +329,9 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     }],
                     qualification: match qualifier_kind {
                         QualifierKind::Standard => {
-                            let num_qualifiers = scores.len();
                             scores.truncate(8); // only count the first 8 qualifiers chronologically
+                            scores.retain(|&score| score != 0.0); // only count finished races
+                            let num_qualifiers = scores.len();
                             scores.sort_unstable();
                             if num_qualifiers >= 2 {
                                 scores.pop(); // remove best score
@@ -342,8 +343,8 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             }
                         }
                         QualifierKind::Sgl2023Online => {
-                            let num_qualifiers = scores.len();
                             scores.truncate(5); // only count the first 5 qualifiers chronologically
+                            let num_qualifiers = scores.len();
                             scores.sort_unstable();
                             if num_qualifiers >= 4 {
                                 scores.pop(); // remove best score
@@ -357,8 +358,8 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             }
                         }
                         QualifierKind::Sgl2024Online => {
-                            let num_qualifiers = scores.len();
                             scores.truncate(6); // only count the first 6 qualifiers chronologically
+                            let num_qualifiers = scores.len();
                             scores.sort_unstable();
                             if num_qualifiers >= 4 {
                                 scores.swap_remove(0); // remove worst score
