@@ -9,7 +9,6 @@ use {
             Tab,
             enter,
         },
-        http,
         prelude::*,
     },
 };
@@ -642,7 +641,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : "There are two plugins that can be used for the item sharing: ";
                     a(href = "https://github.com/TestRunnerSRL/bizhawk-co-op#readme") : "bizhawk-co-op";
                     : " (also known as Multiworld 1.0) and ";
-                    a(href = uri!(http::mw).to_string()) : "Mido's House Multiworld";
+                    a(href = uri!(crate::mw::index).to_string()) : "Mido's House Multiworld";
                     : ". While we recommend using the Mido's House plugin since it supports Project64 in addition to BizHawk and is easier to use (see ";
                     a(href = "https://wiki.ootrandomizer.com/index.php?title=Multiworld#Feature_comparison") : "feature comparison";
                     : "), both plugins are legal in this tournament.";
@@ -994,7 +993,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : "There are two plugins that can be used for the item sharing: ";
                     a(href = "https://github.com/TestRunnerSRL/bizhawk-co-op#readme") : "bizhawk-co-op";
                     : " (also known as Multiworld 1.0) and ";
-                    a(href = uri!(http::mw).to_string()) : "Mido's House Multiworld";
+                    a(href = uri!(crate::mw::index).to_string()) : "Mido's House Multiworld";
                     : ". While we recommend using the Mido's House plugin since it supports Project64 in addition to BizHawk and is easier to use (see ";
                     a(href = "https://wiki.ootrandomizer.com/index.php?title=Multiworld#Feature_comparison") : "feature comparison";
                     : "), both plugins are legal in this tournament. For teams using MH MW, official multiworld rooms will be automatically created once the seed is rolled.";

@@ -308,7 +308,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, 
             : "Mido's House is a platform where ";
             a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
             : " events like tournaments or community races can be organized. You may also be looking for the ";
-            a(href = uri!(mw).to_string()) : "Mido's House Multiworld";
+            a(href = uri!(crate::mw::index).to_string()) : "Mido's House Multiworld";
             : " app.";
         }
         div(class = "section-list") {
@@ -407,142 +407,6 @@ async fn new_event(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> P
     }).await
 }
 
-#[rocket::get("/mw")]
-async fn mw(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
-    let transaction = pool.begin().await?;
-    page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::default() }, "Mido's House Multiworld", html! {
-        h1 : "Mido's House Multiworld";
-        img(class = "banner icon", src = static_url!("mw.png"));
-        p {
-            : "Mido's House Multiworld is a tool that can be used to play ";
-            a(href = "https://wiki.ootrandomizer.com/index.php?title=Multiworld") : "multiworld";
-            : " seeds of the ";
-            a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
-            : ". It supports cross-platform play between ";
-            a(href = uri!(mw_platforms).to_string()) : "different platforms";
-            : ", and does not require port forwarding.";
-        }
-        div(class = "button-row large-button-row") {
-            a(class = "button", href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") {
-                : "Download for Windows";
-                br;
-                small : "supports EverDrive*, BizHawk, and Project64";
-            }
-            a(class = "button", href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer-linux") {
-                : "Download for Linux";
-                br;
-                small : "supports EverDrive* and BizHawk";
-            }
-        }
-        p {
-            : "*EverDrive support is currently experimental and requires ";
-            a(href = "https://ootrandomizer.com/generatorDev?version=devFenhl_") : "Fenhl's branch of the randomizer";
-            : ".";
-        }
-        p {
-            : "If you need help, please ask in ";
-            a(href = "https://discord.gg/BGRrKKn") : "#setup-support on the OoTR Discord";
-            : " (feel free to ping @fenhl) or ";
-            a(href = "https://github.com/midoshouse/ootr-multiworld/issues/new") : "open an issue";
-            : ".";
-        }
-        p {
-            a(href = "https://github.com/midoshouse/ootr-multiworld") : "The source code for Mido's House Multiworld";
-            : " is available on GitHub.";
-        }
-    }).await
-}
-
-#[rocket::get("/mw/platforms")]
-async fn mw_platforms(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
-    let transaction = pool.begin().await?;
-    page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::default() }, "platform support — Mido's House Multiworld", html! {
-        h1 {
-            a(href = uri!(mw).to_string()) : "Mido's House Multiworld";
-            : " platform support status";
-        }
-        table {
-            tr {
-                th;
-                th : "Windows";
-                th : "Linux";
-                th : "macOS";
-            }
-            tr {
-                th : "EverDrive";
-                td {
-                    : "✓ (";
-                    a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "download";
-                    : ") *";
-                }
-                td {
-                    : "✓ (";
-                    a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer-linux") : "download";
-                    : ") *";
-                }
-                td {
-                    a(href = "https://github.com/midoshouse/ootr-multiworld/issues/41") : "Planned";
-                }
-            }
-            tr {
-                th : "Wii Virtual Console";
-                td(colspan = "3") : "Would require a modification to Virtual Console itself. The “Multiworld 2.0” project claims to have solved this issue but has not shared any details out of concerns for competitive integrity.";
-            }
-            tr {
-                th : "BizHawk";
-                td {
-                    : "✓ (";
-                    a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "download";
-                    : ")";
-                }
-                td {
-                    : "✓ (";
-                    a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer-linux") : "download";
-                    : ")";
-                }
-                td {
-                    a(href = "https://github.com/tasemulators/bizHawk#macos-legacy-bizhawk") : "Not supported by BizHawk itself";
-                }
-            }
-            tr {
-                th : "Project64";
-                td {
-                    : "✓ (";
-                    a(href = "https://github.com/midoshouse/ootr-multiworld/releases/latest/download/multiworld-installer.exe") : "download";
-                    : ")";
-                }
-                td(colspan = "2") : "Not supported by Project64 itself";
-            }
-            tr {
-                th : "Project64-EM";
-                td(colspan = "3") {
-                    : "Not planned. Project64-EM is a modified version of Project64 created by the ";
-                    a(href = "https://ootmm.com/") : "OoTMM";
-                    : " community which removes the plugin system used by Mido's House Multiworld and replaces it with a different one. Note that Mido's House Multiworld does not support OoTMM — please follow ";
-                    a(href = "https://ootmm.com/multiworld") : "the OoTMM multiworld setup guide";
-                    : " instead.";
-                }
-            }
-            tr {
-                th : "RetroArch";
-                td(colspan = "3") {
-                    a(href = "https://github.com/midoshouse/ootr-multiworld/issues/25") : "Planned";
-                }
-            }
-        }
-        p {
-            : "*EverDrive support is currently experimental and requires ";
-            a(href = "https://ootrandomizer.com/generatorDev?version=devFenhl_") : "Fenhl's branch of the randomizer";
-            : ".";
-        }
-        p {
-            : "If your operating system, console, or emulator is not listed here, please ";
-            a(href = "https://github.com/midoshouse/ootr-multiworld/issues/new") : "open an issue";
-            : " to request support.";
-        }
-    }).await
-}
-
 #[rocket::get("/robots.txt")]
 async fn robots_txt() -> RawText<&'static str> {
     RawText("User-agent: *\nDisallow: /seed/\nDisallow: /static/\n")
@@ -619,8 +483,6 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         index,
         archive,
         new_event,
-        mw,
-        mw_platforms,
         robots_txt,
         api::graphql_request,
         api::graphql_query,
@@ -672,6 +534,9 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         event::configure::post,
         favicon::favicon_ico,
         favicon::favicon_png,
+        crate::mw::index,
+        crate::mw::platforms,
+        crate::mw::install_macos,
         notification::notifications,
         notification::dismiss,
         seed::get,

@@ -33,6 +33,7 @@ mod form;
 mod id;
 mod lang;
 #[macro_use] mod macros;
+mod mw;
 mod notification;
 mod ootr_web;
 mod prelude;
