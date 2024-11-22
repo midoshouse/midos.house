@@ -59,6 +59,8 @@ mod report;
 
 pub(crate) const CATEGORY: &str = "ootr";
 
+const OOTR_DISCORD_GUILD: GuildId = GuildId::new(274180765816848384);
+
 static RSL_SEQUENCE_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, thiserror::Error)]
@@ -1996,6 +1998,26 @@ fn format_password(password: [OcarinaNote; 6]) -> impl fmt::Display {
     password.into_iter().map(|icon| icon.to_racetime_emoji()).format(" ")
 }
 
+fn ocarina_note_to_ootr_discord_emoji(note: OcarinaNote) -> ReactionType {
+    ReactionType::Custom {
+        animated: false,
+        id: EmojiId::new(match note {
+            OcarinaNote::A => 658692216373379072,
+            OcarinaNote::CDown => 658692230479085570,
+            OcarinaNote::CRight => 658692260002791425,
+            OcarinaNote::CLeft => 658692245771517962,
+            OcarinaNote::CUp => 658692275152355349,
+        }),
+        name: Some(match note {
+            OcarinaNote::A => format!("staffA"),
+            OcarinaNote::CDown => format!("staffDown"),
+            OcarinaNote::CRight => format!("staffRight"),
+            OcarinaNote::CLeft => format!("staffLeft"),
+            OcarinaNote::CUp => format!("staffUp"),
+        }),
+    }
+}
+
 async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Event, info_user: String, info_bot: String, auto_start: bool) -> racetime::StartRace {
     racetime::StartRace {
         goal: goal.as_str().to_owned(),
@@ -3867,6 +3889,18 @@ impl RaceHandler<GlobalState> for Handler {
                     if let Some(password) = extra.password {
                         ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password))).await?;
                         set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
+                        if let Some(OfficialRaceData { cal_event, event, .. }) = &self.official_data {
+                            if event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(OOTR_DISCORD_GUILD) {
+                                // post password in #s8-prequal-chat as a contingency for racetime.gg issues in large qualifiers
+                                let mut msg = MessageBuilder::default();
+                                msg.push("Seed password: ");
+                                msg.push_emoji(&ReactionType::Custom { animated: false, id: EmojiId::new(658692193338392614), name: Some(format!("staffClef")) });
+                                for note in password {
+                                    msg.push_emoji(&ocarina_note_to_ootr_discord_emoji(note));
+                                }
+                                ChannelId::new(1306254442298998884).say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?; //TODO move channel ID to database
+                            }
+                        }
                     }
                 });
                 self.password_sent = true;
@@ -4232,7 +4266,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             msg.push('>');
             msg.build()
         } else {
-            let ping_standard = event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(GuildId::new(274180765816848384)); // OoTR Discord
+            let ping_standard = event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(OOTR_DISCORD_GUILD);
             let info_prefix = match (&cal_event.race.phase, &cal_event.race.round) {
                 (Some(phase), Some(round)) => Some(format!("{phase} {round}")),
                 (Some(phase), None) => Some(phase.clone()),
