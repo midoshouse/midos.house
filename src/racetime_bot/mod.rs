@@ -332,7 +332,7 @@ impl Goal {
             Self::Sgl2023 => series == Series::SpeedGaming && event.starts_with("2023"),
             Self::Sgl2024 => series == Series::SpeedGaming && event.starts_with("2024"),
             Self::SongsOfHope => series == Series::SongsOfHope && event == "1",
-            Self::StandardRuleset => series == Series::Standard && matches!(event, "w" | "8"),
+            Self::StandardRuleset => series == Series::Standard && matches!(event, "w" | "8" | "8cc"),
             Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
             Self::TournoiFrancoS4 => series == Series::TournoiFrancophone && event == "4",
             Self::TriforceBlitz => series == Series::TriforceBlitz,
