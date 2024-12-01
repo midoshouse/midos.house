@@ -142,12 +142,37 @@ pub(crate) struct SignupsTeam {
     mq_ok: bool,
 }
 
-pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind, worst_case_extrapolation: Option<&MemberUser>) -> Result<Vec<SignupsTeam>, cal::Error> {
+pub(crate) struct Cache {
+    http_client: reqwest::Client,
+    race_data: HashMap<Url, RaceData>,
+}
+
+impl Cache {
+    pub(crate) fn new(http_client: reqwest::Client) -> Self {
+        Self {
+            race_data: HashMap::default(),
+            http_client,
+        }
+    }
+
+    async fn race_data(&mut self, room: &Url) -> Result<&RaceData, cal::Error> {
+        Ok(match self.race_data.entry(room.clone()) {
+            hash_map::Entry::Occupied(entry) => entry.into_mut(),
+            hash_map::Entry::Vacant(entry) => entry.insert(self.http_client.get(format!("{room}/data"))
+                .send().await?
+                .detailed_error_for_status().await?
+                .json_with_text_in_error::<RaceData>().await?
+            ),
+        })
+    }
+}
+
+pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, cache: &mut Cache, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind, worst_case_extrapolation: Option<&MemberUser>) -> Result<Vec<SignupsTeam>, cal::Error> {
     let now = Utc::now();
     let mut signups = match qualifier_kind {
         QualifierKind::Standard | QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
             let mut scores = HashMap::<_, Vec<_>>::default();
-            for race in Race::for_event(transaction, http_client, data).await? {
+            for race in Race::for_event(transaction, &cache.http_client, data).await? {
                 if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
                 let Ok(room) = race.rooms().exactly_one() else {
                     if let Some(extrapolate_for) = worst_case_extrapolation {
@@ -166,10 +191,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     }
                     continue
                 };
-                let room_data = http_client.get(format!("{room}/data"))
-                    .send().await?
-                    .detailed_error_for_status().await?
-                    .json_with_text_in_error::<RaceData>().await?;
+                let room_data = cache.race_data(&room).await?;
                 match room_data.status.value {
                     RaceStatusValue::Open => if let Some(extrapolate_for) = worst_case_extrapolation {
                         scores.entry(MemberUser::Newcomer).or_default();
@@ -187,7 +209,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     },
                     RaceStatusValue::Cancelled => {}
                     RaceStatusValue::Invitational | RaceStatusValue::Pending | RaceStatusValue::InProgress | RaceStatusValue::Finished => {
-                        let mut entrants = room_data.entrants;
+                        let mut entrants = room_data.entrants.clone();
                         if let QualifierKind::Sgl2023Online = qualifier_kind {
                             entrants.retain(|entrant| entrant.user.id != "yMewn83Vj3405Jv7"); // user was banned
                             if race.id == Id::from(17171498007470059483_u64) {
@@ -390,15 +412,12 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
 
             if worst_case_extrapolation.is_some() { unimplemented!("worst-case extrapolation for QualifierKind::SongsOfHope") } //TODO
             let mut entrant_data = HashMap::<_, (u8, _)>::default();
-            for race in Race::for_event(transaction, http_client, data).await? {
+            for race in Race::for_event(transaction, &cache.http_client, data).await? {
                 if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
                 let Ok(room) = race.rooms().exactly_one() else { continue };
-                let room_data = http_client.get(format!("{room}/data"))
-                    .send().await?
-                    .detailed_error_for_status().await?
-                    .json_with_text_in_error::<RaceData>().await?;
+                let room_data = cache.race_data(&room).await?;
                 if room_data.status.value != RaceStatusValue::Finished { continue }
-                let mut entrants = room_data.entrants;
+                let mut entrants = room_data.entrants.clone();
                 entrants.retain(|entrant| entrant_data.entry(MemberUser::RaceTime {
                     id: entrant.user.id.clone(),
                     url: entrant.user.url.clone(),
@@ -426,17 +445,14 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             }
             let num_qualified = entrant_data.values().filter(|(_, qualification_level)| *qualification_level == QualificationLevel::Qualified).count();
             let choppin_block_finished = if_chain! {
-                if let Ok(race) = Race::for_event(transaction, http_client, data).await?.into_iter()
+                if let Ok(race) = Race::for_event(transaction, &cache.http_client, data).await?.into_iter()
                     .filter(|race| race.phase.as_ref().is_some_and(|phase| phase == "Choppin Block"))
                     .exactly_one();
                 if let Ok(room) = race.rooms().exactly_one();
-                let room_data = http_client.get(format!("{room}/data"))
-                    .send().await?
-                    .detailed_error_for_status().await?
-                    .json_with_text_in_error::<RaceData>().await?;
+                let room_data = cache.race_data(&room).await?;
                 if room_data.status.value == RaceStatusValue::Finished;
                 then {
-                    let mut entrants = room_data.entrants;
+                    let mut entrants = room_data.entrants.clone();
                     entrants.retain(|entrant| entrant_data.entry(MemberUser::RaceTime {
                         id: entrant.user.id.clone(),
                         url: entrant.user.url.clone(),
@@ -675,6 +691,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     }
 
     let mut transaction = pool.begin().await?;
+    let mut cache = Cache::new(http_client.inner().clone());
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, me.as_ref(), Tab::Teams, false).await?;
     let mut show_status = ShowStatus::None;
@@ -717,7 +734,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
         false
     };
     let roles = data.team_config.roles();
-    let signups = signups_sorted(&mut transaction, http_client, me.as_ref(), &data, qualifier_kind, None).await?;
+    let signups = signups_sorted(&mut transaction, &mut Cache::new(http_client.inner().clone()), me.as_ref(), &data, qualifier_kind, None).await?;
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config { "Entrants" } else { "Teams" };
     let mut column_headers = Vec::default();
@@ -935,7 +952,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                                         enter::Requirement::Qualifier { .. } => {} //TODO
                                                         enter::Requirement::TripleQualifier { .. } => {} //TODO
                                                         enter::Requirement::QualifierPlacement { num_players, min_races } => : if_chain! {
-                                                            let teams = signups_sorted(&mut transaction, http_client, None, &data, match (data.series, &*data.event) {
+                                                            let teams = signups_sorted(&mut transaction, &mut cache, None, &data, match (data.series, &*data.event) {
                                                                 (Series::SpeedGaming, "2023onl") => QualifierKind::Sgl2023Online,
                                                                 (Series::SpeedGaming, "2024onl") => QualifierKind::Sgl2024Online,
                                                                 (Series::Standard, "8") => QualifierKind::Standard,

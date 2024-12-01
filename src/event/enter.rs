@@ -171,7 +171,7 @@ impl Requirement {
             Self::TripleQualifier { .. } => Some(false),
             Self::QualifierPlacement { num_players, min_races } => Some(if_chain! {
                 // call signups_sorted with worst_case_extrapolation = true to calculate whether the player has secured a spot ahead of time
-                let teams = teams::signups_sorted(transaction, http_client, None, data, match (data.series, &*data.event) {
+                let teams = teams::signups_sorted(transaction, &mut teams::Cache::new(http_client.clone()), None, data, match (data.series, &*data.event) {
                     (Series::SpeedGaming, "2023onl") => teams::QualifierKind::Sgl2023Online,
                     (Series::SpeedGaming, "2024onl") => teams::QualifierKind::Sgl2024Online,
                     (Series::Standard, "8") => teams::QualifierKind::Standard,
