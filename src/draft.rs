@@ -225,7 +225,7 @@ impl Draft {
                 let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
                     show_times: event.show_qualifier_times && event.is_started(&mut *transaction).await?,
                 };
-                let signups = teams::signups_sorted(&mut *transaction, http_client, None, event, qualifier_kind, false).await?;
+                let signups = teams::signups_sorted(&mut *transaction, http_client, None, event, qualifier_kind, None).await?;
                 let SignupsTeam { members: members1, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| team == team1)).expect("match with team that didn't sign up");
                 let SignupsTeam { members: members2, .. } = signups.iter().find(|SignupsTeam { team, .. }| team.as_ref().is_some_and(|team| team == team2)).expect("match with team that didn't sign up");
                 let avg1 = members1.iter().try_fold(Duration::default(), |acc, member| Some(acc + member.qualifier_time?)).map(|total| total / u32::try_from(members1.len()).expect("too many team members"));

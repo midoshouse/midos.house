@@ -15,7 +15,7 @@ use {
 };
 
 /// User preference that determines which external account a user's display name is be based on.
-#[derive(Debug, sqlx::Type)]
+#[derive(Debug, Clone, Copy, sqlx::Type)]
 #[sqlx(type_name = "user_display_source", rename_all = "lowercase")]
 enum DisplaySource {
     RaceTime,
@@ -41,7 +41,7 @@ pub(crate) enum RaceTimePronouns {
     Other,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct UserRaceTime {
     pub(crate) id: String,
     pub(crate) display_name: String,
@@ -49,14 +49,14 @@ pub(crate) struct UserRaceTime {
     pub(crate) pronouns: Option<RaceTimePronouns>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct UserDiscord {
     pub(crate) id: UserId,
     pub(crate) display_name: String,
     pub(crate) username_or_discriminator: Either<String, Discriminator>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct User {
     pub(crate) id: Id<Users>,
     display_source: DisplaySource, //TODO allow users with both accounts connected to set this in their preferences

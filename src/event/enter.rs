@@ -17,7 +17,7 @@ use {
 
 #[derive(Debug, Clone, Deserialize)]
 pub(super) struct Flow {
-    requirements: Vec<Requirement>,
+    pub(crate) requirements: Vec<Requirement>,
     closes: Option<DateTime<Utc>>,
 }
 
@@ -41,7 +41,7 @@ impl<'de> DeserializeAs<'de, Regex> for DeserializeRegex {
 #[serde_as]
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
-enum Requirement {
+pub(crate) enum Requirement {
     /// Must have a racetime.gg account connected to their Mido's House account
     RaceTime,
     /// Must be on a list of invited racetime.gg users
@@ -171,12 +171,12 @@ impl Requirement {
             Self::TripleQualifier { .. } => Some(false),
             Self::QualifierPlacement { num_players, min_races } => Some(if_chain! {
                 // call signups_sorted with worst_case_extrapolation = true to calculate whether the player has secured a spot ahead of time
-                let teams = teams::signups_sorted(transaction, http_client, Some(me), data, match (data.series, &*data.event) {
+                let teams = teams::signups_sorted(transaction, http_client, None, data, match (data.series, &*data.event) {
                     (Series::SpeedGaming, "2023onl") => teams::QualifierKind::Sgl2023Online,
                     (Series::SpeedGaming, "2024onl") => teams::QualifierKind::Sgl2024Online,
                     (Series::Standard, "8") => teams::QualifierKind::Standard,
                     (_, _) => unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series, data.event),
-                }, true).await?;
+                }, Some(&teams::MemberUser::MidosHouse(me.clone()))).await?;
                 if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| member.user == *me));
                 if let teams::Qualification::Multiple { num_qualifiers, .. } = team.qualification;
                 then {

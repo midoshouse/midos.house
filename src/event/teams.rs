@@ -12,6 +12,7 @@ use {
             Role,
             SignupStatus,
             Tab,
+            enter,
         },
         prelude::*,
     },
@@ -141,7 +142,7 @@ pub(crate) struct SignupsTeam {
     mq_ok: bool,
 }
 
-pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind, worst_case_extrapolation: bool) -> Result<Vec<SignupsTeam>, cal::Error> {
+pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind, worst_case_extrapolation: Option<&MemberUser>) -> Result<Vec<SignupsTeam>, cal::Error> {
     let now = Utc::now();
     let mut signups = match qualifier_kind {
         QualifierKind::Standard | QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
@@ -149,10 +150,10 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             for race in Race::for_event(transaction, http_client, data).await? {
                 if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
                 let Ok(room) = race.rooms().exactly_one() else {
-                    if worst_case_extrapolation {
+                    if let Some(extrapolate_for) = worst_case_extrapolation {
                         scores.entry(MemberUser::Newcomer).or_default();
                         for (user, score) in &mut scores {
-                            score.push(r64(if me.is_some_and(|me| user == me) {
+                            score.push(r64(if user == extrapolate_for {
                                 0.0
                             } else {
                                 match qualifier_kind {
@@ -170,10 +171,10 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     .detailed_error_for_status().await?
                     .json_with_text_in_error::<RaceData>().await?;
                 match room_data.status.value {
-                    RaceStatusValue::Open => if worst_case_extrapolation {
+                    RaceStatusValue::Open => if let Some(extrapolate_for) = worst_case_extrapolation {
                         scores.entry(MemberUser::Newcomer).or_default();
                         for (user, score) in &mut scores {
-                            score.push(r64(if me.is_some_and(|me| user == me) {
+                            score.push(r64(if user == extrapolate_for {
                                 0.0
                             } else {
                                 match qualifier_kind {
@@ -201,13 +202,13 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 | EntrantStatusValue::NotReady
                                 | EntrantStatusValue::Ready
                                 | EntrantStatusValue::InProgress
-                                    => if worst_case_extrapolation {
+                                    => if let Some(extrapolate_for) = worst_case_extrapolation {
                                         let user = MemberUser::RaceTime {
                                             id: entrant.user.id.clone(),
                                             url: entrant.user.url.clone(),
                                             name: entrant.user.name.clone(),
                                         };
-                                        if me.is_some_and(|me| user == *me) {
+                                        if user == *extrapolate_for {
                                             entrant.status.value = EntrantStatusValue::Dnf;
                                         } else {
                                             entrant.status.value = EntrantStatusValue::Done;
@@ -231,7 +232,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => if num_entrants < 20 { 3 } else { 4 },
                             _ => unreachable!("checked by outer match"),
                         };
-                        if !worst_case_extrapolation && room_data.status.value != RaceStatusValue::Finished && num_finishers < usize::from(par_cutoff) {
+                        if worst_case_extrapolation.is_none() && room_data.status.value != RaceStatusValue::Finished && num_finishers < usize::from(par_cutoff) {
                             continue // scores are not yet accurate
                         }
                         for entrant in entrants {
@@ -387,7 +388,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 None,
             }
 
-            if worst_case_extrapolation { unimplemented!("worst-case extrapolation for QualifierKind::SongsOfHope") } //TODO
+            if worst_case_extrapolation.is_some() { unimplemented!("worst-case extrapolation for QualifierKind::SongsOfHope") } //TODO
             let mut entrant_data = HashMap::<_, (u8, _)>::default();
             for race in Race::for_event(transaction, http_client, data).await? {
                 if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
@@ -667,14 +668,29 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
 
 #[rocket::get("/event/<series>/<event>/teams")]
 pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    enum ShowStatus {
+        Detailed,
+        Confirmed,
+        None,
+    }
+
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, me.as_ref(), Tab::Teams, false).await?;
-    let mut show_confirmed = false;
+    let mut show_status = ShowStatus::None;
+    let is_organizer = if let Some(ref me) = me {
+        data.organizers(&mut transaction).await?.contains(me)
+    } else {
+        false
+    };
     let qualifier_kind = match (data.series, &*data.event) {
         (Series::SongsOfHope, "1") => QualifierKind::SongsOfHope,
         (Series::SpeedGaming, "2023onl" | "2024onl") | (Series::Standard, "8") => {
-            show_confirmed = !data.is_started(&mut transaction).await? && Race::for_event(&mut transaction, http_client, &data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.is_ended());
+            if is_organizer {
+                show_status = ShowStatus::Detailed;
+            } else if !data.is_started(&mut transaction).await? && Race::for_event(&mut transaction, http_client, &data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.is_ended()) {
+                show_status = ShowStatus::Confirmed;
+            }
             match (data.series, &*data.event) {
                 (Series::SpeedGaming, "2023onl") => QualifierKind::Sgl2023Online,
                 (Series::SpeedGaming, "2024onl") => QualifierKind::Sgl2024Online,
@@ -695,13 +711,13 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
             QualifierKind::None
         },
     };
-    let show_restream_consent = if let Some(ref me) = me {
-        data.organizers(&mut transaction).await?.contains(me) || data.restreamers(&mut transaction).await?.contains(me)
+    let show_restream_consent = is_organizer || if let Some(ref me) = me {
+        data.restreamers(&mut transaction).await?.contains(me)
     } else {
         false
     };
     let roles = data.team_config.roles();
-    let signups = signups_sorted(&mut transaction, http_client, me.as_ref(), &data, qualifier_kind, false).await?;
+    let signups = signups_sorted(&mut transaction, http_client, me.as_ref(), &data, qualifier_kind, None).await?;
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config { "Entrants" } else { "Teams" };
     let mut column_headers = Vec::default();
@@ -739,10 +755,14 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
             });
         }
     }
-    if show_confirmed {
-        column_headers.push(html! {
+    match show_status {
+        ShowStatus::Detailed => column_headers.push(html! {
+            th : "Status";
+        }),
+        ShowStatus::Confirmed => column_headers.push(html! {
             th : "Confirmed";
-        });
+        }),
+        ShowStatus::None => {}
     }
     if let Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4) = data.draft_kind() {
         column_headers.push(html! {
@@ -891,12 +911,103 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                 }
                                 (_, _) => @unreachable
                             }
-                            @if show_confirmed {
-                                td {
+                            @match show_status {
+                                ShowStatus::Detailed => td {
+                                    @if members.iter().all(|member| member.is_confirmed) {
+                                        : "Confirmed";
+                                    } else {
+                                        @if let Ok(entrant) = members.iter().exactly_one() {
+                                            @if let Some(flow) = &data.enter_flow {
+                                                @for requirement in &flow.requirements {
+                                                    @match requirement {
+                                                        enter::Requirement::RaceTime => {}
+                                                        enter::Requirement::RaceTimeInvite { .. } => {}
+                                                        enter::Requirement::Twitch => {}
+                                                        enter::Requirement::Discord => {}
+                                                        enter::Requirement::DiscordGuild { .. } => {}
+                                                        enter::Requirement::Challonge => {}
+                                                        enter::Requirement::StartGG { .. } => {}
+                                                        enter::Requirement::TextField { .. } => {}
+                                                        enter::Requirement::TextField2 { .. } => {}
+                                                        enter::Requirement::YesNo { .. } => {}
+                                                        enter::Requirement::Rules { .. } => {}
+                                                        enter::Requirement::RestreamConsent { .. } => {}
+                                                        enter::Requirement::Qualifier { .. } => {} //TODO
+                                                        enter::Requirement::TripleQualifier { .. } => {} //TODO
+                                                        enter::Requirement::QualifierPlacement { num_players, min_races } => : if_chain! {
+                                                            let teams = signups_sorted(&mut transaction, http_client, None, &data, match (data.series, &*data.event) {
+                                                                (Series::SpeedGaming, "2023onl") => QualifierKind::Sgl2023Online,
+                                                                (Series::SpeedGaming, "2024onl") => QualifierKind::Sgl2024Online,
+                                                                (Series::Standard, "8") => QualifierKind::Standard,
+                                                                (_, _) => unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series, data.event),
+                                                            }, Some(&entrant.user)).await?;
+                                                            if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| member.user == entrant.user));
+                                                            if let Qualification::Multiple { num_qualifiers, .. } = team.qualification;
+                                                            then {
+                                                                if num_qualifiers < *min_races {
+                                                                    html! {
+                                                                        : "Not eligible (needs ";
+                                                                        : min_races - num_qualifiers;
+                                                                        : " more finish";
+                                                                        @if min_races - num_qualifiers != 1 {
+                                                                            : "es";
+                                                                        }
+                                                                        : ")";
+                                                                    }
+                                                                } else if teams.iter()
+                                                                    .enumerate()
+                                                                    .find(|(_, team)| team.members.iter().any(|member| member.user == MemberUser::Newcomer))
+                                                                    .is_some_and(|(newcomer_placement, _)| placement >= newcomer_placement)
+                                                                {
+                                                                    html! {
+                                                                        : "Not eligible (can still be beaten by newcomers)";
+                                                                    }
+                                                                } else if placement >= *num_players {
+                                                                    html! {
+                                                                        : "Not eligible (worst-case placement: ";
+                                                                        : placement;
+                                                                        : ")";
+                                                                    }
+                                                                } else {
+                                                                    html! {
+                                                                        : "Eligible (worst-case placement: ";
+                                                                        : placement;
+                                                                        : ")";
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                html! {
+                                                                    : "Error validating qualifier placement";
+                                                                }
+                                                            }
+                                                        };
+                                                        enter::Requirement::External { .. } => {}
+                                                    }
+                                                }
+                                            } else {
+                                                : "Signups not open";
+                                            }
+                                        } else {
+                                            : "Missing confirmation from ";
+                                            : English.join_html(members.iter()
+                                                .filter(|member| !member.is_confirmed)
+                                                .map(|member| html! {
+                                                    @match &member.user {
+                                                        MemberUser::MidosHouse(user) => : user;
+                                                        MemberUser::RaceTime { url, name, .. } => a(href = format!("https://{}{url}", racetime_host())) : name;
+                                                        MemberUser::Newcomer => @unreachable // only returned if signups_sorted is called with worst_case_extrapolation = true, which it isn't above
+                                                    }
+                                                })
+                                            );
+                                        }
+                                    }
+                                }
+                                ShowStatus::Confirmed => td {
                                     @if members.iter().all(|member| member.is_confirmed) {
                                         : "✓";
                                     }
                                 }
+                                ShowStatus::None => {}
                             }
                             @if let Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4) = data.draft_kind() {
                                 td {
