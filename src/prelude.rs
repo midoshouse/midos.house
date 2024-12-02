@@ -222,9 +222,12 @@ pub(crate) use {
             Teams,
             Users,
         },
-        lang::Language::{
+        lang::{
             self,
-            *,
+            Language::{
+                self,
+                *,
+            },
         },
         macros::*,
         night_path,

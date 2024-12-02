@@ -129,6 +129,11 @@ pub(crate) enum Requirement {
         num_players: usize,
         #[serde(default)]
         min_races: usize,
+        /// Check qualifiers for a different event in this series
+        event: Option<String>,
+        /// Must not place within this range, e.g. for Challenge Cup
+        #[serde(default)]
+        exclude_players: usize,
     },
     /// A signup requirement that cannot be checked automatically
     External {
@@ -169,7 +174,12 @@ impl Requirement {
             Self::RestreamConsent { .. } => Some(false),
             Self::Qualifier { .. } => Some(false),
             Self::TripleQualifier { .. } => Some(false),
-            Self::QualifierPlacement { num_players, min_races } => Some(if_chain! {
+            Self::QualifierPlacement { num_players, min_races, event, exclude_players } => Some(if_chain! {
+                let data = if let Some(event) = event {
+                    &Data::new(&mut *transaction, data.series, event).await?.ok_or(Error::NoSuchEvent)?
+                } else {
+                    data
+                };
                 // call signups_sorted with worst_case_extrapolation = true to calculate whether the player has secured a spot ahead of time
                 let teams = teams::signups_sorted(transaction, &mut teams::Cache::new(http_client.clone()), None, data, match (data.series, &*data.event) {
                     (Series::SpeedGaming, "2023onl") => teams::QualifierKind::Sgl2023Online,
@@ -181,6 +191,9 @@ impl Requirement {
                 if let teams::Qualification::Multiple { num_qualifiers, .. } = team.qualification;
                 then {
                     teams.iter()
+                        .take(*exclude_players)
+                        .all(|team| team.members.iter().all(|member| member.is_confirmed))
+                    && teams.iter()
                         .enumerate()
                         .find(|(_, team)| team.members.iter().any(|member| member.user == teams::MemberUser::Newcomer))
                         .is_none_or(|(newcomer_placement, _)| placement < newcomer_placement) // Newcomer can represent any number of teams
@@ -524,7 +537,7 @@ impl Requirement {
                     }),
                 }
             }
-            &Self::QualifierPlacement { num_players, min_races } => {
+            &Self::QualifierPlacement { num_players, min_races, exclude_players, event: _ } => {
                 RequirementStatus {
                     blocks_submit: !is_checked.unwrap(),
                     html_content: Box::new(move |_| html! {
@@ -535,16 +548,27 @@ impl Requirement {
                             : min_races;
                             : " qualifier races and place";
                         }
-                        : " in the top ";
-                        : num_players.to_string();
+                        @if exclude_players == 0 {
+                            : " in the top ";
+                            : num_players.to_string();
+                        } else {
+                            : lang::english_ordinal(exclude_players + 1);
+                            : " to ";
+                            : lang::english_ordinal(num_players);
+                        }
                         : " of qualifier scores.";
                         br;
-                        : "Note: You may be eligible to enter even if you don't initially place in the top ";
-                        : num_players.to_string();
+                        : "Note: You may be eligible to enter even if you don't initially place ";
+                        @if exclude_players == 0 {
+                            : "in the top ";
+                            : num_players.to_string();
+                        } else {
+                            : " in this range";
+                        }
                         : " due to other players opting out. You will be notified by an organizer if this is the case.";
                     }),
                 }
-                }
+            }
             Self::External { text } => {
                 let text = text.clone();
                 RequirementStatus {
@@ -630,7 +654,7 @@ impl Requirement {
                     Self::Discord => "A Discord account is required to enter this event. Go to your Mido's House profile and select “Connect a Discord account”.", //TODO direct link?
                     Self::DiscordGuild { .. } => "You must join the event's Discord server to enter.", //TODO invite link?
                     Self::Challonge => "A Challonge account is required to enter this event.", //TODO link to /login/challonge
-                    Self::QualifierPlacement { .. } => "You have not secured a qualifying placement.",
+                    Self::QualifierPlacement { .. } => "You have not secured a qualifying placement.", //TODO different message if the player has overqualified or overqualifying due to opt-outs is still possible
                     | Self::StartGG { .. }
                     | Self::TextField { .. }
                     | Self::TextField2 { .. }
@@ -661,6 +685,8 @@ pub(crate) enum Error {
     #[error(transparent)] Wheel(#[from] wheel::Error),
     #[error("event has a discordGuild entry requirement but no Discord guild")]
     DiscordGuild,
+    #[error("no such event")]
+    NoSuchEvent,
 }
 
 impl<E: Into<Error>> From<E> for StatusOrError<Error> {

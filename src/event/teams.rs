@@ -114,7 +114,7 @@ impl PartialEq<User> for MemberUser {
 pub(crate) struct SignupsMember {
     role: Role,
     pub(crate) user: MemberUser,
-    is_confirmed: bool,
+    pub(crate) is_confirmed: bool,
     pub(crate) qualifier_time: Option<Duration>,
     qualifier_vod: Option<String>,
 }
@@ -674,6 +674,8 @@ pub(crate) enum Error {
     #[error(transparent)] PgInterval(#[from] PgIntervalDecodeError),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
+    #[error("no such event")]
+    NoSuchEvent,
 }
 
 impl<E: Into<Error>> From<E> for StatusOrError<Error> {
@@ -951,8 +953,13 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                                         enter::Requirement::RestreamConsent { .. } => {}
                                                         enter::Requirement::Qualifier { .. } => {} //TODO
                                                         enter::Requirement::TripleQualifier { .. } => {} //TODO
-                                                        enter::Requirement::QualifierPlacement { num_players, min_races } => : if_chain! {
-                                                            let teams = signups_sorted(&mut transaction, &mut cache, None, &data, match (data.series, &*data.event) {
+                                                        enter::Requirement::QualifierPlacement { num_players, min_races, event, exclude_players } => : if_chain! {
+                                                            let data = if let Some(event) = event {
+                                                                &Data::new(&mut transaction, data.series, event).await?.ok_or(Error::NoSuchEvent)?
+                                                            } else {
+                                                                &data
+                                                            };
+                                                            let teams = signups_sorted(&mut transaction, &mut cache, None, data, match (data.series, &*data.event) {
                                                                 (Series::SpeedGaming, "2023onl") => QualifierKind::Sgl2023Online,
                                                                 (Series::SpeedGaming, "2024onl") => QualifierKind::Sgl2024Online,
                                                                 (Series::Standard, "8") => QualifierKind::Standard,
@@ -984,6 +991,13 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                                                         : "Not eligible (worst-case placement: ";
                                                                         : placement;
                                                                         : ")";
+                                                                    }
+                                                                } else if teams.iter()
+                                                                    .take(*exclude_players)
+                                                                    .any(|team| team.members.iter().any(|member| !member.is_confirmed))
+                                                                {
+                                                                    html! {
+                                                                        : "Not eligible (may still overqualify due to opt-outs)";
                                                                     }
                                                                 } else {
                                                                     html! {

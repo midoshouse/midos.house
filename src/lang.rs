@@ -174,3 +174,12 @@ impl ToHtml for Language {
         }
     }
 }
+
+pub(crate) fn english_ordinal(n: usize) -> String {
+    match n % 10 {
+        1 if n % 100 != 11 => format!("{n}st"),
+        2 if n % 100 != 12 => format!("{n}nd"),
+        3 if n % 100 != 13 => format!("{n}rd"),
+        _ => format!("{n}th"),
+    }
+}
