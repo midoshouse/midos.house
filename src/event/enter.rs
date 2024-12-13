@@ -557,6 +557,7 @@ impl Requirement {
                             : " in the top ";
                             : num_players.to_string();
                         } else {
+                            : " ";
                             : lang::english_ordinal(exclude_players + 1);
                             : " to ";
                             : lang::english_ordinal(num_players);
