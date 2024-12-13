@@ -362,6 +362,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             if num_entered >= 2 {
                                 scores.pop(); // remove best score
                             }
+                            scores.reverse();
                             scores.truncate(4); // remove up to 3 worst scores
                             Qualification::Multiple {
                                 score: scores.iter().copied().sum::<R64>(), // overall score is sum of remaining scores
