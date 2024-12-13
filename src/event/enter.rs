@@ -180,15 +180,16 @@ impl Requirement {
                 } else {
                     data
                 };
-                // call signups_sorted with worst_case_extrapolation = true to calculate whether the player has secured a spot ahead of time
-                let teams = teams::signups_sorted(transaction, &mut teams::Cache::new(http_client.clone()), None, data, match (data.series, &*data.event) {
+                let qualifier_kind = match (data.series, &*data.event) {
                     (Series::SpeedGaming, "2023onl") => teams::QualifierKind::Sgl2023Online,
                     (Series::SpeedGaming, "2024onl") => teams::QualifierKind::Sgl2024Online,
                     (Series::Standard, "8") => teams::QualifierKind::Standard,
                     (_, _) => unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series, data.event),
-                }, Some(&teams::MemberUser::MidosHouse(me.clone()))).await?;
+                };
+                // call signups_sorted with worst_case_extrapolation = true to calculate whether the player has secured a spot ahead of time
+                let teams = teams::signups_sorted(transaction, &mut teams::Cache::new(http_client.clone()), None, data, qualifier_kind, Some(&teams::MemberUser::MidosHouse(me.clone()))).await?;
                 if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| member.user == *me));
-                if let teams::Qualification::Multiple { num_qualifiers, .. } = team.qualification;
+                if let teams::Qualification::Multiple { num_entered, num_finished, .. } = team.qualification;
                 then {
                     teams.iter()
                         .take(*exclude_players)
@@ -198,7 +199,11 @@ impl Requirement {
                         .find(|(_, team)| team.members.iter().any(|member| member.user == teams::MemberUser::Newcomer))
                         .is_none_or(|(newcomer_placement, _)| placement < newcomer_placement) // Newcomer can represent any number of teams
                     && placement < *num_players
-                    && num_qualifiers >= *min_races
+                    && match qualifier_kind {
+                        teams::QualifierKind::Standard => num_finished >= *min_races,
+                        teams::QualifierKind::Sgl2023Online | teams::QualifierKind::Sgl2024Online => num_entered >= *min_races,
+                        _ => unreachable!("not possible for qualifier_kind above"),
+                    }
                 } else {
                     false
                 }
