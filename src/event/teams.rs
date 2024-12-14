@@ -25,10 +25,15 @@ pub(crate) enum QualifierKind {
     Single {
         show_times: bool,
     },
+    Score(QualifierScoreKind),
+    SongsOfHope,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum QualifierScoreKind {
     Standard,
     Sgl2023Online,
     Sgl2024Online,
-    SongsOfHope,
 }
 
 pub(crate) enum MemberUser {
@@ -171,7 +176,7 @@ impl Cache {
 pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, cache: &mut Cache, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind, worst_case_extrapolation: Option<&MemberUser>) -> Result<Vec<SignupsTeam>, cal::Error> {
     let now = Utc::now();
     let mut signups = match qualifier_kind {
-        QualifierKind::Standard | QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
+        QualifierKind::Score(score_kind) => {
             let mut scores = HashMap::<_, Vec<_>>::default();
             for race in Race::for_event(transaction, &cache.http_client, data).await? {
                 if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
@@ -182,10 +187,9 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             score.push(r64(if user == extrapolate_for {
                                 0.0
                             } else {
-                                match qualifier_kind {
-                                    QualifierKind::Standard => 1100.0,
-                                    QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => 110.0,
-                                    _ => unreachable!("checked by outer match"),
+                                match score_kind {
+                                    QualifierScoreKind::Standard => 1100.0,
+                                    QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online => 110.0,
                                 }
                             }));
                         }
@@ -200,10 +204,9 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                             score.push(r64(if user == extrapolate_for {
                                 0.0
                             } else {
-                                match qualifier_kind {
-                                    QualifierKind::Standard => 1100.0,
-                                    QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => 110.0,
-                                    _ => unreachable!("checked by outer match"),
+                                match score_kind {
+                                    QualifierScoreKind::Standard => 1100.0,
+                                    QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online => 110.0,
                                 }
                             }));
                         }
@@ -211,7 +214,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     RaceStatusValue::Cancelled => {}
                     RaceStatusValue::Invitational | RaceStatusValue::Pending | RaceStatusValue::InProgress | RaceStatusValue::Finished => {
                         let mut entrants = room_data.entrants.clone();
-                        if let QualifierKind::Sgl2023Online = qualifier_kind {
+                        if let QualifierScoreKind::Sgl2023Online = score_kind {
                             entrants.retain(|entrant| entrant.user.id != "yMewn83Vj3405Jv7"); // user was banned
                             if race.id == Id::from(17171498007470059483_u64) {
                                 entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
@@ -250,10 +253,9 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         let num_entrants = entrants.len();
                         let finish_times = entrants.iter().filter_map(|entrant| entrant.finish_time).collect_vec();
                         let num_finishers = finish_times.len();
-                        let par_cutoff = match qualifier_kind {
-                            QualifierKind::Standard => 7u8,
-                            QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => if num_entrants < 20 { 3 } else { 4 },
-                            _ => unreachable!("checked by outer match"),
+                        let par_cutoff = match score_kind {
+                            QualifierScoreKind::Standard => 7u8,
+                            QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online => if num_entrants < 20 { 3 } else { 4 },
                         };
                         if worst_case_extrapolation.is_none() && room_data.status.value != RaceStatusValue::Finished && num_finishers < usize::from(par_cutoff) {
                             continue // scores are not yet accurate
@@ -277,8 +279,8 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 url: entrant.user.url,
                                 name: entrant.user.name,
                             }).or_default().push(r64(if let Some(finish_time) = entrant.finish_time {
-                                match qualifier_kind {
-                                    QualifierKind::Standard => {
+                                match score_kind {
+                                    QualifierScoreKind::Standard => {
                                         // https://docs.google.com/document/d/1IHrOGxFQpt3HpQ-9kQ6AVAARc04x6c96N1aHnHfHaKM/edit
                                         let finish_time = TimeDelta::from_std(finish_time).expect("finish time out of range");
                                         let par_cutoff = usize::from(par_cutoff).min(num_entrants);
@@ -291,11 +293,10 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                         let t_gamble = TimeDelta::minutes(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
                                         ((1.0 - (finish_time - t_average - t_jet - t_gamble).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0)
                                     }
-                                    QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
+                                    QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online => {
                                         let par_time = finish_times[0..usize::from(par_cutoff)].iter().sum::<Duration>() / u32::from(par_cutoff);
                                         (100.0 * (2.0 - (finish_time.as_secs_f64() / par_time.as_secs_f64()))).clamp(10.0, 110.0)
                                     }
-                                    _ => unreachable!("checked by outer match"),
                                 }
                             } else {
                                 0.0
@@ -352,8 +353,8 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         qualifier_vod: None,
                         user,
                     }],
-                    qualification: match qualifier_kind {
-                        QualifierKind::Standard => {
+                    qualification: match score_kind {
+                        QualifierScoreKind::Standard => {
                             scores.truncate(8); // only count the first 8 qualifiers chronologically
                             let num_entered = scores.len();
                             scores.retain(|&score| score != 0.0); // only count finished races
@@ -369,7 +370,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 num_entered, num_finished,
                             }
                         }
-                        QualifierKind::Sgl2023Online => {
+                        QualifierScoreKind::Sgl2023Online => {
                             scores.truncate(5); // only count the first 5 qualifiers chronologically
                             let num_entered = scores.len();
                             scores.sort_unstable();
@@ -385,7 +386,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 num_entered,
                             }
                         }
-                        QualifierKind::Sgl2024Online => {
+                        QualifierScoreKind::Sgl2024Online => {
                             scores.truncate(6); // only count the first 6 qualifiers chronologically
                             let num_entered = scores.len();
                             scores.sort_unstable();
@@ -398,7 +399,6 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                 num_entered,
                             }
                         }
-                        _ => unreachable!("checked by outer match"),
                     },
                     hard_settings_ok: false,
                     mq_ok: false,
@@ -647,27 +647,24 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 QualificationOrder::new(*qualification1, members1).cmp(&QualificationOrder::new(*qualification2, members2))
                 .then_with(|| team1.cmp(&team2))
             }
-            QualifierKind::Standard | QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
+            QualifierKind::Score(score_kind) => {
                 let (num1, score1) = match *qualification1 {
-                    Qualification::Multiple { num_entered, num_finished, score } => match qualifier_kind {
-                        QualifierKind::Standard => (num_finished, score),
-                        QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => (num_entered, score),
-                        _ => unreachable!("checked by outer match"),
+                    Qualification::Multiple { num_entered, num_finished, score } => match score_kind {
+                        QualifierScoreKind::Standard => (num_finished, score),
+                        QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online => (num_entered, score),
                     },
                     _ => unreachable!("QualifierKind::Multiple must use Qualification::Multiple"),
                 };
                 let (num2, score2) = match *qualification2 {
-                    Qualification::Multiple { num_entered, num_finished, score } => match qualifier_kind {
-                        QualifierKind::Standard => (num_finished, score),
-                        QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => (num_entered, score),
-                        _ => unreachable!("checked by outer match"),
+                    Qualification::Multiple { num_entered, num_finished, score } => match score_kind {
+                        QualifierScoreKind::Standard => (num_finished, score),
+                        QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online => (num_entered, score),
                     },
                     _ => unreachable!("QualifierKind::Multiple must use Qualification::Multiple"),
                 };
-                let required_qualifiers = match qualifier_kind {
-                    QualifierKind::Standard => 5,
-                    QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => 3,
-                    _ => unreachable!("checked by outer match"),
+                let required_qualifiers = match score_kind {
+                    QualifierScoreKind::Standard => 5,
+                    QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online => 3,
                 };
                 num2.min(required_qualifiers).cmp(&num1.min(required_qualifiers)) // list racers closer to reaching the required number of qualifiers first
                 .then_with(|| score2.cmp(&score1)) // list racers with higher scores first
@@ -723,12 +720,12 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
             } else if !data.is_started(&mut transaction).await? && Race::for_event(&mut transaction, http_client, &data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.is_ended()) {
                 show_status = ShowStatus::Confirmed;
             }
-            match (data.series, &*data.event) {
-                (Series::SpeedGaming, "2023onl") => QualifierKind::Sgl2023Online,
-                (Series::SpeedGaming, "2024onl") => QualifierKind::Sgl2024Online,
-                (Series::Standard, "8") => QualifierKind::Standard,
+            QualifierKind::Score(match (data.series, &*data.event) {
+                (Series::SpeedGaming, "2023onl") => QualifierScoreKind::Sgl2023Online,
+                (Series::SpeedGaming, "2024onl") => QualifierScoreKind::Sgl2024Online,
+                (Series::Standard, "8") => QualifierScoreKind::Standard,
                 _ => unreachable!("checked by outer match"),
-            }
+            })
         }
         (_, _) => if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE series = $1 AND event = $2 AND qualifier_rank IS NOT NULL) AS "exists!""#, series as _, event).fetch_one(&mut *transaction).await? {
             QualifierKind::Rank
@@ -753,7 +750,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config { "Entrants" } else { "Teams" };
     let mut column_headers = Vec::default();
-    if let QualifierKind::Rank | QualifierKind::Standard | QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online = qualifier_kind {
+    if let QualifierKind::Rank | QualifierKind::Score(_) = qualifier_kind {
         column_headers.push(html! {
             th : "Qualifier Rank";
         });
@@ -778,7 +775,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                 th : "Pieces Found";
             });
         }
-        QualifierKind::Standard => {
+        QualifierKind::Score(QualifierScoreKind::Standard) => {
             column_headers.push(html! {
                 th : "Qualifiers Entered";
             });
@@ -789,7 +786,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                 th : "Qualifier Points";
             });
         }
-        QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
+        QualifierKind::Score(QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online) => {
             column_headers.push(html! {
                 th : "Qualifiers Entered";
             });
@@ -843,11 +840,11 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                             QualifierKind::None => false,
                             QualifierKind::Rank => false, // unknown cutoff
                             QualifierKind::Single { .. } => false, // need to be qualified to be listed
-                            QualifierKind::Standard => {
+                            QualifierKind::Score(QualifierScoreKind::Standard) => {
                                 let Qualification::Multiple { num_finished, .. } = qualification else { unreachable!("qualification kind mismatch") };
                                 num_finished < 5
                             }
-                            QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
+                            QualifierKind::Score(QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online) => {
                                 let Qualification::Multiple { num_entered, .. } = qualification else { unreachable!("qualification kind mismatch") };
                                 num_entered < 3
                             }
@@ -856,7 +853,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                         tr(class? = is_dimmed.then_some("dimmed")) {
                             @match qualifier_kind {
                                 QualifierKind::Rank => td : team.as_ref().and_then(|team| team.qualifier_rank);
-                                QualifierKind::Standard | QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => td : (signup_idx + 1).to_string();
+                                QualifierKind::Score(_) => td : (signup_idx + 1).to_string();
                                 _ => {}
                             }
                             @if !matches!(data.team_config, TeamConfig::Solo) {
@@ -948,12 +945,12 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                     }
                                 }
                                 (QualifierKind::Single { show_times: true }, Qualification::TriforceBlitz { pieces, .. }) => td : pieces;
-                                (QualifierKind::Standard, Qualification::Multiple { num_entered, num_finished, score }) => {
+                                (QualifierKind::Score(QualifierScoreKind::Standard), Qualification::Multiple { num_entered, num_finished, score }) => {
                                     td(style = "text-align: right;") : num_entered;
                                     td(style = "text-align: right;") : num_finished;
                                     td(style = "text-align: right;") : format!("{score:.2}");
                                 }
-                                (QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online, Qualification::Multiple { num_entered, num_finished: _, score }) => {
+                                (QualifierKind::Score(QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online), Qualification::Multiple { num_entered, num_finished: _, score }) => {
                                     td(style = "text-align: right;") : num_entered;
                                     td(style = "text-align: right;") : format!("{score:.2}");
                                 }
@@ -989,18 +986,17 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                                                 &data
                                                             };
                                                             let qualifier_kind = match (data.series, &*data.event) {
-                                                                (Series::SpeedGaming, "2023onl") => QualifierKind::Sgl2023Online,
-                                                                (Series::SpeedGaming, "2024onl") => QualifierKind::Sgl2024Online,
-                                                                (Series::Standard, "8") => QualifierKind::Standard,
+                                                                (Series::SpeedGaming, "2023onl") => QualifierScoreKind::Sgl2023Online,
+                                                                (Series::SpeedGaming, "2024onl") => QualifierScoreKind::Sgl2024Online,
+                                                                (Series::Standard, "8") => QualifierScoreKind::Standard,
                                                                 (_, _) => unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series, data.event),
                                                             };
-                                                            let teams = signups_sorted(&mut transaction, &mut cache, None, data, qualifier_kind, Some(&entrant.user)).await?;
+                                                            let teams = signups_sorted(&mut transaction, &mut cache, None, data, QualifierKind::Score(qualifier_kind), Some(&entrant.user)).await?;
                                                             if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| member.user == entrant.user));
                                                             if let Qualification::Multiple { num_entered, num_finished, .. } = team.qualification;
                                                             let num_qualifiers = match qualifier_kind {
-                                                                QualifierKind::Standard => num_finished,
-                                                                QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => num_entered,
-                                                                _ => unreachable!("not possible for qualifier_kind above"),
+                                                                QualifierScoreKind::Standard => num_finished,
+                                                                QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online => num_entered,
                                                             };
                                                             then {
                                                                 if num_qualifiers < *min_races {
@@ -1008,19 +1004,18 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                                                         : "Not eligible (needs ";
                                                                         : min_races - num_qualifiers;
                                                                         @match qualifier_kind {
-                                                                            QualifierKind::Standard => {
+                                                                            QualifierScoreKind::Standard => {
                                                                                 : " more finish";
                                                                                 @if min_races - num_qualifiers != 1 {
                                                                                     : "es";
                                                                                 }
                                                                             }
-                                                                            QualifierKind::Sgl2023Online | QualifierKind::Sgl2024Online => {
+                                                                            QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online => {
                                                                                 : " more race";
                                                                                 @if min_races - num_qualifiers != 1 {
                                                                                     : "s";
                                                                                 }
                                                                             }
-                                                                            _ => @unreachable
                                                                         }
                                                                         : ")";
                                                                     }
