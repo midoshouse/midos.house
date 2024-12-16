@@ -288,7 +288,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                         let t_average = par_times.iter().sum::<TimeDelta>() / i32::try_from(par_cutoff).expect("too many entrants");
                                         let t_j_h = TimeDelta::minutes(8).mul_f64(1.0.min(0.0.max((TimeDelta::hours(2) + TimeDelta::minutes(30) - t_average).div_duration_f64(TimeDelta::hours(2) + TimeDelta::minutes(30) - (TimeDelta::hours(1) + TimeDelta::minutes(40))))));
                                         let t_jet = TimeDelta::minutes(8).min(t_j_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(TimeDelta::minutes(8)) * 0.35)));
-                                        let t_g_h = TimeDelta::from_secs_f64((par_times.iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / par_cutoff as f64).sqrt());
+                                        let t_g_h = TimeDelta::from_secs_f64((par_times.iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / 1.max(par_cutoff - 1) as f64).sqrt());
                                         let sigma_finish = t_g_h.div_duration_f64(t_average);
                                         let t_gamble = TimeDelta::minutes(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
                                         ((1.0 - (finish_time - t_average - t_jet - t_gamble).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0)
