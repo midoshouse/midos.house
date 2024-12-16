@@ -107,7 +107,7 @@ struct Args {
 enum Error {
     #[error(transparent)] Any(#[from] anyhow::Error),
     #[error(transparent)] Base64(#[from] base64::DecodeError),
-    #[error(transparent)] Error(#[from] event::Error),
+    #[error(transparent)] Event(#[from] event::Error),
     #[cfg(unix)] #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] Racetime(#[from] racetime::Error),
     #[cfg(unix)] #[error(transparent)] Read(#[from] async_proto::ReadError),

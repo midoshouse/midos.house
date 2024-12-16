@@ -291,7 +291,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                                         let t_g_h = TimeDelta::from_secs_f64((par_times.iter().map(|finish_time| finish_time.abs_diff(t_average).as_secs_f64().powi(2)).sum::<f64>() / par_cutoff as f64).sqrt());
                                         let sigma_finish = t_g_h.div_duration_f64(t_average);
                                         let t_gamble = TimeDelta::minutes(5).min(t_g_h.mul_f64(0.0.max((finish_time - t_average).div_duration_f64(t_g_h) * 0.0.max(sigma_finish / 0.035 - 1.0) * 0.3)));
-                                        ((1.0 - (finish_time - t_average - t_jet - t_gamble).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0).floor()
+                                        ((1.0 - (finish_time - t_average - t_jet - t_gamble).div_duration_f64(t_average)) * 1000.0).clamp(100.0, 1100.0)
                                     }
                                     QualifierScoreKind::Sgl2023Online | QualifierScoreKind::Sgl2024Online => {
                                         let par_time = finish_times[0..usize::from(par_cutoff)].iter().sum::<Duration>() / u32::from(par_cutoff);
@@ -1030,7 +1030,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                                                 } else if placement >= *num_players {
                                                                     html! {
                                                                         : "Not eligible (worst-case placement: ";
-                                                                        : placement;
+                                                                        : placement + 1;
                                                                         : ")";
                                                                     }
                                                                 } else if teams.iter()
@@ -1043,7 +1043,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                                                 } else {
                                                                     html! {
                                                                         : "Eligible (worst-case placement: ";
-                                                                        : placement;
+                                                                        : placement + 1;
                                                                         : ")";
                                                                     }
                                                                 }
