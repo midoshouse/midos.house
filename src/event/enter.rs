@@ -798,9 +798,10 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                             let mut can_submit = true;
                             let mut requirements_display = Vec::with_capacity(requirements.len());
                             for requirement in requirements {
-                                let status = requirement.check_get(&data, requirement.is_checked(&mut transaction, http_client, discord_ctx, me, &data).await?, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults)?;
+                                let is_checked = requirement.is_checked(&mut transaction, http_client, discord_ctx, me, &data).await?;
+                                let status = requirement.check_get(&data, is_checked, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults)?;
                                 if status.blocks_submit { can_submit = false }
-                                requirements_display.push((requirement.is_checked(&mut transaction, http_client, discord_ctx, me, &data).await?, status.html_content));
+                                requirements_display.push((is_checked, status.html_content));
                             }
                             let preface = html! {
                                 @if data.show_opt_out {
@@ -1100,7 +1101,9 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                         if let Requirement::StartGG { optional } = requirement {
                             let discord_ctx = discord_ctx.read().await;
                             if !optional || value.startgg_radio == Some(BoolRadio::Yes) {
-                                //TODO enter event on start.gg with user ID (probably generateRegistrationToken → registerForTournament)
+                                //TODO enter event on start.gg with user ID
+                                // probably generateRegistrationToken (requires OAuth?)
+                                // and then use the token in registerForTournament
                                 // temporary workaround until this is automated:
                                 let msg = MessageBuilder::default()
                                     .mention_user(&me)

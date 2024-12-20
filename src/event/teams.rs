@@ -50,12 +50,16 @@ pub(crate) enum MemberUser {
 impl PartialEq for MemberUser {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::MidosHouse(user1), Self::MidosHouse(user2)) => user1.id == user2.id,
-            (Self::RaceTime { id: id1, .. }, Self::RaceTime { id: id2, .. }) => id1 == id2,
-            (Self::Newcomer, Self::Newcomer) => true,
-            | (Self::MidosHouse(_), Self::RaceTime { .. })
+            | (Self::MidosHouse(user1), Self::MidosHouse(user2))
+                => user1.id == user2.id,
+            | (Self::RaceTime { id: id1, .. }, Self::RaceTime { id: id2, .. })
+                => id1 == id2,
+            | (Self::Newcomer, Self::Newcomer)
+                => true,
+            | (Self::MidosHouse(user), Self::RaceTime { id, .. })
+            | (Self::RaceTime { id, .. }, Self::MidosHouse(user))
+                => user.racetime.as_ref().is_some_and(|racetime| racetime.id == *id),
             | (Self::MidosHouse(_), Self::Newcomer)
-            | (Self::RaceTime { .. }, Self::MidosHouse(_))
             | (Self::RaceTime { .. }, Self::Newcomer)
             | (Self::Newcomer, Self::MidosHouse(_))
             | (Self::Newcomer, Self::RaceTime { .. })
@@ -69,12 +73,15 @@ impl Eq for MemberUser {}
 impl Hash for MemberUser {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match self {
-            Self::MidosHouse(user) => {
+            Self::MidosHouse(user) => if let Some(racetime) = user.racetime.as_ref() {
                 0u8.hash(state);
-                user.id.hash(state);
-            }
-            Self::RaceTime { id, .. } => {
+                racetime.id.hash(state);
+            } else {
                 1u8.hash(state);
+                user.id.hash(state);
+            },
+            Self::RaceTime { id, .. } => {
+                0u8.hash(state);
                 id.hash(state);
             }
             Self::Newcomer => {
@@ -92,16 +99,31 @@ impl PartialOrd for MemberUser {
 
 impl Ord for MemberUser {
     fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (Self::MidosHouse(user1), Self::MidosHouse(user2)) => user1.id.cmp(&user2.id),
-            (Self::MidosHouse(_), Self::RaceTime { .. }) => Less,
-            (Self::MidosHouse(_), Self::Newcomer) => Less,
-            (Self::RaceTime { .. }, Self::MidosHouse(_)) => Greater,
-            (Self::RaceTime { id: id1, .. }, Self::RaceTime { id: id2, .. }) => id1.cmp(id2),
-            (Self::RaceTime { .. }, Self::Newcomer) => Less,
-            (Self::Newcomer, Self::MidosHouse(_)) => Greater,
-            (Self::Newcomer, Self::RaceTime { .. }) => Greater,
-            (Self::Newcomer, Self::Newcomer) => Equal,
+        let racetime_id1 = match self {
+            Self::MidosHouse(user) => user.racetime.as_ref().map(|racetime| &racetime.id),
+            Self::RaceTime { id, .. } => Some(id),
+            Self::Newcomer => None,
+        };
+        let racetime_id2 = match other {
+            Self::MidosHouse(user) => user.racetime.as_ref().map(|racetime| &racetime.id),
+            Self::RaceTime { id, .. } => Some(id),
+            Self::Newcomer => None,
+        };
+        if let (Some(id1), Some(id2)) = (racetime_id1, racetime_id2) {
+            id1.cmp(id2)
+        } else {
+            match (self, other) {
+                (Self::MidosHouse(user1), Self::MidosHouse(user2)) => user1.racetime.is_some().cmp(&user2.racetime.is_some())
+                    .then_with(|| user1.id.cmp(&user2.id)),
+                (Self::MidosHouse(_), Self::RaceTime { .. }) => Less,
+                (Self::MidosHouse(_), Self::Newcomer) => Less,
+                (Self::RaceTime { .. }, Self::MidosHouse(_)) => Greater,
+                (Self::RaceTime { id: id1, .. }, Self::RaceTime { id: id2, .. }) => id1.cmp(id2),
+                (Self::RaceTime { .. }, Self::Newcomer) => Less,
+                (Self::Newcomer, Self::MidosHouse(_)) => Greater,
+                (Self::Newcomer, Self::RaceTime { .. }) => Greater,
+                (Self::Newcomer, Self::Newcomer) => Equal,
+            }
         }
     }
 }
