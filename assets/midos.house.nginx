@@ -21,6 +21,7 @@ server {
     location / {
         add_header Strict-Transport-Security "max-age=63072000; includeSubdomains; preload" always;
         proxy_pass http://localhost:24812;
+        proxy_read_timeout 300;
     }
 
     location /static/ {
