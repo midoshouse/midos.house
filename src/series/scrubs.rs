@@ -53,6 +53,27 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : " for details.";
                 }
             }
+            h2 : "See also";
+            ul {
+                li {
+                    a(href = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ9W-LpqwoWzIIxMZZyFWDl7-MYQ7v_0z2Ntu8aebGxOJRQ4r5LpCap8jjSuyeeVl0Z_SCCGIZn28b5/pubhtml?gid=566134238") : "Qualifier scores & offline qualifier times";
+                }
+                li {
+                    a(href = "https://scrubscentral.challonge.com/s6Minuet") : "Minuet brackets";
+                }
+                li {
+                    a(href = "https://scrubscentral.challonge.com/s6Bolero") : "Bolero brackets";
+                }
+                li {
+                    a(href = "https://scrubscentral.challonge.com/s6Serenade") : "Serenade brackets";
+                }
+                li {
+                    a(href = "https://scrubscentral.challonge.com/s6Nocturne") : "Nocturne brackets";
+                }
+                li {
+                    a(href = "https://scrubscentral.challonge.com/s6Requiem") : "Requiem brackets";
+                }
+            }
         }),
         _ => None,
     })

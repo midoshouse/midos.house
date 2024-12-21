@@ -8,6 +8,7 @@ pub(crate) struct Team {
     pub(crate) id: Id<Teams>,
     pub(crate) name: Option<String>,
     pub(crate) racetime_slug: Option<String>,
+    /// The event-specific entrant ID, not to be confused with the tournament-specific participant ID.
     pub(crate) startgg_id: Option<startgg::ID>,
     pub(crate) plural_name: Option<bool>,
     pub(crate) restream_consent: bool,
