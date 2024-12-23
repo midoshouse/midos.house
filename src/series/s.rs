@@ -284,7 +284,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
         "7cc" => Some(html! {
             article {
                 p {
-                    : "This is the Challenge Cup portion of the 7th season of the main Ocarina of Time randomizer tournament. See ";
+                    : "This is the Challenge Cup portion of the 7th season of the main Ocarina of Time randomizer tournament, organized by ";
+                    : English.join_html(data.organizers(transaction).await?);
+                    : ". See ";
                     a(href = "https://docs.google.com/document/d/1zMbko0OG0UKQ6Mvc48if9hJEU5svC-aM9xv3J_Lkzn0/edit") : "the official document";
                     : " for details.";
                 }
@@ -324,6 +326,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         }
                         li {
                             a(href = "https://www.start.gg/tournament/ocarina-of-time-randomizer-standard-tournament-season-8/event/main-tournament") : "Brackets";
+                        }
+                        li {
+                            a(href = uri!(event::info(Series::Standard, "8cc")).to_string()) : "Challenge Cup";
                         }
                         li {
                             a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "OoTR Standard Racing Ruleset";
@@ -1009,6 +1014,23 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                                 a(href = "#sometimes-hints") : "Appendix 2: Sometimes/Dual Hints";
                             }
                         }
+                    }
+                }
+            }
+        }),
+        "8cc" => Some(html! {
+            article {
+                p {
+                    : "This is the Challenge Cup portion of the 8th season of the main Ocarina of Time randomizer tournament, organized by ";
+                    : English.join_html(data.organizers(transaction).await?);
+                    : ". See ";
+                    a(href = "https://docs.google.com/document/d/1TY4ZjOaT55bx5rEE9uua4H2YfGNTWFOcueAZ4TuJkb4/edit") : "the official document";
+                    : " for details.";
+                }
+                h2 : "See also";
+                ul {
+                    li {
+                        a(href = uri!(event::info(Series::Standard, "8")).to_string()) : "main bracket";
                     }
                 }
             }
