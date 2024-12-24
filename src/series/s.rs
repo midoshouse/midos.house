@@ -537,7 +537,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     p {
                         : "Matches will be organized via the Mido's House bot. To schedule your match, please use the ";
                         code : "/schedule";
-                        : " command in your scheduling thread. A race room will automatically be opened 30 minutes before the designated time of the race. Mido will automatically roll the seed 15 minutes before the race is due to start. Unless the Fair Play Agreement (FPA) command has been utilized, the result will be processed and posted immediately in the #s8-results channel.";
+                        : " command in your scheduling thread. A race room will automatically be opened 30 minutes before the designated time of the race. Mido will automatically roll the seed 15 minutes before the race is due to start. Unless the Fair Play Agreement (FPA) command has been utilized, the result will be automatically processed and posted in the #s8-results channel (after a 20-minute delay to avoid spoiling spectators).";
                     }
                     p {
                         : "The race can be rescheduled by using ";
