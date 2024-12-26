@@ -6,7 +6,7 @@ use {
             Description,
             DtEnd,
             DtStart,
-            //RRule,
+            RRule,
             Summary,
             URL,
         },
@@ -640,7 +640,7 @@ impl Race {
             Ok(())
         }
 
-        //let now = Utc::now();
+        let now = Utc::now();
         let mut races = Vec::default();
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut **transaction).await? {
             races.push(Self::from_id(&mut *transaction, http_client, id).await?);
@@ -813,9 +813,8 @@ impl Race {
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {
-                "w" => {
-                    /*
-                    let schedule = RaceSchedule::Live { start: s::next_kokiri_weekly_after(now).to_utc(), end: None, room: None };
+                "w" => for kind in all::<s::WeeklyKind>() {
+                    let schedule = RaceSchedule::Live { start: kind.next_weekly_after(now).to_utc(), end: None, room: None };
                     if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
                         let race = Race {
                             id: Id::new(&mut *transaction).await?,
@@ -824,7 +823,7 @@ impl Race {
                             source: Source::Manual,
                             entrants: Entrants::Open,
                             phase: None,
-                            round: Some(format!("Kokiri Weekly")),
+                            round: Some(format!("{kind} Weekly")),
                             game: None,
                             scheduling_thread: None,
                             schedule_updated_at: None,
@@ -842,62 +841,7 @@ impl Race {
                         race.save(&mut *transaction).await?;
                         races.push(race);
                     }
-                    let schedule = RaceSchedule::Live { start: s::next_goron_weekly_after(now).to_utc(), end: None, room: None };
-                    if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
-                        let race = Race {
-                            id: Id::new(&mut *transaction).await?,
-                            series: event.series,
-                            event: event.event.to_string(),
-                            source: Source::Manual,
-                            entrants: Entrants::Open,
-                            phase: None,
-                            round: Some(format!("Goron Weekly")),
-                            game: None,
-                            scheduling_thread: None,
-                            schedule_updated_at: None,
-                            draft: None,
-                            seed: seed::Data::default(),
-                            video_urls: HashMap::default(),
-                            restreamers: HashMap::default(),
-                            last_edited_by: None,
-                            last_edited_at: None,
-                            ignored: false,
-                            schedule_locked: false,
-                            notified: false,
-                            schedule,
-                        };
-                        race.save(&mut *transaction).await?;
-                        races.push(race);
-                    }
-                    let schedule = RaceSchedule::Live { start: s::next_zora_weekly_after(now).to_utc(), end: None, room: None };
-                    if !races.iter().any(|race| race.series == event.series && race.event == event.event && race.schedule.start_matches(&schedule)) {
-                        let race = Race {
-                            id: Id::new(&mut *transaction).await?,
-                            series: event.series,
-                            event: event.event.to_string(),
-                            source: Source::Manual,
-                            entrants: Entrants::Open,
-                            phase: None,
-                            round: Some(format!("Zora Weekly")),
-                            game: None,
-                            scheduling_thread: None,
-                            schedule_updated_at: None,
-                            draft: None,
-                            seed: seed::Data::default(),
-                            video_urls: HashMap::default(),
-                            restreamers: HashMap::default(),
-                            last_edited_by: None,
-                            last_edited_at: None,
-                            ignored: false,
-                            schedule_locked: false,
-                            notified: false,
-                            schedule,
-                        };
-                        race.save(&mut *transaction).await?;
-                        races.push(race);
-                    }
-                    */ // regular weekly schedule suspended during s/8 qualifiers
-                }
+                },
                 //TODO add archives of old Standard tournaments and Challenge Cups?
                 _ => {} // new events are scheduled via Mido's House
             },
@@ -1628,9 +1572,7 @@ fn dtend<Z: TimeZone + IntoIcsTzid>(datetime: DateTime<Z>) -> DtEnd<'static> {
 
 async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, http_client: &reqwest::Client, cal: &mut ICalendar<'_>, event: &event::Data<'_>) -> Result<(), Error> {
     let now = Utc::now();
-    //let mut latest_instantiated_kokiri_weekly = None;
-    //let mut latest_instantiated_goron_weekly = None;
-    //let mut latest_instantiated_zora_weekly = None;
+    let mut latest_instantiated_weeklies = HashMap::new();
     for race in Race::for_event(transaction, http_client, event).await?.into_iter() {
         for race_event in race.cal_events() {
             if let Some(start) = race_event.start() {
@@ -1734,48 +1676,25 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                     cal_event.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string()));
                 }
                 cal.add_event(cal_event);
-                /*
                 if let (Series::Standard, "w", Some(round)) = (event.series, &*event.event, &race.round) {
-                    match &**round {
-                        "Kokiri Weekly" => latest_instantiated_kokiri_weekly = Some(start),
-                        "Goron Weekly" => latest_instantiated_goron_weekly = Some(start),
-                        "Zora Weekly" => latest_instantiated_zora_weekly = Some(start),
-                        _ => {}
+                    if let Some((_, kind)) = regex_captures!("^(.+) Weekly$", round) {
+                        if let Ok(kind) = kind.parse::<s::WeeklyKind>() {
+                            latest_instantiated_weeklies.insert(kind, start);
+                        }
                     }
                 }
-                */
             }
         }
     }
-    /*
-    if let Some(latest_instantiated_kokiri_weekly) = latest_instantiated_kokiri_weekly {
-        let mut cal_event = ics::Event::new("weekly-fri@midos.house", dtstamp(now));
-        cal_event.push(Summary::new("Kokiri Weekly"));
-        let start = s::next_kokiri_weekly_after(latest_instantiated_kokiri_weekly);
+    for (kind, start) in latest_instantiated_weeklies {
+        let mut cal_event = ics::Event::new(format!("weekly-{}@midos.house", kind.cal_id_part()), dtstamp(now));
+        cal_event.push(Summary::new(format!("{kind} Weekly")));
+        let start = kind.next_weekly_after(start);
         cal_event.push(dtstart(start));
         cal_event.push(dtend(start + TimeDelta::hours(3) + TimeDelta::minutes(30)));
-        cal_event.push(RRule::new("FREQ=WEEKLY"));
+        cal_event.push(RRule::new("FREQ=WEEKLY;INTERVAL=2"));
         cal.add_event(cal_event);
     }
-    if let Some(latest_instantiated_goron_weekly) = latest_instantiated_goron_weekly {
-        let mut cal_event = ics::Event::new("weekly-sat@midos.house", dtstamp(now));
-        cal_event.push(Summary::new("Goron Weekly"));
-        let start = s::next_goron_weekly_after(latest_instantiated_goron_weekly);
-        cal_event.push(dtstart(start));
-        cal_event.push(dtend(start + TimeDelta::hours(3) + TimeDelta::minutes(30)));
-        cal_event.push(RRule::new("FREQ=WEEKLY"));
-        cal.add_event(cal_event);
-    }
-    if let Some(latest_instantiated_zora_weekly) = latest_instantiated_zora_weekly {
-        let mut cal_event = ics::Event::new("weekly-sun@midos.house", dtstamp(now));
-        cal_event.push(Summary::new("Zora Weekly"));
-        let start = s::next_zora_weekly_after(latest_instantiated_zora_weekly);
-        cal_event.push(dtstart(start));
-        cal_event.push(dtend(start + TimeDelta::hours(3) + TimeDelta::minutes(30)));
-        cal_event.push(RRule::new("FREQ=WEEKLY"));
-        cal.add_event(cal_event);
-    }
-    */
     Ok(())
 }
 
