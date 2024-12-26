@@ -174,29 +174,21 @@ impl WeeklyKind {
     }
 
     pub(crate) fn next_weekly_after(&self, min_time: DateTime<impl TimeZone>) -> DateTime<Tz> {
-        let min_time = min_time.with_timezone(&Utc).max(match self {
+        let mut time = match self {
             Self::Kokiri => Utc.with_ymd_and_hms(2025, 1, 4, 23, 0, 0).single().expect("wrong hardcoded datetime"),
             Self::Goron => Utc.with_ymd_and_hms(2025, 1, 5, 19, 0, 0).single().expect("wrong hardcoded datetime"),
             Self::Zora => Utc.with_ymd_and_hms(2025, 1, 11, 19, 0, 0).single().expect("wrong hardcoded datetime"),
             Self::Gerudo => Utc.with_ymd_and_hms(2025, 1, 12, 14, 0, 0).single().expect("wrong hardcoded datetime"),
-        });
-        let today = min_time.with_timezone(&America::New_York).date_naive();
-        let date = NaiveDate::from_isoywd_opt(today.iso_week().year(), today.iso_week().week(), match self {
-            Self::Kokiri | Self::Zora => Weekday::Sat,
-            Self::Goron | Self::Gerudo => Weekday::Sun,
-        }).unwrap();
-        let hour = match self {
-            Self::Kokiri => 18,
-            Self::Goron | Self::Zora => 14,
-            Self::Gerudo => 9,
-        };
-        let time = date.and_hms_opt(hour, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Kokiri weekly time");
-        if time <= min_time {
-            let date = date.checked_add_days(Days::new(7)).unwrap();
-            date.and_hms_opt(hour, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining Kokiri weekly time")
-        } else {
-            time
+        }.with_timezone(&America::New_York);
+        while time <= min_time {
+            let date = time.date_naive().checked_add_days(Days::new(14)).unwrap();
+            time = date.and_hms_opt(match self {
+                Self::Kokiri => 18,
+                Self::Goron | Self::Zora => 14,
+                Self::Gerudo => 9,
+            }, 0, 0).unwrap().and_local_timezone(America::New_York).single_ok().expect("error determining weekly time");
         }
+        time
     }
 }
 
