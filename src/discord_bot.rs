@@ -517,7 +517,7 @@ fn parse_timestamp(timestamp: &str) -> Option<DateTime<Utc>> {
 #[allow(deprecated)] //TODO remove use of CreateCommand::dm_permission once CreateCommand::contexts is no longer unstable Discord API
 pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_pool: PgPool, http_client: reqwest::Client, config: Config, new_room_lock: Arc<Mutex<()>>, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
     discord_builder
-        .error_notifier(ErrorNotifier::User(FENHL))
+        .error_notifier(ErrorNotifier::User(FENHL)) //TODO also print to stderr and/or report to night
         .data::<DbPool>(db_pool)
         .data::<HttpClient>(http_client)
         .data::<RacetimeHost>(racetime::HostInfo {
@@ -2046,13 +2046,13 @@ pub(crate) enum Error {
     #[error(transparent)] Serenity(#[from] serenity::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error("attempted to create scheduling thread in Discord guild without command IDs")]
-    UnregisteredDiscordGuild,
+    UnregisteredDiscordGuild(GuildId),
 }
 
 pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transaction: Transaction<'a, Postgres>, race: &mut Race, game_count: i16) -> Result<Transaction<'a, Postgres>, Error> {
     let event = race.event(&mut transaction).await?;
     let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) else { return Ok(transaction) };
-    let Some(command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied()) else { return Err(Error::UnregisteredDiscordGuild) };
+    let Some(command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied()) else { return Err(Error::UnregisteredDiscordGuild(guild_id)) };
     let title = if_chain! {
         if let French = event.language;
         if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
