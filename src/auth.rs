@@ -565,8 +565,8 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, racetime_user
             if let Ok(Some(discord_user)) = User::from_discord(&mut *transaction, discord_user.id).await {
                 if discord_user.racetime.is_none() {
                     let discord = discord_user.discord.expect("Discord user without Discord ID");
-                    sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3, discord_username = $4 WHERE id = $5", PgSnowflake(discord.id) as _, discord.display_name, discord.username_or_discriminator.as_ref().right() as _, discord.username_or_discriminator.as_ref().left(), me.id as _).execute(&mut *transaction).await?;
                     sqlx::query!("DELETE FROM users WHERE id = $1", discord_user.id as _).execute(&mut *transaction).await?;
+                    sqlx::query!("UPDATE users SET discord_id = $1, discord_display_name = $2, discord_discriminator = $3, discord_username = $4 WHERE id = $5", PgSnowflake(discord.id) as _, discord.display_name, discord.username_or_discriminator.as_ref().right() as _, discord.username_or_discriminator.as_ref().left(), me.id as _).execute(&mut *transaction).await?;
                     transaction.commit().await?;
                     return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
                 }
@@ -576,14 +576,14 @@ pub(crate) async fn merge_accounts(pool: &State<PgPool>, me: User, racetime_user
             if let Ok(Some(racetime_user)) = User::from_racetime(&mut *transaction, &racetime_user.id).await {
                 if racetime_user.discord.is_none() {
                     let racetime = racetime_user.racetime.expect("racetime.gg user without racetime.gg ID");
-                    sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2, racetime_discriminator = $3, racetime_pronouns = $4 WHERE id = $5", racetime.id, racetime.display_name, racetime.discriminator as _, racetime.pronouns as _, me.id as _).execute(&mut *transaction).await?;
                     sqlx::query!("DELETE FROM users WHERE id = $1", racetime_user.id as _).execute(&mut *transaction).await?;
+                    sqlx::query!("UPDATE users SET racetime_id = $1, racetime_display_name = $2, racetime_discriminator = $3, racetime_pronouns = $4 WHERE id = $5", racetime.id, racetime.display_name, racetime.discriminator as _, racetime.pronouns as _, me.id as _).execute(&mut *transaction).await?;
                     transaction.commit().await?;
                     return Ok(Redirect::to(uri!(crate::user::profile(me.id))))
                 }
             }
         },
-        (None, None) => unreachable!("signed in but nether account connected"),
+        (None, None) => unreachable!("signed in but neither account connected"),
     }
     transaction.rollback().await?;
     Err(MergeAccountsError::Other)
