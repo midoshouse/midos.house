@@ -374,9 +374,11 @@ impl Handler {
     }
 
     pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, tfb_scores: Option<HashMap<String, tfb::Score>>) -> Result<(), Error> {
-        if let Series::SpeedGaming = event.series {
-            sleep(Duration::from_secs(15 * 60)).await;
-        }
+        let stream_delay = match cal_event.race.entrants {
+            Entrants::Open | Entrants::Count { .. } => event.open_stream_delay,
+            Entrants::Two(_) | Entrants::Three(_) | Entrants::Named(_) => event.invitational_stream_delay,
+        };
+        sleep(stream_delay).await;
         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
         if cal_event.is_private_async_part() {
             ctx.say("@entrants Please remember to send the videos of your run to a tournament organizer.").await?;
