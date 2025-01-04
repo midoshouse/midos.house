@@ -91,22 +91,12 @@ pub(crate) struct CurrentUserQuery;
 #[derive(GraphQLQuery)]
 #[graphql(
     schema_path = "assets/graphql/startgg-schema.json",
-    query_path = "assets/graphql/startgg-solo-event-sets-query.graphql",
+    query_path = "assets/graphql/startgg-event-sets-query.graphql",
     skip_default_scalars, // workaround for https://github.com/smashgg/developer-portal/issues/171
     variables_derives = "Clone, PartialEq, Eq, Hash",
     response_derives = "Debug, Clone",
 )]
-pub(crate) struct SoloEventSetsQuery;
-
-#[derive(GraphQLQuery)]
-#[graphql(
-    schema_path = "assets/graphql/startgg-schema.json",
-    query_path = "assets/graphql/startgg-team-event-sets-query.graphql",
-    skip_default_scalars, // workaround for https://github.com/smashgg/developer-portal/issues/171
-    variables_derives = "Clone, PartialEq, Eq, Hash",
-    response_derives = "Debug, Clone",
-)]
-pub(crate) struct TeamEventSetsQuery;
+pub(crate) struct EventSetsQuery;
 
 #[derive(GraphQLQuery)]
 #[graphql(
@@ -170,7 +160,6 @@ pub(crate) enum ImportSkipReason {
     Exists,
     Preview,
     Slots,
-    Participants,
     SetGamesType,
 }
 
@@ -180,7 +169,6 @@ impl fmt::Display for ImportSkipReason {
             Self::Exists => write!(f, "already exists"),
             Self::Preview => write!(f, "is a preview"),
             Self::Slots => write!(f, "no match on slots"),
-            Self::Participants => write!(f, "no match on participants"),
             Self::SetGamesType => write!(f, "unknown games type"),
         }
     }
@@ -248,87 +236,41 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
 
     async fn process_page(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, config: &Config, event: &event::Data<'_>, event_slug: &str, page: i64, races: &mut Vec<Race>, skips: &mut Vec<(ID, ImportSkipReason)>) -> Result<i64, cal::Error> {
         let startgg_token = if Environment::default().is_dev() { &config.startgg_dev } else { &config.startgg_production };
-        if let TeamConfig::Solo = event.team_config {
-            let solo_event_sets_query::ResponseData {
-                event: Some(solo_event_sets_query::SoloEventSetsQueryEvent {
-                    sets: Some(solo_event_sets_query::SoloEventSetsQueryEventSets {
-                        page_info: Some(solo_event_sets_query::SoloEventSetsQueryEventSetsPageInfo { total_pages: Some(total_pages) }),
-                        nodes: Some(sets),
-                    }),
+        let event_sets_query::ResponseData {
+            event: Some(event_sets_query::EventSetsQueryEvent {
+                sets: Some(event_sets_query::EventSetsQueryEventSets {
+                    page_info: Some(event_sets_query::EventSetsQueryEventSetsPageInfo { total_pages: Some(total_pages) }),
+                    nodes: Some(sets),
                 }),
-            } = query_cached::<SoloEventSetsQuery>(http_client, startgg_token, solo_event_sets_query::Variables { event_slug: event_slug.to_owned(), page }).await? else { panic!("no match on query") };
-            for set in sets.into_iter().filter_map(identity) {
-                let solo_event_sets_query::SoloEventSetsQueryEventSetsNodes { id: Some(id), phase_group, full_round_text, slots: Some(slots), set_games_type, total_games, round } = set else { panic!("unexpected set format") };
-                if id.0.starts_with("preview") {
-                    skips.push((id, ImportSkipReason::Preview));
-                } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE startgg_set = $1) AS "exists!""#, id as _).fetch_one(&mut **transaction).await? {
-                    skips.push((id, ImportSkipReason::Exists));
-                } else if let [
-                    Some(solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlots { entrant: Some(solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrant { participants: Some(ref p1) }) }),
-                    Some(solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlots { entrant: Some(solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrant { participants: Some(ref p2) }) }),
-                ] = *slots {
-                    if let [Some(solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrantParticipants { id: Some(ref team1) })] = **p1 {
-                        if let [Some(solo_event_sets_query::SoloEventSetsQueryEventSetsNodesSlotsEntrantParticipants { id: Some(ref team2) })] = **p2 {
-                            let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or_else(|| cal::Error::UnknownTeamStartGG(team1.clone()))?;
-                            let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or_else(|| cal::Error::UnknownTeamStartGG(team2.clone()))?;
-                            let best_of = phase_group.as_ref()
-                                .and_then(|solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroup { rounds, .. }| rounds.as_ref())
-                                .and_then(|rounds| rounds.iter().filter_map(Option::as_ref).find(|solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroupRounds { number, .. }| *number == round))
-                                .and_then(|solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroupRounds { best_of, .. }| *best_of);
-                            let phase = phase_group
-                                .and_then(|solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroup { phase, .. }| phase)
-                                .and_then(|solo_event_sets_query::SoloEventSetsQueryEventSetsNodesPhaseGroupPhase { name }| name);
-                            if let Some(reason) = process_set(&mut *transaction, http_client, event, races, event_slug, id.clone(), phase, full_round_text, team1, team2, set_games_type, total_games, best_of).await? {
-                                skips.push((id, reason));
-                            }
-                        } else {
-                            skips.push((id, ImportSkipReason::Participants));
-                        }
-                    } else {
-                        skips.push((id, ImportSkipReason::Participants));
-                    }
-                } else {
-                    skips.push((id, ImportSkipReason::Slots));
+            }),
+        } = query_cached::<EventSetsQuery>(http_client, startgg_token, event_sets_query::Variables { event_slug: event_slug.to_owned(), page }).await? else { panic!("no match on query") };
+        for set in sets.into_iter().filter_map(identity) {
+            let event_sets_query::EventSetsQueryEventSetsNodes { id: Some(id), phase_group, full_round_text, slots: Some(slots), set_games_type, total_games, round } = set else { panic!("unexpected set format") };
+            if id.0.starts_with("preview") {
+                skips.push((id, ImportSkipReason::Preview));
+            } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE startgg_set = $1) AS "exists!""#, id as _).fetch_one(&mut **transaction).await? {
+                skips.push((id, ImportSkipReason::Exists));
+            } else if let [
+                Some(event_sets_query::EventSetsQueryEventSetsNodesSlots { entrant: Some(event_sets_query::EventSetsQueryEventSetsNodesSlotsEntrant { id: Some(ref team1) }) }),
+                Some(event_sets_query::EventSetsQueryEventSetsNodesSlots { entrant: Some(event_sets_query::EventSetsQueryEventSetsNodesSlotsEntrant { id: Some(ref team2) }) }),
+            ] = *slots {
+                let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or_else(|| cal::Error::UnknownTeamStartGG(team1.clone()))?;
+                let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or_else(|| cal::Error::UnknownTeamStartGG(team2.clone()))?;
+                let best_of = phase_group.as_ref()
+                    .and_then(|event_sets_query::EventSetsQueryEventSetsNodesPhaseGroup { rounds, .. }| rounds.as_ref())
+                    .and_then(|rounds| rounds.iter().filter_map(Option::as_ref).find(|event_sets_query::EventSetsQueryEventSetsNodesPhaseGroupRounds { number, .. }| *number == round))
+                    .and_then(|event_sets_query::EventSetsQueryEventSetsNodesPhaseGroupRounds { best_of, .. }| *best_of);
+                let phase = phase_group
+                    .and_then(|event_sets_query::EventSetsQueryEventSetsNodesPhaseGroup { phase, .. }| phase)
+                    .and_then(|event_sets_query::EventSetsQueryEventSetsNodesPhaseGroupPhase { name }| name);
+                if let Some(reason) = process_set(&mut *transaction, http_client, event, races, event_slug, id.clone(), phase, full_round_text, team1, team2, set_games_type, total_games, best_of).await? {
+                    skips.push((id, reason));
                 }
+            } else {
+                skips.push((id, ImportSkipReason::Slots));
             }
-            Ok(total_pages)
-        } else {
-            let team_event_sets_query::ResponseData {
-                event: Some(team_event_sets_query::TeamEventSetsQueryEvent {
-                    sets: Some(team_event_sets_query::TeamEventSetsQueryEventSets {
-                        page_info: Some(team_event_sets_query::TeamEventSetsQueryEventSetsPageInfo { total_pages: Some(total_pages) }),
-                        nodes: Some(sets),
-                    }),
-                }),
-            } = query_cached::<TeamEventSetsQuery>(http_client, startgg_token, team_event_sets_query::Variables { event_slug: event_slug.to_owned(), page }).await? else { panic!("no match on query") };
-            for set in sets.into_iter().filter_map(identity) {
-                let team_event_sets_query::TeamEventSetsQueryEventSetsNodes { id: Some(id), phase_group, full_round_text, slots: Some(slots), set_games_type, total_games, round } = set else { panic!("unexpected set format") };
-                if id.0.starts_with("preview") {
-                    skips.push((id, ImportSkipReason::Preview));
-                } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM races WHERE startgg_set = $1) AS "exists!""#, id as _).fetch_one(&mut **transaction).await? {
-                    skips.push((id, ImportSkipReason::Exists));
-                } else if let [
-                    Some(team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { id: Some(ref team1) }) }),
-                    Some(team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlots { entrant: Some(team_event_sets_query::TeamEventSetsQueryEventSetsNodesSlotsEntrant { id: Some(ref team2) }) }),
-                ] = *slots {
-                    let team1 = Team::from_startgg(&mut *transaction, team1).await?.ok_or_else(|| cal::Error::UnknownTeamStartGG(team1.clone()))?;
-                    let team2 = Team::from_startgg(&mut *transaction, team2).await?.ok_or_else(|| cal::Error::UnknownTeamStartGG(team2.clone()))?;
-                    let best_of = phase_group.as_ref()
-                        .and_then(|team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroup { rounds, .. }| rounds.as_ref())
-                        .and_then(|rounds| rounds.iter().filter_map(Option::as_ref).find(|team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroupRounds { number, .. }| *number == round))
-                        .and_then(|team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroupRounds { best_of, .. }| *best_of);
-                    let phase = phase_group
-                        .and_then(|team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroup { phase, .. }| phase)
-                        .and_then(|team_event_sets_query::TeamEventSetsQueryEventSetsNodesPhaseGroupPhase { name }| name);
-                    if let Some(reason) = process_set(&mut *transaction, http_client, event, races, event_slug, id.clone(), phase, full_round_text, team1, team2, set_games_type, total_games, best_of).await? {
-                        skips.push((id, reason));
-                    }
-                } else {
-                    skips.push((id, ImportSkipReason::Slots));
-                }
-            }
-            Ok(total_pages)
         }
+        Ok(total_pages)
     }
 
     let mut races = Vec::default();
