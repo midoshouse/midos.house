@@ -25,7 +25,7 @@ local = []
 
 [build-dependencies]
 git2 = "0.19"
-thiserror = "1"
+thiserror = "2"
 
 [dependencies]
 anyhow = "1"
@@ -51,7 +51,7 @@ hyper = "1.4.1"
 ics = "0.5"
 if_chain = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
-itertools = "0.13"
+itertools = "0.14"
 kuchiki = "0.8"
 lazy-regex = "3"
 log = "0.4"
@@ -75,7 +75,7 @@ serde_plain = "1"
 serde_with = { version = "3", features = ["json"] }
 serenity = { version = "=0.12.1", default-features = false, features = ["client", "gateway", "model", "rustls_backend", "temp_cache"] } # https://github.com/serenity-rs/serenity/issues/2883
 serenity-utils = { git = "https://github.com/fenhl/serenity-utils", branch = "main" }
-sqlx = { version = "0.8", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio-rustls", "uuid"] }
+sqlx = { version = "0.8.3", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio", "tls-rustls-ring-webpki", "uuid"] }
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "net", "parking_lot", "process", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["io"] }
