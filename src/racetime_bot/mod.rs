@@ -2491,32 +2491,32 @@ impl RaceHandler<GlobalState> for Handler {
                             event.event,
                         )
                     } else {
-                        format!(
-                            "Welcome to {}! Learn more about the event at https://midos.house/event/{}/{}", //TODO for the weeklies, give a short settings summary instead of linking to the event
-                            if event.is_single_race() {
-                                format!("the {}", event.display_name) //TODO remove “the” depending on event name
-                            } else {
-                                match (cal_event.race.phase.as_deref(), cal_event.race.round.as_deref()) {
-                                    (Some("Qualifier"), Some(round)) => format!("qualifier {round}"),
-                                    (Some("Live Qualifier"), Some(round)) => format!("live qualifier {round}"),
-                                    (None, Some("Kokiri Weekly")) => format!("the Kokiri weekly"),
-                                    (None, Some("Goron Weekly")) => format!("the Goron weekly"),
-                                    (None, Some("Zora Weekly")) => format!("the Zora weekly"),
-                                    (None, Some("Light Weekly")) => format!("the Light weekly"),
-                                    (None, Some("Forest Weekly")) => format!("the Forest weekly"),
-                                    (None, Some("Fire Weekly")) => format!("the Fire weekly"),
-                                    (None, Some("Water Weekly")) => format!("the Water weekly"),
-                                    (None, Some("Shadow Weekly")) => format!("the Shadow weekly"),
-                                    (None, Some("Spirit Weekly")) => format!("the Spirit weekly"),
-                                    (Some(phase), Some(round)) => format!("this {phase} {round} race"),
-                                    (Some(phase), None) => format!("this {phase} race"),
-                                    (None, Some(round)) => format!("this {round} race"),
-                                    (None, None) => format!("this {} race", event.display_name),
-                                }
-                            },
-                            event.series,
-                            event.event,
-                        )
+                        if let (true, Some(weekly_name)) = (cal_event.race.phase.is_none(), cal_event.race.round.as_deref().and_then(|round| round.strip_suffix(" Weekly"))) {
+                            format!(
+                                "Welcome to the {weekly_name} weekly! Current settings: {}. See https://midos.house/event/{}/{} for details.",
+                                s::SHORT_WEEKLY_SETTINGS,
+                                event.series,
+                                event.event,
+                            )
+                        } else {
+                            format!(
+                                "Welcome to {}! Learn more about the event at https://midos.house/event/{}/{}",
+                                if event.is_single_race() {
+                                    format!("the {}", event.display_name) //TODO remove “the” depending on event name
+                                } else {
+                                    match (cal_event.race.phase.as_deref(), cal_event.race.round.as_deref()) {
+                                        (Some("Qualifier"), Some(round)) => format!("qualifier {round}"),
+                                        (Some("Live Qualifier"), Some(round)) => format!("live qualifier {round}"),
+                                        (Some(phase), Some(round)) => format!("this {phase} {round} race"),
+                                        (Some(phase), None) => format!("this {phase} race"),
+                                        (None, Some(round)) => format!("this {round} race"),
+                                        (None, None) => format!("this {} race", event.display_name),
+                                    }
+                                },
+                                event.series,
+                                event.event,
+                            )
+                        }
                     }
                 }, true, Vec::default()).await?;
                 let (race_state, high_seed_name, low_seed_name) = if let Some(draft_kind) = event.draft_kind() {

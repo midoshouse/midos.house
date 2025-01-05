@@ -192,6 +192,20 @@ impl WeeklyKind {
     }
 }
 
+// Make sure to keep the following in sync with each other and the actual settings:
+pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "S8";
+fn long_weekly_settings(main_tournament: Data<'_>) -> RawHtml<String> {
+    html! {
+        p {
+            : "Settings are typically changed once per month and posted in ";
+            a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
+            : " on Discord. Current settings match those for the ";
+            : main_tournament;
+            : ".";
+        }
+    }
+}
+
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
     Ok(match &*data.event {
         "w" => {
@@ -237,13 +251,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             : ")";
                         }
                     }
-                    p {
-                        : "Settings are typically changed once per month and posted in ";
-                        a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
-                        : " on Discord. Current settings match those for the ";
-                        : main_tournament;
-                        : ".";
-                    }
+                    : long_weekly_settings(main_tournament);
                 }
             })
         }
