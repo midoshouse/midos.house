@@ -2027,7 +2027,7 @@ async fn room_options(goal: Goal, event: &event::Data<'_>, cal_event: &cal::Even
         unlisted: cal_event.is_private_async_part(),
         ranked: event.series != Series::TriforceBlitz && !matches!(cal_event.race.schedule, RaceSchedule::Async { .. }),
         require_even_teams: true,
-        start_delay: if matches!(cal_event.race.entrants, Entrants::Open) && goal.single_settings().map(|settings| settings.get("password_lock").map_or(false, |password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"))).unwrap_or_else(identity) { 30 } else { 15 },
+        start_delay: if event.series == Series::Standard && event.event != "w" && cal_event.race.entrants == Entrants::Open { 30 } else { 15 },
         time_limit: 24,
         time_limit_auto_complete: false,
         streaming_required: !Environment::default().is_dev() && !cal_event.is_private_async_part(),
@@ -3890,7 +3890,7 @@ impl RaceHandler<GlobalState> for Handler {
                         ctx.say(format!("This seed is password protected. To start a file, enter this password on the file select screen:\n{}\nYou are allowed to enter the password before the race starts.", format_password(password))).await?;
                         set_bot_raceinfo(ctx, seed, None /*TODO support RSL seeds with password lock? */, true).await?;
                         if let Some(OfficialRaceData { cal_event, event, .. }) = &self.official_data {
-                            if event.series == Series::Standard && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(OOTR_DISCORD_GUILD) {
+                            if event.series == Series::Standard && event.event != "w" && cal_event.race.entrants == Entrants::Open && event.discord_guild == Some(OOTR_DISCORD_GUILD) {
                                 // post password in #s8-prequal-chat as a contingency for racetime.gg issues in large qualifiers
                                 let mut msg = MessageBuilder::default();
                                 msg.push("Seed password: ");
