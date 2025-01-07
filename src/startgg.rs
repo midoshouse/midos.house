@@ -28,6 +28,8 @@ pub(crate) enum Error {
     GraphQL(Vec<graphql_client::Error>),
     #[error("GraphQL response returned neither `data` nor `errors`")]
     NoDataNoErrors,
+    #[error("no match on query, got {0:?}")]
+    NoQueryMatch(event_sets_query::ResponseData),
 }
 
 impl IsNetworkError for Error {
@@ -36,7 +38,7 @@ impl IsNetworkError for Error {
             Self::Reqwest(e) => e.is_network_error(),
             Self::Wheel(e) => e.is_network_error(),
             Self::GraphQL(errors) => errors.iter().all(|graphql_client::Error { message, .. }| message == "An unknown error has occurred"),
-            Self::NoDataNoErrors => false,
+            Self::NoDataNoErrors | Self::NoQueryMatch(_) => false,
         }
     }
 }
@@ -236,6 +238,7 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
 
     async fn process_page(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, config: &Config, event: &event::Data<'_>, event_slug: &str, page: i64, races: &mut Vec<Race>, skips: &mut Vec<(ID, ImportSkipReason)>) -> Result<i64, cal::Error> {
         let startgg_token = if Environment::default().is_dev() { &config.startgg_dev } else { &config.startgg_production };
+        let response = query_cached::<EventSetsQuery>(http_client, startgg_token, event_sets_query::Variables { event_slug: event_slug.to_owned(), page }).await?;
         let event_sets_query::ResponseData {
             event: Some(event_sets_query::EventSetsQueryEvent {
                 sets: Some(event_sets_query::EventSetsQueryEventSets {
@@ -243,7 +246,7 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
                     nodes: Some(sets),
                 }),
             }),
-        } = query_cached::<EventSetsQuery>(http_client, startgg_token, event_sets_query::Variables { event_slug: event_slug.to_owned(), page }).await? else { panic!("no match on query") };
+        } = response else { return Err(Error::NoQueryMatch(response).into()) };
         for set in sets.into_iter().filter_map(identity) {
             let event_sets_query::EventSetsQueryEventSetsNodes { id: Some(id), phase_group, full_round_text, slots: Some(slots), set_games_type, total_games, round } = set else { panic!("unexpected set format") };
             if id.0.starts_with("preview") {
