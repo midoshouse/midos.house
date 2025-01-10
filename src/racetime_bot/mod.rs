@@ -2572,6 +2572,7 @@ impl RaceHandler<GlobalState> for Handler {
                     Entrants::Open | Entrants::Count { .. } => event.open_stream_delay,
                     Entrants::Two(_) | Entrants::Three(_) | Entrants::Named(_) => event.invitational_stream_delay,
                 };
+                let emulator_settings_reminder = event.series == Series::Standard && event.event != "w"; //TODO move to database
                 let prevent_late_joins = event.series == Series::SpeedGaming || event.series == Series::Standard && event.event == "8"; //TODO move to database
                 if !stream_delay.is_zero() || prevent_late_joins {
                     let delay_until = cal_event.start().expect("handling room for official race without start time") - stream_delay - TimeDelta::minutes(5);
@@ -2588,12 +2589,15 @@ impl RaceHandler<GlobalState> for Handler {
                                     if requires_emote_only { " and set your chat to emote only" } else { "" },
                                 )).await.expect("failed to send stream delay notice");
                             }
-                            if prevent_late_joins {
+                            if emulator_settings_reminder || prevent_late_joins {
                                 sleep(stream_delay).await;
                                 let data = ctx.data().await;
                                 if !Self::should_handle_inner(&*data, ctx.global_state.clone(), Some(None)).await { return }
-                                if let RaceStatusValue::Open = data.status.value {
+                                if prevent_late_joins && data.status.value == RaceStatusValue::Open {
                                     ctx.set_invitational().await.expect("failed to make the room invitational");
+                                }
+                                if emulator_settings_reminder {
+                                    ctx.say("@entrants Remember to show your emulator settings!").await.expect("failed to send emulator settings notice");
                                 }
                             }
                         });
