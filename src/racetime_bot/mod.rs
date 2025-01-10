@@ -2574,7 +2574,7 @@ impl RaceHandler<GlobalState> for Handler {
                 };
                 let emulator_settings_reminder = event.series == Series::Standard && event.event != "w"; //TODO move to database
                 let prevent_late_joins = event.series == Series::SpeedGaming || event.series == Series::Standard && event.event == "8"; //TODO move to database
-                if !stream_delay.is_zero() || prevent_late_joins {
+                if !stream_delay.is_zero() || emulator_settings_reminder || prevent_late_joins {
                     let delay_until = cal_event.start().expect("handling room for official race without start time") - stream_delay - TimeDelta::minutes(5);
                     if let Ok(delay) = (delay_until - Utc::now()).to_std() {
                         let ctx = ctx.clone();
