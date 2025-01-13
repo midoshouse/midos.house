@@ -1509,6 +1509,12 @@ pub(crate) enum Error {
     UnknownTeam,
     #[error("start.gg team ID {0} is not associated with a Mido's House team")]
     UnknownTeamStartGG(startgg::ID),
+    #[error("Unqualified entrant ({racetime_id}) in event ({series}/{event}) with SGL-style qualifiers")]
+    UnqualifiedEntrant {
+        series: Series,
+        event: String,
+        racetime_id: String,
+    },
 }
 
 impl<E: Into<Error>> From<E> for StatusOrError<Error> {
@@ -1534,6 +1540,7 @@ impl IsNetworkError for Error {
             Self::Wheel(e) => e.is_network_error(),
             Self::UnknownTeam => false,
             Self::UnknownTeamStartGG(_) => false,
+            Self::UnqualifiedEntrant { .. } => false,
         }
     }
 }

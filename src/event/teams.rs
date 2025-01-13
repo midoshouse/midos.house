@@ -332,8 +332,15 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 let mut entrant_scores = Vec::with_capacity(teams.len());
                 for team in &teams {
                     let user = team.members(&mut *transaction).await?.into_iter().exactly_one().expect("SGL-style qualifiers in team-based event");
-                    let id = user.racetime.as_ref().expect("SGL-style qualifiers with entrant without racetime.gg account").id.clone();
-                    entrant_scores.push((MemberUser::MidosHouse(user), scores.remove(&MemberUser::RaceTime { id, url: String::default(), name: String::default() }).expect("Unqualified entrant with SGL-style qualifiers")));
+                    let racetime_id = user.racetime.as_ref().expect("SGL-style qualifiers with entrant without racetime.gg account").id.clone();
+                    let Some(score) = scores.remove(&MemberUser::RaceTime { id: racetime_id.clone(), url: String::default(), name: String::default() }) else {
+                        return Err(cal::Error::UnqualifiedEntrant {
+                            series: data.series,
+                            event: data.event.to_string(),
+                            racetime_id,
+                        })
+                    };
+                    entrant_scores.push((MemberUser::MidosHouse(user), score));
                 }
                 Either::Left(entrant_scores.into_iter())
             } else {
