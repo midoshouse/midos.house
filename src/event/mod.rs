@@ -334,6 +334,7 @@ impl<'a> Data<'a> {
             Series::CopaDoBrasil => false,
             Series::League => false,
             Series::MixedPools => false,
+            Series::Mq => false,
             Series::Multiworld => false,
             Series::NineDaysOfSaws => true,
             Series::Pictionary => true,
@@ -681,6 +682,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
         Series::CopaDoBrasil => br::info(&mut transaction, &data).await?,
         Series::League => league::info(&mut transaction, &data).await?,
         Series::MixedPools => mp::info(&mut transaction, &data).await?,
+        Series::Mq => None,
         Series::Multiworld => mw::info(&mut transaction, &data).await?,
         Series::NineDaysOfSaws => Some(ndos::info(&mut transaction, &data).await?),
         Series::Pictionary => pic::info(&mut transaction, &data).await?,
@@ -1020,11 +1022,20 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                         : async_info;
                     } else {
                         @match data.series {
-                            Series::BattleRoyale => @unimplemented // no signups on Mido's House
-                            Series::CoOp => p : "Please schedule your matches using the Discord scheduling threads.";
-                            Series::CopaDoBrasil => p : "Please schedule your races using the Discord threads.";
-                            Series::League => @unimplemented // no signups on Mido's House
-                            Series::MixedPools => @unimplemented // no signups on Mido's House
+                            | Series::CoOp
+                            | Series::CopaDoBrasil
+                            | Series::Mq
+                            | Series::Standard
+                                => p : "Please schedule your matches using the Discord match threads.";
+                            | Series::TournoiFrancophone
+                            | Series::WeTryToBeBetter
+                                => p : "Planifiez vos matches dans les fils du canal dédié.";
+                            | Series::BattleRoyale
+                            | Series::League
+                            | Series::MixedPools
+                            | Series::Rsl
+                            | Series::Scrubs
+                                => @unimplemented // no signups on Mido's House
                             Series::Multiworld => @if data.is_started(&mut transaction).await? {
                                 //TODO adjust for other match data sources?
                                 //TODO get this team's known matchup(s) from start.gg
@@ -1063,8 +1074,6 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                             } else {
                                 : "Waiting for the race room to be opened, which should happen around 30 minutes before the scheduled starting time. Keep an eye out for an announcement on Discord.";
                             }
-                            Series::Rsl => @unimplemented // no signups on Mido's House
-                            Series::Scrubs => @unimplemented // no signups on Mido's House
                             Series::SongsOfHope => @if data.is_started(&mut transaction).await? {
                                 p : "Please schedule your matches using Discord threads in the scheduling channel.";
                             } else {
@@ -1079,8 +1088,6 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                                 a(href = uri!(races(data.series, &*data.event)).to_string()) : "the race schedule";
                                 : " for upcoming qualifiers.";
                             }
-                            Series::Standard => p : "Please schedule your matches using Discord threads in the scheduling channel.";
-                            Series::TournoiFrancophone => p : "Planifiez vos matches dans les fils du canal dédié.";
                             Series::TriforceBlitz => @if data.is_started(&mut transaction).await? {
                                 //TODO get this entrant's known matchup(s)
                                 p : "Please schedule your matches using Discord threads in the scheduling channel.";
@@ -1088,7 +1095,6 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                                 //TODO if any vods are still missing, show form to add them
                                 p : "Waiting for the start of the tournament and round 1 pairings. Keep an eye out for an announcement on Discord."; //TODO include start date?
                             }
-                            Series::WeTryToBeBetter => p : "Planifiez vos matches dans les fils du canal dédié.";
                         }
                     }
                     @if !data.is_ended() {
