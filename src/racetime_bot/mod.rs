@@ -1653,10 +1653,31 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
                 last_error,
             })
         }
-        let mut rando_process = Command::new(PYTHON).arg("OoTRandomizer.py").arg("--no_log").arg("--settings=-").current_dir(&rando_path).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn().at_command(PYTHON)?;
-        rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await.at_command(PYTHON)?;
-        let output = rando_process.wait_with_output().await.at_command(PYTHON)?;
-        let stderr = if output.status.success() { BufRead::lines(&*output.stderr).try_collect::<_, Vec<_>, _>().at_command(PYTHON)? } else {
+        let rust_cli_path = rando_path.join("target").join("release").join({
+            #[cfg(windows)] { "ootr-cli.exe" }
+            #[cfg(not(windows))] { "ootr-cli" }
+        });
+        let use_rust_cli = fs::exists(&rust_cli_path).await?;
+        let command_name = if use_rust_cli { "target/release/ootr-cli" } else { PYTHON };
+        let mut rando_cmd;
+        if use_rust_cli {
+            rando_cmd = Command::new(rust_cli_path);
+            rando_cmd.arg("--no-log");
+        } else {
+            rando_cmd = Command::new(PYTHON);
+            rando_cmd.arg("OoTRandomizer.py");
+            rando_cmd.arg("--no_log");
+        }
+        let mut rando_process = rando_cmd.arg("--settings=-")
+            .current_dir(&rando_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .at_command(command_name)?;
+        rando_process.stdin.as_mut().expect("piped stdin missing").write_all(&serde_json::to_vec(&settings)?).await.at_command(command_name)?;
+        let output = rando_process.wait_with_output().await.at_command(command_name)?;
+        let stderr = if output.status.success() { BufRead::lines(&*output.stderr).try_collect::<_, Vec<_>, _>().at_command(command_name)? } else {
             last_error = Some(String::from_utf8_lossy(&output.stderr).into_owned());
             continue
         };
