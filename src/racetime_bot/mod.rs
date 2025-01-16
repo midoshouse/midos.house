@@ -283,6 +283,7 @@ pub(crate) enum Goal {
     CopaDoBrasil,
     MixedPoolsS2,
     MixedPoolsS3,
+    Mq,
     MultiworldS3,
     MultiworldS4,
     NineDaysOfSaws,
@@ -323,6 +324,7 @@ impl Goal {
             Self::CopaDoBrasil => series == Series::CopaDoBrasil && event == "1",
             Self::MixedPoolsS2 => series == Series::MixedPools && event == "2",
             Self::MixedPoolsS3 => series == Series::MixedPools && event == "3",
+            Self::Mq => series == Series::Mq && event == "1",
             Self::MultiworldS3 => series == Series::Multiworld && event == "3",
             Self::MultiworldS4 => series == Series::Multiworld && event == "4",
             Self::NineDaysOfSaws => series == Series::NineDaysOfSaws,
@@ -352,6 +354,7 @@ impl Goal {
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
+            | Self::Mq
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::NineDaysOfSaws
@@ -375,6 +378,7 @@ impl Goal {
             Self::CopaDoBrasil => "Copa do Brasil",
             Self::MixedPoolsS2 => "2nd Mixed Pools Tournament",
             Self::MixedPoolsS3 => "3rd Mixed Pools Tournament",
+            Self::Mq => "12 MQ Tournament",
             Self::MultiworldS3 => "3rd Multiworld Tournament",
             Self::MultiworldS4 => "4th Multiworld Tournament",
             Self::NineDaysOfSaws => "9 Days of SAWS",
@@ -399,6 +403,7 @@ impl Goal {
             | Self::CoOpS3
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
+            | Self::Mq
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::NineDaysOfSaws
@@ -432,6 +437,7 @@ impl Goal {
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
+            | Self::Mq
             | Self::NineDaysOfSaws
             | Self::Pic7
             | Self::PicRs2
@@ -459,6 +465,7 @@ impl Goal {
             | Self::StandardRuleset //TODO allow organizers to configure this for weeklies
                 => PrerollMode::Short,
             | Self::CopaDoBrasil
+            | Self::Mq
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::NineDaysOfSaws
@@ -490,6 +497,7 @@ impl Goal {
                 | Self::CopaDoBrasil
                 | Self::MixedPoolsS2
                 | Self::MixedPoolsS3
+                | Self::Mq
                 | Self::MultiworldS3
                 | Self::MultiworldS4
                 | Self::NineDaysOfSaws
@@ -517,6 +525,7 @@ impl Goal {
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
             Self::MixedPoolsS3 => VersionedBranch::Latest(rando::Branch::DevFenhl),
+            Self::Mq => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
             Self::MultiworldS4 => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 199)),
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
@@ -543,6 +552,7 @@ impl Goal {
             Self::CopaDoBrasil => Ok(br::s1_settings()),
             Self::MixedPoolsS2 => Ok(mp::s2_settings()),
             Self::MixedPoolsS3 => Ok(mp::s3_settings()),
+            Self::Mq => Ok(mq::s1_settings()),
             Self::MultiworldS3 => Err(false), // settings draft
             Self::MultiworldS4 => Err(false), // settings draft
             Self::NineDaysOfSaws => Err(false), // per-event settings
@@ -571,6 +581,7 @@ impl Goal {
             | Self::Cc7
             | Self::CoOpS3
             | Self::CopaDoBrasil
+            | Self::Mq
             | Self::MultiworldS3
             | Self::MultiworldS4
             | Self::Pic7
@@ -598,6 +609,7 @@ impl Goal {
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
+            | Self::Mq
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::SongsOfHope
@@ -682,6 +694,7 @@ impl Goal {
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
+            | Self::Mq
             | Self::Pic7
             | Self::Sgl2023
             | Self::Sgl2024
@@ -2752,6 +2765,18 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::Mq => ctx.send_message(
+                                "Welcome! This is a practice room for the 12 MQ Tournament. Learn more about the tournament at https://midos.house/event/mq/1",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournament.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::MultiworldS3 => ctx.send_message(
                                 "Welcome! This is a practice room for the 3rd Multiworld Tournament. Learn more about the tournament at https://midos.house/event/mw/3",
                                 true,
@@ -3319,6 +3344,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::CopaDoBrasil
                             | Goal::MixedPoolsS2
                             | Goal::MixedPoolsS3
+                            | Goal::Mq
                             | Goal::Pic7
                             | Goal::Sgl2023
                             | Goal::Sgl2024
@@ -4025,6 +4051,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::CopaDoBrasil
                     | Goal::MixedPoolsS2
                     | Goal::MixedPoolsS3
+                    | Goal::Mq
                     | Goal::MultiworldS3
                     | Goal::MultiworldS4
                     | Goal::NineDaysOfSaws

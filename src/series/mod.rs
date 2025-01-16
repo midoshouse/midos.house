@@ -27,6 +27,7 @@ pub(crate) mod coop;
 pub(crate) mod fr;
 pub(crate) mod league;
 pub(crate) mod mp;
+pub(crate) mod mq;
 pub(crate) mod mw;
 pub(crate) mod ndos;
 pub(crate) mod ohko;
