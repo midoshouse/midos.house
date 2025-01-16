@@ -5,6 +5,7 @@ use {
 
 pub(crate) fn s1_settings() -> serde_json::Map<String, Json> {
     collect![
+        format!("password_lock") => json!(true),
         format!("user_message") => json!("12 MQ Tournament"),
         format!("bridge") => json!("vanilla"),
         format!("trials") => json!(0),
