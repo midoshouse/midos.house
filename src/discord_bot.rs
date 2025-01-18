@@ -514,7 +514,6 @@ fn parse_timestamp(timestamp: &str) -> Option<DateTime<Utc>> {
         .and_then(|timestamp| Utc.timestamp_opt(timestamp, 0).single())
 }
 
-#[allow(deprecated)] //TODO remove use of CreateCommand::dm_permission once CreateCommand::contexts is no longer unstable Discord API
 pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_pool: PgPool, http_client: reqwest::Client, config: Config, new_room_lock: Arc<Mutex<()>>, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
     discord_builder
         .error_notifier(ErrorNotifier::User(FENHL)) //TODO also print to stderr and/or report to night
@@ -554,11 +553,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 commands.push(match draft_kind {
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
-                        .dm_permission(false)
+                        .add_context(InteractionContext::Guild)
                         .description("Locks a setting for this race to its default value."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
-                        .dm_permission(false)
+                        .add_context(InteractionContext::Guild)
                         .description("Verrouille un setting à sa valeur par défaut.")
                         .description_localized("en-GB", "Locks a setting for this race to its default value.")
                         .description_localized("en-US", "Locks a setting for this race to its default value."),
@@ -569,7 +568,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(CreateCommand::new("delete-after")
                     .kind(CommandType::ChatInput)
-                    .dm_permission(false)
+                    .add_context(InteractionContext::Guild)
                     .description("Deletes games of the match that are not required.")
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Integer,
@@ -588,11 +587,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 commands.push(match draft_kind {
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
-                        .dm_permission(false)
+                        .add_context(InteractionContext::Guild)
                         .description("Chooses a setting for this race."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
-                        .dm_permission(false)
+                        .add_context(InteractionContext::Guild)
                         .description("Choisit un setting pour la race.")
                         .description_localized("en-GB", "Chooses a setting for this race.")
                         .description_localized("en-US", "Chooses a setting for this race."),
@@ -604,11 +603,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 commands.push(match draft_kind {
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
-                        .dm_permission(false)
+                        .add_context(InteractionContext::Guild)
                         .description("Go first in the settings draft."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
-                        .dm_permission(false)
+                        .add_context(InteractionContext::Guild)
                         .description("Partir premier dans la phase de pick&ban.")
                         .description_localized("en-GB", "Go first in the settings draft.")
                         .description_localized("en-US", "Go first in the settings draft.")
@@ -632,7 +631,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => return None,
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("no")
                         .kind(CommandType::ChatInput)
-                        .dm_permission(false)
+                        .add_context(InteractionContext::Guild)
                         .description("Répond à la négative dans une question fermée.")
                         .description_localized("en-GB", "Answers no to a yes/no question in the settings draft.")
                         .description_localized("en-US", "Answers no to a yes/no question in the settings draft."),
@@ -643,7 +642,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(CreateCommand::new("post-status")
                     .kind(CommandType::ChatInput)
-                    .dm_permission(false)
+                    .add_context(InteractionContext::Guild)
                     .description("Posts this race's status to the thread, pinging the team whose turn it is in the settings draft.")
                 );
                 idx
@@ -653,7 +652,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 commands.push(CreateCommand::new("pronoun-roles")
                     .kind(CommandType::ChatInput)
                     .default_member_permissions(Permissions::ADMINISTRATOR)
-                    .dm_permission(false)
+                    .add_context(InteractionContext::Guild)
                     .description("Creates gender pronoun roles and posts a message here that allows members to self-assign them.")
                 );
                 idx
@@ -663,7 +662,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 commands.push(CreateCommand::new("racing-role")
                     .kind(CommandType::ChatInput)
                     .default_member_permissions(Permissions::ADMINISTRATOR)
-                    .dm_permission(false)
+                    .add_context(InteractionContext::Guild)
                     .description("Creates a racing role and posts a message here that allows members to self-assign it.")
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Channel,
@@ -680,7 +679,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 let mut command = CreateCommand::new("reset-race")
                     .kind(CommandType::ChatInput)
-                    .dm_permission(false)
+                    .add_context(InteractionContext::Guild)
                     .description("Deletes selected data from a race.")
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Integer,
@@ -714,7 +713,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(CreateCommand::new("schedule")
                     .kind(CommandType::ChatInput)
-                    .dm_permission(false)
+                    .add_context(InteractionContext::Guild)
                     .description("Submits a starting time for this race.")
                     .description_localized("fr", "Planifie une date/heure pour une race.")
                     .add_option(CreateCommandOption::new(
@@ -741,7 +740,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(CreateCommand::new("schedule-async")
                     .kind(CommandType::ChatInput)
-                    .dm_permission(false)
+                    .add_context(InteractionContext::Guild)
                     .description("Submits a starting time for your half of this race.")
                     .description_localized("fr", "Planifie votre partie de l'async.")
                     .add_option(CreateCommandOption::new(
@@ -768,7 +767,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(CreateCommand::new("schedule-remove")
                     .kind(CommandType::ChatInput)
-                    .dm_permission(false)
+                    .add_context(InteractionContext::Guild)
                     .description("Removes the starting time(s) for this race from the schedule.")
                     .description_localized("fr", "Supprime le(s) date(s) de début sur le document des races planifiées.")
                     .add_option(CreateCommandOption::new(
@@ -788,11 +787,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 commands.push(match draft_kind {
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
-                        .dm_permission(false)
+                        .add_context(InteractionContext::Guild)
                         .description("Go second in the settings draft."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
-                        .dm_permission(false)
+                        .add_context(InteractionContext::Guild)
                         .description("Partir second dans la phase de pick&ban.")
                         .description_localized("en-GB", "Go second in the settings draft.")
                         .description_localized("en-US", "Go second in the settings draft.")
@@ -815,11 +814,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 commands.push(match draft_kind {
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
-                        .dm_permission(false)
+                        .add_context(InteractionContext::Guild)
                         .description("Skips your current turn of the settings draft."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
-                        .dm_permission(false)
+                        .add_context(InteractionContext::Guild)
                         .description("Skip le dernier pick du draft.")
                         .description_localized("en-GB", "Skips the final pick of the settings draft.")
                         .description_localized("en-US", "Skips the final pick of the settings draft."),
@@ -830,7 +829,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(CreateCommand::new("status")
                     .kind(CommandType::ChatInput)
-                    .dm_permission(false)
+                    .add_context(InteractionContext::Guild)
                     .description("Shows you this race's current scheduling and settings draft status.")
                     .description_localized("fr", "Montre l'avancement de la planification de votre race, avec les détails.")
                 );
@@ -841,7 +840,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 commands.push(CreateCommand::new("watch-roles")
                     .kind(CommandType::ChatInput)
                     .default_member_permissions(Permissions::ADMINISTRATOR)
-                    .dm_permission(false)
+                    .add_context(InteractionContext::Guild)
                     .description("Creates watch notification roles and posts a message here that allows members to self-assign them.")
                     .add_option(CreateCommandOption::new(
                         CommandOptionType::Channel,
@@ -868,7 +867,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => return None,
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("yes")
                         .kind(CommandType::ChatInput)
-                        .dm_permission(false)
+                        .add_context(InteractionContext::Guild)
                         .description("Répond à l'affirmative dans une question fermée.")
                         .description_localized("en-GB", "Answers yes to a yes/no question in the settings draft.")
                         .description_localized("en-US", "Answers yes to a yes/no question in the settings draft."),
