@@ -238,6 +238,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         let mut entrants = room_data.entrants.clone();
                         if let QualifierScoreKind::Sgl2023Online = score_kind {
                             entrants.retain(|entrant| entrant.user.id != "yMewn83Vj3405Jv7"); // user was banned
+                            entrants.iter_mut().for_each(|entrant| if entrant.user.id == "raP6yoaGaNBlV4zN" { entrant.user.id = format!("JrM6PoY8Pd3Rdm5v") }); // racetime.gg account change
                             if race.id == Id::from(17171498007470059483_u64) {
                                 entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
                             }
