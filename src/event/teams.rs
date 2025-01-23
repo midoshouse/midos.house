@@ -1019,7 +1019,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                                                 (Series::SpeedGaming, "2023onl") => QualifierScoreKind::Sgl2023Online,
                                                                 (Series::SpeedGaming, "2024onl") => QualifierScoreKind::Sgl2024Online,
                                                                 (Series::Standard, "8") => QualifierScoreKind::Standard,
-                                                                (_, _) => unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series, data.event),
+                                                                (_, _) => unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series.slug(), data.event),
                                                             };
                                                             let teams = signups_sorted(&mut transaction, &mut cache, None, data, QualifierKind::Score(qualifier_kind), Some(&entrant.user)).await?;
                                                             if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| member.user == entrant.user));

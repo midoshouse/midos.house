@@ -73,6 +73,14 @@ impl Environment {
     fn racetime_host(&self) -> &'static str {
         if self.is_dev() { "racetime.midos.house" } else { "racetime.gg" }
     }
+
+    fn base_uri(&self) -> rocket::http::uri::Absolute<'static> {
+        match self {
+            Self::Local => uri!("http://localhost:24814"),
+            Self::Dev => uri!("https://dev.midos.house"),
+            Self::Production => uri!("https://midos.house"),
+        }
+    }
 }
 
 fn night_path() -> &'static str {
@@ -81,6 +89,10 @@ fn night_path() -> &'static str {
 
 fn racetime_host() -> &'static str {
     Environment::default().racetime_host()
+}
+
+fn base_uri() -> rocket::http::uri::Absolute<'static> {
+    Environment::default().base_uri()
 }
 
 fn parse_port(arg: &str) -> Result<u16, std::num::ParseIntError> {

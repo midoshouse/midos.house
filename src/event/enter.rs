@@ -184,7 +184,7 @@ impl Requirement {
                     (Series::SpeedGaming, "2023onl") => teams::QualifierScoreKind::Sgl2023Online,
                     (Series::SpeedGaming, "2024onl") => teams::QualifierScoreKind::Sgl2024Online,
                     (Series::Standard, "8") => teams::QualifierScoreKind::Standard,
-                    (_, _) => unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series, data.event),
+                    (_, _) => unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series.slug(), data.event),
                 };
                 // call signups_sorted with worst_case_extrapolation = true to calculate whether the player has secured a spot ahead of time
                 let teams = teams::signups_sorted(transaction, &mut teams::Cache::new(http_client.clone()), None, data, teams::QualifierKind::Score(qualifier_kind), Some(&teams::MemberUser::MidosHouse(me.clone()))).await?;

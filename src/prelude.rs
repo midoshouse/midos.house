@@ -174,6 +174,7 @@ pub(crate) use {
     crate::{
         Environment,
         auth,
+        base_uri,
         cal::{
             self,
             Entrant,

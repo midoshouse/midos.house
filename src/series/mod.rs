@@ -62,7 +62,7 @@ pub(crate) enum Series {
 }
 
 impl Series {
-    pub(crate) fn to_str(&self) -> &'static str {
+    pub(crate) fn slug(&self) -> &'static str {
         match self {
             Self::BattleRoyale => "ohko",
             Self::CoOp => "coop",
@@ -83,19 +83,35 @@ impl Series {
             Self::WeTryToBeBetter => "wttbb",
         }
     }
+
+    pub(crate) fn display_name(&self) -> &'static str {
+        match self {
+            Self::BattleRoyale => "Battle Royale",
+            Self::CoOp => "Co-op Tournaments",
+            Self::CopaDoBrasil => "Copa do Brasil",
+            Self::League => "League",
+            Self::MixedPools => "Mixed Pools Tournaments",
+            Self::Mq => "12 MQ Tournaments",
+            Self::Multiworld => "Multiworld Tournaments",
+            Self::NineDaysOfSaws => "9 Days of SAWS",
+            Self::Pictionary => "Pictionary Spoiler Log Races",
+            Self::Rsl => "Random Settings League",
+            Self::Scrubs => "Scrubs Tournaments",
+            Self::SongsOfHope => "Songs of Hope",
+            Self::SpeedGaming => "SpeedGaming Live",
+            Self::Standard => "Standard Tournaments",
+            Self::TournoiFrancophone => "Tournois Francophones",
+            Self::TriforceBlitz => "Triforce Blitz",
+            Self::WeTryToBeBetter => "WeTryToBeBetter",
+        }
+    }
 }
 
 impl FromStr for Series {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, ()> {
-        all::<Self>().find(|series| series.to_str() == s).ok_or(())
-    }
-}
-
-impl fmt::Display for Series {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(self.to_str(), f)
+        all::<Self>().find(|series| series.slug() == s).ok_or(())
     }
 }
 
@@ -108,19 +124,19 @@ impl<'r> Decode<'r, Postgres> for Series {
 
 impl<'q> Encode<'q, Postgres> for Series {
     fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
-        Encode::<Postgres>::encode_by_ref(&self.to_str(), buf)
+        Encode::<Postgres>::encode_by_ref(&self.slug(), buf)
     }
 
     fn encode(self, buf: &mut PgArgumentBuffer) -> Result<sqlx::encode::IsNull, Box<dyn std::error::Error + Send + Sync>> {
-        Encode::<Postgres>::encode(self.to_str(), buf)
+        Encode::<Postgres>::encode(self.slug(), buf)
     }
 
     fn produces(&self) -> Option<PgTypeInfo> {
-        Encode::<Postgres>::produces(&self.to_str())
+        Encode::<Postgres>::produces(&self.slug())
     }
 
     fn size_hint(&self) -> usize {
-        Encode::<Postgres>::size_hint(&self.to_str())
+        Encode::<Postgres>::size_hint(&self.slug())
     }
 }
 
@@ -144,7 +160,7 @@ impl<'a> FromParam<'a> for Series {
 
 impl UriDisplay<Path> for Series {
     fn fmt(&self, f: &mut uri::fmt::Formatter<'_, Path>) -> fmt::Result {
-        UriDisplay::fmt(self.to_str(), f) // assume all series names are URI safe
+        UriDisplay::fmt(self.slug(), f) // assume all series names are URI safe
     }
 }
 

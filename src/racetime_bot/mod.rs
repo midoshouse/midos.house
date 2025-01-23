@@ -1886,7 +1886,7 @@ impl SeedRollUpdate {
                     }
                 }
                 let seed_url = match seed.files.as_ref().expect("received seed with no files") {
-                    seed::Files::MidosHouse { file_stem, .. } => format!("https://midos.house/seed/{file_stem}"),
+                    seed::Files::MidosHouse { file_stem, .. } => format!("{}/seed/{file_stem}", base_uri()),
                     seed::Files::OotrWeb { id, .. } => format!("https://ootrandomizer.com/seed/get?id={id}"),
                     seed::Files::TriforceBlitz { uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
                     seed::Files::TfbSotd { ordinal, .. } => format!("https://www.triforceblitz.com/seed/daily/{ordinal}"),
@@ -2085,7 +2085,7 @@ async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl
         password = extra.password.filter(|_| show_password).map(|password| format_password(password).to_string()).unwrap_or_default(),
         newline = if extra.file_hash.is_some() || extra.password.is_some() && show_password { "\n" } else { "" },
         seed_url = match seed.files.as_ref().expect("received seed with no files") {
-            seed::Files::MidosHouse { file_stem, .. } => format!("https://midos.house/seed/{file_stem}"),
+            seed::Files::MidosHouse { file_stem, .. } => format!("{}/seed/{file_stem}", base_uri()),
             seed::Files::OotrWeb { id, .. } => format!("https://ootrandomizer.com/seed/get?id={id}"),
             seed::Files::TriforceBlitz { uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
             seed::Files::TfbSotd { ordinal, .. } => format!("https://www.triforceblitz.com/seed/daily/{ordinal}"),
@@ -2520,21 +2520,19 @@ impl RaceHandler<GlobalState> for Handler {
                     if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await.to_racetime()?;
                     then {
                         format!(
-                            "Bienvenue pour cette race de {phase_round} ! Pour plus d'informations : https://midos.house/event/{}/{}",
-                            event.series,
-                            event.event,
+                            "Bienvenue pour cette race de {phase_round} ! Pour plus d'informations : {}",
+                            uri!(base_uri(), event::info(event.series, &*event.event)),
                         )
                     } else {
                         if let (true, Some(weekly_name)) = (cal_event.race.phase.is_none(), cal_event.race.round.as_deref().and_then(|round| round.strip_suffix(" Weekly"))) {
                             format!(
-                                "Welcome to the {weekly_name} weekly! Current settings: {}. See https://midos.house/event/{}/{} for details.",
+                                "Welcome to the {weekly_name} weekly! Current settings: {}. See {} for details.",
                                 s::SHORT_WEEKLY_SETTINGS,
-                                event.series,
-                                event.event,
+                                uri!(base_uri(), event::info(event.series, &*event.event)),
                             )
                         } else {
                             format!(
-                                "Welcome to {}! Learn more about the event at https://midos.house/event/{}/{}",
+                                "Welcome to {}! Learn more about the event at {}",
                                 if event.is_single_race() {
                                     format!("the {}", event.display_name) //TODO remove “the” depending on event name
                                 } else {
@@ -2547,8 +2545,7 @@ impl RaceHandler<GlobalState> for Handler {
                                         (None, None) => format!("this {} race", event.display_name),
                                     }
                                 },
-                                event.series,
-                                event.event,
+                                uri!(base_uri(), event::info(event.series, &*event.event)),
                             )
                         }
                     }

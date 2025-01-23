@@ -1291,7 +1291,7 @@ impl PartialOrd for Race {
 impl Ord for Race {
     fn cmp(&self, other: &Self) -> Ordering {
         self.schedule.cmp(&self.entrants, &other.schedule, &other.entrants)
-            .then_with(|| self.series.to_str().cmp(other.series.to_str()))
+            .then_with(|| self.series.slug().cmp(other.series.slug()))
             .then_with(|| self.event.cmp(&other.event))
             .then_with(|| self.phase.cmp(&other.phase))
             .then_with(|| self.round.cmp(&other.round))
@@ -1510,7 +1510,7 @@ pub(crate) enum Error {
     UnknownTeam,
     #[error("start.gg team ID {0} is not associated with a Mido's House team")]
     UnknownTeamStartGG(startgg::ID),
-    #[error("Unqualified entrant ({racetime_id}) in event ({series}/{event}) with SGL-style qualifiers")]
+    #[error("Unqualified entrant ({racetime_id}) in event ({}/{event}) with SGL-style qualifiers", series.slug())]
     UnqualifiedEntrant {
         series: Series,
         event: String,
@@ -1681,7 +1681,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                         cal_event.push(Description::new(urls.into_iter().map(|(description, url)| format!("{description}: {url}")).join("\n")));
                     }
                 } else {
-                    cal_event.push(URL::new(uri!("https://midos.house", event::info(event.series, &*event.event)).to_string()));
+                    cal_event.push(URL::new(uri!(base_uri(), event::info(event.series, &*event.event)).to_string()));
                 }
                 cal.add_event(cal_event);
                 if let (Series::Standard, "w", Some(round)) = (event.series, &*event.event, &race.round) {
@@ -1711,7 +1711,7 @@ pub(crate) async fn index_help(pool: &State<PgPool>, me: Option<User>, uri: Orig
     page(pool.begin().await?, &me, &uri, PageStyle::default(), "Calendar — Mido's House", html! {
         p {
             : "A calendar of all races across all events can be found at ";
-            code : uri!("https://midos.house", index).to_string();
+            code : uri!(base_uri(), index).to_string();
             : " — by pasting this link into most calendar apps' “subscribe” feature instead of downloading it, you can get automatic updates as races are scheduled:";
         }
         ul {

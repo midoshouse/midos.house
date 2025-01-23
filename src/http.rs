@@ -287,7 +287,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, 
             RaceSchedule::Async { start1, start2, .. } => start1.max(start2),
         };
         start1.cmp(&start2)
-            .then_with(|| race1.series.to_str().cmp(race2.series.to_str()))
+            .then_with(|| race1.series.slug().cmp(race2.series.slug()))
             .then_with(|| race1.event.cmp(&race2.event))
             .then_with(|| race1.phase.cmp(&race2.phase))
             .then_with(|| race1.round.cmp(&race2.round))
@@ -398,7 +398,7 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, sort: 
                     ArchiveSortKey::Series => Either::Right(
                         past_events.into_iter().into_group_map_by(|event| event.series)
                             .into_iter()
-                            .map(|(series, events)| (series.to_string() /*TODO*/, events))
+                            .map(|(series, events)| (series.display_name().to_owned(), events))
                     ),
                 };
                 @for (heading, events) in past_events {
@@ -580,21 +580,13 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         },
         racetime_config.client_id.clone(),
         racetime_config.client_secret.clone(),
-        Some(match Environment::default() {
-            Environment::Local => uri!("http://localhost:24814", auth::racetime_callback),
-            Environment::Dev => uri!("https://dev.midos.house", auth::racetime_callback),
-            Environment::Production => uri!("https://midos.house", auth::racetime_callback),
-        }.to_string()),
+        Some(uri!(base_uri(), auth::racetime_callback).to_string()),
     )))
     .attach(OAuth2::<auth::Discord>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
         rocket_oauth2::StaticProvider::Discord,
         discord_config.client_id.to_string(),
         discord_config.client_secret.to_string(),
-        Some(match Environment::default() {
-            Environment::Local => uri!("http://localhost:24814", auth::discord_callback),
-            Environment::Dev => uri!("https://dev.midos.house", auth::discord_callback),
-            Environment::Production => uri!("https://midos.house", auth::discord_callback),
-        }.to_string()),
+        Some(uri!(base_uri(), auth::discord_callback).to_string()),
     )))
     .attach(OAuth2::<auth::Challonge>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
         rocket_oauth2::StaticProvider {
@@ -603,11 +595,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         },
         config.challonge.client_id.to_string(),
         config.challonge.client_secret.to_string(),
-        Some(match Environment::default() {
-            Environment::Local => uri!("http://localhost:24814", auth::challonge_callback),
-            Environment::Dev => uri!("https://dev.midos.house", auth::challonge_callback),
-            Environment::Production => uri!("https://midos.house", auth::challonge_callback),
-        }.to_string()),
+        Some(uri!(base_uri(), auth::challonge_callback).to_string()),
     )))
     .attach(OAuth2::<auth::StartGG>::custom(rocket_oauth2::HyperRustlsAdapter::default(), OAuthConfig::new(
         rocket_oauth2::StaticProvider {
@@ -616,11 +604,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         },
         config.startgg_oauth.client_id.to_string(),
         config.startgg_oauth.client_secret.to_string(),
-        Some(match Environment::default() {
-            Environment::Local => uri!("http://localhost:24814", auth::startgg_callback),
-            Environment::Dev => uri!("https://dev.midos.house", auth::startgg_callback),
-            Environment::Production => uri!("https://midos.house", auth::startgg_callback),
-        }.to_string()),
+        Some(uri!(base_uri(), auth::startgg_callback).to_string()),
     )))
     .manage(config)
     .manage(pool.clone())
