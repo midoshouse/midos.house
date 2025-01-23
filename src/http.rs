@@ -1,4 +1,5 @@
 use {
+    std::cmp::Reverse,
     base64::engine::{
         Engine as _,
         general_purpose::STANDARD as BASE64,
@@ -393,12 +394,14 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, sort: 
                     ArchiveSortKey::EndTime => Either::Left(
                         past_events.into_iter().into_group_map_by(|event| event.end.expect("checked above").year())
                             .into_iter()
-                            .map(|(year, events)| (year.to_string(), events))
+                            .sorted_by_key(|(year, _)| Reverse(*year))
+                            .map(|(year, events)| (Cow::Owned(year.to_string()), events))
                     ),
                     ArchiveSortKey::Series => Either::Right(
                         past_events.into_iter().into_group_map_by(|event| event.series)
                             .into_iter()
-                            .map(|(series, events)| (series.display_name().to_owned(), events))
+                            .sorted_by_key(|(series, _)| series.display_name())
+                            .map(|(series, events)| (Cow::Borrowed(series.display_name()), events))
                     ),
                 };
                 @for (heading, events) in past_events {
