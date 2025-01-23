@@ -367,15 +367,25 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, 
     Ok(page(transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", page_content).await?)
 }
 
-#[derive(Default, FromFormField)]
+#[derive(Default, PartialEq, Eq, Sequence, FromFormField, UriDisplayQuery)]
 enum ArchiveSortKey {
     #[default]
     EndTime,
     Series,
 }
 
+impl ArchiveSortKey {
+    fn display_name(&self) -> &'static str {
+        match self {
+            Self::EndTime => "End Time",
+            Self::Series => "Series",
+        }
+    }
+}
+
 #[rocket::get("/archive?<sort>")]
 async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, sort: Option<ArchiveSortKey>) -> Result<RawHtml<String>, event::Error> {
+    let sort = sort.unwrap_or_default();
     let mut transaction = pool.begin().await?;
     let mut past_events = Vec::default();
     for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE listed AND end_time IS NOT NULL AND end_time <= NOW() ORDER BY end_time DESC"#).fetch_all(&mut *transaction).await? {
@@ -385,12 +395,23 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, sort: 
     let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
     let page_content = html! {
         h1 : "Past events";
-        //TODO button row to change sort key
+        p {
+            : "Sort by:";
+            span(class = "button-row") {
+                @for iter_sort in all::<ArchiveSortKey>() {
+                    @if iter_sort == sort {
+                        a(class = "button selected") : sort.display_name();
+                    } else {
+                        a(class = "button", href = uri!(archive((iter_sort != ArchiveSortKey::default()).then_some(iter_sort))).to_string()) : sort.display_name();
+                    }
+                }
+            }
+        }
         ul {
             @if past_events.is_empty() {
                 i : "(none currently)";
             } else {
-                @let past_events = match sort.unwrap_or_default() {
+                @let past_events = match sort {
                     ArchiveSortKey::EndTime => Either::Left(
                         past_events.into_iter().into_group_map_by(|event| event.end.expect("checked above").year())
                             .into_iter()

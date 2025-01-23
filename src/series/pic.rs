@@ -1,5 +1,4 @@
 use {
-    rocket::UriDisplayQuery,
     serde_json::Value as Json,
     crate::{
         event::{
