@@ -367,7 +367,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, 
     Ok(page(transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", page_content).await?)
 }
 
-#[derive(Default, PartialEq, Eq, Sequence, FromFormField, UriDisplayQuery)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Sequence, FromFormField, UriDisplayQuery)]
 enum ArchiveSortKey {
     #[default]
     EndTime,
@@ -396,37 +396,37 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, sort: 
     let page_content = html! {
         h1 : "Past events";
         p {
-            : "Sort by:";
+            : "Sort by: ";
             span(class = "button-row") {
                 @for iter_sort in all::<ArchiveSortKey>() {
                     @if iter_sort == sort {
-                        a(class = "button selected") : sort.display_name();
+                        a(class = "button selected") : iter_sort.display_name();
                     } else {
-                        a(class = "button", href = uri!(archive((iter_sort != ArchiveSortKey::default()).then_some(iter_sort))).to_string()) : sort.display_name();
+                        a(class = "button", href = uri!(archive((iter_sort != ArchiveSortKey::default()).then_some(iter_sort))).to_string()) : iter_sort.display_name();
                     }
                 }
             }
         }
-        ul {
-            @if past_events.is_empty() {
-                i : "(none currently)";
-            } else {
-                @let past_events = match sort {
-                    ArchiveSortKey::EndTime => Either::Left(
-                        past_events.into_iter().into_group_map_by(|event| event.end.expect("checked above").year())
-                            .into_iter()
-                            .sorted_by_key(|(year, _)| Reverse(*year))
-                            .map(|(year, events)| (Cow::Owned(year.to_string()), events))
-                    ),
-                    ArchiveSortKey::Series => Either::Right(
-                        past_events.into_iter().into_group_map_by(|event| event.series)
-                            .into_iter()
-                            .sorted_by_key(|(series, _)| series.display_name())
-                            .map(|(series, events)| (Cow::Borrowed(series.display_name()), events))
-                    ),
-                };
-                @for (heading, events) in past_events {
-                    h2 : heading;
+        @if past_events.is_empty() {
+            i : "(none currently)";
+        } else {
+            @let past_events = match sort {
+                ArchiveSortKey::EndTime => Either::Left(
+                    past_events.into_iter().into_group_map_by(|event| event.end.expect("checked above").year())
+                        .into_iter()
+                        .sorted_by_key(|(year, _)| Reverse(*year))
+                        .map(|(year, events)| (Cow::Owned(year.to_string()), events))
+                ),
+                ArchiveSortKey::Series => Either::Right(
+                    past_events.into_iter().into_group_map_by(|event| event.series)
+                        .into_iter()
+                        .sorted_by_key(|(series, _)| series.display_name())
+                        .map(|(series, events)| (Cow::Borrowed(series.display_name()), events))
+                ),
+            };
+            @for (heading, events) in past_events {
+                h2 : heading;
+                ul {
                     @for event in events {
                         li {
                             : event;
