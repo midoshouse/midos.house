@@ -344,7 +344,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, 
             }
         }
         p {
-            a(href = uri!(archive).to_string()) : "Past events";
+            a(href = uri!(archive(_)).to_string()) : "Past events";
             : " • ";
             a(href = uri!(new_event).to_string()) : "Planning an event?";
         }
@@ -366,8 +366,15 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, 
     Ok(page(transaction, &me, &uri, PageStyle { kind: PageKind::Index, chests, ..PageStyle::default() }, "Mido's House", page_content).await?)
 }
 
-#[rocket::get("/archive")]
-async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Result<RawHtml<String>, event::Error> {
+#[derive(Default, FromFormField)]
+enum ArchiveSortKey {
+    #[default]
+    EndTime,
+    Series,
+}
+
+#[rocket::get("/archive?<sort>")]
+async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, sort: Option<ArchiveSortKey>) -> Result<RawHtml<String>, event::Error> {
     let mut transaction = pool.begin().await?;
     let mut past_events = Vec::default();
     for row in sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE listed AND end_time IS NOT NULL AND end_time <= NOW() ORDER BY end_time DESC"#).fetch_all(&mut *transaction).await? {
@@ -377,16 +384,32 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> Res
     let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
     let page_content = html! {
         h1 : "Past events";
+        //TODO button row to change sort key
         ul {
             @if past_events.is_empty() {
                 i : "(none currently)";
             } else {
-                @for event in past_events {
-                    li {
-                        : event;
-                        : " — ";
-                        : format_date_range(event.start(&mut transaction).await?.expect("ended event with no start date"), event.end.expect("checked above"));
-                    };
+                @let past_events = match sort.unwrap_or_default() {
+                    ArchiveSortKey::EndTime => Either::Left(
+                        past_events.into_iter().into_group_map_by(|event| event.end.expect("checked above").year())
+                            .into_iter()
+                            .map(|(year, events)| (year.to_string(), events))
+                    ),
+                    ArchiveSortKey::Series => Either::Right(
+                        past_events.into_iter().into_group_map_by(|event| event.series)
+                            .into_iter()
+                            .map(|(series, events)| (series.to_string() /*TODO*/, events))
+                    ),
+                };
+                @for (heading, events) in past_events {
+                    h2 : heading;
+                    @for event in events {
+                        li {
+                            : event;
+                            : " — ";
+                            : format_date_range(event.start(&mut transaction).await?.expect("ended event with no start date"), event.end.expect("checked above"));
+                        };
+                    }
                 }
             }
         }
