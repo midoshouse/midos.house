@@ -518,7 +518,7 @@ impl Goal {
         }
     }
 
-    pub(crate) fn rando_version(&self, #[allow(unused)] /* will be useful once weeklies are no longer on S8 settings */ event: Option<(Series, &str)>) -> VersionedBranch {
+    pub(crate) fn rando_version(&self, event: Option<(Series, &str)>) -> VersionedBranch {
         match self {
             Self::Cc7 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::CoOpS3 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
@@ -533,7 +533,11 @@ impl Goal {
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl2023),
             Self::Sgl2024 => VersionedBranch::Latest(rando::Branch::Sgl2024),
             Self::SongsOfHope => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
-            Self::StandardRuleset => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0)), //TODO allow weekly organizers to configure this
+            Self::StandardRuleset => if let Some((Series::Standard, "8" | "8cc")) = event {
+                VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0))
+            } else {
+                VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 8, 2, 50, 2)) //TODO allow weekly organizers to configure this
+            },
             Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
             Self::TournoiFrancoS4 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
@@ -562,7 +566,7 @@ impl Goal {
             Self::Sgl2023 => Ok(sgl::settings_2023()),
             Self::Sgl2024 => Ok(sgl::settings_2024()),
             Self::SongsOfHope => Ok(soh::settings()),
-            Self::StandardRuleset => Ok(s::s8_settings()), //TODO allow weekly organizers to configure this (separately from S8)
+            Self::StandardRuleset => Err(true), // per-event settings
             Self::TournoiFrancoS3 => Err(false), // settings draft
             Self::TournoiFrancoS4 => Err(false), // settings draft
             Self::TriforceBlitz => Err(false), // per-event settings
@@ -659,7 +663,10 @@ impl Goal {
                     rsl::Preset::Multiworld => "weights tuned for multiworld",
                 })).await?;
             },
-            Self::StandardRuleset => ctx.say("!seed: The settings for season 8 of the main tournament (which are also the current weekly settings)").await?, //TODO per-event settings
+            Self::StandardRuleset => {
+                ctx.say("!seed s8: The settings for season 8 of the main tournament").await?;
+                ctx.say("!seed weekly: The current weekly settings").await?;
+            }
             Self::TournoiFrancoS3 => {
                 ctx.say("!seed base : Settings de base.").await?;
                 ctx.say("!seed random : Simule en draft en sélectionnant des settings au hasard pour les deux joueurs. Les settings seront affichés avec la seed.").await?;
@@ -699,7 +706,6 @@ impl Goal {
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::SongsOfHope
-            | Self::StandardRuleset //TODO per-event settings
             | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetter
                 => {
@@ -1039,6 +1045,12 @@ impl Goal {
                 };
                 SeedCommandParseResult::Rsl { preset: VersionedRslPreset::Xopar { version: None, preset }, world_count, unlock_spoiler_log, language: English, article, description }
             }
+            Self::StandardRuleset => match args {
+                [] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "the preset is required" }),
+                [arg] if arg == "s8" => SeedCommandParseResult::Regular { settings: s::s8_settings(), unlock_spoiler_log, language: English, article: "an", description: format!("S8 seed") },
+                [arg] if arg == "weekly" => SeedCommandParseResult::Regular { settings: s::weekly_settings_2025w06(), unlock_spoiler_log, language: English, article: "a", description: format!("weekly seed") },
+                [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
+            },
             Self::TournoiFrancoS3 | Self::TournoiFrancoS4 => {
                 let all_settings = match self {
                     Self::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
@@ -3297,7 +3309,7 @@ impl RaceHandler<GlobalState> for Handler {
             race_state: ArcRwLock::new(race_state),
             official_data, high_seed_name, low_seed_name, fpa_enabled,
         };
-        if let Some(OfficialRaceData { ref restreams, .. }) = this.official_data {
+        if let Some(OfficialRaceData { ref event, ref restreams, .. }) = this.official_data {
             if let Some(restreams_text) = English.join_str(restreams.iter().map(|(video_url, state)| format!("in {} at {video_url}", state.language.expect("preset restreams should have languages assigned")))) {
                 for restreamer in restreams.values().flat_map(|RestreamState { restreamer_racetime_id, .. }| restreamer_racetime_id) {
                     let data = ctx.data().await;
@@ -3367,11 +3379,10 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::Sgl2023
                             | Goal::Sgl2024
                             | Goal::SongsOfHope
-                            | Goal::StandardRuleset //TODO per-event settings
                             | Goal::TriforceBlitzProgressionSpoiler
-                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(this.official_data.as_ref().map(|OfficialRaceData { event, .. }| (event.series, &*event.event))), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(Some((event.series, &*event.event))), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                             | Goal::WeTryToBeBetter
-                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(this.official_data.as_ref().map(|OfficialRaceData { event, .. }| (event.series, &*event.event))), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
+                                => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(Some((event.series, &*event.event))), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
                             Goal::Rsl => unreachable!("no official race rooms"),
                             Goal::Cc7 | Goal::MultiworldS3 | Goal::MultiworldS4 | Goal::TournoiFrancoS3 | Goal::TournoiFrancoS4 => unreachable!("should have draft state set"),
                             Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
@@ -3379,6 +3390,11 @@ impl RaceHandler<GlobalState> for Handler {
                                 version: Some((Version::new(2, 3, 8), 10)),
                                 preset: RslDevFenhlPreset::Pictionary,
                             }, 1, goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
+                            Goal::StandardRuleset => if let (Series::Standard, "8" | "8cc") = (event.series, &*event.event) {
+                                this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(Some((event.series, &*event.event))), s::s8_settings(), goal.unlock_spoiler_log(true, false), English, "an", format!("S8 seed")).await
+                            } else {
+                                this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(Some((event.series, &*event.event))), s::weekly_settings_2025w06(), goal.unlock_spoiler_log(true, false), English, "a", format!("weekly seed")).await
+                            },
                             Goal::TriforceBlitz => this.roll_tfb_seed(ctx, "LATEST", goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S3 seed")).await,
                         },
                         RaceState::Draft { .. } => this.advance_draft(ctx, &state).await?,
