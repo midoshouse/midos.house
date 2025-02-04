@@ -2311,9 +2311,16 @@ impl Handler {
                         if is_active_team {
                             match draft.apply(draft_kind, self.official_data.as_ref().and_then(|OfficialRaceData { cal_event, .. }| cal_event.race.game), &mut draft::MessageContext::RaceTime { high_seed_name: &self.high_seed_name, low_seed_name: &self.low_seed_name, reply_to }, action).await.to_racetime()? {
                                 Ok(_) => self.advance_draft(ctx, &state).await?,
-                                Err(error_msg) => {
+                                Err(mut error_msg) => {
                                     unlock!();
-                                    ctx.say(error_msg).await?;
+                                    // can't send messages longer than 1000 characters
+                                    while !error_msg.is_empty() {
+                                        let mut idx = error_msg.len().min(1000);
+                                        while !error_msg.is_char_boundary(idx) { idx -= 1 }
+                                        let suffix = error_msg.split_off(idx);
+                                        ctx.say(error_msg).await?;
+                                        error_msg = suffix;
+                                    }
                                     return Ok(())
                                 }
                             }

@@ -552,7 +552,7 @@ impl Draft {
                                             .build()
                                     }
                                     MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => format!(
-                                        "{}, ban a setting using “!draft <setting> <value>”, or use “!skip” if you don't want to ban anything.{}",
+                                        "{}, ban a setting using “!ban <setting> <value>”, or use “!skip” if you don't want to ban anything.{}",
                                         team.choose(high_seed_name, low_seed_name),
                                         if n == 0 { " Use “!settings” for a list of available weights." } else { "" },
                                     ),
