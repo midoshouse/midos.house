@@ -959,6 +959,15 @@ impl Goal {
             Self::Rsl => {
                 let (preset, world_count) = match args {
                     [] => (rsl::Preset::League, 1),
+                    [preset] if preset == "draft" => return Ok(SeedCommandParseResult::StartDraft {
+                        new_state: Draft {
+                            high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
+                            went_first: None,
+                            skipped_bans: 0,
+                            settings: HashMap::default(),
+                        },
+                        unlock_spoiler_log,
+                    }),
                     [preset] => if let Ok(preset) = preset.parse() {
                         if let rsl::Preset::Multiworld = preset {
                             return Ok(SeedCommandParseResult::Error { language: English, msg: "Missing world count (e.g. “!seed multiworld 2” for 2 worlds)".into() })
@@ -968,6 +977,15 @@ impl Goal {
                     } else {
                         return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I don't recognize that preset" })
                     },
+                    [preset, lite] if preset == "draft" => return Ok(SeedCommandParseResult::StartDraft {
+                        new_state: Draft {
+                            high_seed: Id::dummy(), // racetime.gg bot doesn't check for active team
+                            went_first: None,
+                            skipped_bans: 0,
+                            settings: collect![as HashMap<_, _>: Cow::Borrowed("preset") => Cow::Borrowed(if lite == "lite" { "lite" } else { "league" })],
+                        },
+                        unlock_spoiler_log,
+                    }),
                     [preset, world_count] => if let Ok(preset) = preset.parse() {
                         if let rsl::Preset::Multiworld = preset {
                             if let Ok(world_count) = world_count.parse() {
