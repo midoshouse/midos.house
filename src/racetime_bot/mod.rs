@@ -328,6 +328,7 @@ impl Goal {
             Self::Cc7 => Some(draft::Kind::S7),
             Self::MultiworldS3 => Some(draft::Kind::MultiworldS3),
             Self::MultiworldS4 => Some(draft::Kind::MultiworldS4),
+            Self::Rsl => Some(draft::Kind::RslS7),
             Self::TournoiFrancoS3 => Some(draft::Kind::TournoiFrancoS3),
             Self::TournoiFrancoS4 => Some(draft::Kind::TournoiFrancoS4),
             | Self::CoOpS3
@@ -338,7 +339,6 @@ impl Goal {
             | Self::NineDaysOfSaws
             | Self::Pic7
             | Self::PicRs2
-            | Self::Rsl
             | Self::Sgl2023
             | Self::Sgl2024
             | Self::SongsOfHope
