@@ -19,7 +19,6 @@ use {
             SeedRollUpdate,
             UnlockSpoilerLog,
             VersionedBranch,
-            VersionedRslPreset,
         },
     },
 };
@@ -144,9 +143,9 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                             },
                             Ok(ClientMessage::RollRsl { preset, branch, rsl_version, worlds, spoiler_log }) => {
                                 let preset = if let Some(rsl_version) = rsl_version {
-                                    VersionedRslPreset::new_versioned(rsl_version, preset.as_deref())
+                                    rsl::VersionedPreset::new_versioned(rsl_version, preset.as_deref())
                                 } else {
-                                    VersionedRslPreset::new_unversioned(&branch, preset.as_deref())
+                                    rsl::VersionedPreset::new_unversioned(&branch, preset.as_deref())
                                 };
                                 if let Ok(preset) = preset {
                                     let mut rx = global_state.clone().roll_rsl_seed(None, preset, worlds, if spoiler_log { UnlockSpoilerLog::Now } else { UnlockSpoilerLog::Never });

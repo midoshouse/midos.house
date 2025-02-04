@@ -300,6 +300,7 @@ impl<'a> Data<'a> {
                 from_file!("../../assets/event/rsl/chests-5-05bfcd2.json")
             }
             (Series::Rsl, "6") => from_file!("../../assets/event/rsl/chests-6-248f8b5.json"),
+            (Series::Rsl, "7") => from_file!("../../assets/event/rsl/chests-7-104253e.json"), //TODO include RSL-Lite, adjust for simulated drafts
             (Series::Scrubs, "5") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
             (Series::Scrubs, "6") => from_file!("../../assets/event/scrubs/chests-6-8.1.73.json"),
             (Series::SongsOfHope, "1") => from_file!("../../assets/event/soh/chests-1-8.1.json"),
@@ -370,6 +371,7 @@ impl<'a> Data<'a> {
         match (self.series, &*self.event) {
             (Series::Multiworld, "3") => Some(draft::Kind::MultiworldS3),
             (Series::Multiworld, "4") => Some(draft::Kind::MultiworldS4),
+            (Series::Rsl, "7") => Some(draft::Kind::RslS7),
             (Series::Standard, "7" | "7cc") => Some(draft::Kind::S7),
             (Series::TournoiFrancophone, "3") => Some(draft::Kind::TournoiFrancoS3),
             (Series::TournoiFrancophone, "4") => Some(draft::Kind::TournoiFrancoS4),

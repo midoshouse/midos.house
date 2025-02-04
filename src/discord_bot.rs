@@ -397,7 +397,7 @@ async fn check_draft_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl Gen
 async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericInteraction, action: &str, page: usize) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let Some((event, mut race, draft_kind, mut msg_ctx)) = check_draft_permissions(ctx, interaction).await? else { return Ok(()) };
     match race.draft.as_ref().unwrap().next_step(draft_kind, race.game, &mut msg_ctx).await?.kind {
-        draft::StepKind::GoFirst | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) => match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
+        draft::StepKind::GoFirst | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) | draft::StepKind::DoneRsl { .. } => match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
             Ok(_) => unreachable!(),
             Err(error_msg) => {
                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -408,7 +408,7 @@ async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericIn
                 return Ok(())
             }
         },
-        draft::StepKind::Ban { available_settings, .. } => {
+        draft::StepKind::Ban { available_settings, rsl, .. } => {
             let response_content = if_chain! {
                 if let French = event.language;
                 if let Some(action) = match action {
@@ -419,7 +419,7 @@ async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericIn
                 then {
                     format!("Sélectionnez le setting à {action} :")
                 } else {
-                    format!("Select the setting to {action}:")
+                    format!("Select the setting to {}:", if rsl { "block" } else { action })
                 }
             };
             let mut response_msg = CreateInteractionResponseMessage::new()
@@ -442,7 +442,7 @@ async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericIn
             }
             interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
         }
-        draft::StepKind::Pick { available_choices, .. } => {
+        draft::StepKind::Pick { available_choices, rsl, .. } => {
             let response_content = if_chain! {
                 if let French = event.language;
                 if let Some(action) = match action {
@@ -453,7 +453,7 @@ async fn send_draft_settings_page(ctx: &DiscordCtx, interaction: &impl GenericIn
                 then {
                     format!("Sélectionnez le setting à {action} :")
                 } else {
-                    format!("Select the setting to {action}:")
+                    format!("Select the setting to {}:", if rsl { "ban" } else { action })
                 }
             };
             let mut response_msg = CreateInteractionResponseMessage::new()
@@ -555,6 +555,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Locks a setting for this race to its default value."),
+                    draft::Kind::RslS7 => CreateCommand::new("block")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Blocks the weights of a setting from being changed."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -589,6 +593,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Chooses a setting for this race."),
+                    draft::Kind::RslS7 => CreateCommand::new("ban")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Sets a weight of a setting to 0."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -605,6 +613,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Go first in the settings draft."),
+                    draft::Kind::RslS7 => CreateCommand::new("first")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Go first in the weights draft.")
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::Boolean,
+                            "lite",
+                            "Use RSL-Lite weights",
+                        )
+                            .required(false)
+                        ),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -628,7 +647,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let no = draft_kind.and_then(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => return None,
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::RslS7 => return None,
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("no")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -789,6 +808,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Go second in the settings draft."),
+                    draft::Kind::RslS7 => CreateCommand::new("second")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Go second in the weights draft.")
+                        .add_option(CreateCommandOption::new(
+                            CommandOptionType::Boolean,
+                            "lite",
+                            "Use RSL-Lite weights",
+                        )
+                            .required(false)
+                        ),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -816,6 +846,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Skips your current turn of the settings draft."),
+                    draft::Kind::RslS7 => CreateCommand::new("skip")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Skips your current turn of the weights draft."),
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -864,7 +898,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let yes = draft_kind.and_then(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => return None,
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::RslS7 => return None,
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("yes")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -958,40 +992,54 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             send_draft_settings_page(ctx, interaction, "draft", 0).await?;
                         } else if Some(interaction.data.id) == command_ids.first {
                             if let Some((_, mut race, draft_kind, msg_ctx)) = check_draft_permissions(ctx, interaction).await? {
-                                if let draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 = draft_kind {
-                                    let settings = &mut race.draft.as_mut().unwrap().settings;
-                                    if settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
+                                match draft_kind {
+                                    draft::Kind::RslS7 => {
+                                        let settings = &mut race.draft.as_mut().unwrap().settings;
                                         let mut transaction = msg_ctx.into_transaction();
-                                        let mq = interaction.data.options.get(0).map(|option| match option.value {
-                                            CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
+                                        let lite = interaction.data.options.get(0).map(|option| match option.value {
+                                            CommandDataOptionValue::Boolean(lite) => lite,
                                             _ => panic!("unexpected slash command option type"),
                                         });
-                                        if let Some(mq) = mq {
-                                            settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq.to_string()));
-                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
-                                            transaction.commit().await?;
+                                        settings.insert(Cow::Borrowed("preset"), Cow::Borrowed(if lite.is_some_and(identity) { "lite" } else { "league" }));
+                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
+                                        transaction.commit().await?;
+                                    }
+                                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => {
+                                        let settings = &mut race.draft.as_mut().unwrap().settings;
+                                        if settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
+                                            let mut transaction = msg_ctx.into_transaction();
+                                            let mq = interaction.data.options.get(0).map(|option| match option.value {
+                                                CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
+                                                _ => panic!("unexpected slash command option type"),
+                                            });
+                                            if let Some(mq) = mq {
+                                                settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq.to_string()));
+                                                sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
+                                                transaction.commit().await?;
+                                            } else {
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content("Désolé, veuillez entrer le nombre de donjons MQ d'abord.")
+                                                )).await?;
+                                                transaction.rollback().await?;
+                                                return Ok(())
+                                            }
                                         } else {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content("Désolé, veuillez entrer le nombre de donjons MQ d'abord.")
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                            return Ok(())
-                                        }
-                                    } else {
-                                        let mq = interaction.data.options.get(0).map(|option| match option.value {
-                                            CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
-                                            _ => panic!("unexpected slash command option type"),
-                                        });
-                                        if mq.map_or(false, |mq| mq != 0) {
-                                            //TODO different error messages depending on which player(s) didn't opt into MQ
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content("Désolé, mais l'un d'entre vous n'a pas choisi les donjons MQ.")
-                                            )).await?;
-                                            return Ok(())
+                                            let mq = interaction.data.options.get(0).map(|option| match option.value {
+                                                CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
+                                                _ => panic!("unexpected slash command option type"),
+                                            });
+                                            if mq.map_or(false, |mq| mq != 0) {
+                                                //TODO different error messages depending on which player(s) didn't opt into MQ
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content("Désolé, mais l'un d'entre vous n'a pas choisi les donjons MQ.")
+                                                )).await?;
+                                                return Ok(())
+                                            }
                                         }
                                     }
+                                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => {}
                                 }
                                 draft_action(ctx, interaction, draft::Action::GoFirst(true)).await?;
                             }
@@ -1704,40 +1752,54 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             }
                         } else if Some(interaction.data.id) == command_ids.second {
                             if let Some((_, mut race, draft_kind, msg_ctx)) = check_draft_permissions(ctx, interaction).await? {
-                                if let draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 = draft_kind {
-                                    let settings = &mut race.draft.as_mut().unwrap().settings;
-                                    if settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
+                                match draft_kind {
+                                    draft::Kind::RslS7 => {
+                                        let settings = &mut race.draft.as_mut().unwrap().settings;
                                         let mut transaction = msg_ctx.into_transaction();
-                                        let mq = interaction.data.options.get(0).map(|option| match option.value {
-                                            CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
+                                        let lite = interaction.data.options.get(0).map(|option| match option.value {
+                                            CommandDataOptionValue::Boolean(lite) => lite,
                                             _ => panic!("unexpected slash command option type"),
                                         });
-                                        if let Some(mq) = mq {
-                                            settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq.to_string()));
-                                            sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
-                                            transaction.commit().await?;
+                                        settings.insert(Cow::Borrowed("preset"), Cow::Borrowed(if lite.is_some_and(identity) { "lite" } else { "league" }));
+                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
+                                        transaction.commit().await?;
+                                    }
+                                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => {
+                                        let settings = &mut race.draft.as_mut().unwrap().settings;
+                                        if settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
+                                            let mut transaction = msg_ctx.into_transaction();
+                                            let mq = interaction.data.options.get(0).map(|option| match option.value {
+                                                CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
+                                                _ => panic!("unexpected slash command option type"),
+                                            });
+                                            if let Some(mq) = mq {
+                                                settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq.to_string()));
+                                                sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
+                                                transaction.commit().await?;
+                                            } else {
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content("Désolé, veuillez entrer le nombre de donjons MQ d'abord.")
+                                                )).await?;
+                                                transaction.rollback().await?;
+                                                return Ok(())
+                                            }
                                         } else {
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content("Désolé, veuillez entrer le nombre de donjons MQ d'abord.")
-                                            )).await?;
-                                            transaction.rollback().await?;
-                                            return Ok(())
-                                        }
-                                    } else {
-                                        let mq = interaction.data.options.get(0).map(|option| match option.value {
-                                            CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
-                                            _ => panic!("unexpected slash command option type"),
-                                        });
-                                        if mq.map_or(false, |mq| mq != 0) {
-                                            //TODO different error messages depending on which player(s) didn't opt into MQ
-                                            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                                .ephemeral(true)
-                                                .content("Désolé, mais l'un d'entre vous n'a pas choisi les donjons MQ.")
-                                            )).await?;
-                                            return Ok(())
+                                            let mq = interaction.data.options.get(0).map(|option| match option.value {
+                                                CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
+                                                _ => panic!("unexpected slash command option type"),
+                                            });
+                                            if mq.map_or(false, |mq| mq != 0) {
+                                                //TODO different error messages depending on which player(s) didn't opt into MQ
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content("Désolé, mais l'un d'entre vous n'a pas choisi les donjons MQ.")
+                                                )).await?;
+                                                return Ok(())
+                                            }
                                         }
                                     }
+                                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => {}
                                 }
                                 draft_action(ctx, interaction, draft::Action::GoFirst(false)).await?;
                             }
@@ -1983,16 +2045,22 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 response_msg = response_msg.button(CreateButton::new("draft_page_0").label(if let French = event.language { "Retour" } else { "Back" }).style(ButtonStyle::Secondary)); //TODO remember page?
                                 interaction.create_response(ctx, CreateInteractionResponse::Message(response_msg)).await?;
                             }
-                            draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } | draft::StepKind::Done(_) => match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
-                                Ok(_) => unreachable!(),
-                                Err(error_msg) => {
-                                    interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
-                                        .ephemeral(true)
-                                        .content(error_msg)
-                                    )).await?;
-                                    msg_ctx.into_transaction().rollback().await?;
-                                }
-                            },
+                            | draft::StepKind::GoFirst
+                            | draft::StepKind::Ban { .. }
+                            | draft::StepKind::Pick { .. }
+                            | draft::StepKind::BooleanChoice { .. }
+                            | draft::StepKind::Done(_)
+                            | draft::StepKind::DoneRsl { .. }
+                                => match race.draft.as_mut().unwrap().apply(draft_kind, race.game, &mut msg_ctx, draft::Action::Pick { setting: format!("@placeholder"), value: format!("@placeholder") }).await? {
+                                    Ok(_) => unreachable!(),
+                                    Err(error_msg) => {
+                                        interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                            .ephemeral(true)
+                                            .content(error_msg)
+                                        )).await?;
+                                        msg_ctx.into_transaction().rollback().await?;
+                                    }
+                                },
                         }
                     } else if let Some((setting, value)) = custom_id.strip_prefix("draft_option_").and_then(|setting_value| setting_value.split_once("__")) {
                         draft_action(ctx, interaction, draft::Action::Pick { setting: setting.to_owned(), value: value.to_owned() }).await?;
@@ -2041,6 +2109,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    #[error(transparent)] Draft(#[from] draft::Error),
     #[error(transparent)] EventData(#[from] event::DataError),
     #[error(transparent)] Serenity(#[from] serenity::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),

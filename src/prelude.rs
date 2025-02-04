@@ -166,6 +166,7 @@ pub(crate) use {
         },
         io_error_from_reqwest,
         traits::{
+            AsyncCommandOutputExt as _,
             IoResultExt as _,
             IsNetworkError,
             LocalResultExt as _,
