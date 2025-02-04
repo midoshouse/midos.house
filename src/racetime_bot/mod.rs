@@ -1452,7 +1452,7 @@ impl GlobalState {
 
                     let plando_filename = BufRead::lines(&*output.stdout)
                         .filter_map_ok(|line| Some(regex_captures!("^Plando File: (.+)$", &line)?.1.to_owned()))
-                        .next().ok_or(RollError::RslScriptOutput)?.at_command("RandomSettingsGenerator.py")?;
+                        .next().ok_or(RollError::RslScriptOutput { regex: "^Plando File: (.+)$" })?.at_command("RandomSettingsGenerator.py")?;
                     let plando_path = rsl_script_path.join("data").join(plando_filename);
                     let plando_file = fs::read_to_string(&plando_path).await?;
                     let settings = serde_json::from_str::<Plando>(&plando_file)?.settings;
@@ -1486,13 +1486,13 @@ impl GlobalState {
                 } else {
                     let patch_filename = BufRead::lines(&*output.stdout)
                         .filter_map_ok(|line| Some(regex_captures!("^Creating Patch File: (.+)$", &line)?.1.to_owned()))
-                        .next().ok_or(RollError::RslScriptOutput)?.at_command("RandomSettingsGenerator.py")?;
+                        .next().ok_or(RollError::RslScriptOutput { regex: "^Creating Patch File: (.+)$" })?.at_command("RandomSettingsGenerator.py")?;
                     let patch_path = rsl_script_path.join("patches").join(&patch_filename);
                     let spoiler_log_filename = BufRead::lines(&*output.stdout)
                         .filter_map_ok(|line| Some(regex_captures!("^Created spoiler log at: (.+)$", &line)?.1.to_owned()))
-                        .next().ok_or(RollError::RslScriptOutput)?.at_command("RandomSettingsGenerator.py")?;
+                        .next().ok_or(RollError::RslScriptOutput { regex: "^Created spoiler log at: (.+)$" })?.at_command("RandomSettingsGenerator.py")?;
                     let spoiler_log_path = rsl_script_path.join("patches").join(spoiler_log_filename);
-                    let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(RollError::RslScriptOutput)?;
+                    let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(RollError::RslScriptOutput { regex: r"^(.+)\.zpfz?$" })?;
                     for extra_output_filename in [format!("{file_stem}_Cosmetics.json"), format!("{file_stem}_Distribution.json")] {
                         fs::remove_file(rsl_script_path.join("patches").join(extra_output_filename)).await.missing_ok()?;
                     }
@@ -1739,7 +1739,9 @@ pub(crate) enum RollError {
         last_error: Option<String>,
     },
     #[error("failed to parse random settings script output")]
-    RslScriptOutput,
+    RslScriptOutput {
+        regex: &'static str,
+    },
     #[cfg(unix)]
     #[error("failed to parse randomizer version from RSL script")]
     RslVersion,
