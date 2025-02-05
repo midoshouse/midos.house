@@ -1377,10 +1377,11 @@ impl GlobalState {
                 .current_dir(&rsl_script_path)
                 .check(PYTHON).await?
                 .stdout;
-            let supports_plando_filename_base = if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &String::from_utf8(rsl_version)?.trim()) {
+            let rsl_version = String::from_utf8(rsl_version)?;
+            let supports_plando_filename_base = if let Some((_, major, minor, patch, devmvp)) = regex_captures!(r"^([0-9]+)\.([0-9]+)\.([0-9]+) devmvp-([0-9]+)$", &rsl_version.trim()) {
                 (Version::new(major.parse()?, minor.parse()?, patch.parse()?), devmvp.parse()?) >= (Version::new(2, 6, 3), 4)
             } else {
-                false
+                rsl_version.parse::<Version>().is_ok_and(|rsl_version| rsl_version >= Version::new(2, 8, 2))
             };
             // check required randomizer version
             let randomizer_version = Command::new(PYTHON)
@@ -1431,7 +1432,10 @@ impl GlobalState {
                 if web_version.is_some() {
                     rsl_cmd.arg("--no_seed");
                 }
-                let mut rsl_process = rsl_cmd.current_dir(&rsl_script_path).spawn().at_command("RandomSettingsGenerator.py")?;
+                let mut rsl_process = rsl_cmd
+                    .current_dir(&rsl_script_path)
+                    .stdout(Stdio::piped())
+                    .spawn().at_command("RandomSettingsGenerator.py")?;
                 if let Some(input) = input {
                     rsl_process.stdin.as_mut().expect("piped stdin missing").write_all(&input).await.at_command("RandomSettingsGenerator.py")?;
                 }
