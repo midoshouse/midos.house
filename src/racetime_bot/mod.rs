@@ -1306,13 +1306,13 @@ impl GlobalState {
                         // Middle-ground option. Start rolling the seed at a random point between 20 and 15 minutes before start.
                         PrerollMode::Short => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - Utc::now()).to_std().ok()) {
                             let min_sleep_duration = max_sleep_duration.saturating_sub(Duration::from_secs(5 * 60));
-                            let sleep_duration = thread_rng().gen_range(min_sleep_duration..max_sleep_duration);
+                            let sleep_duration = rng().random_range(min_sleep_duration..max_sleep_duration);
                             sleep(sleep_duration).await;
                         },
                         // The type of seed being rolled is fairly likely to require a long time and/or multiple attempts to generate.
                         // Start rolling the seed at a random point between the room being opened and 30 minutes before start.
                         PrerollMode::Medium => if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
-                            let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
+                            let sleep_duration = rng().random_range(Duration::default()..max_sleep_duration);
                             sleep(sleep_duration).await;
                         },
                         // The type of seed being rolled is extremely likely to require a very long time and/or a large number of attempts to generate.
@@ -1465,7 +1465,7 @@ impl GlobalState {
                         // ootrandomizer.com seed IDs are sequential, making it easy to find a seed if you know when it was rolled.
                         // This is especially true for open races, whose rooms are opened an entire hour before start.
                         // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
-                        let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
+                        let sleep_duration = rng().random_range(Duration::default()..max_sleep_duration);
                         sleep(sleep_duration).await;
                     }
                     let ootr_web::SeedInfo { id, gen_time, file_hash, file_stem, password } = match self.ootr_api_client.roll_seed_web(update_tx.clone(), None /* always limit to 3 tries per settings */, web_version, true, unlock_spoiler_log, settings).await {
@@ -1537,7 +1537,7 @@ impl GlobalState {
                 // triforceblitz.com has a list of recently rolled seeds, making it easy to find a seed if you know when it was rolled.
                 // This is especially true for open races, whose rooms are opened an entire hour before start.
                 // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
-                let sleep_duration = thread_rng().gen_range(Duration::default()..max_sleep_duration);
+                let sleep_duration = rng().random_range(Duration::default()..max_sleep_duration);
                 sleep(sleep_duration).await;
             }
             let _ = update_tx.send(SeedRollUpdate::Started).await;

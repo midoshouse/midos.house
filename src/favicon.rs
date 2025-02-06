@@ -40,7 +40,7 @@ impl ChestAppearances {
         // ootrstats-supervisor --rsl --github-user=fenhl --branch=dev-mvp midos-house assets/chests-rsl-dev-mvp.json
         static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../assets/chests-rsl-dev-mvp.json")).expect("failed to parse chest weights"));
 
-        WEIGHTS.choose_weighted(&mut thread_rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
+        WEIGHTS.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
     }
 
     pub(crate) fn textures(self) -> ChestTextures {
@@ -50,7 +50,7 @@ impl ChestAppearances {
 
 impl From<SpoilerLog> for ChestAppearances {
     fn from(spoiler: SpoilerLog) -> Self {
-        Self(spoiler.midos_house_chests().choose(&mut thread_rng()).expect("no worlds in location list"))
+        Self(spoiler.midos_house_chests().choose(&mut rng()).expect("no worlds in location list"))
     }
 }
 

@@ -78,7 +78,10 @@ pub(crate) use {
         },
     },
     racetime::model::RaceData,
-    rand::prelude::*,
+    rand::{
+        prelude::*,
+        rng,
+    },
     rocket::{
         FromForm,
         FromFormField,

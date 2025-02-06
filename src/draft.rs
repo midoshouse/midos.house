@@ -259,14 +259,14 @@ impl Draft {
                     _ => {
                         // tie broken by coin flip
                         let mut team_ids = [team1.id, team2.id];
-                        team_ids.shuffle(&mut thread_rng());
+                        team_ids.shuffle(&mut rng());
                         team_ids
                     }
                 }
             },
             Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => {
                 let mut team_ids = [team1.id, team2.id];
-                team_ids.shuffle(&mut thread_rng());
+                team_ids.shuffle(&mut rng());
                 team_ids
             }
         };
@@ -2829,13 +2829,13 @@ impl Draft {
     pub(crate) async fn complete_randomly(mut self, kind: Kind) -> Result<Picks, Error> {
         Ok(loop {
             let action = match self.next_step(kind, None, &mut MessageContext::None).await?.kind {
-                StepKind::GoFirst => Action::GoFirst(thread_rng().gen()),
+                StepKind::GoFirst => Action::GoFirst(rng().random()),
                 StepKind::Ban { available_settings, skippable, .. } => {
                     let mut settings = available_settings.all().map(Some).collect_vec();
                     if skippable {
                         settings.push(None);
                     }
-                    if let Some(setting) = settings.into_iter().choose(&mut thread_rng()).expect("no available settings") {
+                    if let Some(setting) = settings.into_iter().choose(&mut rng()).expect("no available settings") {
                         Action::Ban { setting: setting.name.to_owned() }
                     } else {
                         Action::Skip
@@ -2846,13 +2846,13 @@ impl Draft {
                     if skippable {
                         settings.push(None);
                     }
-                    if let Some(setting) = settings.into_iter().choose(&mut thread_rng()).expect("no available settings") {
-                        Action::Pick { setting: setting.name.to_owned(), value: setting.options.choose(&mut thread_rng()).expect("no available values").name.to_owned() }
+                    if let Some(setting) = settings.into_iter().choose(&mut rng()).expect("no available settings") {
+                        Action::Pick { setting: setting.name.to_owned(), value: setting.options.choose(&mut rng()).expect("no available values").name.to_owned() }
                     } else {
                         Action::Skip
                     }
                 }
-                StepKind::BooleanChoice { .. } => Action::BooleanChoice(thread_rng().gen()),
+                StepKind::BooleanChoice { .. } => Action::BooleanChoice(rng().random()),
                 StepKind::Done(_) | StepKind::DoneRsl { .. } => break self.settings,
             };
             self.apply(kind, None, &mut MessageContext::None, action).await?.expect("random draft made illegal action");

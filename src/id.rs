@@ -68,7 +68,7 @@ impl<T: Table> Id<T> {
     pub(crate) async fn new(transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<Self> {
         Ok(Self {
             inner: loop {
-                let id = thread_rng().gen();
+                let id = rng().random();
                 if !T::query_exists(id).fetch_one(&mut **transaction).await? { break id as u64 }
             },
             _table: PhantomData,

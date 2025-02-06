@@ -37,7 +37,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
 }
 
 pub(crate) fn s1_settings() -> serde_json::Map<String, Json> {
-    let starting_song = ["minuet", "bolero", "serenade", "requiem", "nocturne", "prelude"].choose(&mut thread_rng()).unwrap();
+    let starting_song = ["minuet", "bolero", "serenade", "requiem", "nocturne", "prelude"].choose(&mut rng()).unwrap();
     collect![
         format!("user_message") => json!("Copa do Brasil"),
         format!("trials") => json!(0),
