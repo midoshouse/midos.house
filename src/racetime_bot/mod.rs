@@ -178,6 +178,7 @@ pub(crate) enum Goal {
     Cc7,
     CoOpS3,
     CopaDoBrasil,
+    LeagueS8,
     MixedPoolsS2,
     MixedPoolsS3,
     Mq,
@@ -219,6 +220,7 @@ impl Goal {
             Self::Cc7 => series == Series::Standard && event == "7cc",
             Self::CoOpS3 => series == Series::CoOp && event == "3",
             Self::CopaDoBrasil => series == Series::CopaDoBrasil && event == "1",
+            Self::LeagueS8 => series == Series::League && event == "8",
             Self::MixedPoolsS2 => series == Series::MixedPools && event == "2",
             Self::MixedPoolsS3 => series == Series::MixedPools && event == "3",
             Self::Mq => series == Series::Mq && event == "1",
@@ -249,6 +251,7 @@ impl Goal {
             | Self::Cc7
             | Self::CoOpS3
             | Self::CopaDoBrasil
+            | Self::LeagueS8
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::Mq
@@ -273,6 +276,7 @@ impl Goal {
             Self::Cc7 => "Standard Tournament Season 7 Challenge Cup",
             Self::CoOpS3 => "Co-op Tournament Season 3",
             Self::CopaDoBrasil => "Copa do Brasil",
+            Self::LeagueS8 => "League Season 8",
             Self::MixedPoolsS2 => "2nd Mixed Pools Tournament",
             Self::MixedPoolsS3 => "3rd Mixed Pools Tournament",
             Self::Mq => "12 MQ Tournament",
@@ -298,6 +302,7 @@ impl Goal {
         match self {
             | Self::Cc7
             | Self::CoOpS3
+            | Self::LeagueS8
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::Mq
@@ -333,6 +338,7 @@ impl Goal {
             Self::TournoiFrancoS4 => Some(draft::Kind::TournoiFrancoS4),
             | Self::CoOpS3
             | Self::CopaDoBrasil
+            | Self::LeagueS8
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::Mq
@@ -362,6 +368,7 @@ impl Goal {
             | Self::StandardRuleset //TODO allow organizers to configure this for weeklies
                 => PrerollMode::Short,
             | Self::CopaDoBrasil
+            | Self::LeagueS8
             | Self::Mq
             | Self::MultiworldS3
             | Self::MultiworldS4
@@ -392,6 +399,7 @@ impl Goal {
                 | Self::TriforceBlitzProgressionSpoiler
                     => UnlockSpoilerLog::Progression,
                 | Self::CopaDoBrasil
+                | Self::LeagueS8
                 | Self::MixedPoolsS2
                 | Self::MixedPoolsS3
                 | Self::Mq
@@ -420,6 +428,7 @@ impl Goal {
             Self::Cc7 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::CoOpS3 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
+            Self::LeagueS8 => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 55)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
             Self::MixedPoolsS3 => VersionedBranch::Latest(rando::Branch::DevFenhl),
             Self::Mq => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0)),
@@ -451,6 +460,7 @@ impl Goal {
             Self::Cc7 => Err(false), // settings draft
             Self::CoOpS3 => Ok(coop::s3_settings()),
             Self::CopaDoBrasil => Ok(br::s1_settings()),
+            Self::LeagueS8 => Ok(league::s8_settings()),
             Self::MixedPoolsS2 => Ok(mp::s2_settings()),
             Self::MixedPoolsS3 => Ok(mp::s3_settings()),
             Self::Mq => Ok(mq::s1_settings()),
@@ -482,6 +492,7 @@ impl Goal {
             | Self::Cc7
             | Self::CoOpS3
             | Self::CopaDoBrasil
+            | Self::LeagueS8
             | Self::Mq
             | Self::MultiworldS3
             | Self::MultiworldS4
@@ -506,6 +517,8 @@ impl Goal {
                 => ctx.say("!seed: The settings used for the race").await?,
             | Self::PicRs2
                 => ctx.say("!seed: The weights used for the race").await?,
+            | Self::LeagueS8
+                => ctx.say("!seed: The current practice settings").await?, //TODO update when league/8 settings are final
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
@@ -653,6 +666,7 @@ impl Goal {
         Ok(match self {
             | Self::CoOpS3
             | Self::CopaDoBrasil
+            | Self::LeagueS8
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::Mq
@@ -2780,6 +2794,18 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::LeagueS8 => ctx.send_message(
+                                "Welcome! This is a practice room for League Season 8. Learn more about the event at https://midos.house/event/league/8",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the current practice settings.")), //TODO update when league/8 settings are final
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::MixedPoolsS2 => ctx.send_message(
                                 "Welcome! This is a practice room for the 2nd Mixed Pools Tournament. Learn more about the tournament at https://midos.house/event/mp/2",
                                 true,
@@ -3397,6 +3423,7 @@ impl RaceHandler<GlobalState> for Handler {
                         RaceState::Init => match goal {
                             | Goal::CoOpS3
                             | Goal::CopaDoBrasil
+                            | Goal::LeagueS8
                             | Goal::MixedPoolsS2
                             | Goal::MixedPoolsS3
                             | Goal::Mq
@@ -4090,6 +4117,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::Cc7
                     | Goal::CoOpS3
                     | Goal::CopaDoBrasil
+                    | Goal::LeagueS8
                     | Goal::MixedPoolsS2
                     | Goal::MixedPoolsS3
                     | Goal::Mq

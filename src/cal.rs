@@ -654,13 +654,14 @@ impl Race {
                 "4" => {}
                 "5" => {}
                 "6" => {}
-                "7" => {
+                "7" => {}
+                "8" => {
                     let schedule = http_client.get("https://league.ootrandomizer.com/scheduleJson")
                         .send().await?
                         .detailed_error_for_status().await?
                         .json_with_text_in_error::<league::Schedule>().await?;
                     for race in schedule.matches {
-                        if race.id <= 417 { continue } // seasons 5 and 6
+                        if race.id <= 502 { continue } // seasons 5 to 7
                         let id = Id::<Races>::new(&mut *transaction).await?;
                         add_or_update_race(&mut *transaction, &mut races, Self {
                             series: event.series,
