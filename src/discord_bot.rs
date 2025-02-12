@@ -1,5 +1,5 @@
 use {
-    std::num::NonZeroU64,
+    std::num::NonZero,
     serenity::all::{
         CacheHttp,
         Content,
@@ -33,14 +33,15 @@ use {
 pub(crate) const FENHL: UserId = UserId::new(86841168427495424);
 const BUTTONS_PER_PAGE: usize = 25;
 
+/// A wrapper around serenity's Discord snowflake types that can be stored in a PostgreSQL database as a BIGINT.
 #[derive(Debug)]
 pub(crate) struct PgSnowflake<T>(pub(crate) T);
 
-impl<'r, T: From<NonZeroU64>, DB: Database> Decode<'r, DB> for PgSnowflake<T>
+impl<'r, T: From<NonZero<u64>>, DB: Database> Decode<'r, DB> for PgSnowflake<T>
 where i64: Decode<'r, DB> {
     fn decode(value: <DB as Database>::ValueRef<'r>) -> Result<Self, Box<dyn std::error::Error + 'static + Send + Sync>> {
         let id = i64::decode(value)?;
-        let id = NonZeroU64::try_from(id as u64)?;
+        let id = NonZero::try_from(id as u64)?;
         Ok(Self(id.into()))
     }
 }

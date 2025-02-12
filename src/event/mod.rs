@@ -1857,13 +1857,6 @@ pub(crate) async fn volunteer(pool: &State<PgPool>, me: Option<User>, uri: Origi
             @let chuckles = User::from_id(&mut *transaction, Id::from(3480396938053963767_u64)).await?.ok_or(Error::OrganizerUserData)?;
             article {
                 p {
-                    : "The primary role of league volunteers is to complete race reviews to ensure runners are following league rules and to conduct initial FPA checks on races where FPA was called. If you are interested in being a volunteer for league, please complete ";
-                    a(href = "https://forms.gle/8fr8jk3eXXQ1xeEEA") : "this form";
-                    : ", then DM ";
-                    : chuckles;
-                    : " on Discord.";
-                }
-                p {
                     : "If you or an organised restream team want to restream matches, please complete ";
                     a(href = "https://forms.gle/eCJsvdE7CQY7Wofp6") : "this form";
                     : " (only one person from the team needs to complete it), then DM ";

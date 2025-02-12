@@ -243,8 +243,8 @@ impl<'r> FromRequest<'r> for DiscordUser {
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, UserFromRequestError> {
         match req.guard::<&CookieJar<'_>>().await {
             Outcome::Success(cookies) => match req.guard::<&State<reqwest::Client>>().await {
-                Outcome::Success(client) => if let Some(token) = cookies.get_private("discord_token") {
-                    match client.get("https://discord.com/api/v10/users/@me")
+                Outcome::Success(http_client) => if let Some(token) = cookies.get_private("discord_token") {
+                    match http_client.get("https://discord.com/api/v10/users/@me")
                         .bearer_auth(token.value())
                         .send()
                         .err_into::<UserFromRequestError>()
@@ -256,7 +256,7 @@ impl<'r> FromRequest<'r> for DiscordUser {
                     }
                 } else if let Some(token) = cookies.get_private("discord_refresh_token") {
                     match req.guard::<OAuth2<Discord>>().await {
-                        Outcome::Success(oauth) => Outcome::Success(guard_try!(handle_discord_token_response(client, cookies, &guard_try!(oauth.refresh(token.value()).await)).await)),
+                        Outcome::Success(oauth) => Outcome::Success(guard_try!(handle_discord_token_response(http_client, cookies, &guard_try!(oauth.refresh(token.value()).await)).await)),
                         Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::Cookie)),
                         Outcome::Forward(status) => Outcome::Forward(status),
                     }
@@ -298,9 +298,9 @@ impl<'r> FromRequest<'r> for User {
                         guard_try!(sqlx::query!("UPDATE users SET discord_display_name = $1, discord_discriminator = $2, discord_username = $3 WHERE id = $4", display_name, discord_user.discriminator as _, username, user.id as _).execute(&**pool).await);
                         found_user = found_user.or(Ok(user));
                     },
-                    Outcome::Forward(_) => {},
+                    Outcome::Forward(_) => {}
                     Outcome::Error(e) => found_user = found_user.or(Err(e)),
-                };
+                }
                 match found_user {
                     Ok(user) => if let Some(user_id) = guard_try!(sqlx::query_scalar!(r#"SELECT view_as AS "view_as: Id<Users>" FROM view_as WHERE viewer = $1"#, user.id as _).fetch_optional(&**pool).await) {
                         if let Some(user) = guard_try!(User::from_id(&**pool, user_id).await) {
