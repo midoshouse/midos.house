@@ -2188,7 +2188,10 @@ impl Handler {
         if let Some(existing_state) = existing_state {
             if let Some(existing_state) = existing_state {
                 if let Some(ref official_data) = existing_state.official_data {
-                    if race_data.entrants.iter().any(|entrant| entrant.status.value == EntrantStatusValue::Done && official_data.scores.get(&entrant.user.id).is_some_and(|score| score.is_none())) {
+                    if race_data.entrants.iter().any(|entrant| entrant.status.value == EntrantStatusValue::Done && {
+                        let key = if let Some(ref team) = entrant.team { &team.slug } else { &entrant.user.id };
+                        official_data.scores.get(key).is_some_and(|score| score.is_none())
+                    }) {
                         return true
                     }
                 }
@@ -3809,17 +3812,24 @@ impl RaceHandler<GlobalState> for Handler {
             },
             "score" => if_chain! {
                 if let Goal::TriforceBlitz | Goal::TriforceBlitzProgressionSpoiler = goal;
-                if let Some(OfficialRaceData { ref mut scores, .. }) = self.official_data;
+                if let Some(OfficialRaceData { ref event, ref mut scores, .. }) = self.official_data;
                 then {
-                    if let Some(UserData { ref id, .. }) = msg.user {
+                    if let Some(UserData { mut ref id, .. }) = msg.user {
+                        let data = ctx.data().await;
+                        if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == *id) {
+                            if let Some(ref team) = entrant.team {
+                                id = &team.slug;
+                            }
+                        }
                         if let Some(score) = scores.get_mut(id) {
                             let old_score = *score;
                             if_chain! {
                                 if let Some((pieces, duration)) = args.split_first();
                                 if let Ok(pieces) = pieces.parse();
-                                if pieces <= 3;
+                                if pieces <= tfb::piece_count(event.team_config);
                                 then {
                                     let new_score = tfb::Score {
+                                        team_config: event.team_config,
                                         last_collection_time: if pieces == 0 {
                                             Duration::default()
                                         } else {
@@ -3842,7 +3852,7 @@ impl RaceHandler<GlobalState> for Handler {
                                     ctx.send_message(
                                         &format!("Sorry {reply_to}, I didn't quite understand that. Please use this button to try again:"),
                                         false,
-                                        vec![tfb::report_score_button(None)],
+                                        vec![tfb::report_score_button(event.team_config, None)],
                                     ).await?;
                                 }
                             }
@@ -3953,19 +3963,23 @@ impl RaceHandler<GlobalState> for Handler {
     async fn race_data(&mut self, ctx: &RaceContext<GlobalState>, _old_race_data: RaceData) -> Result<(), Error> {
         let data = ctx.data().await;
         let goal = self.goal(ctx).await.to_racetime()?;
-        if let Some(OfficialRaceData { ref entrants, ref mut scores, .. }) = self.official_data {
+        if let Some(OfficialRaceData { ref event, ref entrants, ref mut scores, .. }) = self.official_data {
             for entrant in &data.entrants {
                 match entrant.status.value {
                     EntrantStatusValue::Requested => if entrants.contains(&entrant.user.id) {
                         ctx.accept_request(&entrant.user.id).await?;
                     },
                     EntrantStatusValue::Done => if let Goal::TriforceBlitz | Goal::TriforceBlitzProgressionSpoiler = goal {
-                        if let hash_map::Entry::Vacant(entry) = scores.entry(entrant.user.id.clone()) {
-                            let reply_to = &entrant.user.name;
+                        let (key, reply_to) = if let Some(ref team) = entrant.team {
+                            (team.slug.clone(), &team.name)
+                        } else {
+                            (entrant.user.id.clone(), &entrant.user.name)
+                        };
+                        if let hash_map::Entry::Vacant(entry) = scores.entry(key) {
                             ctx.send_message(
                                 &format!("{reply_to}, please report your score:"),
                                 false,
-                                vec![tfb::report_score_button(entrant.finish_time)],
+                                vec![tfb::report_score_button(event.team_config, entrant.finish_time)],
                             ).await?;
                             entry.insert(None);
                         }

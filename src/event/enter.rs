@@ -893,7 +893,7 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                     }
                 }
                 TeamConfig::Pictionary => return Ok(pic::enter_form(transaction, me, uri, csrf, data, defaults).await?),
-                TeamConfig::CoOp | TeamConfig::Multiworld => return Ok(mw::enter_form(transaction, me, uri, csrf, data, defaults.into_context(), client).await?),
+                TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::Multiworld => return Ok(mw::enter_form(transaction, me, uri, csrf, data, defaults.into_context(), client).await?),
             },
         }
     };

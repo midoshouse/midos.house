@@ -363,7 +363,7 @@ impl Handler {
         let data = ctx.data().await;
         let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, ref scores, .. }) = self.official_data else { return Ok(()) };
         if let Some(scores) = data.entrants.iter().map(|entrant| match entrant.status.value {
-            EntrantStatusValue::Dnf => Some(tfb::Score::default()),
+            EntrantStatusValue::Dnf => Some(tfb::Score::dnf(event.team_config)),
             EntrantStatusValue::Done => scores.get(&entrant.user.id).and_then(|&score| score),
             _ => None,
         }.map(|score| (entrant.user.id.clone(), score))).collect() {

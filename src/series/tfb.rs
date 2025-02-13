@@ -10,23 +10,38 @@ use {
     },
 };
 
-#[derive(Default, Debug, Clone, Copy)]
+pub(crate) fn piece_count(team_config: TeamConfig) -> u8 {
+    3 * team_config.roles().len() as u8
+}
+
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct Score {
+    pub(crate) team_config: TeamConfig,
     pub(crate) pieces: u8,
     pub(crate) last_collection_time: Duration,
+}
+
+impl Score {
+    pub(crate) fn dnf(team_config: TeamConfig) -> Self {
+        Self {
+            pieces: 0,
+            last_collection_time: Duration::default(),
+            team_config,
+        }
+    }
 }
 
 impl fmt::Display for Score {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.pieces == 0 {
-            write!(f, "0/3")
+            write!(f, "0/{}", piece_count(self.team_config))
         } else {
-            write!(f, "{}/3 in {}", self.pieces, English.format_duration(self.last_collection_time, false))
+            write!(f, "{}/{} in {}", self.pieces, piece_count(self.team_config), English.format_duration(self.last_collection_time, false))
         }
     }
 }
 
-pub(crate) fn report_score_button(finish_time: Option<Duration>) -> (&'static str, ActionButton) {
+pub(crate) fn report_score_button(team_config: TeamConfig, finish_time: Option<Duration>) -> (&'static str, ActionButton) {
     ("Report score", ActionButton::Message {
         message: format!("!score ${{pieces}} ${{last_collection_time}}"),
         help_text: Some(format!("Report your Triforce Blitz score for this race.")),
@@ -36,7 +51,7 @@ pub(crate) fn report_score_button(finish_time: Option<Duration>) -> (&'static st
                 label: format!("Pieces found"),
                 default: Some(if let Some(finish_time) = finish_time {
                     if finish_time < Duration::from_secs(2 * 60 * 60) {
-                        format!("3")
+                        piece_count(team_config).to_string()
                     } else {
                         format!("1")
                     }
@@ -46,12 +61,7 @@ pub(crate) fn report_score_button(finish_time: Option<Duration>) -> (&'static st
                 help_text: None,
                 kind: SurveyQuestionKind::Radio,
                 placeholder: None,
-                options: vec![
-                    (format!("0"), format!("0")),
-                    (format!("1"), format!("1")),
-                    (format!("2"), format!("2")),
-                    (format!("3"), format!("3")),
-                ],
+                options: (0..=piece_count(team_config)).map(|n| (n.to_string(), n.to_string())).collect(),
             },
             SurveyQuestion {
                 name: format!("last_collection_time"),
@@ -138,6 +148,57 @@ pub(crate) fn qualifier_async_rules() -> RawHtml<String> {
                 a(href = "https://docs.google.com/document/d/1BbvHJF8vtyrte76jpoCVQBTy9MYStpN3vr2PLdiCIMk/edit") : "Fair Play Agreement";
                 : " and have up to a 15 minute time where you can try to catch back up. If you do this, you must fill out the appropriate field when submitting your time so it can be authenticated.";
             }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, FromFormField, Sequence)]
+pub(crate) enum CoOpRole {
+    #[field(value = "sheikah")]
+    Sheikah,
+    #[field(value = "gerudo")]
+    Gerudo,
+}
+
+impl fmt::Display for CoOpRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Sheikah => write!(f, "player 1"),
+            Self::Gerudo => write!(f, "player 2"),
+        }
+    }
+}
+
+impl ToHtml for CoOpRole {
+    fn to_html(&self) -> RawHtml<String> {
+        match self {
+            Self::Sheikah => html! {
+                span(class = "sheikah") : "player 1";
+            },
+            Self::Gerudo => html! {
+                span(class = "gerudo") : "player 2";
+            },
+        }
+    }
+}
+
+impl TryFrom<event::Role> for CoOpRole {
+    type Error = ();
+
+    fn try_from(role: event::Role) -> Result<Self, ()> {
+        match role {
+            event::Role::Sheikah => Ok(Self::Sheikah),
+            event::Role::Gerudo => Ok(Self::Gerudo),
+            _ => Err(()),
+        }
+    }
+}
+
+impl From<CoOpRole> for event::Role {
+    fn from(role: CoOpRole) -> Self {
+        match role {
+            CoOpRole::Sheikah => Self::Sheikah,
+            CoOpRole::Gerudo => Self::Gerudo,
         }
     }
 }

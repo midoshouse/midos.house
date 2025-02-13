@@ -125,6 +125,10 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                 @match event.team_config {
                     TeamConfig::Solo => @unreachable // team invite for solo event
                     TeamConfig::CoOp => {}
+                    TeamConfig::TfbCoOp => {
+                        : tfb::CoOpRole::try_from(member.role).expect("non-coop role in coop team");
+                        : ", ";
+                    }
                     TeamConfig::Pictionary => {
                         : pic::Role::try_from(member.role).expect("non-Pictionary role in Pictionary team");
                         : ", ";
@@ -151,7 +155,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                 : ".";
             }
             TeamConfig::CoOp => {
-                @let (creator, creator_role) = creator.ok_or(Error::UnknownUser)?;
+                @let (creator, _) = creator.ok_or(Error::UnknownUser)?;
                 : creator;
                 : " invited you to join ";
                 : creator.possessive_determiner();
@@ -163,6 +167,29 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                 }
                 : " for ";
                 : event;
+                @if let Some(teammates) = English.join_html(teammates) {
+                    : " together with ";
+                    : teammates;
+                }
+                : ".";
+            }
+            TeamConfig::TfbCoOp => {
+                @let (creator, creator_role) = creator.ok_or(Error::UnknownUser)?;
+                : creator;
+                : " (";
+                : tfb::CoOpRole::try_from(creator_role).expect("non-coop role in coop team");
+                : ") invited you to join ";
+                : creator.possessive_determiner();
+                : " team";
+                @if let Some(team_name) = team_row.name {
+                    : " “";
+                    : team_name;
+                    : "”";
+                }
+                : " for ";
+                : event;
+                : " as ";
+                : tfb::CoOpRole::try_from(my_role).expect("non-coop role in coop team");
                 @if let Some(teammates) = English.join_html(teammates) {
                     : " together with ";
                     : teammates;

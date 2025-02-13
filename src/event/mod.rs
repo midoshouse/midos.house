@@ -89,6 +89,7 @@ pub(crate) enum MatchSource<'a> {
 pub(crate) enum TeamConfig {
     Solo,
     CoOp,
+    TfbCoOp,
     Pictionary,
     Multiworld,
 }
@@ -102,6 +103,10 @@ impl TeamConfig {
             Self::CoOp => &[
                 (Role::Sheikah, "Player 1"),
                 (Role::Gerudo, "Player 2"),
+            ],
+            Self::TfbCoOp => &[
+                (Role::Sheikah, "World 1"),
+                (Role::Gerudo, "World 2"),
             ],
             Self::Pictionary => &[
                 (Role::Sheikah, "Runner"),
@@ -129,6 +134,7 @@ impl TeamConfig {
             | Self::Solo
             | Self::CoOp
                 => false,
+            | Self::TfbCoOp
             | Self::Pictionary
             | Self::Multiworld
                 => true,
@@ -897,7 +903,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                                                     @if let Series::TriforceBlitz = data.series {
                                                         : form_field("pieces", &mut errors, html! {
                                                             label(for = "pieces") : "Number of Triforce Pieces found:";
-                                                            input(type = "number", min = "0", max = "3", name = "pieces", value? = ctx.field_value("pieces"));
+                                                            input(type = "number", min = "0", max = tfb::piece_count(data.team_config).to_string(), name = "pieces", value? = ctx.field_value("pieces"));
                                                         });
                                                         : form_field("time1", &mut errors, html! {
                                                             label(for = "time1") : "Time at which you found the most recent piece:";
@@ -940,6 +946,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                                                         label(class = "help") : "(You must submit a link to an unlisted YouTube video upload. The link to a YouTube video becomes available as soon as you begin the upload process.)";
                                                     });
                                                 }
+                                                TeamConfig::TfbCoOp => @unimplemented
                                                 TeamConfig::Multiworld => {
                                                     : form_field("time1", &mut errors, html! {
                                                         label(for = "time1", class = "power") : "Player 1 Finishing Time:";
@@ -1223,7 +1230,7 @@ async fn find_team_form(mut transaction: Transaction<'_, Postgres>, me: Option<U
             }).await?
         }
         TeamConfig::Pictionary => pic::find_team_form(transaction, me, uri, csrf, data, ctx).await?,
-        TeamConfig::CoOp | TeamConfig::Multiworld => mw::find_team_form(transaction, me, uri, csrf, data, ctx).await?,
+        TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::Multiworld => mw::find_team_form(transaction, me, uri, csrf, data, ctx).await?,
     })
 }
 
@@ -1712,8 +1719,8 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         };
         if let Series::TriforceBlitz = series {
             if let Some(pieces) = value.pieces {
-                if pieces < 0 || pieces > 3 {
-                    form.context.push_error(form::Error::validation("Must be a number from 0 to 3.").with_name("pieces"));
+                if pieces < 0 || pieces > i16::from(tfb::piece_count(data.team_config)) {
+                    form.context.push_error(form::Error::validation(format!("Must be a number from 0 to {}.", tfb::piece_count(data.team_config))).with_name("pieces"));
                 }
             } else {
                 form.context.push_error(form::Error::validation("This field is required.").with_name("pieces"));
