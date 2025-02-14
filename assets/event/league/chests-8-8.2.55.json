@@ -18,7 +18,7 @@
                 "big": false
             }
         ],
-        1484
+        2364
     ],
     [
         [
@@ -39,7 +39,7 @@
                 "big": true
             }
         ],
-        597
+        723
     ],
     [
         [
@@ -60,7 +60,7 @@
                 "big": false
             }
         ],
-        580
+        695
     ],
     [
         [
@@ -81,7 +81,7 @@
                 "big": false
             }
         ],
-        606
+        765
     ],
     [
         [
@@ -102,7 +102,7 @@
                 "big": true
             }
         ],
-        262
+        208
     ],
     [
         [
@@ -123,7 +123,7 @@
                 "big": false
             }
         ],
-        264
+        232
     ],
     [
         [
@@ -144,7 +144,7 @@
                 "big": false
             }
         ],
-        560
+        693
     ],
     [
         [
@@ -165,7 +165,7 @@
                 "big": true
             }
         ],
-        249
+        236
     ],
     [
         [
@@ -186,7 +186,7 @@
                 "big": false
             }
         ],
-        247
+        224
     ],
     [
         [
@@ -207,7 +207,7 @@
                 "big": false
             }
         ],
-        642
+        743
     ],
     [
         [
@@ -228,7 +228,7 @@
                 "big": true
             }
         ],
-        267
+        223
     ],
     [
         [
@@ -249,7 +249,7 @@
                 "big": false
             }
         ],
-        243
+        231
     ],
     [
         [
@@ -270,7 +270,7 @@
                 "big": false
             }
         ],
-        247
+        269
     ],
     [
         [
@@ -291,7 +291,7 @@
                 "big": true
             }
         ],
-        96
+        75
     ],
     [
         [
@@ -312,7 +312,7 @@
                 "big": false
             }
         ],
-        120
+        84
     ],
     [
         [
@@ -333,7 +333,7 @@
                 "big": false
             }
         ],
-        225
+        253
     ],
     [
         [
@@ -354,7 +354,7 @@
                 "big": true
             }
         ],
-        104
+        84
     ],
     [
         [
@@ -375,7 +375,7 @@
                 "big": false
             }
         ],
-        117
+        72
     ],
     [
         [
@@ -396,7 +396,7 @@
                 "big": false
             }
         ],
-        602
+        684
     ],
     [
         [
@@ -417,7 +417,7 @@
                 "big": true
             }
         ],
-        273
+        232
     ],
     [
         [
@@ -438,7 +438,7 @@
                 "big": false
             }
         ],
-        258
+        230
     ],
     [
         [
@@ -459,7 +459,7 @@
                 "big": false
             }
         ],
-        262
+        234
     ],
     [
         [
@@ -480,7 +480,7 @@
                 "big": true
             }
         ],
-        94
+        63
     ],
     [
         [
@@ -501,7 +501,7 @@
                 "big": false
             }
         ],
-        105
+        73
     ],
     [
         [
@@ -522,7 +522,7 @@
                 "big": false
             }
         ],
-        267
+        226
     ],
     [
         [
@@ -543,7 +543,7 @@
                 "big": true
             }
         ],
-        100
+        80
     ],
     [
         [
@@ -553,6 +553,195 @@
             },
             {
                 "texture": "heart",
+                "big": false
+            },
+            {
+                "texture": "heart",
+                "big": false
+            },
+            {
+                "texture": "heart",
+                "big": false
+            }
+        ],
+        63
+    ],
+    [
+        [
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
+                "texture": "normal",
+                "big": false
+            }
+        ],
+        762
+    ],
+    [
+        [
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
+                "texture": "major",
+                "big": true
+            }
+        ],
+        219
+    ],
+    [
+        [
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
+                "texture": "heart",
+                "big": false
+            }
+        ],
+        236
+    ],
+    [
+        [
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "normal",
+                "big": false
+            }
+        ],
+        244
+    ],
+    [
+        [
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "major",
+                "big": true
+            }
+        ],
+        72
+    ],
+    [
+        [
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "heart",
+                "big": false
+            }
+        ],
+        75
+    ],
+    [
+        [
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
+                "texture": "heart",
+                "big": false
+            },
+            {
+                "texture": "normal",
+                "big": false
+            }
+        ],
+        230
+    ],
+    [
+        [
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
+                "texture": "heart",
+                "big": false
+            },
+            {
+                "texture": "major",
+                "big": true
+            }
+        ],
+        78
+    ],
+    [
+        [
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "normal",
                 "big": false
             },
             {
@@ -573,195 +762,6 @@
                 "big": true
             },
             {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "normal",
-                "big": false
-            }
-        ],
-        620
-    ],
-    [
-        [
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "major",
-                "big": true
-            }
-        ],
-        292
-    ],
-    [
-        [
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "heart",
-                "big": false
-            }
-        ],
-        254
-    ],
-    [
-        [
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "normal",
-                "big": false
-            }
-        ],
-        259
-    ],
-    [
-        [
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "major",
-                "big": true
-            }
-        ],
-        103
-    ],
-    [
-        [
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "heart",
-                "big": false
-            }
-        ],
-        102
-    ],
-    [
-        [
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "heart",
-                "big": false
-            },
-            {
-                "texture": "normal",
-                "big": false
-            }
-        ],
-        264
-    ],
-    [
-        [
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "heart",
-                "big": false
-            },
-            {
-                "texture": "major",
-                "big": true
-            }
-        ],
-        101
-    ],
-    [
-        [
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "heart",
-                "big": false
-            },
-            {
-                "texture": "heart",
-                "big": false
-            }
-        ],
-        105
-    ],
-    [
-        [
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
                 "texture": "major",
                 "big": true
             },
@@ -774,7 +774,7 @@
                 "big": false
             }
         ],
-        245
+        255
     ],
     [
         [
@@ -795,7 +795,7 @@
                 "big": true
             }
         ],
-        95
+        76
     ],
     [
         [
@@ -816,7 +816,7 @@
                 "big": false
             }
         ],
-        91
+        74
     ],
     [
         [
@@ -837,7 +837,7 @@
                 "big": false
             }
         ],
-        101
+        77
     ],
     [
         [
@@ -858,7 +858,7 @@
                 "big": true
             }
         ],
-        43
+        24
     ],
     [
         [
@@ -877,6 +877,48 @@
             {
                 "texture": "heart",
                 "big": false
+            }
+        ],
+        18
+    ],
+    [
+        [
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "heart",
+                "big": false
+            },
+            {
+                "texture": "normal",
+                "big": false
+            }
+        ],
+        80
+    ],
+    [
+        [
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "major",
+                "big": true
+            },
+            {
+                "texture": "heart",
+                "big": false
+            },
+            {
+                "texture": "major",
+                "big": true
             }
         ],
         27
@@ -896,53 +938,11 @@
                 "big": false
             },
             {
-                "texture": "normal",
-                "big": false
-            }
-        ],
-        95
-    ],
-    [
-        [
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "heart",
-                "big": false
-            },
-            {
-                "texture": "major",
-                "big": true
-            }
-        ],
-        39
-    ],
-    [
-        [
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "major",
-                "big": true
-            },
-            {
-                "texture": "heart",
-                "big": false
-            },
-            {
                 "texture": "heart",
                 "big": false
             }
         ],
-        36
+        16
     ],
     [
         [
@@ -963,7 +963,7 @@
                 "big": false
             }
         ],
-        262
+        238
     ],
     [
         [
@@ -984,7 +984,7 @@
                 "big": true
             }
         ],
-        115
+        75
     ],
     [
         [
@@ -1005,7 +1005,7 @@
                 "big": false
             }
         ],
-        104
+        81
     ],
     [
         [
@@ -1026,7 +1026,7 @@
                 "big": false
             }
         ],
-        123
+        50
     ],
     [
         [
@@ -1047,7 +1047,7 @@
                 "big": true
             }
         ],
-        45
+        24
     ],
     [
         [
@@ -1068,7 +1068,7 @@
                 "big": false
             }
         ],
-        37
+        18
     ],
     [
         [
@@ -1089,7 +1089,7 @@
                 "big": false
             }
         ],
-        123
+        88
     ],
     [
         [
@@ -1110,7 +1110,7 @@
                 "big": true
             }
         ],
-        52
+        22
     ],
     [
         [
@@ -1131,28 +1131,7 @@
                 "big": false
             }
         ],
-        39
-    ],
-    [
-        [
-            {
-                "texture": "heart",
-                "big": false
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "normal",
-                "big": false
-            },
-            {
-                "texture": "normal",
-                "big": false
-            }
-        ],
-        600
+        15
     ],
     [
         [
@@ -1169,11 +1148,32 @@
                 "big": false
             },
             {
+                "texture": "normal",
+                "big": false
+            }
+        ],
+        729
+    ],
+    [
+        [
+            {
+                "texture": "heart",
+                "big": false
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
+                "texture": "normal",
+                "big": false
+            },
+            {
                 "texture": "major",
                 "big": true
             }
         ],
-        258
+        234
     ],
     [
         [
@@ -1194,7 +1194,7 @@
                 "big": false
             }
         ],
-        252
+        217
     ],
     [
         [
@@ -1215,7 +1215,7 @@
                 "big": false
             }
         ],
-        244
+        230
     ],
     [
         [
@@ -1236,7 +1236,7 @@
                 "big": true
             }
         ],
-        116
+        76
     ],
     [
         [
@@ -1257,7 +1257,7 @@
                 "big": false
             }
         ],
-        108
+        85
     ],
     [
         [
@@ -1278,7 +1278,7 @@
                 "big": false
             }
         ],
-        225
+        206
     ],
     [
         [
@@ -1299,7 +1299,7 @@
                 "big": true
             }
         ],
-        100
+        66
     ],
     [
         [
@@ -1320,7 +1320,7 @@
                 "big": false
             }
         ],
-        98
+        70
     ],
     [
         [
@@ -1341,7 +1341,7 @@
                 "big": false
             }
         ],
-        284
+        237
     ],
     [
         [
@@ -1362,7 +1362,7 @@
                 "big": true
             }
         ],
-        102
+        79
     ],
     [
         [
@@ -1383,7 +1383,7 @@
                 "big": false
             }
         ],
-        113
+        75
     ],
     [
         [
@@ -1404,7 +1404,7 @@
                 "big": false
             }
         ],
-        111
+        72
     ],
     [
         [
@@ -1425,7 +1425,7 @@
                 "big": true
             }
         ],
-        38
+        26
     ],
     [
         [
@@ -1446,7 +1446,7 @@
                 "big": false
             }
         ],
-        42
+        20
     ],
     [
         [
@@ -1467,7 +1467,7 @@
                 "big": false
             }
         ],
-        105
+        64
     ],
     [
         [
@@ -1488,7 +1488,7 @@
                 "big": true
             }
         ],
-        47
+        34
     ],
     [
         [
@@ -1509,7 +1509,7 @@
                 "big": false
             }
         ],
-        43
+        15
     ],
     [
         [
@@ -1530,7 +1530,7 @@
                 "big": false
             }
         ],
-        222
+        198
     ],
     [
         [
@@ -1551,7 +1551,7 @@
                 "big": true
             }
         ],
-        92
+        79
     ],
     [
         [
@@ -1572,7 +1572,7 @@
                 "big": false
             }
         ],
-        97
+        53
     ],
     [
         [
@@ -1593,7 +1593,7 @@
                 "big": false
             }
         ],
-        106
+        72
     ],
     [
         [
@@ -1614,7 +1614,7 @@
                 "big": true
             }
         ],
-        36
+        24
     ],
     [
         [
@@ -1635,7 +1635,7 @@
                 "big": false
             }
         ],
-        44
+        14
     ],
     [
         [
@@ -1656,7 +1656,7 @@
                 "big": false
             }
         ],
-        111
+        64
     ],
     [
         [
@@ -1677,7 +1677,7 @@
                 "big": true
             }
         ],
-        36
+        20
     ],
     [
         [
@@ -1698,6 +1698,6 @@
                 "big": false
             }
         ],
-        35
+        16
     ]
 ]
