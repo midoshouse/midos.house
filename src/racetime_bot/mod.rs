@@ -454,31 +454,30 @@ impl Goal {
     }
 
     /// Only returns a value for goals that only have one possible set of settings.
-    /// Otherwise, the error value indicates whether seeds will be rolled with the `password_lock` setting enabled.
-    fn single_settings(&self) -> Result<serde_json::Map<String, Json>, bool> {
+    fn single_settings(&self) -> Option<serde_json::Map<String, Json>> {
         match self {
-            Self::Cc7 => Err(false), // settings draft
-            Self::CoOpS3 => Ok(coop::s3_settings()),
-            Self::CopaDoBrasil => Ok(br::s1_settings()),
-            Self::LeagueS8 => Ok(league::s8_settings()),
-            Self::MixedPoolsS2 => Ok(mp::s2_settings()),
-            Self::MixedPoolsS3 => Ok(mp::s3_settings()),
-            Self::Mq => Ok(mq::s1_settings()),
-            Self::MultiworldS3 => Err(false), // settings draft
-            Self::MultiworldS4 => Err(false), // settings draft
-            Self::NineDaysOfSaws => Err(false), // per-event settings
-            Self::Pic7 => Ok(pic::race7_settings()),
-            Self::PicRs2 => Err(false), // random settings
-            Self::Rsl => Err(false), // random settings
-            Self::Sgl2023 => Ok(sgl::settings_2023()),
-            Self::Sgl2024 => Ok(sgl::settings_2024()),
-            Self::SongsOfHope => Ok(soh::settings()),
-            Self::StandardRuleset => Err(true), // per-event settings
-            Self::TournoiFrancoS3 => Err(false), // settings draft
-            Self::TournoiFrancoS4 => Err(false), // settings draft
-            Self::TriforceBlitz => Err(false), // per-event settings
-            Self::TriforceBlitzProgressionSpoiler => Ok(tfb::progression_spoiler_settings()),
-            Self::WeTryToBeBetter => Ok(wttbb::settings()),
+            Self::Cc7 => None, // settings draft
+            Self::CoOpS3 => Some(coop::s3_settings()),
+            Self::CopaDoBrasil => Some(br::s1_settings()),
+            Self::LeagueS8 => None, // passwordless option
+            Self::MixedPoolsS2 => Some(mp::s2_settings()),
+            Self::MixedPoolsS3 => Some(mp::s3_settings()),
+            Self::Mq => Some(mq::s1_settings()),
+            Self::MultiworldS3 => None, // settings draft
+            Self::MultiworldS4 => None, // settings draft
+            Self::NineDaysOfSaws => None, // per-event settings
+            Self::Pic7 => Some(pic::race7_settings()),
+            Self::PicRs2 => None, // random settings
+            Self::Rsl => None, // random settings
+            Self::Sgl2023 => Some(sgl::settings_2023()),
+            Self::Sgl2024 => Some(sgl::settings_2024()),
+            Self::SongsOfHope => Some(soh::settings()),
+            Self::StandardRuleset => None, // per-event settings
+            Self::TournoiFrancoS3 => None, // settings draft
+            Self::TournoiFrancoS4 => None, // settings draft
+            Self::TriforceBlitz => None, // per-event settings
+            Self::TriforceBlitzProgressionSpoiler => Some(tfb::progression_spoiler_settings()),
+            Self::WeTryToBeBetter => Some(wttbb::settings()),
         }
     }
 
@@ -517,8 +516,6 @@ impl Goal {
                 => ctx.say("!seed: The settings used for the race").await?,
             | Self::PicRs2
                 => ctx.say("!seed: The weights used for the race").await?,
-            | Self::LeagueS8
-                => ctx.say("!seed: The current practice settings").await?, //TODO update when league/8 settings are final
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
@@ -535,6 +532,10 @@ impl Goal {
                 ctx.say("!seed random: Simulate a settings draft with both players picking randomly. The settings are posted along with the seed.").await?;
                 ctx.say("!seed draft: Pick the settings here in the chat.").await?;
                 ctx.say("!seed <setting> <value> <setting> <value>... (e.g. !seed deku open camc off): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
+            }
+            Self::LeagueS8 => {
+                ctx.say("!seed: The settings used for the season").await?;
+                ctx.say("!seed --no-password: Same but without the password lock").await?;
             }
             Self::MultiworldS3 => {
                 ctx.say("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
@@ -666,7 +667,6 @@ impl Goal {
         Ok(match self {
             | Self::CoOpS3
             | Self::CopaDoBrasil
-            | Self::LeagueS8
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::Mq
@@ -769,6 +769,15 @@ impl Goal {
                     }
                 };
                 SeedCommandParseResult::Regular { settings: s::resolve_s7_draft_settings(&settings), unlock_spoiler_log, language: English, article: "a", description: format!("seed with {}", s::display_s7_draft_picks(&settings)) }
+            }
+            Self::LeagueS8 => {
+                let mut settings = league::s8_settings();
+                match args {
+                    [] => {}
+                    [arg] if arg == "--no-password" => { settings.remove("password_lock"); }
+                    [..] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" }),
+                }
+                SeedCommandParseResult::Regular { settings, unlock_spoiler_log, language: self.language(), article: "a", description: format!("seed") }
             }
             Self::MultiworldS3 => {
                 let settings = match args {
@@ -3426,7 +3435,6 @@ impl RaceHandler<GlobalState> for Handler {
                         RaceState::Init => match goal {
                             | Goal::CoOpS3
                             | Goal::CopaDoBrasil
-                            | Goal::LeagueS8
                             | Goal::MixedPoolsS2
                             | Goal::MixedPoolsS3
                             | Goal::Mq
@@ -3445,6 +3453,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::TournoiFrancoS3
                             | Goal::TournoiFrancoS4
                                 => unreachable!("should have draft state set"),
+                            Goal::LeagueS8 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(Some((event.series, &*event.event))), league::s8_settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                             Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
                             Goal::PicRs2 => this.roll_rsl_seed(ctx, rsl::VersionedPreset::Fenhl {
                                 version: Some((Version::new(2, 3, 8), 10)),
@@ -4458,7 +4467,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
     'outer: loop {
         let event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&global_state.db_pool).await.to_racetime()?;
         for goal in all::<Goal>() {
-            if let Ok(settings) = goal.single_settings() {
+            if let Some(settings) = goal.single_settings() {
                 if goal.preroll_seeds() == PrerollMode::Long && event_rows.iter().any(|row| goal.matches_event(row.series, &row.event)) {
                     loop {
                         let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
