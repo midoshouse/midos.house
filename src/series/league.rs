@@ -192,7 +192,6 @@ pub(crate) fn s8_settings() -> serde_json::Map<String, Json> {
         format!("skip_some_minigame_phases") => json!(true),
         format!("free_scarecrow") => json!(true),
         format!("fast_bunny_hood") => json!(true),
-        format!("easier_fire_arrow_entry") => json!(true),
         format!("ruto_already_f1_jabu") => json!(true),
         format!("chicken_count") => json!(3),
         format!("big_poe_count") => json!(1),
