@@ -19,6 +19,12 @@ if (-not $?)
     throw 'Native Failure'
 }
 
+wsl rustup update stable
+if (-not $?)
+{
+    throw 'Native Failure'
+}
+
 wsl env -C /home/fenhl/wslgit/github.com/midoshouse/midos.house cargo check
 if (-not $?)
 {

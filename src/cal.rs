@@ -987,7 +987,7 @@ impl Race {
         })
     }
 
-    pub(crate) fn cal_events(&self) -> impl Iterator<Item = Event> + Send {
+    pub(crate) fn cal_events(&self) -> impl Iterator<Item = Event> + Send + use<> {
         match self.schedule {
             RaceSchedule::Unscheduled => Box::new(iter::empty()) as Box<dyn Iterator<Item = Event> + Send>,
             RaceSchedule::Live { .. } => Box::new(iter::once(Event { race: self.clone(), kind: EventKind::Normal })),
@@ -1018,7 +1018,7 @@ impl Race {
         self.schedule.end_time(&self.entrants).is_some()
     }
 
-    pub(crate) fn rooms(&self) -> impl Iterator<Item = Url> + Send {
+    pub(crate) fn rooms(&self) -> impl Iterator<Item = Url> + Send + use<> {
         // hide room of private async parts until public part finished
         //TODO show to the team that played the private async part
         let all_ended = self.cal_events().all(|event| event.end().is_some());

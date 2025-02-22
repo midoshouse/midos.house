@@ -1198,7 +1198,7 @@ impl<'v> EnterFormStep2Defaults<'v> {
         }
     }
 
-    pub(crate) fn racetime_members(&self, client: &reqwest::Client) -> impl Future<Output = Result<Vec<RaceTimeTeamMember>, Error>> {
+    pub(crate) fn racetime_members(&self, client: &reqwest::Client) -> impl Future<Output = Result<Vec<RaceTimeTeamMember>, Error>> + use<> {
         match self {
             Self::Context(ctx) => if let Some(team_slug) = ctx.field_value("racetime_team") {
                 let client = client.clone();
