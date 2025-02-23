@@ -56,6 +56,7 @@ pub(crate) enum Kind {
     S7,
     MultiworldS3,
     MultiworldS4,
+    MultiworldS5,
     RslS7,
     TournoiFrancoS3,
     TournoiFrancoS4,
@@ -67,6 +68,7 @@ impl Kind {
             | Self::S7
             | Self::MultiworldS3
             | Self::MultiworldS4
+            | Self::MultiworldS5
             | Self::RslS7
             | Self::TournoiFrancoS4
                 => English,
@@ -228,17 +230,31 @@ impl Draft {
                 min_by_key(team1, team2, |team| team.qualifier_rank).id,
                 max_by_key(team1, team2, |team| team.qualifier_rank).id,
             ],
-            Kind::MultiworldS3 | Kind::MultiworldS4 => if phase.is_some_and(|phase| phase == "Top 8") {
-                let seeding = [
-                    Id::from(8429274534302278572_u64), // Anju's Secret
-                    Id::from(12142947927479333421_u64), // ADD
-                    Id::from(5548902498821246494_u64), // Donutdog!!! Wuff! Wuff!
-                    Id::from(7622448514297787774_u64), // Snack Pack
-                    Id::from(13644615382444869291_u64), // The Highest Gorons
-                    Id::from(4984265622447250649_u64), // Bongo Akimbo
-                    Id::from(592664405695569367_u64), // The Jhegsons
-                    Id::from(14405144517033747435_u64), // Pandora's Brot
-                ];
+            Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 => if phase.is_some_and(|phase| phase == "Top 8") {
+                let seeding = match kind {
+                    Kind::MultiworldS3 => [
+                        Id::from(5834711445123920517_u64), // DAD
+                        Id::from(167966029947875858_u64), // Snack Pack
+                        Id::from(541730158313016345_u64), // The Highest Gorons
+                        Id::from(8470597845703477673_u64), // Pirate Ship
+                        Id::from(3240373008633749917_u64), // The Good, The Bad and The Shopskipper
+                        Id::from(4729976791199641222_u64), // SariasObjects
+                        Id::from(4543618089366873966_u64), // Anju's Secret
+                        Id::from(3547322866530836817_u64), // Raid: Shadow Temple
+                    ],
+                    Kind::MultiworldS4 => [
+                        Id::from(8429274534302278572_u64), // Anju's Secret
+                        Id::from(12142947927479333421_u64), // ADD
+                        Id::from(5548902498821246494_u64), // Donutdog!!! Wuff! Wuff!
+                        Id::from(7622448514297787774_u64), // Snack Pack
+                        Id::from(13644615382444869291_u64), // The Highest Gorons
+                        Id::from(4984265622447250649_u64), // Bongo Akimbo
+                        Id::from(592664405695569367_u64), // The Jhegsons
+                        Id::from(14405144517033747435_u64), // Pandora's Brot
+                    ],
+                    Kind::MultiworldS5 => unimplemented!("top 8 seeding for mw/5"),
+                    _ => unreachable!("checked by outer match"),
+                };
                 let mut team_ids = [team1.id, team2.id];
                 team_ids.sort_unstable_by_key(|team| seeding.iter().position(|iter_team| iter_team == team));
                 team_ids
@@ -279,9 +295,9 @@ impl Draft {
             went_first: None,
             skipped_bans: 0,
             settings: match kind {
-                Kind::S7 | Kind::RslS7 => HashMap::default(),
+                Kind::S7 | Kind::RslS7 | Kind::MultiworldS3 | Kind::MultiworldS5 => HashMap::default(),
                 // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
-                Kind::MultiworldS3 | Kind::MultiworldS4 => HashMap::from_iter(
+                Kind::MultiworldS4 => HashMap::from_iter(
                     (loser == Id::from(17814073240662869290_u64) || winner == Id::from(17814073240662869290_u64))
                         .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
                 ),
@@ -304,8 +320,9 @@ impl Draft {
             Kind::RslS7 => self.skipped_bans
                 + u8::try_from(rsl::FORCE_OFF_SETTINGS.into_iter().filter(|&rsl::ForceOffSetting { name, .. }| self.settings.contains_key(name)).count()).unwrap()
                 + u8::try_from(rsl::FIFTY_FIFTY_SETTINGS.into_iter().chain(rsl::MULTI_OPTION_SETTINGS).filter(|&rsl::MultiOptionSetting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
-            Kind::MultiworldS3 => self.skipped_bans + u8::try_from(mw::S3_SETTINGS.into_iter().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
-            Kind::MultiworldS4 => self.skipped_bans + u8::try_from(mw::S4_SETTINGS.into_iter().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
+            Kind::MultiworldS3 => self.skipped_bans + u8::try_from(mw::S3_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
+            Kind::MultiworldS4 => self.skipped_bans + u8::try_from(mw::S4_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
+            Kind::MultiworldS5 => self.skipped_bans + u8::try_from(mw::S5_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS3 => self.skipped_bans + u8::try_from(fr::S3_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS4 => self.skipped_bans + u8::try_from(fr::S4_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
         }
@@ -693,7 +710,7 @@ impl Draft {
                             Step {
                                 kind: StepKind::Ban {
                                     available_settings: BanSettings(vec![
-                                        ("All Settings", mw::S3_SETTINGS.into_iter()
+                                        ("All Settings", mw::S3_SETTINGS.iter().copied()
                                             .filter(|&mw::Setting { name, .. }| !self.settings.contains_key(name))
                                             .map(|mw::Setting { name, display, default, default_display, description, .. }| BanSetting {
                                                 description: Cow::Borrowed(description),
@@ -737,7 +754,7 @@ impl Draft {
                             Step {
                                 kind: StepKind::Pick {
                                     available_choices: DraftSettings(vec![
-                                        ("All Settings", mw::S3_SETTINGS.into_iter()
+                                        ("All Settings", mw::S3_SETTINGS.iter().copied()
                                             .filter(|&mw::Setting { name, .. }| !self.settings.contains_key(name))
                                             .map(|mw::Setting { name, display, default, default_display, other, description }| DraftSetting {
                                                 options: iter::once(DraftSettingChoice { name: default, display: default_display })
@@ -851,7 +868,7 @@ impl Draft {
                             Step {
                                 kind: StepKind::Ban {
                                     available_settings: BanSettings(vec![
-                                        ("All Settings", mw::S4_SETTINGS.into_iter()
+                                        ("All Settings", mw::S4_SETTINGS.iter().copied()
                                             .filter(|&mw::Setting { name, .. }| !self.settings.contains_key(name))
                                             .map(|mw::Setting { name, display, default, default_display, description, .. }|
                                                 if name == "camc" && self.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
@@ -906,7 +923,7 @@ impl Draft {
                             Step {
                                 kind: StepKind::Pick {
                                     available_choices: DraftSettings(vec![
-                                        ("All Settings", mw::S4_SETTINGS.into_iter()
+                                        ("All Settings", mw::S4_SETTINGS.iter().copied()
                                             .filter(|&mw::Setting { name, .. }| !self.settings.contains_key(name))
                                             .map(|mw::Setting { name, display, default, default_display, other, description }|
                                                 if name == "camc" && self.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
@@ -1026,11 +1043,12 @@ impl Draft {
                     }
                 }
             }
+            Kind::MultiworldS5 => unimplemented!(), //TODO
             Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => {
                 let all_settings = match kind {
                     Kind::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
                     Kind::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
-                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::RslS7 | Kind::S7 => unreachable!(),
+                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::RslS7 | Kind::S7 => unreachable!(),
                 };
                 if let Some(went_first) = self.went_first {
                     let mut pick_count = self.pick_count(kind);
@@ -1046,7 +1064,7 @@ impl Draft {
                             kind: StepKind::Done(match kind {
                                 Kind::TournoiFrancoS3 => fr::resolve_s3_draft_settings(&self.settings),
                                 Kind::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&self.settings),
-                                Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::RslS7 | Kind::S7 => unreachable!(),
+                                Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::RslS7 | Kind::S7 => unreachable!(),
                             }),
                             message: match msg_ctx {
                                 MessageContext::None => String::default(),
@@ -1058,7 +1076,7 @@ impl Draft {
                                 MessageContext::RaceTime { .. } => fr::display_draft_picks(kind.language(), all_settings, &self.settings),
                             },
                         }),
-                        (Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::RslS7 | Kind::S7, _, _) => unreachable!(),
+                        (Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::RslS7 | Kind::S7, _, _) => unreachable!(),
                     };
                     if select_mixed_dungeons {
                         Step {
@@ -1164,7 +1182,7 @@ impl Draft {
                                 let round_count = match kind {
                                     Kind::TournoiFrancoS3 => 10,
                                     Kind::TournoiFrancoS4 => 8,
-                                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::RslS7 | Kind::S7 => unreachable!(),
+                                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::RslS7 | Kind::S7 => unreachable!(),
                                 };
                                 let hard_settings_ok = self.settings.get("hard_settings_ok").map(|hard_settings_ok| &**hard_settings_ok).unwrap_or("no") == "ok";
                                 let can_ban = n < round_count - 2 || self.settings.get(team.choose("high_seed_has_picked", "low_seed_has_picked")).map(|has_picked| &**has_picked).unwrap_or("no") == "yes";
@@ -1633,7 +1651,7 @@ impl Draft {
             }
             Kind::MultiworldS3 => {
                 let resolved_action = match action {
-                    Action::Ban { setting } => if let Some(setting) = mw::S3_SETTINGS.into_iter().find(|&mw::Setting { name, .. }| *name == setting) {
+                    Action::Ban { setting } => if let Some(setting) = mw::S3_SETTINGS.iter().copied().find(|&mw::Setting { name, .. }| *name == setting) {
                         Action::Pick { setting: setting.name.to_owned(), value: setting.default.to_owned() }
                     } else {
                         return Ok(Err(match msg_ctx {
@@ -1641,7 +1659,7 @@ impl Draft {
                             MessageContext::Discord { .. } => {
                                 let mut content = MessageBuilder::default();
                                 content.push("Sorry, I don't recognize that setting. Use one of the following: ");
-                                for (i, setting) in mw::S3_SETTINGS.into_iter().enumerate() {
+                                for (i, setting) in mw::S3_SETTINGS.iter().copied().enumerate() {
                                     if i > 0 {
                                         content.push(" or ");
                                     }
@@ -1651,7 +1669,7 @@ impl Draft {
                             }
                             MessageContext::RaceTime { reply_to, .. } => format!(
                                 "Sorry {reply_to}, I don't recognize that setting. Use one of the following: {}",
-                                mw::S3_SETTINGS.into_iter().map(|setting| setting.name).format(" or "),
+                                mw::S3_SETTINGS.iter().copied().map(|setting| setting.name).format(" or "),
                             ),
                         }))
                     },
@@ -1720,7 +1738,7 @@ impl Draft {
                                 })
                             }
                         } else {
-                            let exists = mw::S3_SETTINGS.into_iter().any(|mw::Setting { name, .. }| setting == name);
+                            let exists = mw::S3_SETTINGS.iter().copied().any(|mw::Setting { name, .. }| setting == name);
                             Err(match msg_ctx {
                                 MessageContext::None => String::default(),
                                 MessageContext::Discord { command_ids, .. } => {
@@ -1784,7 +1802,7 @@ impl Draft {
                                 })
                             }
                         } else {
-                            let exists = mw::S3_SETTINGS.into_iter().any(|mw::Setting { name, .. }| setting == name);
+                            let exists = mw::S3_SETTINGS.iter().copied().any(|mw::Setting { name, .. }| setting == name);
                             Err(match msg_ctx {
                                 MessageContext::None => String::default(),
                                 MessageContext::Discord { command_ids, .. } => {
@@ -1881,7 +1899,7 @@ impl Draft {
             }
             Kind::MultiworldS4 => {
                 let resolved_action = match action {
-                    Action::Ban { setting } => if let Some(setting) = mw::S4_SETTINGS.into_iter().find(|&mw::Setting { name, .. }| *name == setting) {
+                    Action::Ban { setting } => if let Some(setting) = mw::S4_SETTINGS.iter().copied().find(|&mw::Setting { name, .. }| *name == setting) {
                         Action::Pick {
                             setting: setting.name.to_owned(),
                             value: if setting.name == "camc" && self.settings.get("special_csmc").map(|special_csmc| &**special_csmc).unwrap_or("no") == "yes" {
@@ -1896,7 +1914,7 @@ impl Draft {
                             MessageContext::Discord { .. } => {
                                 let mut content = MessageBuilder::default();
                                 content.push("Sorry, I don't recognize that setting. Use one of the following: ");
-                                for (i, setting) in mw::S4_SETTINGS.into_iter().enumerate() {
+                                for (i, setting) in mw::S4_SETTINGS.iter().copied().enumerate() {
                                     if i > 0 {
                                         content.push(" or ");
                                     }
@@ -1906,7 +1924,7 @@ impl Draft {
                             }
                             MessageContext::RaceTime { reply_to, .. } => format!(
                                 "Sorry {reply_to}, I don't recognize that setting. Use one of the following: {}",
-                                mw::S4_SETTINGS.into_iter().map(|setting| setting.name).format(" or "),
+                                mw::S4_SETTINGS.iter().copied().map(|setting| setting.name).format(" or "),
                             ),
                         }))
                     },
@@ -1975,7 +1993,7 @@ impl Draft {
                                 })
                             }
                         } else {
-                            let exists = mw::S4_SETTINGS.into_iter().any(|mw::Setting { name, .. }| setting == name);
+                            let exists = mw::S4_SETTINGS.iter().copied().any(|mw::Setting { name, .. }| setting == name);
                             Err(match msg_ctx {
                                 MessageContext::None => String::default(),
                                 MessageContext::Discord { command_ids, .. } => {
@@ -2039,7 +2057,7 @@ impl Draft {
                                 })
                             }
                         } else {
-                            let exists = mw::S4_SETTINGS.into_iter().any(|mw::Setting { name, .. }| setting == name);
+                            let exists = mw::S4_SETTINGS.iter().copied().any(|mw::Setting { name, .. }| setting == name);
                             Err(match msg_ctx {
                                 MessageContext::None => String::default(),
                                 MessageContext::Discord { command_ids, .. } => {
@@ -2135,6 +2153,7 @@ impl Draft {
                     },
                 }
             }
+            Kind::MultiworldS5 => unimplemented!(), //TODO
             Kind::RslS7 => {
                 let resolved_action = match action {
                     Action::Ban { setting } => Action::Pick {
@@ -2372,7 +2391,7 @@ impl Draft {
                 let all_settings = match kind {
                     Kind::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
                     Kind::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
-                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::RslS7 | Kind::S7 => unreachable!(),
+                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::RslS7 | Kind::S7 => unreachable!(),
                 };
                 let resolved_action = match action {
                     Action::Ban { setting } => if let Some(setting) = all_settings.iter().find(|&&fr::Setting { name, .. }| *name == setting) {

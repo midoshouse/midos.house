@@ -552,7 +552,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let ban = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("ban")
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Locks a setting for this race to its default value."),
@@ -590,7 +590,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let draft = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("draft")
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Chooses a setting for this race."),
@@ -610,7 +610,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let first = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("first")
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Go first in the settings draft."),
@@ -648,7 +648,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let no = draft_kind.and_then(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::RslS7 => return None,
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::RslS7 => return None,
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("no")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -805,7 +805,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let second = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("second")
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Go second in the settings draft."),
@@ -843,7 +843,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let skip = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => CreateCommand::new("skip")
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Skips your current turn of the settings draft."),
@@ -899,7 +899,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let yes = draft_kind.and_then(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
-                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::RslS7 => return None,
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::RslS7 => return None,
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("yes")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
@@ -1040,7 +1040,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             }
                                         }
                                     }
-                                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => {}
+                                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => {}
                                 }
                                 draft_action(ctx, interaction, draft::Action::GoFirst(true)).await?;
                             }
@@ -1800,7 +1800,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             }
                                         }
                                     }
-                                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 => {}
+                                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => {}
                                 }
                                 draft_action(ctx, interaction, draft::Action::GoFirst(false)).await?;
                             }
