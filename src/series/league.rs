@@ -290,6 +290,7 @@ pub(crate) fn s8_settings() -> serde_json::Map<String, Json> {
         format!("correct_chest_appearances") => json!("both"),
         format!("correct_potcrate_appearances") => json!("textures_content"),
         format!("blue_fire_arrows") => json!(true),
+        format!("tcg_requires_lens") => json!(true),
         format!("junk_ice_traps") => json!("off"),
         format!("ice_trap_appearance") => json!("junk_only"),
     ]

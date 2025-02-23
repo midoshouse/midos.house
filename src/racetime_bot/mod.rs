@@ -436,7 +436,7 @@ impl Goal {
             Self::Cc7 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::CoOpS3 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
-            Self::LeagueS8 => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 55)),
+            Self::LeagueS8 => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 57)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
             Self::MixedPoolsS3 => VersionedBranch::Latest(rando::Branch::DevFenhl),
             Self::Mq => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0)),
