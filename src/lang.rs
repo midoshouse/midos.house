@@ -173,6 +173,15 @@ impl ToHtml for Language {
             : self.to_string();
         }
     }
+
+    fn push_html(&self, buf: &mut RawHtml<String>) {
+        match self {
+            English => write!(&mut buf.0, "English"),
+            French => write!(&mut buf.0, "French"),
+            German => write!(&mut buf.0, "German"),
+            Portuguese => write!(&mut buf.0, "Portuguese"),
+        }.unwrap();
+    }
 }
 
 pub(crate) fn english_ordinal(n: usize) -> String {

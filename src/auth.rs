@@ -163,6 +163,10 @@ impl ToHtml for Discriminator {
     fn to_html(&self) -> RawHtml<String> {
         RawHtml(self.to_string())
     }
+
+    fn push_html(&self, buf: &mut RawHtml<String>) {
+        write!(&mut buf.0, "{:04}", self.0).unwrap();
+    }
 }
 
 #[derive(Deserialize)]

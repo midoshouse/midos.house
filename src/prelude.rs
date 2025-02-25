@@ -13,7 +13,10 @@ pub(crate) use {
             },
         },
         convert::identity,
-        fmt,
+        fmt::{
+            self,
+            Write as _,
+        },
         hash::Hash,
         iter,
         marker::PhantomData,
