@@ -195,6 +195,11 @@ impl WeeklyKind {
 
 // Make sure to keep the following in sync with each other and the actual settings:
 pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned(ootr_utils::Version::from_branch(ootr_utils::Branch::DevFenhl, 8, 2, 50, 2));
+pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
+    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/league/chests-8-8.2.55.json")).expect("failed to parse chest weights"));
+
+    WEIGHTS.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
+}
 pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "League";
 fn long_weekly_settings() -> RawHtml<String> {
     html! {
