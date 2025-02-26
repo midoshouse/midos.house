@@ -21,6 +21,10 @@ use {
         },
         model::*,
     },
+    rand::distr::{
+        Alphanumeric,
+        SampleString as _,
+    },
     reqwest::StatusCode,
     semver::Version,
     serde_json::Value as Json,
@@ -1944,7 +1948,7 @@ impl SeedRollUpdate {
                     ctx.say("Please note that this seed is password protected. You will receive the password to start a file ingame as soon as the countdown starts.").await?;
                 }
                 set_bot_raceinfo(ctx, &seed, rsl_preset, false).await?;
-                if let Some(OfficialRaceData { cal_event, event, .. }) = official_data {
+                if let Some(OfficialRaceData { cal_event, event, restreams, .. }) = official_data {
                     // send multiworld rooms
                     let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
                     let mut mw_rooms_created = 0;
@@ -1991,6 +1995,7 @@ impl SeedRollUpdate {
                                 mw_room_name.push_str(ellipsis);
                             }
                             if let Some([hash1, hash2, hash3, hash4, hash5]) = extra.file_hash {
+                                let tracker_room_name = restreams.values().any(|restream| restream.restreamer_racetime_id.is_some()).then(|| Alphanumeric.sample_string(&mut rng(), 32));
                                 let mut cmd = Command::new("/usr/local/share/midos-house/bin/ootrmwd");
                                 cmd.arg("create-tournament-room");
                                 cmd.arg(&mw_room_name);
@@ -2004,8 +2009,25 @@ impl SeedRollUpdate {
                                         cmd.arg(member.id.to_string());
                                     }
                                 }
+                                if let Some(tracker_room_name) = &tracker_room_name {
+                                    cmd.arg("--tracker-room-name");
+                                    cmd.arg(tracker_room_name);
+                                }
                                 cmd.check("ootrmwd create-tournament-room").await.to_racetime()?;
                                 ctx.say(format!("{reply_to}, your Mido's House Multiworld room named “{mw_room_name}” is now open.")).await?;
+                                if let Some(tracker_room_name) = tracker_room_name {
+                                    let mut all_notified = true;
+                                    for restream in restreams.values() {
+                                        if let Some(racetime) = &restream.restreamer_racetime_id {
+                                            ctx.send_direct_message(&format!("auto-tracker room for {reply_to}: `{tracker_room_name}`"), racetime).await?;
+                                        } else {
+                                            all_notified = false;
+                                        }
+                                    }
+                                    if !all_notified {
+                                        FENHL.create_dm_channel(&*ctx.global_state.discord_ctx.read().await).await.to_racetime()?.say(&*ctx.global_state.discord_ctx.read().await, format!("auto-tracker room for {reply_to}: `{tracker_room_name}`")).await.to_racetime()?;
+                                    }
+                                }
                                 mw_rooms_created += 1;
                             } else {
                                 ctx.say(format!("Sorry {reply_to}, there was an error creating your Mido's House Multiworld room. Please create one manually.")).await?;
