@@ -2624,7 +2624,7 @@ impl RaceHandler<GlobalState> for Handler {
                     Entrants::Open | Entrants::Count { .. } => event.open_stream_delay,
                     Entrants::Two(_) | Entrants::Three(_) | Entrants::Named(_) => event.invitational_stream_delay,
                 };
-                let emulator_settings_reminder = event.series == Series::Standard && event.event != "w"; //TODO move to database
+                let emulator_settings_reminder = event.series == Series::Standard && event.event != "w" || event.series == Series::League; //TODO move to database
                 let prevent_late_joins = event.series == Series::SpeedGaming || event.series == Series::Standard && event.event == "8"; //TODO move to database
                 if !stream_delay.is_zero() || emulator_settings_reminder || prevent_late_joins {
                     let delay_until = cal_event.start().expect("handling room for official race without start time") - stream_delay - TimeDelta::minutes(5);

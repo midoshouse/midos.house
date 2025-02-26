@@ -10,19 +10,32 @@ use {
 };
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
-    Ok(Some(html! {
-        article {
-            p {
-                : "This is OoTR League season ";
-                : data.event;
-                : ", organized by ";
-                : English.join_html(data.organizers(transaction).await?);
-                : ". See ";
-                a(href = "https://league.ootrandomizer.com/") : "the official website";
-                : " for details.";
+    Ok(match &*data.event {
+        "8" => Some(html! {
+            article {
+                p {
+                    : "This is OoTR League season 8, organized by ";
+                    : English.join_html(data.organizers(transaction).await?);
+                    : ". See ";
+                    a(href = "https://docs.google.com/document/d/101R4sZqZpslI0E77sU4jtBB5fEy0RSpEnZ99PnoUV1k/edit") : "the rules document"; //TODO import text
+                    : " for details.";
+                }
             }
-        }
-    }))
+        }),
+        _ => Some(html! {
+            article {
+                p {
+                    : "This is OoTR League season ";
+                    : data.event;
+                    : ", organized by ";
+                    : English.join_html(data.organizers(transaction).await?);
+                    : ". See ";
+                    a(href = "https://league.ootrandomizer.com/") : "the official website";
+                    : " for details.";
+                }
+            }
+        }),
+    })
 }
 
 #[derive(Deserialize)]
