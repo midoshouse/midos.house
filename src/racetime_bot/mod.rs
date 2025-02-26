@@ -2501,37 +2501,27 @@ impl RaceHandler<GlobalState> for Handler {
             let new_data = if let Some(cal_event) = cal::Event::from_room(&mut transaction, &ctx.global_state.http_client, format!("https://{}{}", racetime_host(), ctx.data().await.url).parse()?).await.to_racetime()? {
                 let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
                 let mut entrants = Vec::default();
-                for team in cal_event.active_teams() {
-                    for (member, role) in team.members_roles(&mut transaction).await.to_racetime()? {
-                        if event.team_config.role_is_racing(role) {
-                            if let Some(member) = member.racetime {
-                                if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member.id) {
-                                    match entrant.status.value {
-                                        EntrantStatusValue::Requested => ctx.accept_request(&member.id).await?,
-                                        EntrantStatusValue::Invited |
-                                        EntrantStatusValue::Declined |
-                                        EntrantStatusValue::Ready |
-                                        EntrantStatusValue::NotReady |
-                                        EntrantStatusValue::InProgress |
-                                        EntrantStatusValue::Done |
-                                        EntrantStatusValue::Dnf |
-                                        EntrantStatusValue::Dq => {}
-                                    }
-                                } else {
-                                    ctx.invite_user(&member.id).await?;
+                for member in cal_event.racetime_users_to_invite(&mut transaction, &*ctx.global_state.discord_ctx.read().await, &event).await.to_racetime()? {
+                    match member {
+                        Ok(member) => {
+                            if let Some(entrant) = data.entrants.iter().find(|entrant| entrant.user.id == member) {
+                                match entrant.status.value {
+                                    EntrantStatusValue::Requested => ctx.accept_request(&member).await?,
+                                    EntrantStatusValue::Invited |
+                                    EntrantStatusValue::Declined |
+                                    EntrantStatusValue::Ready |
+                                    EntrantStatusValue::NotReady |
+                                    EntrantStatusValue::InProgress |
+                                    EntrantStatusValue::Done |
+                                    EntrantStatusValue::Dnf |
+                                    EntrantStatusValue::Dq => {}
                                 }
-                                entrants.push(member.id);
                             } else {
-                                ctx.say(format!(
-                                    "Warning: {name} could not be invited because {subj} {has_not} linked {poss} racetime.gg account to {poss} Mido's House account. Please contact an organizer to invite {obj} manually for now.",
-                                    name = member,
-                                    subj = member.subjective_pronoun(),
-                                    has_not = if member.subjective_pronoun_uses_plural_form() { "haven't" } else { "hasn't" },
-                                    poss = member.possessive_determiner(),
-                                    obj = member.objective_pronoun(),
-                                )).await?;
+                                ctx.invite_user(&member).await?;
                             }
+                            entrants.push(member);
                         }
+                        Err(msg) => ctx.say(msg).await?,
                     }
                 }
                 ctx.send_message(&if_chain! {

@@ -1407,6 +1407,50 @@ impl Event {
         }
     }
 
+    pub(crate) async fn racetime_users_to_invite(&self, transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, event: &event::Data<'_>) -> Result<Vec<Result<String, String>>, discord_bot::Error> {
+        let mut buf = Vec::default();
+        let entrants = match self.race.entrants {
+            Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => Box::new(iter::empty()) as Box<dyn Iterator<Item = &Entrant> + Send>,
+            Entrants::Two([ref team1, ref team2]) => Box::new([
+                matches!(self.kind, EventKind::Normal | EventKind::Async1).then_some(team1),
+                matches!(self.kind, EventKind::Normal | EventKind::Async2).then_some(team2),
+            ].into_iter().filter_map(identity)),
+            Entrants::Three([ref team1, ref team2, ref team3]) => Box::new([
+                matches!(self.kind, EventKind::Normal | EventKind::Async1).then_some(team1),
+                matches!(self.kind, EventKind::Normal | EventKind::Async2).then_some(team2),
+                matches!(self.kind, EventKind::Normal | EventKind::Async3).then_some(team3),
+            ].into_iter().filter_map(identity)),
+        };
+        for entrant in entrants {
+            match entrant {
+                Entrant::MidosHouseTeam(team) => for (member, role) in team.members_roles(&mut *transaction).await? {
+                    if event.team_config.role_is_racing(role) {
+                        buf.push(if let Some(member) = member.racetime {
+                            Ok(member.id)
+                        } else {
+                            Err(format!(
+                                "Warning: {member} could not be invited because {subj} {has_not} linked {poss} racetime.gg account to {poss} Mido's House account. Please contact an organizer to invite {obj} manually for now.",
+                                subj = member.subjective_pronoun(),
+                                has_not = if member.subjective_pronoun_uses_plural_form() { "haven't" } else { "hasn't" },
+                                poss = member.possessive_determiner(),
+                                obj = member.objective_pronoun(),
+                            ))
+                        });
+                    }
+                },
+                Entrant::Discord { racetime_id, .. } | Entrant::Named { racetime_id, .. } => {
+                    assert!(matches!(event.team_config, TeamConfig::Solo));
+                    buf.push(if let Some(racetime_id) = racetime_id {
+                        Ok(racetime_id.clone())
+                    } else {
+                        Err(format!("Warning: {} could not be invited. Please contact an organizer to invite them manually.", entrant.name(&mut *transaction, discord_ctx).await?.unwrap_or(Cow::Borrowed("(unnamed)"))))
+                    });
+                }
+            }
+        }
+        Ok(buf)
+    }
+
     pub(crate) fn room(&self) -> Option<&Url> {
         match self.race.schedule {
             RaceSchedule::Unscheduled => None,
