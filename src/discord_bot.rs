@@ -27,6 +27,7 @@ use {
     crate::{
         config::ConfigRaceTime,
         prelude::*,
+        racetime_bot::CleanShutdown,
     },
 };
 
@@ -515,7 +516,7 @@ fn parse_timestamp(timestamp: &str) -> Option<DateTime<Utc>> {
         .and_then(|timestamp| Utc.timestamp_opt(timestamp, 0).single())
 }
 
-pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_pool: PgPool, http_client: reqwest::Client, config: Config, new_room_lock: Arc<Mutex<()>>, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
+pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_pool: PgPool, http_client: reqwest::Client, config: Config, new_room_lock: Arc<Mutex<()>>, extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>, clean_shutdown: Arc<Mutex<CleanShutdown>>, shutdown: rocket::Shutdown) -> serenity_utils::Builder {
     discord_builder
         .error_notifier(ErrorNotifier::User(FENHL)) //TODO also print to stderr and/or report to night
         .data::<DbPool>(db_pool)
@@ -528,6 +529,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
         .data::<StartggToken>(if Environment::default().is_dev() { config.startgg_dev } else { config.startgg_production })
         .data::<NewRoomLock>(new_room_lock)
         .data::<ExtraRoomTx>(extra_room_tx)
+        .data::<CleanShutdown>(clean_shutdown)
         .on_guild_create(false, |ctx, guild, _| Box::pin(async move {
             let mut transaction = ctx.data.read().await.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?;
             let guild_event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_guild = $1 AND (end_time IS NULL OR end_time > NOW())"#, PgSnowflake(guild.id) as _).fetch_all(&mut *transaction).await?;
@@ -1336,7 +1338,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             race.save(&mut transaction).await?;
                                             let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
                                             if start - Utc::now() < TimeDelta::minutes(30) {
-                                                let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
+                                                let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
                                                     let data = ctx.data.read().await;
                                                     (
                                                         data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
@@ -1344,10 +1346,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
                                                         data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
                                                         data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
+                                                        data.get::<CleanShutdown>().expect("clean shutdown state missing from Discord context").clone(),
                                                     )
                                                 };
                                                 lock!(new_room_lock = new_room_lock; {
-                                                    if let Some(msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, &cal_event, &event).await? {
+                                                    if let Some(msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &cal_event, &event).await? {
                                                         if let Some(channel) = event.discord_race_room_channel {
                                                             channel.say(ctx, &msg).await?;
                                                         }
@@ -1528,8 +1531,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 _ => panic!("tried to schedule race with not 2 or 3 MH teams as async"),
                                             };
                                             let cal_event = cal::Event { race, kind };
-                                            if event.team_config.is_racetime_team_format() && start - Utc::now() < TimeDelta::minutes(30) {
-                                                let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx) = {
+                                            if start - Utc::now() < TimeDelta::minutes(30) {
+                                                let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
                                                     let data = ctx.data.read().await;
                                                     (
                                                         data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
@@ -1537,10 +1540,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                         data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
                                                         data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
                                                         data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
+                                                        data.get::<CleanShutdown>().expect("clean shutdown state missing from Discord context").clone(),
                                                     )
                                                 };
                                                 lock!(new_room_lock = new_room_lock; {
-                                                    if let Some(mut msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, &cal_event, &event).await? {
+                                                    if let Some(mut msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &cal_event, &event).await? {
                                                         if cal_event.is_private_async_part() {
                                                             msg = match cal_event.race.entrants {
                                                                 Entrants::Two(_) => format!("unlisted room for first async half: {msg}"),
@@ -2253,4 +2257,13 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
         thread.id
     });
     Ok(transaction)
+}
+
+pub(crate) async fn handle_race() {
+    //TODO start Discord race handler (in DMs for private async parts, in scheduling thread for public ones):
+    // * post seed 15 minutes before start
+    // * reminder to go live for public async parts
+    // * Ready button to post password and start countdown
+    // * Done/Forfeit/FPA buttons
+    // * reminder to send vod to organizers
 }

@@ -1302,7 +1302,7 @@ impl Ord for Race {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub(crate) enum EventKind {
     Normal,
     Async1,
@@ -1354,40 +1354,22 @@ impl Event {
             })
         }
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room1 IS NULL AND async_start1 IS NOT NULL AND async_start1 > NOW() AND async_start1 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut **transaction).await? {
-            let event = Self {
+            events.push(Self {
                 race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async1,
-            };
-            if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() {
-                events.push(event);
-            } else {
-                // racetime.gg doesn't support single-entrant races
-                //TODO DM/post seed 15 minutes before start
-            }
+            });
         }
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room2 IS NULL AND async_start2 IS NOT NULL AND async_start2 > NOW() AND async_start2 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut **transaction).await? {
-            let event = Self {
+            events.push(Self {
                 race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async2,
-            };
-            if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() {
-                events.push(event);
-            } else {
-                // racetime.gg doesn't support single-entrant races
-                //TODO DM/post seed 15 minutes before start
-            }
+            });
         }
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE async_room3 IS NULL AND async_start3 IS NOT NULL AND async_start3 > NOW() AND async_start3 <= NOW() + TIME '00:30:00'"#).fetch_all(&mut **transaction).await? {
-            let event = Self {
+            events.push(Self {
                 race: Race::from_id(&mut *transaction, http_client, id).await?,
                 kind: EventKind::Async3,
-            };
-            if event.race.event(&mut *transaction).await?.team_config.is_racetime_team_format() {
-                events.push(event);
-            } else {
-                // racetime.gg doesn't support single-entrant races
-                //TODO DM/post seed 15 minutes before start
-            }
+            });
         }
         Ok(events)
     }
@@ -1523,7 +1505,12 @@ impl Event {
                 // don't create racetime.gg rooms for in-person races
                 RaceHandleMode::Notify
             } else {
-                RaceHandleMode::Room
+                if matches!(self.kind, EventKind::Normal) || event.team_config.is_racetime_team_format() {
+                    RaceHandleMode::RaceTime
+                } else {
+                    // racetime.gg doesn't support single-entrant races
+                    RaceHandleMode::Discord
+                }
             }
         } else {
             RaceHandleMode::None
@@ -1534,7 +1521,8 @@ impl Event {
 pub(crate) enum RaceHandleMode {
     None,
     Notify,
-    Room,
+    RaceTime,
+    Discord,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]

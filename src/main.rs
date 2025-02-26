@@ -193,8 +193,8 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
         ).await?;
         let new_room_lock = Arc::default();
         let extra_room_tx = Arc::new(RwLock::new(mpsc::channel(1).0));
-        let discord_builder = discord_bot::configure_builder(discord_builder, db_pool.clone(), http_client.clone(), config.clone(), Arc::clone(&new_room_lock), Arc::clone(&extra_room_tx), rocket.shutdown());
         let clean_shutdown = Arc::default();
+        let discord_builder = discord_bot::configure_builder(discord_builder, db_pool.clone(), http_client.clone(), config.clone(), Arc::clone(&new_room_lock), Arc::clone(&extra_room_tx), Arc::clone(&clean_shutdown), rocket.shutdown());
         let racetime_config = if Environment::default().is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }.clone();
         let startgg_token = if Environment::default().is_dev() { &config.startgg_dev } else { &config.startgg_production };
         let (seed_cache_tx, seed_cache_rx) = watch::channel(());

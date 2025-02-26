@@ -1215,11 +1215,31 @@ impl FromStr for Goal {
     }
 }
 
+#[derive(PartialEq, Eq, Hash)]
+pub(crate) enum OpenRoom {
+    Discord(Id<Races>, cal::EventKind),
+    RaceTime(String),
+}
+
+impl fmt::Display for OpenRoom {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Discord(race_id, kind) => write!(f, "Discord race handler for {}race {race_id}", match kind {
+                cal::EventKind::Normal => "",
+                cal::EventKind::Async1 => "async 1 of ",
+                cal::EventKind::Async2 => "async 2 of ",
+                cal::EventKind::Async3 => "async 3 of ",
+            }),
+            Self::RaceTime(room_url) => write!(f, "https://{}{room_url}", racetime_host()),
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct CleanShutdown {
     pub(crate) requested: bool,
     pub(crate) block_new: bool,
-    pub(crate) open_rooms: HashSet<String>,
+    pub(crate) open_rooms: HashSet<OpenRoom>,
     pub(crate) notifier: Arc<Notify>,
 }
 
@@ -1227,6 +1247,10 @@ impl CleanShutdown {
     fn should_handle_new(&self) -> bool {
         !self.requested || !self.block_new && !self.open_rooms.is_empty()
     }
+}
+
+impl TypeMapKey for CleanShutdown {
+    type Value = Arc<Mutex<CleanShutdown>>;
 }
 
 #[derive(Default, Clone)]
@@ -2184,7 +2208,7 @@ impl Handler {
                     unlock!();
                     return false
                 }
-                assert!(clean_shutdown.open_rooms.insert(race_data.url.clone()));
+                assert!(clean_shutdown.open_rooms.insert(OpenRoom::RaceTime(race_data.url.clone())));
             });
         }
         if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
@@ -2475,7 +2499,7 @@ impl RaceHandler<GlobalState> for Handler {
             let res = join_handle.await;
             lock!(@read data = race_data; {
                 lock!(clean_shutdown = global_state.clean_shutdown; {
-                    assert!(clean_shutdown.open_rooms.remove(&data.url));
+                    assert!(clean_shutdown.open_rooms.remove(&OpenRoom::RaceTime(data.url.clone())));
                     if clean_shutdown.requested && clean_shutdown.open_rooms.is_empty() {
                         clean_shutdown.notifier.notify_waiters();
                     }
@@ -4148,11 +4172,11 @@ impl RaceHandler<GlobalState> for Handler {
     }
 }
 
-pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, host_info: &racetime::HostInfo, client_id: &str, client_secret: &str, extra_room_tx: &RwLock<mpsc::Sender<String>>, http_client: &reqwest::Client, cal_event: &cal::Event, event: &event::Data<'_>) -> Result<Option<String>, Error> {
+pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, host_info: &racetime::HostInfo, client_id: &str, client_secret: &str, extra_room_tx: &RwLock<mpsc::Sender<String>>, http_client: &reqwest::Client, clean_shutdown: Arc<Mutex<CleanShutdown>>, cal_event: &cal::Event, event: &event::Data<'_>) -> Result<Option<String>, Error> {
     let room_url = match cal_event.should_create_room(&mut *transaction, event).await.to_racetime()? {
         cal::RaceHandleMode::None => return Ok(None),
-        cal::RaceHandleMode::Notify => None,
-        cal::RaceHandleMode::Room => match racetime::authorize_with_host(host_info, client_id, client_secret, http_client).await {
+        cal::RaceHandleMode::Notify => Err("please get your equipment and report to the tournament room"),
+        cal::RaceHandleMode::RaceTime => match racetime::authorize_with_host(host_info, client_id, client_secret, http_client).await {
             Ok((access_token, _)) => {
                 let info_user = if_chain! {
                     if let French = event.language;
@@ -4269,7 +4293,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                     cal::EventKind::Async3 => { sqlx::query!("UPDATE races SET async_room3 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?; }
                 }
                 lock!(@read extra_room_tx = extra_room_tx; { let _ = extra_room_tx.send(race_slug).await; });
-                Some(room_url)
+                Ok(room_url)
             }
             Err(Error::Reqwest(e)) if e.status().map_or(false, |status| status.is_server_error()) => {
                 // racetime.gg's auth endpoint has been known to return server errors intermittently.
@@ -4278,10 +4302,38 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             }
             Err(e) => return Err(e),
         },
+        cal::RaceHandleMode::Discord => {
+            let task_clean_shutdown = clean_shutdown.clone();
+            lock!(clean_shutdown = clean_shutdown; {
+                if clean_shutdown.should_handle_new() {
+                    assert!(clean_shutdown.open_rooms.insert(OpenRoom::Discord(cal_event.race.id, cal_event.kind)));
+                    let cal_event = cal_event.clone();
+                    tokio::spawn(async move {
+                        println!("Discord race handler started");
+                        let res = tokio::spawn(crate::discord_bot::handle_race()).await;
+                        lock!(clean_shutdown = task_clean_shutdown; {
+                            assert!(clean_shutdown.open_rooms.remove(&OpenRoom::Discord(cal_event.race.id, cal_event.kind)));
+                            if clean_shutdown.requested && clean_shutdown.open_rooms.is_empty() {
+                                clean_shutdown.notifier.notify_waiters();
+                            }
+                        });
+                        if let Ok(()) = res {
+                            println!("Discord race handler stopped");
+                        } else {
+                            eprintln!("Discord race handler panicked");
+                            if let Environment::Production = Environment::default() {
+                                let _ = wheel::night_report(&format!("{}/error", night_path()), Some("Discord race handler panicked")).await;
+                            }
+                        }
+                    });
+                }
+            });
+            Err("remember to send your video to an organizer once you're done") //TODO “please check your direct messages” for private async parts, “will be handled here in the match thread” for public async parts
+        }
     };
     let msg = if_chain! {
         if let French = event.language;
-        if let Some(ref room_url_fr) = room_url;
+        if let Ok(ref room_url_fr) = room_url;
         if let (Some(phase), Some(round)) = (cal_event.race.phase.as_ref(), cal_event.race.round.as_ref());
         if let Some(Some(phase_round)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut **transaction).await.to_racetime()?;
         if cal_event.race.game.is_none();
@@ -4376,20 +4428,24 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                 msg.push(", game ");
                 msg.push(game.to_string());
             }
-            if let Some(room_url) = room_url {
-                msg.push(' ');
-                if !ping_standard {
-                    msg.push('<');
+            match room_url {
+                Ok(room_url) => {
+                    msg.push(' ');
+                    if !ping_standard {
+                        msg.push('<');
+                    }
+                    msg.push(room_url);
+                    if !ping_standard {
+                        msg.push('>');
+                    }
                 }
-                msg.push(room_url);
-                if !ping_standard {
-                    msg.push('>');
-                }
-            } else if cal_event.race.notified {
-                return Ok(None)
-            } else {
-                msg.push(" — please get your equipment and report to the tournament room");
-                sqlx::query!("UPDATE races SET notified = TRUE WHERE id = $1", cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?;
+                Err(notification) => if cal_event.race.notified {
+                    return Ok(None)
+                } else {
+                    msg.push(" — ");
+                    msg.push(notification);
+                    sqlx::query!("UPDATE races SET notified = TRUE WHERE id = $1", cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?;
+                },
             }
             msg.build()
         }
@@ -4507,10 +4563,9 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
             _ = sleep(Duration::from_secs(30)) => { //TODO exact timing (coordinate with everything that can change the schedule)
                 lock!(new_room_lock = global_state.new_room_lock; { // make sure a new room isn't handled before it's added to the database
                     let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
-                    let rooms_to_open = cal::Event::rooms_to_open(&mut transaction, &global_state.http_client).await.to_racetime()?;
-                    for cal_event in rooms_to_open {
+                    for cal_event in cal::Event::rooms_to_open(&mut transaction, &global_state.http_client).await.to_racetime()? {
                         let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
-                        if let Some(msg) = create_room(&mut transaction, &*global_state.discord_ctx.read().await, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.extra_room_tx, &global_state.http_client, &cal_event, &event).await? {
+                        if let Some(msg) = create_room(&mut transaction, &*global_state.discord_ctx.read().await, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.extra_room_tx, &global_state.http_client, global_state.clean_shutdown.clone(), &cal_event, &event).await? {
                             let ctx = global_state.discord_ctx.read().await;
                             if cal_event.is_private_async_part() {
                                 let msg = match cal_event.race.entrants {
