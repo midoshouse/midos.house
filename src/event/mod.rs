@@ -621,7 +621,7 @@ pub(crate) enum Tab {
     Configure,
 }
 
-#[derive(Debug, thiserror::Error, rocket_util::Error)]
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error(transparent)] Calendar(#[from] cal::Error),
     #[error(transparent)] Data(#[from] DataError),
@@ -663,6 +663,20 @@ impl IsNetworkError for Error {
             Self::OrganizerUserData => false,
             Self::RestreamerUserData => false,
         }
+    }
+}
+
+impl<'r> rocket::response::Responder<'r, 'static> for Error {
+    fn respond_to(self, request: &'r Request<'_>) -> rocket::response::Result<'static> {
+        let status = if self.is_network_error() {
+            Status::BadGateway //TODO different status codes (e.g. GatewayTimeout for timeout errors)?
+        } else {
+            Status::InternalServerError
+        };
+        eprintln!("responded with {status} to request to {}", request.uri());
+        eprintln!("display: {self}");
+        eprintln!("debug: {self:?}");
+        Err(status)
     }
 }
 
