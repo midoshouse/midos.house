@@ -67,7 +67,28 @@ pub(crate) const S4_SETTINGS: &[Setting] = &[
     Setting { name: "hints", display: "hint type", default: "path", default_display: "path hints", other: &[("woth", "Way of the Hero hints")], description: "hints: path (default) or woth" },
 ];
 
-pub(crate) const S5_SETTINGS: &[Setting] = &[]; //TODO
+pub(crate) const S5_SETTINGS: &[Setting] = &[
+    Setting { name: "gbk", display: "Ganon boss key", default: "meds", default_display: "Ganon bk on 6 medallions", other: &[("stones", "Ganon bk on 3 stones"), ("th", "Triforce Hunt")], description: "gbk (Ganon boss key): meds (default: 6 medallions), stones (3 stones), or th (Triforce Hunt 24/28)" },
+    Setting { name: "bridge", display: "rainbow bridge", default: "meds", default_display: "6 medallions bridge", other: &[("dungeons", "7 dungeon rewards bridge"), ("vanilla", "vanilla bridge")], description: "bridge: meds (default: 6 medallions), dungeons (7 rewards), or vanilla" },
+    Setting { name: "trials", display: "trials", default: "0", default_display: "0 trials", other: &[("2", "2 trials")], description: "trials: 0 (default) or 2" },
+    Setting { name: "bosskeys", display: "boss keys", default: "dungeon", default_display: "own dungeon boss keys", other: &[("regional", "regional boss keys"), ("vanilla", "vanilla boss keys")], description: "bosskeys: dungeon (default), regional, or vanilla" },
+    Setting { name: "smallkeys", display: "small keys", default: "dungeon", default_display: "own dungeon small keys", other: &[("regional", "regional keyrings"), ("vanilla", "vanilla small keys")], description: "smallkeys: dungeon (default), regional (with keyrings), or vanilla" },
+    Setting { name: "deku", display: "open Deku", default: "open", default_display: "open Deku", other: &[("closed", "closed Deku")], description: "deku: open (Default) or closed" },
+    Setting { name: "fountain", display: "fountain", default: "closed", default_display: "closed fountain", other: &[("open", "open fountain")], description: "fountain: closed (default) or open" },
+    Setting { name: "spawn", display: "spawns", default: "tot", default_display: "ToT spawns", other: &[("random", "random spawns & starting age")], description: "spawn: tot (default: adult start, vanilla spawns) or random (random spawns and starting age)" },
+    Setting { name: "dungeon-er", display: "dungeon entrance rando", default: "off", default_display: "no dungeon ER", other: &[("on", "dungeon ER")], description: "dungeon-er: off (default) or on" },
+    Setting { name: "boss-er", display: "boss entrance rando", default: "off", default_display: "no boss ER", other: &[("full", "full boss ER")], description: "boss-er: off (default) or full" },
+    Setting { name: "warps", display: "warp song entrance rando", default: "off", default_display: "vanilla warp songs", other: &[("on", "shuffled warp songs")], description: "warps: off (default) or on" },
+    Setting { name: "chubags", display: "bombchu drops", default: "off", default_display: "no bombchu drops", other: &[("on", "bombchu drops")], description: "chubags: off (default) or on" },
+    Setting { name: "shops", display: "shops", default: "4", default_display: "shops 4", other: &[("off", "no shops")], description: "shops: 4 (default) or off" },
+    Setting { name: "skulls", display: "tokens", default: "dungeons", default_display: "dungeon tokens", other: &[("off", "no tokens")], description: "skulls: dungeons (default) or off" },
+    Setting { name: "scrubs", display: "scrubs", default: "affordable", default_display: "affordable scrubs", other: &[("off", "no scrubs")], description: "scrubs: affordable (default) or off" },
+    Setting { name: "cows", display: "cows", default: "off", default_display: "no cows", other: &[("on", "cows")], description: "cows: off (default) or on" },
+    Setting { name: "card", display: "Gerudo card", default: "vanilla", default_display: "vanilla Gerudo card", other: &[("shuffle", "shuffled Gerudo card")], description: "card: vanilla (default) or shuffle" },
+    Setting { name: "frogs", display: "frogs", default: "off", default_display: "no frogs", other: &[("shuffle", "shuffled frogs")], description: "frogs: off (defaut) or shuffle" },
+    Setting { name: "camc", display: "CAMC", default: "both", default_display: "chest size & texture match contents", other: &[("off", "vanilla chest appearances")], description: "camc (Chest Appearance Matches Contents): both (default: size & texture) or off" },
+    Setting { name: "hints", display: "hint type", default: "path", default_display: "path hints", other: &[("woth", "Way of the Hero hints")], description: "hints: path (default) or woth" },
+];
 
 pub(crate) fn display_s3_draft_picks(picks: &draft::Picks) -> String {
     English.join_str(
@@ -387,8 +408,169 @@ pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map
 }
 
 pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
-    let _ = picks; //TODO
-    collect![]
+    let gbk = picks.get("gbk").map(|gbk| &**gbk).unwrap_or("meds");
+    let bridge = picks.get("bridge").map(|bridge| &**bridge).unwrap_or("meds");
+    let trials = picks.get("trials").map(|trials| &**trials).unwrap_or("0");
+    let bosskeys = picks.get("bosskeys").map(|bosskeys| &**bosskeys).unwrap_or("dungeon");
+    let smallkeys = picks.get("smallkeys").map(|smallkeys| &**smallkeys).unwrap_or("dungeon");
+    let deku = picks.get("deku").map(|deku| &**deku).unwrap_or("open");
+    let fountain = picks.get("fountain").map(|fountain| &**fountain).unwrap_or("closed");
+    let spawn = picks.get("spawn").map(|spawn| &**spawn).unwrap_or("tot");
+    let dungeon_er = picks.get("dungeon-er").map(|dungeon_er| &**dungeon_er).unwrap_or("off");
+    let boss_er = picks.get("boss-er").map(|boss_er| &**boss_er).unwrap_or("off");
+    let warps = picks.get("warps").map(|warps| &**warps).unwrap_or("off");
+    let chubags = picks.get("chubags").map(|chubags| &**chubags).unwrap_or("off");
+    let shops = picks.get("shops").map(|shops| &**shops).unwrap_or("4");
+    let skulls = picks.get("skulls").map(|skulls| &**skulls).unwrap_or("dungeons");
+    let scrubs = picks.get("scrubs").map(|scrubs| &**scrubs).unwrap_or("affordable");
+    let cows = picks.get("cows").map(|cows| &**cows).unwrap_or("off");
+    let card = picks.get("card").map(|card| &**card).unwrap_or("vanilla");
+    let frogs = picks.get("frogs").map(|frogs| &**frogs).unwrap_or("off");
+    let camc = picks.get("camc").map(|camc| &**camc).unwrap_or("both");
+    let hints = picks.get("hints").map(|hints| &**hints).unwrap_or("path");
+    collect![
+        format!("password_lock") => json!(true),
+        format!("user_message") => json!("5th Multiworld Tournament"),
+        format!("world_count") => json!(3),
+        format!("triforce_hunt") => json!(gbk == "th"),
+        format!("triforce_count_per_world") => json!(28),
+        format!("triforce_goal_per_world") => json!(24),
+        format!("bridge") => match bridge {
+            "meds" => json!("medallions"),
+            "dungeons" => json!("dungeons"),
+            "vanilla" => json!("vanilla"),
+            _ => unreachable!(),
+        },
+        format!("bridge_rewards") => json!(7),
+        format!("trials") => match trials {
+            "0" => json!(0),
+            "2" => json!(2),
+            _ => unreachable!(),
+        },
+        format!("shuffle_ganon_bosskey") => if let "stones" = gbk {
+            json!("stones")
+        } else {
+            json!("medallions")
+        },
+        format!("shuffle_bosskeys") => json!(bosskeys),
+        format!("shuffle_smallkeys") => json!(smallkeys),
+        format!("key_rings_choice") => if smallkeys == "regional" {
+            json!("all")
+        } else {
+            json!("off")
+        },
+        format!("shuffle_mapcompass") => json!("startwith"),
+        format!("enhance_map_compass") => json!(true),
+        format!("open_forest") => match deku {
+            "open" => json!("open"),
+            "closed" => json!("closed_deku"),
+            _ => unreachable!(),
+        },
+        format!("open_kakariko") => json!("open"),
+        format!("open_door_of_time") => json!(true),
+        format!("zora_fountain") => json!(fountain),
+        format!("gerudo_fortress") => json!("fast"),
+        format!("starting_age") => match spawn {
+            "tot" => json!("adult"),
+            "random" => json!("random"),
+            _ => unreachable!(),
+        },
+        format!("spawn_positions") => if spawn == "random" {
+            json!(["child", "adult"])
+        } else {
+            json!([])
+        },
+        format!("shuffle_dungeon_entrances") => if dungeon_er == "on" {
+            json!("simple")
+        } else {
+            json!("off")
+        },
+        format!("shuffle_boss_entrances") => json!(boss_er),
+        format!("warp_songs") => json!(warps == "on"),
+        format!("free_bombchu_drops") => json!(chubags == "on"),
+        format!("shopsanity") => json!(shops),
+        format!("tokensanity") => json!(skulls),
+        format!("shuffle_scrubs") => match scrubs {
+            "affordable" => json!("low"),
+            "off" => json!("off"),
+            _ => unreachable!(),
+        },
+        format!("shuffle_cows") => json!(cows == "on"),
+        format!("shuffle_gerudo_card") => json!(card == "shuffle"),
+        format!("shuffle_frog_song_rupees") => json!(frogs == "shuffle"),
+        format!("disabled_locations") => json!([
+            "Deku Theater Mask of Truth",
+            "Kak 40 Gold Skulltula Reward",
+            "Kak 50 Gold Skulltula Reward",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_fewer_tunic_requirements",
+            "logic_grottos_without_agony",
+            "logic_child_deadhand",
+            "logic_man_on_roof",
+            "logic_dc_jump",
+            "logic_rusted_switches",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_forest_vines",
+            "logic_lens_botw",
+            "logic_lens_castle",
+            "logic_lens_gtg",
+            "logic_lens_shadow",
+            "logic_lens_shadow_platform",
+            "logic_lens_bongo",
+            "logic_lens_spirit",
+            "logic_visible_collisions",
+            "logic_dc_scarecrow_gs",
+            "logic_deku_b1_webs_with_bow",
+        ]),
+        format!("starting_inventory") => json!([
+            "ocarina",
+            "farores_wind",
+            "lens",
+            "zeldas_letter",
+        ]),
+        format!("start_with_consumables") => json!(true),
+        format!("start_with_rupees") => json!(true),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("free_scarecrow") => json!(true),
+        format!("fast_bunny_hood") => json!(true),
+        format!("chicken_count") => json!(3),
+        format!("big_poe_count") => json!(1),
+        format!("ruto_already_f1_jabu") => json!(true),
+        format!("fast_shadow_boat") => json!(true),
+        format!("correct_chest_appearances") => match camc {
+            "both" => json!("both"),
+            "off" => json!("off"),
+            _ => unreachable!(),
+        },
+        format!("correct_potcrate_appearances") => json!("textures_content"),
+        format!("key_appearance_match_dungeon") => json!(true),
+        format!("hint_dist") => match hints {
+            "path" => json!("mw_path"),
+            "woth" => json!("mw_woth"),
+            _ => unreachable!(),
+        },
+        format!("misc_hints") => json!([
+            "altar",
+            "dampe_diary",
+            "ganondorf",
+            "warp_songs_and_owls",
+            "20_skulltulas",
+            "30_skulltulas",
+            "frogs2",
+        ]),
+        format!("blue_fire_arrows") => json!(true),
+        format!("tcg_requires_lens") => json!(true),
+        format!("junk_ice_traps") => json!("off"),
+        format!("ice_trap_appearance") => json!("junk_only"),
+        format!("adult_trade_start") => json!([
+            "Claim Check",
+        ]),
+    ]
 }
 
 pub(crate) fn s3_chests(picks: &draft::Picks) -> ChestAppearances {
@@ -1063,9 +1245,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : ". In the event that an odd number of teams is qualified at the time of the deadline, one additional team may qualify within 24 hours.";
                 }
                 p {
-                    : "The tournament itself will begin with a randomly seeded series of best-of-1 ";
+                    : "The tournament itself will begin with a series of best-of-1 ";
                     a(href = "https://en.wikipedia.org/wiki/Swiss-system_tournament") : "Swiss";
-                    : " rounds. It is expected to require 6 rounds, although this may change depending on the number of teams in the tournament. Each round will last two weeks.";
+                    : " rounds seeded based on the qualifier results. It is expected to require 6 rounds, although this may change depending on the number of teams in the tournament. Each round will last two weeks.";
                 }
                 p : "After all Swiss rounds are done, there will be an additional async as a tiebreaker. The top 8 teams will advance to a single elimination bracket to crown the champions. The quarterfinals will be a single race each, while semifinals and finals will be best-of-3 matches.";
                 p : "In the event that teams do not schedule in time, tournament organizers will use their discretion to determine the correct outcome based on the failures to schedule. In unusual circumstances, the schedule may be adjusted on short notice at the discretion of tournament organizers.";
@@ -1080,20 +1262,24 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 h2 : "Seed Settings";
                 p {
                     : "All tournament matches will be played on ";
-                    a(href = "https://ootrandomizer.com/generatorDev?version=dev_8.2.57") : "version 8.2.57";
+                    a(href = "https://ootrandomizer.com/generatorDev?version=dev_8.2.63") : "version 8.2.63";
                     : " of the randomizer. Organizers may change this version between rounds at their discretion.";
                 }
-                p : "The default settings for each race have the following differences to the S7 tournament preset:"; //TODO new defaults, compare with S8 instead
+                p : "The default settings for each race have the following differences to the S8 tournament preset:";
                 ul {
-                    li : "Maps and Compasses Give Information: On";
+                    li : "Rainbow Bridge: 6 Medallions";
                     li : "Forest: Open";
                     li : "Starting Age: Adult";
+                    li : "Spawn Positions: Vanilla";
                     li : "Shopsanity: 4 Items per Shop";
                     li : "Scrub Shuffle: On (Affordable)";
+                    li : "Adult Trade Quest: Claim Check Only";
+                    li : "Maps and Compasses Give Information: On";
                     li : "Excluded Locations: Kak 40/50 Gold Skulltula Reward";
                     li {
                         : "Logic Tricks:";
                         ul {
+                            li : "Pass Through Visible One-Way Collisions";
                             li : "Enabled Dodongo's Cavern Scarecrow GS with Armos Statue";
                             li : "Enabled Deku Tree Basement Web to Gohma with Bow";
                         }
@@ -1108,19 +1294,18 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         }
                     }
                     li : "Free Scarecrow's Song: On";
-                    li : "Chicken Count: 3";
                     li : "Ruto Already at F1: On";
-                    li : "Chest Appearance Matches Contents: Texture";
+                    li : "Fast Shadow Boat: On";
                     li : "Key Appearance Matches Dungeon: On";
                     li {
                         : "Misc. Hints:";
                         ul {
-                            li : "Replaced 40/50 GS with 20/30 GS instead";
+                            li : "Replaced 30/40/50 GS with 20/30 GS instead";
                             li : "Added Frogs Ocarina Game";
+                            li : "Added Dampé Diary (Hookshot)";
                         }
                     }
-                    li : "Blue Fire Arrows: On";
-                    li : "Adult Trade Quest: Claim Check Only";
+                    li : "Require Lens of Truth for Treasure Chest Game: On";
                 }
                 p : "You can use the “Practice” link at the top of this page to load these settings.";
                 p : "However, in every race several of the settings may be modified by the teams. During Swiss, the team that placed higher in the qualifier async gets to pick who starts the procedure. For the first game of a top 8 match, this choice is made by the team with the higher seed in the bracket, and for subsequent games of a match, by the team that lost the previous game. Ties are broken by coin flip. The draft itself follows this pattern:";
@@ -1145,7 +1330,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 p {
                     : "The settings that can be modified and their respective options (";
                     strong : "first";
-                    : " being the default) are:"; //TODO update for S5
+                    : " being the default) are:";
                 }
                 ul {
                     li {
@@ -1155,7 +1340,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                                 strong : "6 Meds";
                             }
                             li : "3 Stones";
-                            li : "25/30 Triforce Hunt";
+                            li : "24/28 Triforce Hunt";
                         }
                     }
                     li {
@@ -1234,6 +1419,15 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         }
                     }
                     li {
+                        : "Shuffle Boss Entrances:";
+                        ul {
+                            li {
+                                strong : "Off";
+                            }
+                            li : "Full";
+                        }
+                    }
+                    li {
                         : "Warp Song Destinations:";
                         ul {
                             li {
@@ -1264,9 +1458,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         : "Tokensanity:";
                         ul {
                             li {
-                                strong : "Off";
+                                strong : "Dungeons only";
                             }
-                            li : "Dungeons only";
+                            li : "Off";
                         }
                     }
                     li {
@@ -1297,15 +1491,6 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         }
                     }
                     li {
-                        : "Expensive Merchants:";
-                        ul {
-                            li {
-                                strong : "Off";
-                            }
-                            li : "On";
-                        }
-                    }
-                    li {
                         : "Frog shuffle:";
                         ul {
                             li {
@@ -1318,9 +1503,8 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         : "Chest Appearance Matches Contents:";
                         ul {
                             li {
-                                strong : "Texture only";
+                                strong : "Both Size and Texture";
                             }
-                            li : "Both Size and Texture";
                             li : "Off";
                         }
                     }
@@ -1334,21 +1518,22 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         }
                     }
                 }
-                h2 : "Hint Distribution"; //TODO update for S5
+                h2 : "Hint Distribution";
                 p : "Because of the somewhat unique settings of multiworld, there will be a custom hint distribution for this tournament. With 40 hint stones, the hint distribution will be as follows, with each hint having one duplicated hint:";
                 ul {
                     li {
                         : "7 Path/WOTH hints:";
                         ul {
                             li : "No dungeon limit";
-                            li : "Zelda's Lullaby is never directly hinted";
+                            li : "Zelda's Lullaby, keyrings, or boss keys are never directly hinted";
+                            li : "“One Hint per Goal” is enabled";
                         }
                     }
                     li : "0 Foolish hints";
                     li {
-                        : "3–7 “Always” Hints (Settings Dependent):";
+                        : "3–6 “Always” Hints (Settings Dependent):";
                         ul {
-                            li : "2 active Trials (if enabled)";
+                            li : "active Trials (if enabled)";
                             li : "Song from Ocarina of Time";
                             li : "Sheik in Kakariko";
                             li : "Deku Theater Skull Mask";
