@@ -1043,7 +1043,165 @@ impl Draft {
                     }
                 }
             }
-            Kind::MultiworldS5 => unimplemented!(), //TODO
+            Kind::MultiworldS5 => {
+                if let Some(went_first) = self.went_first {
+                    match self.pick_count(kind) {
+                        prev_bans @ (0..=1 | 6..=7) => {
+                            let team = match (prev_bans, went_first) {
+                                (0, true) | (1, false) | (6, false) | (7, true) => Team::HighSeed,
+                                (0, false) | (1, true) | (6, true) | (7, false) => Team::LowSeed,
+                                (2..=5 | 8.., _) => unreachable!(),
+                            };
+                            Step {
+                                kind: StepKind::Ban {
+                                    available_settings: BanSettings(vec![
+                                        ("All Settings", mw::S5_SETTINGS.iter().copied()
+                                            .filter(|&mw::Setting { name, .. }| !self.settings.contains_key(name))
+                                            .map(|mw::Setting { name, display, default, default_display, description, .. }| BanSetting {
+                                                description: Cow::Borrowed(description),
+                                                name, display, default, default_display,
+                                            })
+                                            .collect()),
+                                    ]),
+                                    skippable: true,
+                                    rsl: false,
+                                    team,
+                                },
+                                message: match msg_ctx {
+                                    MessageContext::None => String::default(),
+                                    MessageContext::Discord { transaction, guild_id, command_ids, teams, .. } => {
+                                        let (mut high_seed, mut low_seed) = teams.iter().partition::<Vec<_>, _>(|team| team.id == self.high_seed);
+                                        let high_seed = high_seed.remove(0);
+                                        let low_seed = low_seed.remove(0);
+                                        MessageBuilder::default()
+                                            .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                            .push(": lock a setting to its default using ")
+                                            .mention_command(command_ids.ban.unwrap(), "ban")
+                                            .push(", or use ")
+                                            .mention_command(command_ids.skip.unwrap(), "skip")
+                                            .push(" if you don't want to ban anything.")
+                                            .build()
+                                    }
+                                    MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => format!(
+                                        "{}, lock a setting to its default using “!ban <setting>”, or use “!skip” if you don't want to ban anything.{}",
+                                        team.choose(high_seed_name, low_seed_name),
+                                        if prev_bans == 0 { " Use “!settings” for a list of available settings." } else { "" },
+                                    ),
+                                },
+                            }
+                        }
+                        n @ (2..=5 | 8..=9) => {
+                            let team = match (n, went_first) {
+                                (2, true) | (3, false) | (4, false) | (5, true) | (8, false) | (9, true) => Team::HighSeed,
+                                (2, false) | (3, true) | (4, true) | (5, false) | (8, true) | (9, false) => Team::LowSeed,
+                                (0..=1 | 6..=7 | 10.., _) => unreachable!(),
+                            };
+                            Step {
+                                kind: StepKind::Pick {
+                                    available_choices: DraftSettings(vec![
+                                        ("All Settings", mw::S5_SETTINGS.iter().copied()
+                                            .filter(|&mw::Setting { name, .. }| !self.settings.contains_key(name))
+                                            .map(|mw::Setting { name, display, default, default_display, other, description }| DraftSetting {
+                                                options: iter::once(DraftSettingChoice { name: default, display: default_display })
+                                                    .chain(other.iter().map(|&(name, display)| DraftSettingChoice { name, display }))
+                                                    .collect(),
+                                                description: Cow::Borrowed(description),
+                                                name, display,
+                                            })
+                                            .collect()),
+                                    ]),
+                                    skippable: true,
+                                    rsl: false,
+                                    team,
+                                },
+                                message: match msg_ctx {
+                                    MessageContext::None => String::default(),
+                                    MessageContext::Discord { transaction, guild_id, command_ids, teams, .. } => {
+                                        let (mut high_seed, mut low_seed) = teams.iter().partition::<Vec<_>, _>(|team| team.id == self.high_seed);
+                                        let high_seed = high_seed.remove(0);
+                                        let low_seed = low_seed.remove(0);
+                                        match n {
+                                            2 | 5 | 8 => MessageBuilder::default()
+                                                .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .push(": pick a setting using ")
+                                                .mention_command(command_ids.draft.unwrap(), "draft")
+                                                .push('.')
+                                                .build(),
+                                            3 => MessageBuilder::default()
+                                                .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .push(": pick a setting using ")
+                                                .mention_command(command_ids.draft.unwrap(), "draft")
+                                                .push(". You will have another pick after this.")
+                                                .build(),
+                                            4 => MessageBuilder::default()
+                                                .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .push(": pick your second setting using ")
+                                                .mention_command(command_ids.draft.unwrap(), "draft")
+                                                .push('.')
+                                                .build(),
+                                            9 => MessageBuilder::default()
+                                                .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
+                                                .push(": pick a setting using ")
+                                                .mention_command(command_ids.draft.unwrap(), "draft")
+                                                .push(". You can also use ")
+                                                .mention_command(command_ids.skip.unwrap(), "skip")
+                                                .push(" if you want to leave the settings as they are.")
+                                                .build(),
+                                            0..=1 | 6..=7 | 10.. => unreachable!(),
+                                        }
+                                    }
+                                    MessageContext::RaceTime { high_seed_name, low_seed_name, .. } => match n {
+                                        2 => format!("{}, pick a setting using “!draft <setting> <value>”", team.choose(high_seed_name, low_seed_name)),
+                                        3 => format!("{}, pick two settings.", team.choose(high_seed_name, low_seed_name)),
+                                        4 => format!("And your second pick?"),
+                                        5 | 8 => format!("{}, pick a setting.", team.choose(high_seed_name, low_seed_name)),
+                                        9 => format!("{}, pick the final setting. You can also use “!skip” if you want to leave the settings as they are.", team.choose(high_seed_name, low_seed_name)),
+                                        0..=1 | 6..=7 | 10.. => unreachable!(),
+                                    },
+                                },
+                            }
+                        }
+                        10.. => Step {
+                            kind: StepKind::Done(mw::resolve_s5_draft_settings(&self.settings)),
+                            message: match msg_ctx {
+                                MessageContext::None => String::default(),
+                                MessageContext::Discord { .. } => format!("Settings draft completed. You will be playing with {}.", mw::display_s5_draft_picks(&self.settings)),
+                                MessageContext::RaceTime { .. } => mw::display_s5_draft_picks(&self.settings),
+                            },
+                        },
+                    }
+                } else {
+                    Step {
+                        kind: StepKind::GoFirst,
+                        message: match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { transaction, guild_id, command_ids, teams, .. } => {
+                                let (mut high_seed, _) = teams.iter().partition::<Vec<_>, _>(|team| team.id == self.high_seed);
+                                let high_seed = high_seed.remove(0);
+                                let mut builder = MessageBuilder::default();
+                                builder.mention_team(transaction, Some(*guild_id), high_seed).await?;
+                                if game.is_some_and(|game| game > 1) {
+                                    builder.push(": as the losers of the previous race, please choose whether you want to go ");
+                                } else {
+                                    builder.push(": you have the higher seed. Choose whether you want to go ");
+                                }
+                                builder.mention_command(command_ids.first.unwrap(), "first");
+                                builder.push(" or ");
+                                builder.mention_command(command_ids.second.unwrap(), "second");
+                                if let Some(game) = game {
+                                    builder.push(" in the settings draft for game ");
+                                    builder.push(game.to_string());
+                                    builder.push('.');
+                                } else {
+                                    builder.push(" in the settings draft.");
+                                }
+                                builder.build()
+                            }
+                            MessageContext::RaceTime { high_seed_name, .. } => format!("{high_seed_name}, you have the higher seed. Choose whether you want to go !first or !second"),
+                        },
+                    }
+                }
+            }
             Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => {
                 let all_settings = match kind {
                     Kind::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
@@ -2153,7 +2311,258 @@ impl Draft {
                     },
                 }
             }
-            Kind::MultiworldS5 => unimplemented!(), //TODO
+            Kind::MultiworldS5 => {
+                let resolved_action = match action {
+                    Action::Ban { setting } => if let Some(setting) = mw::S5_SETTINGS.iter().copied().find(|&mw::Setting { name, .. }| *name == setting) {
+                        Action::Pick {
+                            setting: setting.name.to_owned(),
+                            value: setting.default.to_owned(),
+                        }
+                    } else {
+                        return Ok(Err(match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { .. } => {
+                                let mut content = MessageBuilder::default();
+                                content.push("Sorry, I don't recognize that setting. Use one of the following: ");
+                                for (i, setting) in mw::S5_SETTINGS.iter().copied().enumerate() {
+                                    if i > 0 {
+                                        content.push(" or ");
+                                    }
+                                    content.push_mono(setting.name);
+                                }
+                                content.build()
+                            }
+                            MessageContext::RaceTime { reply_to, .. } => format!(
+                                "Sorry {reply_to}, I don't recognize that setting. Use one of the following: {}",
+                                mw::S5_SETTINGS.iter().copied().map(|setting| setting.name).format(" or "),
+                            ),
+                        }))
+                    },
+                    Action::BooleanChoice(value) if matches!(self.next_step(kind, game, &mut MessageContext::None).await?.kind, StepKind::GoFirst) => Action::GoFirst(value),
+                    _ => action,
+                };
+                match resolved_action {
+                    Action::GoFirst(first) => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
+                        StepKind::GoFirst => {
+                            self.went_first = Some(first);
+                            Ok(match msg_ctx {
+                                MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
+                                MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
+                                    .mention_team(transaction, Some(*guild_id), team).await?
+                                    .push(if team.name_is_plural() { " have" } else { " has" })
+                                    .push(" chosen to go ")
+                                    .push(if first { "first" } else { "second" })
+                                    .push(" in the settings draft.")
+                                    .build(),
+                            })
+                        }
+                        StepKind::Ban { .. } | StepKind::Pick { .. } => Err(match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { .. } => format!("Sorry, first pick has already been chosen."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, first pick has already been chosen."),
+                        }),
+                        StepKind::BooleanChoice { .. } | StepKind::DoneRsl { .. } => unreachable!(),
+                        StepKind::Done(_) => Err(match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { .. } => format!("Sorry, this settings draft is already completed."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
+                        }),
+                    },
+                    Action::Ban { .. } => unreachable!("normalized to Action::Pick above"),
+                    Action::Pick { setting, value } => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
+                        StepKind::GoFirst => Err(match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
+                                .push("Sorry, first pick hasn't been chosen yet, use ")
+                                .mention_command(command_ids.first.unwrap(), "first")
+                                .push(" or ")
+                                .mention_command(command_ids.second.unwrap(), "second")
+                                .build(),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”"),
+                        }),
+                        StepKind::Ban { available_settings, skippable, .. } => if let Some(setting) = available_settings.get(&setting) {
+                            if value == setting.default {
+                                self.settings.insert(Cow::Borrowed(setting.name), Cow::Borrowed(setting.default));
+                                Ok(match msg_ctx {
+                                    MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
+                                    MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
+                                        .mention_team(transaction, Some(*guild_id), team).await?
+                                        .push(if team.name_is_plural() { " have locked in " } else { " has locked in " })
+                                        .push(setting.default_display)
+                                        .push('.')
+                                        .build(),
+                                })
+                            } else {
+                                Err(match msg_ctx {
+                                    MessageContext::None => String::default(),
+                                    MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
+                                        .push("Sorry, bans haven't been chosen yet, use ")
+                                        .mention_command(command_ids.ban.unwrap(), "ban")
+                                        .build(),
+                                    MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, bans haven't been chosen yet. Use “!ban <setting>”"),
+                                })
+                            }
+                        } else {
+                            let exists = mw::S5_SETTINGS.iter().copied().any(|mw::Setting { name, .. }| setting == name);
+                            Err(match msg_ctx {
+                                MessageContext::None => String::default(),
+                                MessageContext::Discord { command_ids, .. } => {
+                                    let mut content = MessageBuilder::default();
+                                    if exists {
+                                        content.push("Sorry, that setting is already locked in. Use one of the following: ");
+                                    } else {
+                                        content.push("Sorry, I don't recognize that setting. Use one of the following: ");
+                                    }
+                                    for (i, setting) in available_settings.all().enumerate() {
+                                        if i > 0 {
+                                            content.push(" or ");
+                                        }
+                                        content.push_mono(setting.name);
+                                    }
+                                    if exists && skippable {
+                                        content.push(". Use ");
+                                        content.mention_command(command_ids.skip.unwrap(), "skip");
+                                        content.push(" if you don't want to ban anything.");
+                                    }
+                                    content.build()
+                                }
+                                MessageContext::RaceTime { reply_to, .. } => format!(
+                                    "Sorry {reply_to}, {}. Use one of the following: {}{}",
+                                    if exists { "that setting is already locked in" } else { "I don't recognize that setting" },
+                                    available_settings.all().map(|setting| setting.name).format(" or "),
+                                    if exists && skippable { ". Use “!skip” if you don't want to ban anything." } else { "" },
+                                ),
+                            })
+                        },
+                        StepKind::Pick { available_choices, skippable, .. } => if let Some(setting) = available_choices.get(&setting) {
+                            if let Some(option) = setting.options.iter().find(|option| option.name == value) {
+                                self.settings.insert(Cow::Borrowed(setting.name), Cow::Borrowed(option.name));
+                                Ok(match msg_ctx {
+                                    MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
+                                    MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
+                                        .mention_team(transaction, Some(*guild_id), team).await?
+                                        .push(if team.name_is_plural() { " have picked " } else { " has picked " })
+                                        .push(option.display)
+                                        .push('.')
+                                        .build(),
+                                })
+                            } else {
+                                Err(match msg_ctx {
+                                    MessageContext::None => String::default(),
+                                    MessageContext::Discord { .. } => {
+                                        let mut content = MessageBuilder::default();
+                                        content.push("Sorry, that's not a possible value for this setting. Use one of the following: ");
+                                        for (i, value) in setting.options.into_iter().enumerate() {
+                                            if i > 0 {
+                                                content.push(" or ");
+                                            }
+                                            content.push_mono(value.name);
+                                        }
+                                        content.build()
+                                    }
+                                    MessageContext::RaceTime { reply_to, .. } => format!(
+                                        "Sorry {reply_to}, that's not a possible value for this setting. Use one of the following: {}",
+                                        setting.options.into_iter().map(|value| value.name).format(" or "),
+                                    ),
+                                })
+                            }
+                        } else {
+                            let exists = mw::S5_SETTINGS.iter().copied().any(|mw::Setting { name, .. }| setting == name);
+                            Err(match msg_ctx {
+                                MessageContext::None => String::default(),
+                                MessageContext::Discord { command_ids, .. } => {
+                                    let mut content = MessageBuilder::default();
+                                    if exists {
+                                        content.push("Sorry, that setting is already locked in. Use one of the following: ");
+                                    } else {
+                                        content.push("Sorry, I don't recognize that setting. Use one of the following: ");
+                                    }
+                                    for (i, setting) in available_choices.all().enumerate() {
+                                        if i > 0 {
+                                            content.push(" or ");
+                                        }
+                                        content.push_mono(setting.name);
+                                    }
+                                    if exists && skippable {
+                                        content.push(". Use ");
+                                        content.mention_command(command_ids.skip.unwrap(), "skip");
+                                        content.push(" if you don't want to pick anything.");
+                                    }
+                                    content.build()
+                                }
+                                MessageContext::RaceTime { reply_to, .. } => format!(
+                                    "Sorry {reply_to}, {}. Use one of the following: {}{}",
+                                    if exists { "that setting is already locked in" } else { "I don't recognize that setting" },
+                                    available_choices.all().map(|setting| setting.name).format(" or "),
+                                    if exists && skippable { ". Use “!skip” if you don't want to pick anything." } else { "" },
+                                ),
+                            })
+                        },
+                        StepKind::BooleanChoice { .. } | StepKind::DoneRsl { .. } => unreachable!(),
+                        StepKind::Done(_) => Err(match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { .. } => format!("Sorry, this settings draft is already completed."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
+                        }),
+                    },
+                    Action::Skip => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
+                        StepKind::GoFirst => Err(match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { command_ids, .. } => MessageBuilder::default()
+                                .push("Sorry, first pick hasn't been chosen yet, use ")
+                                .mention_command(command_ids.first.unwrap(), "first")
+                                .push(" or ")
+                                .mention_command(command_ids.second.unwrap(), "second")
+                                .build(),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, first pick hasn't been chosen yet, use “!first” or “!second”")
+                        }),
+                        StepKind::Ban { skippable: true, .. } | StepKind::Pick { skippable: true, .. } => {
+                            let skip_kind = match self.pick_count(kind) {
+                                0 | 1 | 6 | 7 => "ban",
+                                9 => "final pick",
+                                _ => "pick",
+                            };
+                            self.skipped_bans += 1;
+                            Ok(match msg_ctx {
+                                MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
+                                MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
+                                    .mention_team(&mut *transaction, Some(*guild_id), team).await?
+                                    .push(if team.name_is_plural() { " have skipped " } else { " has skipped " })
+                                    .push(team.possessive_determiner(transaction).await?)
+                                    .push(' ')
+                                    .push(skip_kind)
+                                    .push('.')
+                                    .build(),
+                            })
+                        }
+                        StepKind::Ban { skippable: false, .. } | StepKind::Pick { skippable: false, .. } => Err(match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { .. } => format!("Sorry, this part of the draft can't be skipped."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this part of the draft can't be skipped."),
+                        }),
+                        StepKind::BooleanChoice { .. } | StepKind::DoneRsl { .. } => unreachable!(),
+                        StepKind::Done(_) => Err(match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { .. } => format!("Sorry, this settings draft is already completed."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
+                        }),
+                    },
+                    Action::BooleanChoice(_) => match self.next_step(kind, game, &mut MessageContext::None).await?.kind {
+                        StepKind::GoFirst => unreachable!("normalized to Action::GoFirst above"),
+                        StepKind::BooleanChoice { .. } => unreachable!(),
+                        StepKind::Done(_) => Err(match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { .. } => format!("Sorry, this settings draft is already completed."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, this settings draft is already completed."),
+                        }),
+                        _ => Err(match msg_ctx {
+                            MessageContext::None => String::default(),
+                            MessageContext::Discord { .. } => format!("Sorry, the current step is not a yes/no question."),
+                            MessageContext::RaceTime { reply_to, .. } => format!("Sorry {reply_to}, the current step is not a yes/no question."),
+                        }),
+                    },
+                }
+            }
             Kind::RslS7 => {
                 let resolved_action = match action {
                     Action::Ban { setting } => Action::Pick {
