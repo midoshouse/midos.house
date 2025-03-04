@@ -294,6 +294,7 @@ impl<'a> Data<'a> {
                 settings: HashMap::default(),
             }.complete_randomly(draft::Kind::MultiworldS3).await.unwrap()),
             (Series::Multiworld, "4") => from_file!("../../assets/event/mw/chests-4-7.1.198.json"),
+            (Series::Multiworld, "5") => from_file!("../../assets/event/mw/chests-5-8.2.63.json"),
             (Series::NineDaysOfSaws, _) => ChestAppearances::VANILLA, // no CAMC in SAWS
             (Series::Pictionary, _) => ChestAppearances::VANILLA, // no CAMC in Pictionary
             (Series::Rsl, "1") => from_file!("../../assets/event/rsl/chests-1-4c526c2.json"),
