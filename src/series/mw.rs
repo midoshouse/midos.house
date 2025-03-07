@@ -459,8 +459,6 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> serde_json::Map
         } else {
             json!("off")
         },
-        format!("shuffle_mapcompass") => json!("startwith"),
-        format!("enhance_map_compass") => json!(true),
         format!("open_forest") => match deku {
             "open" => json!("open"),
             "closed" => json!("closed_deku"),
@@ -485,7 +483,7 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> serde_json::Map
         } else {
             json!("off")
         },
-        format!("shuffle_boss_entrances") => json!(boss_er),
+        format!("shuffle_bosses") => json!(boss_er),
         format!("warp_songs") => json!(warps == "on"),
         format!("free_bombchu_drops") => json!(chubags == "on"),
         format!("shopsanity") => json!(shops),
@@ -495,9 +493,14 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> serde_json::Map
             "off" => json!("off"),
             _ => unreachable!(),
         },
+        format!("adult_trade_start") => json!([
+            "Claim Check",
+        ]),
         format!("shuffle_cows") => json!(cows == "on"),
         format!("shuffle_gerudo_card") => json!(card == "shuffle"),
         format!("shuffle_frog_song_rupees") => json!(frogs == "shuffle"),
+        format!("shuffle_mapcompass") => json!("startwith"),
+        format!("enhance_map_compass") => json!(true),
         format!("disabled_locations") => json!([
             "Deku Theater Mask of Truth",
             "Kak 40 Gold Skulltula Reward",
@@ -532,23 +535,17 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> serde_json::Map
         ]),
         format!("start_with_consumables") => json!(true),
         format!("start_with_rupees") => json!(true),
+        format!("skip_reward_from_rauru") => json!(true),
         format!("no_escape_sequence") => json!(true),
         format!("no_guard_stealth") => json!(true),
         format!("no_epona_race") => json!(true),
         format!("skip_some_minigame_phases") => json!(true),
         format!("free_scarecrow") => json!(true),
         format!("fast_bunny_hood") => json!(true),
-        format!("chicken_count") => json!(3),
-        format!("big_poe_count") => json!(1),
         format!("ruto_already_f1_jabu") => json!(true),
         format!("fast_shadow_boat") => json!(true),
-        format!("correct_chest_appearances") => match camc {
-            "both" => json!("both"),
-            "off" => json!("off"),
-            _ => unreachable!(),
-        },
-        format!("correct_potcrate_appearances") => json!("textures_content"),
-        format!("key_appearance_match_dungeon") => json!(true),
+        format!("chicken_count") => json!(3),
+        format!("big_poe_count") => json!(1),
         format!("hint_dist") => match hints {
             "path" => json!("mw_path"),
             "woth" => json!("mw_woth"),
@@ -563,13 +560,13 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> serde_json::Map
             "30_skulltulas",
             "frogs2",
         ]),
+        format!("correct_chest_appearances") => json!(camc),
+        format!("correct_potcrate_appearances") => json!("textures_content"),
+        format!("key_appearance_match_dungeon") => json!(true),
         format!("blue_fire_arrows") => json!(true),
         format!("tcg_requires_lens") => json!(true),
         format!("junk_ice_traps") => json!("off"),
         format!("ice_trap_appearance") => json!("junk_only"),
-        format!("adult_trade_start") => json!([
-            "Claim Check",
-        ]),
     ]
 }
 
