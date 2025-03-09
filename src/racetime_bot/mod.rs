@@ -446,7 +446,7 @@ impl Goal {
             Self::Mq => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
             Self::MultiworldS4 => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 199)),
-            Self::MultiworldS5 => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 63)),
+            Self::MultiworldS5 => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 64)),
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
             Self::Pic7 => VersionedBranch::Custom { github_username: "fenhl", branch: "frogs2-melody" },
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl2023),

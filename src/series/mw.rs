@@ -1259,7 +1259,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 h2 : "Seed Settings";
                 p {
                     : "All tournament matches will be played on ";
-                    a(href = "https://ootrandomizer.com/generatorDev?version=dev_8.2.63") : "version 8.2.63";
+                    a(href = "https://ootrandomizer.com/generatorDev?version=dev_8.2.64") : "version 8.2.64";
                     : " of the randomizer. Organizers may change this version between rounds at their discretion.";
                 }
                 p : "The default settings for each race have the following differences to the S8 tournament preset:";
