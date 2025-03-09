@@ -472,7 +472,7 @@ impl Goal {
             Self::Cc7 => None, // settings draft
             Self::CoOpS3 => Some(coop::s3_settings()),
             Self::CopaDoBrasil => Some(br::s1_settings()),
-            Self::LeagueS8 => None, // passwordless option
+            Self::LeagueS8 => Some(league::s8_settings()),
             Self::MixedPoolsS2 => Some(mp::s2_settings()),
             Self::MixedPoolsS3 => Some(mp::s3_settings()),
             Self::Mq => Some(mq::s1_settings()),
@@ -531,6 +531,8 @@ impl Goal {
                 => ctx.say("!seed: The settings used for the race").await?,
             | Self::PicRs2
                 => ctx.say("!seed: The weights used for the race").await?,
+            | Self::LeagueS8
+                => ctx.say("!seed: The settings used for the season").await?,
             | Self::CoOpS3
             | Self::CopaDoBrasil
             | Self::MixedPoolsS2
@@ -547,10 +549,6 @@ impl Goal {
                 ctx.say("!seed random: Simulate a settings draft with both players picking randomly. The settings are posted along with the seed.").await?;
                 ctx.say("!seed draft: Pick the settings here in the chat.").await?;
                 ctx.say("!seed <setting> <value> <setting> <value>... (e.g. !seed deku open camc off): Pick a set of draftable settings without doing a full draft. Use “!settings” for a list of available settings.").await?;
-            }
-            Self::LeagueS8 => {
-                ctx.say("!seed: The settings used for the season").await?;
-                ctx.say("!seed --no-password: Same but without the password lock").await?;
             }
             Self::MultiworldS3 => {
                 ctx.say("!seed base: The settings used for the qualifier and tiebreaker asyncs.").await?;
@@ -682,6 +680,7 @@ impl Goal {
         Ok(match self {
             | Self::CoOpS3
             | Self::CopaDoBrasil
+            | Self::LeagueS8
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
             | Self::Mq
@@ -784,15 +783,6 @@ impl Goal {
                     }
                 };
                 SeedCommandParseResult::Regular { settings: s::resolve_s7_draft_settings(&settings), unlock_spoiler_log, language: English, article: "a", description: format!("seed with {}", s::display_s7_draft_picks(&settings)) }
-            }
-            Self::LeagueS8 => {
-                let mut settings = league::s8_settings();
-                match args {
-                    [] => {}
-                    [arg] if arg == "--no-password" => { settings.remove("password_lock"); }
-                    [..] => return Ok(SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" }),
-                }
-                SeedCommandParseResult::Regular { settings, unlock_spoiler_log, language: self.language(), article: "a", description: format!("seed") }
             }
             Self::MultiworldS3 | Self::MultiworldS4 | Self::MultiworldS5 => {
                 let available_settings = match self {
@@ -3413,6 +3403,7 @@ impl RaceHandler<GlobalState> for Handler {
                         RaceState::Init => match goal {
                             | Goal::CoOpS3
                             | Goal::CopaDoBrasil
+                            | Goal::LeagueS8
                             | Goal::MixedPoolsS2
                             | Goal::MixedPoolsS3
                             | Goal::Mq
@@ -3432,7 +3423,6 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::TournoiFrancoS3
                             | Goal::TournoiFrancoS4
                                 => unreachable!("should have draft state set"),
-                            Goal::LeagueS8 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(Some((event.series, &*event.event))), league::s8_settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
                             Goal::NineDaysOfSaws => unreachable!("9dos series has concluded"),
                             Goal::PicRs2 => this.roll_rsl_seed(ctx, rsl::VersionedPreset::Fenhl {
                                 version: Some((Version::new(2, 3, 8), 10)),
