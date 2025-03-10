@@ -1206,386 +1206,422 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             }
         }),
         "5" => Some(html! {
-            article {
-                p {
-                    : "Hello and welcome to the official rules document for the Ocarina of Time Randomizer Multiworld Tournament Season 5, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
-                    : ".";
+            div(class = "toc") {
+                article {
+                    p {
+                        : "Hello and welcome to the official rules document for the Ocarina of Time Randomizer Multiworld Tournament Season 5, organized by ";
+                        : English.join_html(data.organizers(transaction).await?);
+                        : ".";
+                    }
+                    h2(id = "ruleset") : "Ruleset";
+                    p {
+                        : "This tournament will take place under the ";
+                        a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "Standard";
+                        : " racing ruleset, with one slight modification:";
+                    }
+                    ul {
+                        li : "Fire Arrow Entry into Shadow Temple is allowed";
+                    }
+                    p : "All teams are expected to record their matches. Failure to do so may result in a game loss or disqualification from the tournament.";
+                    h2(id = "fpa") : "Fair Play Agreement";
+                    p {
+                        : "By joining this tournament, teams must accept the terms of the ";
+                        a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement (FPA)";
+                        : ", a system that can be invoked in the event of technical issues. If playing on BizHawk, it is a strong, strong suggestion to make sure you enable backup saves as documented ";
+                        a(href = "https://wiki.ootrandomizer.com/index.php?title=Bizhawk#Enable_Save_Backup_In_Case_of_Crashes") : "here";
+                        : ".";
+                    }
+                    h2(id = "format") : "Tournament Format";
+                    p {
+                        : "All teams are required to play a single asynchronous seed with the default race settings to participate. This seed can be requested on the “My Status” tab after entering the event. The results of this seed will be used to seed the settings draft. The deadline for finishing the qualifier async ";
+                        @if let Some(base_start) = data.base_start {
+                            : "is ";
+                            : format_datetime(base_start, DateTimeFormat { long: true, running_text: true });
+                        } else {
+                            : "will be announced soon";
+                        }
+                        : ". In the event that an odd number of teams is qualified at the time of the deadline, one additional team may qualify within 24 hours.";
+                    }
+                    p {
+                        : "The tournament itself will begin with a series of best-of-1 ";
+                        a(href = "https://en.wikipedia.org/wiki/Swiss-system_tournament") : "Swiss";
+                        : " rounds seeded based on the qualifier results. It is expected to require 6 rounds, although this may change depending on the number of teams in the tournament. Each round will last two weeks.";
+                    }
+                    p : "After all Swiss rounds are done, there will be an additional async as a tiebreaker. The top 8 teams will advance to a single elimination bracket to crown the champions. The quarterfinals will be a single race each, while semifinals and finals will be best-of-3 matches.";
+                    p : "In the event that teams do not schedule in time, tournament organizers will use their discretion to determine the correct outcome based on the failures to schedule. In unusual circumstances, the schedule may be adjusted on short notice at the discretion of tournament organizers.";
+                    h2(id = "match") : "Match Format";
+                    p : "Each match will consist of a 3v3 Multiworld where both sides compete to see which team will have all three of its members beat the game with the lowest average time of finish:";
+                    ul {
+                        li : "In a Triforce Hunt seed, timing for an individual player ends on the first completely black frame after that player has obtained the last required piece. (Due to how Triforce Hunt works in multiworld, all players on a team will normally have the same finish time, but if a player savescums a Triforce piece they found, they can have a lower Triforce count than their teammates.)";
+                        li : "In all other seeds, timing for an individual player ends on the first frame of the cutscene that plays upon killing Ganon.";
+                        }
+                    p : "Players are allowed to kill Ganon (or collect their final Triforce piece) to stop their timer and then reset their game, allowing them to continue collecting items for their team if necessary.";
+                    p : "If any player on the team forfeits (or does not finish within the 24-hour time limit), it counts as a forfeit for the entire team.";
+                    h2(id = "settings") : "Seed Settings";
+                    p {
+                        : "All tournament matches will be played on ";
+                        a(href = "https://ootrandomizer.com/generatorDev?version=dev_8.2.64") : "version 8.2.64";
+                        : " of the randomizer. Organizers may change this version between rounds at their discretion.";
+                    }
+                    p : "The default settings for each race have the following differences to the S8 tournament preset:";
+                    ul {
+                        li : "Rainbow Bridge: 6 Medallions";
+                        li : "Forest: Open";
+                        li : "Starting Age: Adult";
+                        li : "Spawn Positions: Vanilla";
+                        li : "Shopsanity: 4 Items per Shop";
+                        li : "Scrub Shuffle: On (Affordable)";
+                        li : "Adult Trade Quest: Claim Check Only";
+                        li : "Maps and Compasses Give Information: On";
+                        li : "Excluded Locations: Kak 40/50 Gold Skulltula Reward";
+                        li {
+                            : "Logic Tricks:";
+                            ul {
+                                li : "Pass Through Visible One-Way Collisions";
+                                li : "Enabled Dodongo's Cavern Scarecrow GS with Armos Statue";
+                                li : "Enabled Deku Tree Basement Web to Gohma with Bow";
+                            }
+                        }
+                        li {
+                            : "Starting Inventory:";
+                            ul {
+                                li : "Removed Deku Shield";
+                                li : "Added Farores Wind";
+                                li : "Added Lens of Truth";
+                                li : "Added Rupees";
+                            }
+                        }
+                        li : "Free Scarecrow's Song: On";
+                        li : "Ruto Already at F1: On";
+                        li : "Fast Shadow Boat: On";
+                        li : "Key Appearance Matches Dungeon: On";
+                        li {
+                            : "Misc. Hints:";
+                            ul {
+                                li : "Replaced 30/40/50 GS with 20/30 GS instead";
+                                li : "Added Frogs Ocarina Game";
+                                li : "Added Dampé Diary (Hookshot)";
+                            }
+                        }
+                        li : "Require Lens of Truth for Treasure Chest Game: On";
+                    }
+                    p : "You can use the “Practice” link at the top of this page to load these settings.";
+                    p : "However, in every race several of the settings may be modified by the teams. During Swiss, the team that placed higher in the qualifier async gets to pick who starts the procedure. For the first game of a top 8 match, this choice is made by the team with the higher seed in the bracket, and for subsequent games of a match, by the team that lost the previous game. Ties are broken by coin flip. The draft itself follows this pattern:";
+                    ul {
+                        li(class = "sheikah") : "Ban";
+                        li(class = "gerudo") : "Ban";
+                        li(class = "sheikah") : "Pick";
+                        li(class = "gerudo") : "2x Pick";
+                        li(class = "sheikah") : "Pick";
+                        li(class = "gerudo") : "Ban";
+                        li(class = "sheikah") : "Ban";
+                        li(class = "gerudo") : "Pick";
+                        li(class = "sheikah") : "Pick";
+                    }
+                    p {
+                        : "A ";
+                        em : "ban";
+                        : " allows a team to lock in a setting of their choice to the default. A ";
+                        em : "pick";
+                        : " allows a team to change a setting or lock it to the default as well. This drafting procedure takes place in the scheduling thread for the match and must be completed at least 30 minutes before the scheduled starting time so the seed can be rolled.";
+                    }
+                    p {
+                        : "The settings that can be modified and their respective options (";
+                        strong : "first";
+                        : " being the default) are:";
+                    }
+                    ul {
+                        li {
+                            : "Ganon BK:";
+                            ul {
+                                li {
+                                    strong : "6 Meds";
+                                }
+                                li : "3 Stones";
+                                li : "24/28 Triforce Hunt";
+                            }
+                        }
+                        li {
+                            : "Rainbow Bridge:";
+                            ul {
+                                li {
+                                    strong : "6 Meds";
+                                }
+                                li : "7 Rewards";
+                                li : "Vanilla";
+                            }
+                        }
+                        li {
+                            : "Ganon's Trials:";
+                            ul {
+                                li {
+                                    strong : "0";
+                                }
+                                li : "2";
+                            }
+                        }
+                        li {
+                            : "Boss Keys:";
+                            ul {
+                                li {
+                                    strong : "All keys shuffled inside their own dungeons (standard)";
+                                }
+                                li : "Regional";
+                                li : "Vanilla";
+                            }
+                        }
+                        li {
+                            : "Small Keys:";
+                            ul {
+                                li {
+                                    strong : "All keys shuffled inside their own dungeons (standard)";
+                                }
+                                li : "Regional with small keyrings";
+                                li : "Vanilla";
+                            }
+                        }
+                        li {
+                            : "Deku Tree:";
+                            ul {
+                                li {
+                                    strong : "Open";
+                                }
+                                li : "Closed";
+                            }
+                        }
+                        li {
+                            : "Zora's Fountain:";
+                            ul {
+                                li {
+                                    strong : "Default behavior (Closed)";
+                                }
+                                li : "Always open";
+                            }
+                        }
+                        li {
+                            : "Starting Age/Randomize Overworld Spawns:";
+                            ul {
+                                li {
+                                    strong : "Adult/Off";
+                                }
+                                li : "Random/On";
+                            }
+                        }
+                        li {
+                            : "Shuffle Dungeon Entrances:";
+                            ul {
+                                li {
+                                    strong : "Off";
+                                }
+                                li : "On (not including Ganon's Castle)";
+                            }
+                        }
+                        li {
+                            : "Shuffle Boss Entrances:";
+                            ul {
+                                li {
+                                    strong : "Off";
+                                }
+                                li : "Full";
+                            }
+                        }
+                        li {
+                            : "Warp Song Destinations:";
+                            ul {
+                                li {
+                                    strong : "Vanilla";
+                                }
+                                li : "Shuffled";
+                            }
+                        }
+                        li {
+                            : "Chu bag and drops:";
+                            ul {
+                                li {
+                                    strong : "Off";
+                                }
+                                li : "On";
+                            }
+                        }
+                        li {
+                            : "Shopsanity:";
+                            ul {
+                                li {
+                                    strong : "4 Items per Shop + Random Prices";
+                                }
+                                li : "Off";
+                            }
+                        }
+                        li {
+                            : "Tokensanity:";
+                            ul {
+                                li {
+                                    strong : "Dungeons only";
+                                }
+                                li : "Off";
+                            }
+                        }
+                        li {
+                            : "Scrub Shuffle:";
+                            ul {
+                                li {
+                                    strong : "On (Affordable)";
+                                }
+                                li : "Off";
+                            }
+                        }
+                        li {
+                            : "Cow Shuffle:";
+                            ul {
+                                li {
+                                    strong : "Off";
+                                }
+                                li : "On";
+                            }
+                        }
+                        li {
+                            : "Gerudo Card shuffled:";
+                            ul {
+                                li {
+                                    strong : "Off";
+                                }
+                                li : "On";
+                            }
+                        }
+                        li {
+                            : "Frog shuffle:";
+                            ul {
+                                li {
+                                    strong : "Off";
+                                }
+                                li : "On";
+                            }
+                        }
+                        li {
+                            : "Chest Appearance Matches Contents:";
+                            ul {
+                                li {
+                                    strong : "Both Size and Texture";
+                                }
+                                li : "Off";
+                            }
+                        }
+                        li {
+                            : "Hint type:";
+                            ul {
+                                li {
+                                    strong : "Path";
+                                }
+                                li : "WOTH";
+                            }
+                        }
+                    }
+                    h2(id = "hints") : "Hint Distribution";
+                    p : "Because of the somewhat unique settings of multiworld, there will be a custom hint distribution for this tournament. With 40 hint stones, the hint distribution will be as follows, with each hint having one duplicated hint:";
+                    ul {
+                        li {
+                            : "7 Path/WOTH hints:";
+                            ul {
+                                li : "No dungeon limit";
+                                li : "Zelda's Lullaby, keyrings, or boss keys are never directly hinted";
+                                li : "“One Hint per Goal” is enabled";
+                            }
+                        }
+                        li : "0 Foolish hints";
+                        li {
+                            : "3–6 “Always” Hints (Settings Dependent):";
+                            ul {
+                                li : "active Trials (if enabled)";
+                                li : "Song from Ocarina of Time";
+                                li : "Sheik in Kakariko";
+                                li : "Deku Theater Skull Mask";
+                                li : "DMC Deku Scrub (if Scrubsanity enabled)";
+                                li : "Link's house cow (if Cowsanity enabled)";
+                            }
+                        }
+                    }
+                    p : "The remainder of the hints will be filled out with selections from the “Sometimes” hint pool for a total of 20 paired hints. Always and Sometimes hints are upgraded to Dual hints where available.";
+                    p : "The following locations are added to the Sometimes hint pool (if dungeon tokens are shuffled):";
+                    ul {
+                        li : "Deku Tree GS Basement Back Room";
+                        li : "Water Temple GS River";
+                        li : "Spirit Temple GS Hall After Sun Block Room";
+                    }
+                    p : "The following Sometimes hints have been removed:";
+                    ul {
+                        li : "Sheik in Crater";
+                        li : "Song from Royal Familys Tomb";
+                        li : "Sheik in Forest";
+                        li : "Sheik at Temple";
+                        li : "Sheik at Colossus";
+                        li : "Graveyard Royal Familys Tomb Chest";
+                        li : "Ganons Castle Shadow Trial Golden Gauntlets Chest";
+                    }
+                    h2(id = "plugins") : "Multiworld Plugins";
+                    p {
+                        : "There are two plugins that can be used for the item sharing: ";
+                        a(href = "https://github.com/TestRunnerSRL/bizhawk-co-op#readme") : "bizhawk-co-op";
+                        : " (also known as Multiworld 1.0) and ";
+                        a(href = uri!(crate::mw::index).to_string()) : "Mido's House Multiworld";
+                        : ". While we recommend using the Mido's House plugin since it supports Project64 in addition to BizHawk and is easier to use (see ";
+                        a(href = "https://wiki.ootrandomizer.com/index.php?title=Multiworld#Feature_comparison") : "feature comparison";
+                        : "), both plugins are legal in this tournament. For teams using MH MW, official multiworld rooms will be automatically created once the seed is rolled.";
+                    }
+                    p : "In the event that more ways to play multiworld become available during this tournament, such as a release of “Multiworld 2.0” or support for more platforms, the tournament organizers will decide whether to allow them on a case-by-case basis. Until an announcement is made, these are not allowed.";
+                    h2(id = "conduct") : "Tournament Conduct Rules";
+                    p : "All players are expected to adhere to standards of good conduct and sportsmanship. Players or teams that are found violating this standard may be removed from the tournament. If a player is removed from a team for misconduct, that team may find a replacement player for the remainder of the tournament, although this is subject to approval by administrators.";
+                    p : "Prohibited actions include, but are not limited to:";
+                    ul {
+                        li : "Threatening to pick specific settings unless the other team adheres to specific demands, including specific race dates/times or settings";
+                        li : "Threatening to drop from the race or tournament";
+                    }
+                    p : "Forfeits are considered final. If a team forfeits because the opposing team finishes but the results are found to be non-binding (e.g., without video recordings), the forfeit holds and a rematch is not owed to the team that forfeited.";
+                    p : "The tournament admins reserve the right to use their best judgment when dealing with anything that comes up. This could include overturning match results, expulsion from the tournament, or other rulings.";
+                    p : "The tournament admins reserve the right to make any minor changes to these rules that are deemed in the best interest of the tournament.";
+                    h2(id = "restreams") : "Restreams";
+                    p : "If you are interested in restreaming one or more races of our tournament, please contact an organizer. We will invite you to a channel for organizing restreams.";
+                    p : "When being restreamed, teams that indicated that they use Mido's House Multiworld must use the provided official multiworld rooms.";
+                    p {
+                        : "Please also see ";
+                        a(href = "https://docs.google.com/document/d/1A3dKYjSERr6MtZWyqOs04CZ8yRdAPvBxORrD0OsG6-s/edit") : "the guidelines for restreaming races";
+                        : " and ";
+                        a(href = "https://docs.google.com/document/d/1yhLL3tcO5qipe8OXCM0CX7gde822hCYW1ey55HNqaP0/edit") : "the guidelines for being restreamed";
+                        : ".";
+                    }
                 }
-                h2 : "Ruleset";
-                p {
-                    : "This tournament will take place under the ";
-                    a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "Standard";
-                    : " racing ruleset, with one slight modification:";
-                }
-                ul {
-                    li : "Fire Arrow Entry into Shadow Temple is allowed";
-                }
-                p : "All teams are expected to record their matches. Failure to do so may result in a game loss or disqualification from the tournament.";
-                h2 : "Fair Play Agreement";
-                p {
-                    : "By joining this tournament, teams must accept the terms of the ";
-                    a(href = "https://docs.google.com/document/d/e/2PACX-1vQd3S28r8SOBy-4C5Lxeu6nFAYpWgQqN9lCEKhLGTT3zcaXDSKj0iUnZv6UPo_GargUVQx5F-wOPUtJ/pub") : "Fair Play Agreement (FPA)";
-                    : ", a system that can be invoked in the event of technical issues. If playing on BizHawk, it is a strong, strong suggestion to make sure you enable backup saves as documented ";
-                    a(href = "https://wiki.ootrandomizer.com/index.php?title=Bizhawk#Enable_Save_Backup_In_Case_of_Crashes") : "here";
-                    : ".";
-                }
-                h2 : "Tournament Format";
-                p {
-                    : "All teams are required to play a single asynchronous seed with the default race settings to participate. This seed can be requested on the “My Status” tab after entering the event. The results of this seed will be used to seed the settings draft. The deadline for finishing the qualifier async ";
-                    @if let Some(base_start) = data.base_start {
-                        : "is ";
-                        : format_datetime(base_start, DateTimeFormat { long: true, running_text: true });
-                    } else {
-                        : "will be announced soon";
-                    }
-                    : ". In the event that an odd number of teams is qualified at the time of the deadline, one additional team may qualify within 24 hours.";
-                }
-                p {
-                    : "The tournament itself will begin with a series of best-of-1 ";
-                    a(href = "https://en.wikipedia.org/wiki/Swiss-system_tournament") : "Swiss";
-                    : " rounds seeded based on the qualifier results. It is expected to require 6 rounds, although this may change depending on the number of teams in the tournament. Each round will last two weeks.";
-                }
-                p : "After all Swiss rounds are done, there will be an additional async as a tiebreaker. The top 8 teams will advance to a single elimination bracket to crown the champions. The quarterfinals will be a single race each, while semifinals and finals will be best-of-3 matches.";
-                p : "In the event that teams do not schedule in time, tournament organizers will use their discretion to determine the correct outcome based on the failures to schedule. In unusual circumstances, the schedule may be adjusted on short notice at the discretion of tournament organizers.";
-                h2 : "Match Format";
-                p : "Each match will consist of a 3v3 Multiworld where both sides compete to see which team will have all three of its members beat the game with the lowest average time of finish:";
-                ul {
-                    li : "In a Triforce Hunt seed, timing for an individual player ends on the first completely black frame after that player has obtained the last required piece. (Due to how Triforce Hunt works in multiworld, all players on a team will normally have the same finish time, but if a player savescums a Triforce piece they found, they can have a lower Triforce count than their teammates.)";
-                    li : "In all other seeds, timing for an individual player ends on the first frame of the cutscene that plays upon killing Ganon.";
-                    }
-                p : "Players are allowed to kill Ganon (or collect their final Triforce piece) to stop their timer and then reset their game, allowing them to continue collecting items for their team if necessary.";
-                p : "If any player on the team forfeits (or does not finish within the 24-hour time limit), it counts as a forfeit for the entire team.";
-                h2 : "Seed Settings";
-                p {
-                    : "All tournament matches will be played on ";
-                    a(href = "https://ootrandomizer.com/generatorDev?version=dev_8.2.64") : "version 8.2.64";
-                    : " of the randomizer. Organizers may change this version between rounds at their discretion.";
-                }
-                p : "The default settings for each race have the following differences to the S8 tournament preset:";
-                ul {
-                    li : "Rainbow Bridge: 6 Medallions";
-                    li : "Forest: Open";
-                    li : "Starting Age: Adult";
-                    li : "Spawn Positions: Vanilla";
-                    li : "Shopsanity: 4 Items per Shop";
-                    li : "Scrub Shuffle: On (Affordable)";
-                    li : "Adult Trade Quest: Claim Check Only";
-                    li : "Maps and Compasses Give Information: On";
-                    li : "Excluded Locations: Kak 40/50 Gold Skulltula Reward";
-                    li {
-                        : "Logic Tricks:";
-                        ul {
-                            li : "Pass Through Visible One-Way Collisions";
-                            li : "Enabled Dodongo's Cavern Scarecrow GS with Armos Statue";
-                            li : "Enabled Deku Tree Basement Web to Gohma with Bow";
-                        }
-                    }
-                    li {
-                        : "Starting Inventory:";
-                        ul {
-                            li : "Removed Deku Shield";
-                            li : "Added Farores Wind";
-                            li : "Added Lens of Truth";
-                            li : "Added Rupees";
-                        }
-                    }
-                    li : "Free Scarecrow's Song: On";
-                    li : "Ruto Already at F1: On";
-                    li : "Fast Shadow Boat: On";
-                    li : "Key Appearance Matches Dungeon: On";
-                    li {
-                        : "Misc. Hints:";
-                        ul {
-                            li : "Replaced 30/40/50 GS with 20/30 GS instead";
-                            li : "Added Frogs Ocarina Game";
-                            li : "Added Dampé Diary (Hookshot)";
-                        }
-                    }
-                    li : "Require Lens of Truth for Treasure Chest Game: On";
-                }
-                p : "You can use the “Practice” link at the top of this page to load these settings.";
-                p : "However, in every race several of the settings may be modified by the teams. During Swiss, the team that placed higher in the qualifier async gets to pick who starts the procedure. For the first game of a top 8 match, this choice is made by the team with the higher seed in the bracket, and for subsequent games of a match, by the team that lost the previous game. Ties are broken by coin flip. The draft itself follows this pattern:";
-                ul {
-                    li(class = "sheikah") : "Ban";
-                    li(class = "gerudo") : "Ban";
-                    li(class = "sheikah") : "Pick";
-                    li(class = "gerudo") : "2x Pick";
-                    li(class = "sheikah") : "Pick";
-                    li(class = "gerudo") : "Ban";
-                    li(class = "sheikah") : "Ban";
-                    li(class = "gerudo") : "Pick";
-                    li(class = "sheikah") : "Pick";
-                }
-                p {
-                    : "A ";
-                    em : "ban";
-                    : " allows a team to lock in a setting of their choice to the default. A ";
-                    em : "pick";
-                    : " allows a team to change a setting or lock it to the default as well. This drafting procedure takes place in the scheduling thread for the match and must be completed at least 30 minutes before the scheduled starting time so the seed can be rolled.";
-                }
-                p {
-                    : "The settings that can be modified and their respective options (";
-                    strong : "first";
-                    : " being the default) are:";
-                }
-                ul {
-                    li {
-                        : "Ganon BK:";
+                div {
+                    nav {
+                        strong : "Contents";
                         ul {
                             li {
-                                strong : "6 Meds";
+                                a(href = "#ruleset") : "Ruleset";
                             }
-                            li : "3 Stones";
-                            li : "24/28 Triforce Hunt";
-                        }
-                    }
-                    li {
-                        : "Rainbow Bridge:";
-                        ul {
                             li {
-                                strong : "6 Meds";
+                                a(href = "#fpa") : "Fair Play Agreement";
                             }
-                            li : "7 Rewards";
-                            li : "Vanilla";
-                        }
-                    }
-                    li {
-                        : "Ganon's Trials:";
-                        ul {
                             li {
-                                strong : "0";
+                                a(href = "#format") : "Tournament Format";
                             }
-                            li : "2";
-                        }
-                    }
-                    li {
-                        : "Boss Keys:";
-                        ul {
                             li {
-                                strong : "All keys shuffled inside their own dungeons (standard)";
+                                a(href = "#match") : "Match Format";
                             }
-                            li : "Regional";
-                            li : "Vanilla";
-                        }
-                    }
-                    li {
-                        : "Small Keys:";
-                        ul {
                             li {
-                                strong : "All keys shuffled inside their own dungeons (standard)";
+                                a(href = "#settings") : "Seed Settings";
                             }
-                            li : "Regional with small keyrings";
-                            li : "Vanilla";
-                        }
-                    }
-                    li {
-                        : "Deku Tree:";
-                        ul {
                             li {
-                                strong : "Open";
+                                a(href = "#hints") : "Hint Distribution";
                             }
-                            li : "Closed";
-                        }
-                    }
-                    li {
-                        : "Zora's Fountain:";
-                        ul {
                             li {
-                                strong : "Default behavior (Closed)";
+                                a(href = "#plugins") : "Multiworld Plugins";
                             }
-                            li : "Always open";
-                        }
-                    }
-                    li {
-                        : "Starting Age/Randomize Overworld Spawns:";
-                        ul {
                             li {
-                                strong : "Adult/Off";
+                                a(href = "#conduct") : "Tournament Conduct Rules";
                             }
-                            li : "Random/On";
-                        }
-                    }
-                    li {
-                        : "Shuffle Dungeon Entrances:";
-                        ul {
                             li {
-                                strong : "Off";
+                                a(href = "#restreams") : "Restreams";
                             }
-                            li : "On (not including Ganon's Castle)";
                         }
                     }
-                    li {
-                        : "Shuffle Boss Entrances:";
-                        ul {
-                            li {
-                                strong : "Off";
-                            }
-                            li : "Full";
-                        }
-                    }
-                    li {
-                        : "Warp Song Destinations:";
-                        ul {
-                            li {
-                                strong : "Vanilla";
-                            }
-                            li : "Shuffled";
-                        }
-                    }
-                    li {
-                        : "Chu bag and drops:";
-                        ul {
-                            li {
-                                strong : "Off";
-                            }
-                            li : "On";
-                        }
-                    }
-                    li {
-                        : "Shopsanity:";
-                        ul {
-                            li {
-                                strong : "4 Items per Shop + Random Prices";
-                            }
-                            li : "Off";
-                        }
-                    }
-                    li {
-                        : "Tokensanity:";
-                        ul {
-                            li {
-                                strong : "Dungeons only";
-                            }
-                            li : "Off";
-                        }
-                    }
-                    li {
-                        : "Scrub Shuffle:";
-                        ul {
-                            li {
-                                strong : "On (Affordable)";
-                            }
-                            li : "Off";
-                        }
-                    }
-                    li {
-                        : "Cow Shuffle:";
-                        ul {
-                            li {
-                                strong : "Off";
-                            }
-                            li : "On";
-                        }
-                    }
-                    li {
-                        : "Gerudo Card shuffled:";
-                        ul {
-                            li {
-                                strong : "Off";
-                            }
-                            li : "On";
-                        }
-                    }
-                    li {
-                        : "Frog shuffle:";
-                        ul {
-                            li {
-                                strong : "Off";
-                            }
-                            li : "On";
-                        }
-                    }
-                    li {
-                        : "Chest Appearance Matches Contents:";
-                        ul {
-                            li {
-                                strong : "Both Size and Texture";
-                            }
-                            li : "Off";
-                        }
-                    }
-                    li {
-                        : "Hint type:";
-                        ul {
-                            li {
-                                strong : "Path";
-                            }
-                            li : "WOTH";
-                        }
-                    }
-                }
-                h2 : "Hint Distribution";
-                p : "Because of the somewhat unique settings of multiworld, there will be a custom hint distribution for this tournament. With 40 hint stones, the hint distribution will be as follows, with each hint having one duplicated hint:";
-                ul {
-                    li {
-                        : "7 Path/WOTH hints:";
-                        ul {
-                            li : "No dungeon limit";
-                            li : "Zelda's Lullaby, keyrings, or boss keys are never directly hinted";
-                            li : "“One Hint per Goal” is enabled";
-                        }
-                    }
-                    li : "0 Foolish hints";
-                    li {
-                        : "3–6 “Always” Hints (Settings Dependent):";
-                        ul {
-                            li : "active Trials (if enabled)";
-                            li : "Song from Ocarina of Time";
-                            li : "Sheik in Kakariko";
-                            li : "Deku Theater Skull Mask";
-                            li : "DMC Deku Scrub (if Scrubsanity enabled)";
-                            li : "Link's house cow (if Cowsanity enabled)";
-                        }
-                    }
-                }
-                p : "The remainder of the hints will be filled out with selections from the “Sometimes” hint pool for a total of 20 paired hints. Always and Sometimes hints are upgraded to Dual hints where available.";
-                p : "The following locations are added to the Sometimes hint pool (if dungeon tokens are shuffled):";
-                ul {
-                    li : "Deku Tree GS Basement Back Room";
-                    li : "Water Temple GS River";
-                    li : "Spirit Temple GS Hall After Sun Block Room";
-                }
-                p : "The following Sometimes hints have been removed:";
-                ul {
-                    li : "Sheik in Crater";
-                    li : "Song from Royal Familys Tomb";
-                    li : "Sheik in Forest";
-                    li : "Sheik at Temple";
-                    li : "Sheik at Colossus";
-                    li : "Graveyard Royal Familys Tomb Chest";
-                    li : "Ganons Castle Shadow Trial Golden Gauntlets Chest";
-                }
-                h2 : "Multiworld Plugins";
-                p {
-                    : "There are two plugins that can be used for the item sharing: ";
-                    a(href = "https://github.com/TestRunnerSRL/bizhawk-co-op#readme") : "bizhawk-co-op";
-                    : " (also known as Multiworld 1.0) and ";
-                    a(href = uri!(crate::mw::index).to_string()) : "Mido's House Multiworld";
-                    : ". While we recommend using the Mido's House plugin since it supports Project64 in addition to BizHawk and is easier to use (see ";
-                    a(href = "https://wiki.ootrandomizer.com/index.php?title=Multiworld#Feature_comparison") : "feature comparison";
-                    : "), both plugins are legal in this tournament. For teams using MH MW, official multiworld rooms will be automatically created once the seed is rolled.";
-                }
-                p : "In the event that more ways to play multiworld become available during this tournament, such as a release of “Multiworld 2.0” or support for more platforms, the tournament organizers will decide whether to allow them on a case-by-case basis. Until an announcement is made, these are not allowed.";
-                h2 : "Tournament Conduct Rules";
-                p : "All players are expected to adhere to standards of good conduct and sportsmanship. Players or teams that are found violating this standard may be removed from the tournament. If a player is removed from a team for misconduct, that team may find a replacement player for the remainder of the tournament, although this is subject to approval by administrators.";
-                p : "Prohibited actions include, but are not limited to:";
-                ul {
-                    li : "Threatening to pick specific settings unless the other team adheres to specific demands, including specific race dates/times or settings";
-                    li : "Threatening to drop from the race or tournament";
-                }
-                p : "Forfeits are considered final. If a team forfeits because the opposing team finishes but the results are found to be non-binding (e.g., without video recordings), the forfeit holds and a rematch is not owed to the team that forfeited.";
-                p : "The tournament admins reserve the right to use their best judgment when dealing with anything that comes up. This could include overturning match results, expulsion from the tournament, or other rulings.";
-                p : "The tournament admins reserve the right to make any minor changes to these rules that are deemed in the best interest of the tournament.";
-                h2 : "Restreams";
-                p : "If you are interested in restreaming one or more races of our tournament, please contact an organizer. We will invite you to a channel for organizing restreams.";
-                p : "When being restreamed, teams that indicated that they use Mido's House Multiworld must use the provided official multiworld rooms.";
-                p {
-                    : "Please also see ";
-                    a(href = "https://docs.google.com/document/d/1A3dKYjSERr6MtZWyqOs04CZ8yRdAPvBxORrD0OsG6-s/edit") : "the guidelines for restreaming races";
-                    : " and ";
-                    a(href = "https://docs.google.com/document/d/1yhLL3tcO5qipe8OXCM0CX7gde822hCYW1ey55HNqaP0/edit") : "the guidelines for being restreamed";
-                    : ".";
                 }
             }
         }),
