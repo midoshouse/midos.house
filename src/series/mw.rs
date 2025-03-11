@@ -1240,7 +1240,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         } else {
                             : "will be announced soon";
                         }
-                        : ". In the event that an odd number of teams is qualified at the time of the deadline, one additional team may qualify within 24 hours.";
+                        : ". In the event that an odd number of teams is qualified at the time of the deadline, one additional team may qualify within 24 hours. Streaming the qualifier async is allowed as long as it's marked clearly.";
                     }
                     p {
                         : "The tournament itself will begin with a series of best-of-1 ";
