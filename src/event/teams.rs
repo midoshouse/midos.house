@@ -846,6 +846,11 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
         column_headers.push(html! {
             th : "Restream Consent";
         });
+        if let TeamConfig::Multiworld = data.team_config {
+            column_headers.push(html! {
+                th : "Multiworld Plugin";
+            });
+        }
     }
     let content = html! {
         : header;
@@ -1125,8 +1130,19 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                             }
                             @if show_restream_consent {
                                 td {
-                                    @if team.map_or(false, |team| team.restream_consent) {
+                                    @if team.as_ref().map_or(false, |team| team.restream_consent) {
                                         : "✓";
+                                    }
+                                }
+                                @if let TeamConfig::Multiworld = data.team_config {
+                                    td {
+                                        @if let Some(team) = team {
+                                            @match team.mw_impl {
+                                                None => : "?";
+                                                Some(mw::Impl::BizHawkCoOp) => : "bizhawk-co-op";
+                                                Some(mw::Impl::MidosHouse) => : "MH MW";
+                                            }
+                                        }
                                     }
                                 }
                             }
