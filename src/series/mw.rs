@@ -1689,17 +1689,6 @@ impl From<Role> for event::Role {
 }
 
 #[derive(Deserialize)]
-pub(crate) struct RaceTimeUser {
-    pub(crate) teams: Vec<RaceTimeTeam>,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct RaceTimeTeam {
-    name: String,
-    pub(crate) slug: String,
-}
-
-#[derive(Deserialize)]
 pub(crate) struct RaceTimeTeamData {
     pub(crate) name: String,
     pub(crate) slug: String,
@@ -1716,39 +1705,48 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
         if let Some(ref racetime) = me.racetime {
-            let racetime_user = client.get(format!("https://{}/user/{}/data", racetime_host(), racetime.id))
-                .send().await?
-                .detailed_error_for_status().await?
-                .json_with_text_in_error::<RaceTimeUser>().await?;
-            let mut errors = ctx.errors().collect_vec();
-            if racetime_user.teams.is_empty() {
-                html! {
-                    : header;
-                    article {
-                        p {
-                            a(href = format!("https://{}/account/teams/create", racetime_host())) : "Create a racetime.gg team";
-                            : " to enter this event.";
+            if let Some(racetime_user) = racetime_bot::user_data(client, &racetime.id).await? {
+                let mut errors = ctx.errors().collect_vec();
+                if racetime_user.teams.is_empty() {
+                    html! {
+                        : header;
+                        article {
+                            p {
+                                a(href = format!("https://{}/account/teams/create", racetime_host())) : "Create a racetime.gg team";
+                                : " to enter this event.";
+                            }
                         }
+                    }
+                } else {
+                    html! {
+                        : header;
+                        : full_form(uri!(enter::post(data.series, &*data.event)), csrf, html! {
+                            : form_field("racetime_team", &mut errors, html! {
+                                label(for = "racetime_team") : "racetime.gg Team:";
+                                select(name = "racetime_team") {
+                                    @for team in racetime_user.teams {
+                                        option(value = team.slug) : team.name;
+                                    }
+                                }
+                                label(class = "help") {
+                                    : "(Or ";
+                                    a(href = format!("https://{}/account/teams/create", racetime_host())) : "create a new team";
+                                    : ", then come back here.)";
+                                }
+                            });
+                        }, errors, "Next");
                     }
                 }
             } else {
                 html! {
                     : header;
-                    : full_form(uri!(enter::post(data.series, &*data.event)), csrf, html! {
-                        : form_field("racetime_team", &mut errors, html! {
-                            label(for = "racetime_team") : "racetime.gg Team:";
-                            select(name = "racetime_team") {
-                                @for team in racetime_user.teams {
-                                    option(value = team.slug) : team.name;
-                                }
-                            }
-                            label(class = "help") {
-                                : "(Or ";
-                                a(href = format!("https://{}/account/teams/create", racetime_host())) : "create a new team";
-                                : ", then come back here.)";
-                            }
-                        });
-                    }, errors, "Next");
+                    article {
+                        p {
+                            : "Your racetime.gg profile is not public. Please ";
+                            a(href = format!("https://{}/account/connections", racetime_host())) : "connect a Twitch or Patreon account to your racetime.gg account";
+                            : " or participate in a recorded race.";
+                        }
+                    }
                 }
             }
         } else {

@@ -80,6 +80,18 @@ pub(crate) enum ParseUserError {
     UrlNotFound,
 }
 
+/// Returns `None` if the user data can't be accessed. This may be because the user ID does not exist, or because the user profile is not public, see https://github.com/racetimeGG/racetime-app/blob/5892f8f80eb1bd9619244becc48bbc4607b76844/racetime/models/user.py#L274-L296
+pub(crate) async fn user_data(http_client: &reqwest::Client, user_id: &str) -> wheel::Result<Option<UserProfile>> {
+    match http_client.get(format!("https://{}/user/{user_id}/data", racetime_host()))
+        .send().await?
+        .detailed_error_for_status().await
+    {
+        Ok(response) => response.json_with_text_in_error().await.map(Some),
+        Err(wheel::Error::ResponseStatus { inner, .. }) if inner.status() == Some(StatusCode::NOT_FOUND) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, id_or_url: &str) -> Result<String, ParseUserError> {
     if let Ok(id) = id_or_url.parse() {
         return if let Some(user) = User::from_id(&mut **transaction, id).await? {
@@ -93,12 +105,9 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
         }
     }
     if regex_is_match!("^[0-9A-Za-z]+$", id_or_url) {
-        return match http_client.get(format!("https://{}/user/{id_or_url}/data", racetime_host()))
-            .send().await?
-            .detailed_error_for_status().await
-        {
-            Ok(_) => Ok(id_or_url.to_owned()),
-            Err(wheel::Error::ResponseStatus { inner, .. }) if inner.status() == Some(StatusCode::NOT_FOUND) => Err(ParseUserError::IdNotFound),
+        return match user_data(http_client, id_or_url).await {
+            Ok(Some(_)) => Ok(id_or_url.to_owned()),
+            Ok(None) => Err(ParseUserError::IdNotFound),
             Err(e) => Err(e.into()),
         }
     }
@@ -109,12 +118,9 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
             if path_segments.next() == Some("user");
             if let Some(url_part) = path_segments.next();
             then {
-                match http_client.get(format!("https://{}/user/{url_part}/data", racetime_host()))
-                    .send().await?
-                    .detailed_error_for_status().await
-                {
-                    Ok(response) => Ok(response.json_with_text_in_error::<UserData>().await?.id),
-                    Err(wheel::Error::ResponseStatus { inner, .. }) if inner.status() == Some(StatusCode::NOT_FOUND) => Err(ParseUserError::UrlNotFound),
+                match user_data(http_client, url_part).await {
+                    Ok(Some(user_data)) => Ok(user_data.id),
+                    Ok(None) => Err(ParseUserError::UrlNotFound),
                     Err(e) => Err(e.into()),
                 }
             } else {

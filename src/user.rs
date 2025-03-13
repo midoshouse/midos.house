@@ -252,7 +252,7 @@ impl User {
         }
     }
 
-    pub(crate) async fn racetime_user_data(&self, http_client: &reqwest::Client) -> wheel::Result<Option<racetime::model::UserData>> {
+    pub(crate) async fn racetime_user_data(&self, http_client: &reqwest::Client) -> wheel::Result<Option<racetime::model::UserProfile>> {
         Ok(if let Some(ref racetime) = self.racetime {
             Some(
                 http_client.get(format!("https://{}/user/{}/data", racetime_host(), racetime.id))

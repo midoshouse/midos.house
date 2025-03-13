@@ -1058,11 +1058,8 @@ impl Race {
                 },
                 Entrant::Discord { twitch_username: Some(twitch_name), .. } | Entrant::Named { twitch_username: Some(twitch_name), .. } => channels.push(Cow::Borrowed(&**twitch_name)),
                 Entrant::Discord { twitch_username: None, racetime_id: Some(racetime_id), .. } | Entrant::Named { twitch_username: None, racetime_id: Some(racetime_id), .. } => {
-                    let racetime_user_data = http_client.get(format!("https://{}/user/{racetime_id}/data", racetime_host()))
-                        .send().await?
-                        .detailed_error_for_status().await?
-                        .json_with_text_in_error::<racetime::model::UserData>().await?;
-                    if let Some(twitch_name) = racetime_user_data.twitch_name {
+                    let racetime_user_data = racetime_bot::user_data(http_client, racetime_id).await?;
+                    if let Some(twitch_name) = racetime_user_data.and_then(|racetime_user_data| racetime_user_data.twitch_name) {
                         channels.push(Cow::Owned(twitch_name));
                     } else {
                         return Ok(None)
