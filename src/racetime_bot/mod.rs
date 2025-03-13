@@ -2220,7 +2220,7 @@ impl Handler {
                     unlock!();
                     return false
                 }
-                assert!(clean_shutdown.open_rooms.insert(OpenRoom::RaceTime(race_data.url.clone())));
+                assert!(clean_shutdown.open_rooms.insert(OpenRoom::RaceTime(race_data.url.clone())), "should_handle_inner called for new race room {} but clean_shutdown.open_rooms already contained this room", race_data.url);
             });
         }
         if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
