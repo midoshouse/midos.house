@@ -1233,7 +1233,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     }
                     h2(id = "format") : "Tournament Format";
                     p {
-                        : "All teams are required to play a single asynchronous seed with the default race settings to participate. This seed can be requested on the “My Status” tab after entering the event. The results of this seed will be used to seed the settings draft. The deadline for finishing the qualifier async ";
+                        : "All teams are required to play a single asynchronous seed with the default race settings to participate. This seed can be requested on the “My Status” tab after entering the event. The results of this seed will be used to seed the Swiss matchups and the settings draft. The deadline for finishing the qualifier async ";
                         @if let Some(base_start) = data.base_start {
                             : "is ";
                             : format_datetime(base_start, DateTimeFormat { long: true, running_text: true });
