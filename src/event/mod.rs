@@ -323,6 +323,7 @@ impl<'a> Data<'a> {
             (Series::TriforceBlitz, "2") => from_file!("../../assets/event/tfb/chests-2-7.1.3-blitz.42.json"),
             (Series::TriforceBlitz, "3") => from_file!("../../assets/event/tfb/chests-3-8.1.32-blitz.57.json"),
             (Series::WeTryToBeBetter, "1") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
+            (Series::WeTryToBeBetter, "2") => from_file!("../../assets/event/wttbb/chests-2-8.2.json"),
             (series, event) => {
                 wheel::night_report(&format!("{}/chestsError", night_path()), Some(&format!("no chest appearances specified for {}/{event}, using random chests", series.slug()))).await?;
                 ChestAppearances::random()

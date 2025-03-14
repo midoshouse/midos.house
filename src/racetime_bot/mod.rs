@@ -207,7 +207,8 @@ pub(crate) enum Goal {
     TournoiFrancoS4,
     TriforceBlitz,
     TriforceBlitzProgressionSpoiler,
-    WeTryToBeBetter,
+    WeTryToBeBetterS1,
+    WeTryToBeBetterS2,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -250,7 +251,8 @@ impl Goal {
             Self::TournoiFrancoS4 => series == Series::TournoiFrancophone && event == "4",
             Self::TriforceBlitz => series == Series::TriforceBlitz,
             Self::TriforceBlitzProgressionSpoiler => false, // possible future tournament but no concrete plans
-            Self::WeTryToBeBetter => series == Series::WeTryToBeBetter && event == "1",
+            Self::WeTryToBeBetterS1 => series == Series::WeTryToBeBetter && event == "1",
+            Self::WeTryToBeBetterS2 => series == Series::WeTryToBeBetter && event == "2",
         }
     }
 
@@ -279,7 +281,8 @@ impl Goal {
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
             | Self::TriforceBlitzProgressionSpoiler
-            | Self::WeTryToBeBetter
+            | Self::WeTryToBeBetterS1
+            | Self::WeTryToBeBetterS2
                 => true,
         }
     }
@@ -308,7 +311,8 @@ impl Goal {
             Self::TournoiFrancoS4 => "Tournoi Francophone Saison 4",
             Self::TriforceBlitz => "Triforce Blitz",
             Self::TriforceBlitzProgressionSpoiler => "Triforce Blitz Progression Spoiler",
-            Self::WeTryToBeBetter => "WeTryToBeBetter",
+            Self::WeTryToBeBetterS1 => "WeTryToBeBetter",
+            Self::WeTryToBeBetterS2 => "WeTryToBeBetter Season 2",
         }
     }
 
@@ -336,7 +340,8 @@ impl Goal {
             | Self::TriforceBlitzProgressionSpoiler
                 => English,
             | Self::TournoiFrancoS3
-            | Self::WeTryToBeBetter
+            | Self::WeTryToBeBetterS1
+            | Self::WeTryToBeBetterS2
                 => French,
             | Self::CopaDoBrasil
                 => Portuguese,
@@ -367,7 +372,8 @@ impl Goal {
             | Self::StandardRuleset
             | Self::TriforceBlitz
             | Self::TriforceBlitzProgressionSpoiler
-            | Self::WeTryToBeBetter
+            | Self::WeTryToBeBetterS1
+            | Self::WeTryToBeBetterS2
                 => None,
         }
     }
@@ -397,7 +403,8 @@ impl Goal {
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
             | Self::TriforceBlitzProgressionSpoiler
-            | Self::WeTryToBeBetter
+            | Self::WeTryToBeBetterS1
+            | Self::WeTryToBeBetterS2
                 => PrerollMode::Medium,
             | Self::MixedPoolsS2
             | Self::MixedPoolsS3
@@ -431,7 +438,8 @@ impl Goal {
                 | Self::TournoiFrancoS3
                 | Self::TournoiFrancoS4
                 | Self::TriforceBlitz
-                | Self::WeTryToBeBetter
+                | Self::WeTryToBeBetterS1
+                | Self::WeTryToBeBetterS2
                     => UnlockSpoilerLog::After,
                 | Self::Cc7
                 | Self::CoOpS3
@@ -467,7 +475,8 @@ impl Goal {
             Self::TournoiFrancoS4 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
             Self::TriforceBlitzProgressionSpoiler => VersionedBranch::Latest(rando::Branch::DevBlitz),
-            Self::WeTryToBeBetter => VersionedBranch::Latest(rando::Branch::Dev),
+            Self::WeTryToBeBetterS1 => VersionedBranch::Latest(rando::Branch::Dev),
+            Self::WeTryToBeBetterS2 => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0)),
             Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
         }
     }
@@ -497,7 +506,8 @@ impl Goal {
             Self::TournoiFrancoS4 => None, // settings draft
             Self::TriforceBlitz => None, // per-event settings
             Self::TriforceBlitzProgressionSpoiler => Some(tfb::progression_spoiler_settings()),
-            Self::WeTryToBeBetter => Some(wttbb::settings()),
+            Self::WeTryToBeBetterS1 => Some(wttbb::s1_settings()),
+            Self::WeTryToBeBetterS2 => Some(wttbb::s2_settings()),
         }
     }
 
@@ -526,7 +536,8 @@ impl Goal {
             | Self::TournoiFrancoS4
             | Self::TriforceBlitz
             | Self::TriforceBlitzProgressionSpoiler
-            | Self::WeTryToBeBetter
+            | Self::WeTryToBeBetterS1
+            | Self::WeTryToBeBetterS2
                 => true,
         }
     }
@@ -548,7 +559,8 @@ impl Goal {
             | Self::Sgl2024
             | Self::SongsOfHope
                 => ctx.say("!seed: The settings used for the tournament").await?,
-            | Self::WeTryToBeBetter
+            | Self::WeTryToBeBetterS1
+            | Self::WeTryToBeBetterS2
                 => ctx.say("!seed : Les settings utilisés pour le tournoi").await?,
             Self::Cc7 => {
                 ctx.say("!seed base: The tournament's base settings.").await?;
@@ -695,7 +707,8 @@ impl Goal {
             | Self::Sgl2024
             | Self::SongsOfHope
             | Self::TriforceBlitzProgressionSpoiler
-            | Self::WeTryToBeBetter
+            | Self::WeTryToBeBetterS1
+            | Self::WeTryToBeBetterS2
                 => {
                     let (article, description) = match self.language() {
                         French => ("une", format!("seed")),
@@ -3307,8 +3320,20 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
-                            Goal::WeTryToBeBetter => ctx.send_message(
+                            Goal::WeTryToBeBetterS1 => ctx.send_message(
                                 "Bienvenue ! Ceci est une practice room pour le tournoi WeTryToBeBetter. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/wttbb/1",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Roll une seed avec les settings utilisés pour le tournoi.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
+                            Goal::WeTryToBeBetterS2 => ctx.send_message(
+                                "Bienvenue ! Ceci est une practice room pour le tournoi WeTryToBeBetter saison 2. Vous pouvez obtenir des renseignements supplémentaires ici : https://midos.house/event/wttbb/2",
                                 true,
                                 vec![
                                     ("Roll seed", ActionButton::Message {
@@ -3419,7 +3444,8 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::SongsOfHope
                             | Goal::TriforceBlitzProgressionSpoiler
                                 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(Some((event.series, &*event.event))), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
-                            | Goal::WeTryToBeBetter
+                            | Goal::WeTryToBeBetterS1
+                            | Goal::WeTryToBeBetterS2
                                 => this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(Some((event.series, &*event.event))), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), French, "une", format!("seed")).await,
                             | Goal::Cc7
                             | Goal::MultiworldS3
@@ -4130,7 +4156,8 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::StandardRuleset
                     | Goal::TournoiFrancoS3
                     | Goal::TournoiFrancoS4
-                    | Goal::WeTryToBeBetter
+                    | Goal::WeTryToBeBetterS1
+                    | Goal::WeTryToBeBetterS2
                         => {}
                 }
             }
