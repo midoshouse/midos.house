@@ -1270,6 +1270,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         li : "Starting Age: Adult";
                         li : "Spawn Positions: Vanilla";
                         li : "Shopsanity: 4 Items per Shop";
+                        li : "Tokensanity: Dungeons Only";
                         li : "Scrub Shuffle: On (Affordable)";
                         li : "Adult Trade Quest: Claim Check Only";
                         li : "Maps and Compasses Give Information: On";
