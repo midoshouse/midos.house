@@ -142,6 +142,7 @@ pub(crate) fn s1_settings() -> serde_json::Map<String, Json> {
 
 pub(crate) fn s2_settings() -> serde_json::Map<String, Json> {
     collect![
+        format!("password_lock") => json!(true),
         format!("user_message") => json!("WeTryToBeBetter Season 2"),
         format!("bridge") => json!("dungeons"),
         format!("trials") => json!(0),
