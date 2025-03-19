@@ -3,7 +3,7 @@ use crate::prelude::*;
 #[rocket::get("/mw")]
 pub(crate) async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
     let transaction = pool.begin().await?;
-    page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::default() }, "Mido's House Multiworld", html! {
+    page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, mw_footer: true, ..PageStyle::default() }, "Mido's House Multiworld", html! {
         h1 : "Mido's House Multiworld";
         img(class = "banner icon", src = static_url!("mw.png"));
         p {
@@ -45,8 +45,9 @@ pub(crate) async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             : ".";
         }
         p {
-            a(href = "https://github.com/midoshouse/ootr-multiworld") : "The source code for Mido's House Multiworld";
-            : " is available on GitHub.";
+            a(href = "https://wiki.ootrandomizer.com/index.php?title=Mido%27s_House_Multiworld#Frequently_asked_questions") : "FAQ";
+            : " • ";
+            a(href = "https://github.com/midoshouse/ootr-multiworld") : "multiworld source code";
         }
     }).await
 }
@@ -54,7 +55,7 @@ pub(crate) async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
 #[rocket::get("/mw/platforms")]
 pub(crate) async fn platforms(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
     let transaction = pool.begin().await?;
-    page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, ..PageStyle::default() }, "platform support — Mido's House Multiworld", html! {
+    page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, mw_footer: true, ..PageStyle::default() }, "platform support — Mido's House Multiworld", html! {
         h1 {
             a(href = uri!(index).to_string()) : "Mido's House Multiworld";
             : " platform support status";
@@ -146,7 +147,7 @@ pub(crate) async fn platforms(pool: &State<PgPool>, me: Option<User>, uri: Origi
 #[rocket::get("/mw/install/macos")]
 pub(crate) async fn install_macos(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>) -> PageResult {
     let transaction = pool.begin().await?;
-    page(transaction, &me, &uri, PageStyle::default(), "macOS install instructions — Mido's House Multiworld", html! {
+    page(transaction, &me, &uri, PageStyle { mw_footer: true, ..PageStyle::default() }, "macOS install instructions — Mido's House Multiworld", html! {
         h1 {
             a(href = uri!(index).to_string()) : "Mido's House Multiworld";
             : " install instructions for macOS";

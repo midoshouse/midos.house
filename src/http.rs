@@ -108,6 +108,7 @@ pub(crate) enum PageKind {
 pub(crate) struct PageStyle {
     pub(crate) kind: PageKind,
     pub(crate) chests: ChestAppearances,
+    pub(crate) mw_footer: bool,
 }
 
 impl Default for PageStyle {
@@ -115,6 +116,7 @@ impl Default for PageStyle {
         Self {
             kind: PageKind::Other,
             chests: ChestAppearances::random(),
+            mw_footer: false,
         }
     }
 }
@@ -249,7 +251,13 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                         : " • ";
                         a(href = uri!(api::graphql_playground).to_string()) : "API";
                         : " • ";
-                        a(href = "https://github.com/midoshouse/midos.house") : "source code";
+                        a(href = "https://github.com/midoshouse/midos.house") {
+                            @if style.mw_footer {
+                                : "website source code";
+                            } else {
+                                : "source code";
+                            }
+                        }
                     }
                     p {
                         : "Special thanks to Maplestar for some of the chest icons used in the logo, and to ";
