@@ -534,31 +534,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 qualified: bool,
             }
 
-            let teams = if is_organizer && !data.is_started(&mut *transaction).await? {
-                // show unconfirmed teams to organizers until event start
-                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
-                    series = $1
-                    AND event = $2
-                    AND NOT resigned
-                "#, data.series as _, &data.event).fetch(&mut **transaction)
-                    .map_ok(|row| TeamRow {
-                        team: Team {
-                            id: row.id,
-                            name: row.name,
-                            racetime_slug: row.racetime_slug,
-                            startgg_id: row.startgg_id,
-                            plural_name: row.plural_name,
-                            restream_consent: row.restream_consent,
-                            mw_impl: row.mw_impl,
-                            qualifier_rank: row.qualifier_rank,
-                        },
-                        hard_settings_ok: row.hard_settings_ok,
-                        mq_ok: row.mq_ok,
-                        pieces: None,
-                        qualified: false,
-                    })
-                    .try_collect::<Vec<_>>().await?
-            } else if let QualifierKind::Rank = qualifier_kind {
+            let teams = if let QualifierKind::Rank = qualifier_kind {
                 // teams are manually ranked so include ones that haven't submitted qualifier asyncs
                 sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
                     series = $1
@@ -592,11 +568,12 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     AND event = $2
                     AND NOT resigned
                     AND (
-                        EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
+                        $3
+                        OR EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $4)
                         OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
                     )
                     AND (kind = 'qualifier' OR kind IS NULL)
-                "#, data.series as _, &data.event, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch(&mut **transaction)
+                "#, data.series as _, &data.event, is_organizer && !data.is_started(&mut *transaction).await?, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch(&mut **transaction)
                     .map_ok(|row| TeamRow {
                         team: Team {
                             id: row.id,
