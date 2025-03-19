@@ -1,0 +1,87 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, hard_settings_ok, mq_ok, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams WHERE\n                    series = $1\n                    AND event = $2\n                    AND NOT resigned\n                ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id: Id<Teams>",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 2,
+        "name": "racetime_slug",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "startgg_id: startgg::ID",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "plural_name",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "hard_settings_ok",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "mq_ok",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "restream_consent",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "mw_impl: mw::Impl",
+        "type_info": {
+          "Custom": {
+            "name": "mw_impl",
+            "kind": {
+              "Enum": [
+                "bizhawk_co_op",
+                "midos_house"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "qualifier_rank",
+        "type_info": "Int2"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "5d5a54ac9dd913b3764182a71365c03515a6b3ac7889b4b5d0fc104c92a54874"
+}

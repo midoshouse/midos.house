@@ -195,7 +195,7 @@ impl Cache {
     }
 }
 
-pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, cache: &mut Cache, me: Option<&User>, data: &Data<'_>, qualifier_kind: QualifierKind, worst_case_extrapolation: Option<&MemberUser>) -> Result<Vec<SignupsTeam>, cal::Error> {
+pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, cache: &mut Cache, me: Option<&User>, data: &Data<'_>, is_organizer: bool, qualifier_kind: QualifierKind, worst_case_extrapolation: Option<&MemberUser>) -> Result<Vec<SignupsTeam>, cal::Error> {
     let now = Utc::now();
     let mut signups = match qualifier_kind {
         QualifierKind::Score(score_kind) => {
@@ -534,7 +534,31 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 qualified: bool,
             }
 
-            let teams = if let QualifierKind::Rank = qualifier_kind {
+            let teams = if is_organizer && !data.is_started(&mut *transaction).await? {
+                // show unconfirmed teams to organizers until event start
+                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
+                    series = $1
+                    AND event = $2
+                    AND NOT resigned
+                "#, data.series as _, &data.event).fetch(&mut **transaction)
+                    .map_ok(|row| TeamRow {
+                        team: Team {
+                            id: row.id,
+                            name: row.name,
+                            racetime_slug: row.racetime_slug,
+                            startgg_id: row.startgg_id,
+                            plural_name: row.plural_name,
+                            restream_consent: row.restream_consent,
+                            mw_impl: row.mw_impl,
+                            qualifier_rank: row.qualifier_rank,
+                        },
+                        hard_settings_ok: row.hard_settings_ok,
+                        mq_ok: row.mq_ok,
+                        pieces: None,
+                        qualified: false,
+                    })
+                    .try_collect::<Vec<_>>().await?
+            } else if let QualifierKind::Rank = qualifier_kind {
                 // teams are manually ranked so include ones that haven't submitted qualifier asyncs
                 sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
                     series = $1
@@ -775,7 +799,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
         false
     };
     let roles = data.team_config.roles();
-    let signups = signups_sorted(&mut transaction, &mut Cache::new(http_client.clone()), me.as_ref(), &data, qualifier_kind, None).await?;
+    let signups = signups_sorted(&mut transaction, &mut Cache::new(http_client.clone()), me.as_ref(), &data, is_organizer, qualifier_kind, None).await?;
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config { "Entrants" } else { "Teams" };
     let mut column_headers = Vec::default();
@@ -1020,7 +1044,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                                                                 (Series::Standard, "8") => QualifierScoreKind::Standard,
                                                                 (_, _) => unimplemented!("enter::Requirement::QualifierPlacement for event {}/{}", data.series.slug(), data.event),
                                                             };
-                                                            let teams = signups_sorted(&mut transaction, &mut cache, None, data, QualifierKind::Score(qualifier_kind), Some(&entrant.user)).await?;
+                                                            let teams = signups_sorted(&mut transaction, &mut cache, None, data, is_organizer, QualifierKind::Score(qualifier_kind), Some(&entrant.user)).await?;
                                                             if let Some((placement, team)) = teams.iter().enumerate().find(|(_, team)| team.members.iter().any(|member| member.user == entrant.user));
                                                             if let Qualification::Multiple { num_entered, num_finished, .. } = team.qualification;
                                                             let num_qualifiers = match qualifier_kind {

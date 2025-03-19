@@ -546,13 +546,14 @@ pub(crate) async fn entrants_csv(db_pool: &State<PgPool>, http_client: &State<re
     let mut transaction = db_pool.begin().await?;
     let me = Scopes { entrants_read: true, ..Scopes::default() }.validate(&mut transaction, api_key).await?.ok_or(StatusOrError::Status(Status::Forbidden))?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    if !event.organizers(&mut transaction).await?.contains(&me) && !event.restreamers(&mut transaction).await?.contains(&me) {
+    let is_organizer = event.organizers(&mut transaction).await?.contains(&me);
+    if !is_organizer && !event.restreamers(&mut transaction).await?.contains(&me) {
         return Err(StatusOrError::Status(Status::Forbidden))
     }
     let qualifier_kind = teams::QualifierKind::Single { //TODO adjust to match teams::get?
         show_times: event.show_qualifier_times && event.is_started(&mut transaction).await?,
     };
-    let signups = teams::signups_sorted(&mut transaction, &mut teams::Cache::new(http_client.inner().clone()), None, &event, qualifier_kind, None).await?;
+    let signups = teams::signups_sorted(&mut transaction, &mut teams::Cache::new(http_client.inner().clone()), None, &event, is_organizer, qualifier_kind, None).await?;
     let mut csv = csv::Writer::from_writer(Vec::default());
     for (i, teams::SignupsTeam { team, .. }) in signups.into_iter().enumerate() {
         if let Some(team) = team {
