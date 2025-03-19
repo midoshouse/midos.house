@@ -42,6 +42,31 @@ pub(crate) fn form_table_cell(name: &str, errors: &mut Vec<&form::Error<'_>>, co
     }
 }
 
+/// Returns:
+///
+/// * Errors to display above the button row
+/// * The button itself
+pub(crate) fn button_form(uri: Origin<'_>, csrf: Option<&CsrfToken>, errors: Vec<&form::Error<'_>>, submit_text: &str) -> (RawHtml<String>, RawHtml<String>) {
+    button_form_ext(uri, csrf, errors, RawHtml(""), submit_text)
+}
+
+pub(crate) fn button_form_ext(uri: Origin<'_>, csrf: Option<&CsrfToken>, errors: Vec<&form::Error<'_>>, extra_fields: impl ToHtml, submit_text: &str) -> (RawHtml<String>, RawHtml<String>) {
+    (
+        html! {
+            @for error in errors {
+                : render_form_error(error);
+            }
+        },
+        html! {
+            form(action = uri.to_string(), method = "post") {
+                : csrf;
+                : extra_fields;
+                input(type = "submit", value = submit_text);
+            }
+        },
+    )
+}
+
 pub(crate) fn full_form(uri: Origin<'_>, csrf: Option<&CsrfToken>, content: impl ToHtml, errors: Vec<&form::Error<'_>>, submit_text: &str) -> RawHtml<String> {
     html! {
         form(action = uri.to_string(), method = "post") {

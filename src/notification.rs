@@ -47,7 +47,7 @@ impl Notification {
         Ok(notifications)
     }
 
-    async fn into_html(self, transaction: &mut Transaction<'_, Postgres>, me: &User, csrf: Option<&CsrfToken>) -> Result<RawHtml<String>, Error> {
+    async fn into_html(self, transaction: &mut Transaction<'_, Postgres>, me: &User, csrf: Option<&CsrfToken>, errors: Vec<&form::Error<'_>>, source: TeamInviteSource) -> Result<RawHtml<String>, Error> {
         Ok(match self {
             Self::Simple(id) => {
                 let text = match sqlx::query_scalar!(r#"SELECT kind AS "kind: SimpleNotificationKind" FROM notifications WHERE id = $1"#, id as _).fetch_one(&mut **transaction).await? {
@@ -87,20 +87,42 @@ impl Notification {
                 };
                 html! {
                     : text;
-                    div(class = "button-row") {
-                        form(action = uri!(dismiss(id)).to_string(), method = "post") {
-                            : csrf;
-                            input(type = "submit", value = "Dismiss Notification");
-                        }
-                    }
+                    @let (errors, button) = button_form(uri!(dismiss(id)), csrf, errors, "Dismiss Notification");
+                    : errors;
+                    div(class = "button-row") : button;
                 }
             }
-            Self::TeamInvite(team_id) => team_invite(transaction, me, csrf, team_id).await?,
+            Self::TeamInvite(team_id) => team_invite(transaction, me, csrf, errors, source, team_id).await?,
         })
     }
 }
 
-pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me: &User, csrf: Option<&CsrfToken>, team_id: Id<Teams>) -> Result<RawHtml<String>, Error> {
+/// Metadata to ensure the correct page is displayed on form validation failure.
+#[derive(Clone, Copy)]
+pub(crate) enum TeamInviteSource {
+    Enter,
+    Notifications,
+}
+
+impl From<TeamInviteSource> for event::AcceptFormSource {
+    fn from(value: TeamInviteSource) -> Self {
+        match value {
+            TeamInviteSource::Enter => Self::Enter,
+            TeamInviteSource::Notifications => Self::Notifications,
+        }
+    }
+}
+
+impl From<TeamInviteSource> for event::ResignFormSource {
+    fn from(value: TeamInviteSource) -> Self {
+        match value {
+            TeamInviteSource::Enter => Self::Enter,
+            TeamInviteSource::Notifications => Self::Notifications,
+        }
+    }
+}
+
+pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me: &User, csrf: Option<&CsrfToken>, errors: Vec<&form::Error<'_>>, source: TeamInviteSource, team_id: Id<Teams>) -> Result<RawHtml<String>, Error> {
     let team_row = sqlx::query!(r#"SELECT series AS "series: Series", event, name, racetime_slug FROM teams WHERE id = $1"#, team_id as _).fetch_one(&mut **transaction).await?;
     let event = event::Data::new(&mut *transaction, team_row.series, team_row.event).await?.ok_or(Error::UnknownEvent)?;
     let mut creator = None;
@@ -237,31 +259,30 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                 : ".";
             }
         }
-        div(class = "button-row") {
-            @if matches!(event.team_config, TeamConfig::Pictionary) && my_role == Role::Sheikah && me.racetime.is_none() {
+        @let (errors, accept_button) = if matches!(event.team_config, TeamConfig::Pictionary) && my_role == Role::Sheikah && me.racetime.is_none() {
+            (html! {}, html! {
                 a(class = "button", href = uri!(crate::auth::racetime_login(Some(uri!(notifications)))).to_string()) : "Connect racetime.gg Account to Accept";
-            } else {
-                form(action = uri!(crate::event::confirm_signup(event.series, &*event.event, team_id)).to_string(), method = "post") {
-                    : csrf;
-                    input(type = "submit", value = "Accept");
-                }
-            }
-            form(action = uri!(crate::event::resign_post(event.series, &*event.event, team_id)).to_string(), method = "post") {
-                : csrf;
-                input(type = "submit", value = "Decline");
-            }
+            })
+        } else {
+            button_form_ext(uri!(crate::event::confirm_signup(event.series, &*event.event, team_id)), csrf, errors, event::AcceptFormSource::from(source), "Accept")
+        };
+        : errors;
+        @let (errors, decline_button) = button_form_ext(uri!(crate::event::resign_post(event.series, &*event.event, team_id)), csrf, Vec::default(), event::ResignFormSource::from(source), "Decline");
+        : errors;
+        div(class = "button-row") {
+            : accept_button;
+            : decline_button;
             //TODO options to block sender or event
         }
     })
 }
 
-#[rocket::get("/notifications")]
-pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn list(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, ctx: Context<'_>) -> Result<RawHtml<String>, Error> {
     let mut transaction = pool.begin().await?;
     Ok(if let Some(me) = me {
         let mut notifications = Vec::default();
         for notification in Notification::get(&mut transaction, &me).await? {
-            notifications.push(notification.into_html(&mut transaction, &me, csrf.as_ref()).await?);
+            notifications.push(notification.into_html(&mut transaction, &me, csrf, ctx.errors().collect_vec(), TeamInviteSource::Notifications).await?);
         }
         page(transaction, &Some(me), &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
             h1 : "Notifications";
@@ -285,12 +306,23 @@ pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, uri: O
     })
 }
 
+#[rocket::get("/notifications")]
+pub(crate) async fn notifications(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>) -> Result<RawHtml<String>, Error> {
+    list(pool, me, uri, csrf.as_ref(), Context::default()).await
+}
+
 #[rocket::post("/notifications/dismiss/<id>", data = "<form>")]
-pub(crate) async fn dismiss(pool: &State<PgPool>, me: User, id: Id<Notifications>, csrf: Option<CsrfToken>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, rocket_util::Error<sqlx::Error>> {
+pub(crate) async fn dismiss(pool: &State<PgPool>, me: User, uri: Origin<'_>, id: Id<Notifications>, csrf: Option<CsrfToken>, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, Error> {
     let mut form = form.into_inner();
     form.verify(&csrf);
-    if form.context.errors().next().is_none() {
-        sqlx::query!("DELETE FROM notifications WHERE id = $1 AND rcpt = $2", id as _, me.id as _).execute(&**pool).await?;
-    }
-    Ok(Redirect::to(uri!(notifications)))
+    Ok(if form.value.is_some() {
+        if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(list(pool, Some(me), uri, csrf.as_ref(), form.context).await?)
+        } else {
+            sqlx::query!("DELETE FROM notifications WHERE id = $1 AND rcpt = $2", id as _, me.id as _).execute(&**pool).await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(notifications)))
+        }
+    } else {
+        RedirectOrContent::Content(list(pool, Some(me), uri, csrf.as_ref(), form.context).await?)
+    })
 }

@@ -1309,19 +1309,43 @@ pub(crate) async fn find_team_post(pool: &State<PgPool>, me: User, uri: Origin<'
     })
 }
 
+/// Metadata to ensure the correct page is displayed on form validation failure.
+#[derive(FromFormField)]
+pub(crate) enum AcceptFormSource {
+    Enter,
+    Notifications,
+    Teams,
+}
+
+impl ToHtml for AcceptFormSource {
+    fn to_html(&self) -> RawHtml<String> {
+        html! {
+            input(type = "hidden", name = "source", value = match self {
+                Self::Enter => "enter",
+                Self::Notifications => "notifications",
+                Self::Teams => "teams",
+            });
+        }
+    }
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct AcceptForm {
+    #[field(default = String::new())]
+    csrf: String,
+    source: AcceptFormSource,
+}
+
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum AcceptError {
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Discord(#[from] serenity::Error),
+    #[error(transparent)] Enter(#[from] enter::Error),
+    #[error(transparent)] Notification(#[from] crate::notification::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
-    #[error("failed to verify CSRF token")]
-    Csrf,
-    #[error("you can no longer enter this event since it has already started")]
-    EventStarted,
-    #[error("you haven't been invited to this team")]
-    NotInTeam,
-    #[error("a racetime.gg account is required to enter as runner")]
-    RaceTimeAccountRequired,
+    #[error(transparent)] Teams(#[from] teams::Error),
+    #[error("invalid form data")]
+    FormValue,
 }
 
 impl<E: Into<AcceptError>> From<E> for StatusOrError<AcceptError> {
@@ -1331,78 +1355,95 @@ impl<E: Into<AcceptError>> From<E> for StatusOrError<AcceptError> {
 }
 
 #[rocket::post("/event/<series>/<event>/confirm/<team>", data = "<form>")]
-pub(crate) async fn confirm_signup(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, team: Id<Teams>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, StatusOrError<AcceptError>> {
+pub(crate) async fn confirm_signup(pool: &State<PgPool>, http_client: &State<reqwest::Client>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>, form: Form<Contextual<'_, AcceptForm>>) -> Result<RedirectOrContent, StatusOrError<AcceptError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
     form.verify(&csrf);
-    if form.context.errors().next().is_some() { return Err(AcceptError::Csrf.into()) }
-    if data.is_started(&mut transaction).await? { return Err(AcceptError::EventStarted.into()) }
-    if let Some(role) = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, team as _, me.id as _).fetch_optional(&mut *transaction).await? {
-        if role == Role::Sheikah && me.racetime.is_none() {
-            return Err(AcceptError::RaceTimeAccountRequired.into())
+    if let Some(ref value) = form.value {
+        if data.is_started(&mut transaction).await? {
+            form.context.push_error(form::Error::validation("You can no longer enter this event since it has already started."));
         }
-        for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id<Users>" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, team as _).fetch_all(&mut *transaction).await? {
-            let id = Id::<Notifications>::new(&mut transaction).await?;
-            sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', $3, $4, $5)", id as _, member as _, series as _, event, me.id as _).execute(&mut *transaction).await?;
+        let role = sqlx::query_scalar!(r#"SELECT role AS "role: Role" FROM team_members WHERE team = $1 AND member = $2 AND status = 'unconfirmed'"#, team as _, me.id as _).fetch_optional(&mut *transaction).await?;
+        if let Some(role) = role {
+            if data.team_config.role_is_racing(role) && me.racetime.is_none() {
+                form.context.push_error(form::Error::validation("A racetime.gg account is required to enter as runner."));
+            }
+        } else {
+            form.context.push_error(form::Error::validation("You haven't been invited to this team."));
         }
-        sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", team as _, me.id as _).execute(&mut *transaction).await?;
-        if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND status = 'unconfirmed') AS "exists!""#, team as _).fetch_one(&mut *transaction).await? {
-            // this confirms the team
-            // remove all members from looking_for_team
-            sqlx::query!("DELETE FROM looking_for_team WHERE EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND member = user_id)", team as _).execute(&mut *transaction).await?;
-            //TODO also remove all other teams with member overlap, and notify
-            // create and assign Discord roles
-            if let Some(discord_guild) = data.discord_guild {
-                let discord_ctx = discord_ctx.read().await;
-                for row in sqlx::query!(r#"SELECT discord_id AS "discord_id!: PgSnowflake<UserId>", role AS "role: Role" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, team as _).fetch_all(&mut *transaction).await? {
-                    if let Ok(mut member) = discord_guild.member(&*discord_ctx, row.discord_id.0).await {
-                        let mut roles_to_assign = member.roles.iter().copied().collect::<HashSet<_>>();
-                        if let Some(PgSnowflake(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, PgSnowflake(discord_guild) as _, series as _, event).fetch_optional(&mut *transaction).await? {
-                            roles_to_assign.insert(participant_role);
-                        }
-                        if let Some(PgSnowflake(role_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND role = $2"#, PgSnowflake(discord_guild) as _, row.role as _).fetch_optional(&mut *transaction).await? {
-                            roles_to_assign.insert(role_role);
-                        }
-                        if let Some(racetime_slug) = sqlx::query_scalar!("SELECT racetime_slug FROM teams WHERE id = $1", team as _).fetch_one(&mut *transaction).await? {
-                            if let Some(PgSnowflake(team_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, PgSnowflake(discord_guild) as _, racetime_slug).fetch_optional(&mut *transaction).await? {
-                                roles_to_assign.insert(team_role);
-                            } else {
-                                let team_name = sqlx::query_scalar!(r#"SELECT name AS "name!" FROM teams WHERE id = $1"#, team as _).fetch_one(&mut *transaction).await?;
-                                let team_role = discord_guild.create_role(&*discord_ctx, EditRole::new().hoist(false).mentionable(true).name(team_name).permissions(Permissions::empty())).await?.id;
-                                sqlx::query!("INSERT INTO discord_roles (id, guild, racetime_team) VALUES ($1, $2, $3)", PgSnowflake(team_role) as _, PgSnowflake(discord_guild) as _, racetime_slug).execute(&mut *transaction).await?;
-                                roles_to_assign.insert(team_role);
+        Ok(if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(match value.source {
+                AcceptFormSource::Enter => enter::enter_form(transaction, http_client, discord_ctx, Some(me), uri, csrf.as_ref(), data, pic::EnterFormDefaults::Context(form.context)).await?,
+                AcceptFormSource::Notifications => {
+                    transaction.rollback().await?;
+                    crate::notification::list(pool, Some(me), uri, csrf.as_ref(), form.context).await?
+                }
+                AcceptFormSource::Teams => {
+                    transaction.rollback().await?;
+                    teams::list(pool, http_client, Some(me), uri, csrf, form.context, series, event).await.map_err(|e| match e {
+                        StatusOrError::Status(status) => StatusOrError::Status(status),
+                        StatusOrError::Err(e) => e.into(),
+                    })?
+                }
+            })
+        } else {
+            for member in sqlx::query_scalar!(r#"SELECT member AS "id: Id<Users>" FROM team_members WHERE team = $1 AND (status = 'created' OR status = 'confirmed')"#, team as _).fetch_all(&mut *transaction).await? {
+                let id = Id::<Notifications>::new(&mut transaction).await?;
+                sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, 'accept', $3, $4, $5)", id as _, member as _, series as _, event, me.id as _).execute(&mut *transaction).await?;
+            }
+            sqlx::query!("UPDATE team_members SET status = 'confirmed' WHERE team = $1 AND member = $2", team as _, me.id as _).execute(&mut *transaction).await?;
+            if !sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND status = 'unconfirmed') AS "exists!""#, team as _).fetch_one(&mut *transaction).await? {
+                // this confirms the team
+                // remove all members from looking_for_team
+                sqlx::query!("DELETE FROM looking_for_team WHERE EXISTS (SELECT 1 FROM team_members WHERE team = $1 AND member = user_id)", team as _).execute(&mut *transaction).await?;
+                //TODO also remove all other teams with member overlap, and notify
+                // create and assign Discord roles
+                if let Some(discord_guild) = data.discord_guild {
+                    let discord_ctx = discord_ctx.read().await;
+                    for row in sqlx::query!(r#"SELECT discord_id AS "discord_id!: PgSnowflake<UserId>", role AS "role: Role" FROM users, team_members WHERE id = member AND discord_id IS NOT NULL AND team = $1"#, team as _).fetch_all(&mut *transaction).await? {
+                        if let Ok(mut member) = discord_guild.member(&*discord_ctx, row.discord_id.0).await {
+                            let mut roles_to_assign = member.roles.iter().copied().collect::<HashSet<_>>();
+                            if let Some(PgSnowflake(participant_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND series = $2 AND event = $3"#, PgSnowflake(discord_guild) as _, series as _, event).fetch_optional(&mut *transaction).await? {
+                                roles_to_assign.insert(participant_role);
                             }
+                            if let Some(PgSnowflake(role_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND role = $2"#, PgSnowflake(discord_guild) as _, row.role as _).fetch_optional(&mut *transaction).await? {
+                                roles_to_assign.insert(role_role);
+                            }
+                            if let Some(racetime_slug) = sqlx::query_scalar!("SELECT racetime_slug FROM teams WHERE id = $1", team as _).fetch_one(&mut *transaction).await? {
+                                if let Some(PgSnowflake(team_role)) = sqlx::query_scalar!(r#"SELECT id AS "id: PgSnowflake<RoleId>" FROM discord_roles WHERE guild = $1 AND racetime_team = $2"#, PgSnowflake(discord_guild) as _, racetime_slug).fetch_optional(&mut *transaction).await? {
+                                    roles_to_assign.insert(team_role);
+                                } else {
+                                    let team_name = sqlx::query_scalar!(r#"SELECT name AS "name!" FROM teams WHERE id = $1"#, team as _).fetch_one(&mut *transaction).await?;
+                                    let team_role = discord_guild.create_role(&*discord_ctx, EditRole::new().hoist(false).mentionable(true).name(team_name).permissions(Permissions::empty())).await?.id;
+                                    sqlx::query!("INSERT INTO discord_roles (id, guild, racetime_team) VALUES ($1, $2, $3)", PgSnowflake(team_role) as _, PgSnowflake(discord_guild) as _, racetime_slug).execute(&mut *transaction).await?;
+                                    roles_to_assign.insert(team_role);
+                                }
+                            }
+                            member.edit(&*discord_ctx, EditMember::new().roles(roles_to_assign)).await?;
                         }
-                        member.edit(&*discord_ctx, EditMember::new().roles(roles_to_assign)).await?;
                     }
                 }
             }
-        }
-        transaction.commit().await?;
-        Ok(Redirect::to(uri!(teams::get(series, event))))
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(teams::get(series, event))))
+        })
     } else {
-        transaction.rollback().await?;
-        Err(AcceptError::NotInTeam.into())
+        Err(StatusOrError::Err(AcceptError::FormValue))
     }
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum ResignError {
-    #[error(transparent)] Csrf(#[from] rocket_csrf::VerificationFailure),
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Discord(#[from] serenity::Error),
+    #[error(transparent)] Event(#[from] Error),
+    #[error(transparent)] Enter(#[from] enter::Error),
+    #[error(transparent)] Notification(#[from] crate::notification::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
-    #[error("you have already resigned from this event")]
-    DoubleResign,
-    #[error("you can no longer resign from this event since it has already ended")]
-    EventEnded,
-    #[error("can't delete teams you're not part of")]
-    NotInTeam,
-    #[error("you can no longer opt out since you have already entered this event")]
-    OptedIn,
-    #[error("connect a racetime.gg account to your Mido's House account to opt out")]
-    RaceTime,
+    #[error(transparent)] Teams(#[from] teams::Error),
+    #[error("invalid form data")]
+    FormValue,
 }
 
 impl<E: Into<ResignError>> From<E> for StatusOrError<ResignError> {
@@ -1411,8 +1452,7 @@ impl<E: Into<ResignError>> From<E> for StatusOrError<ResignError> {
     }
 }
 
-#[rocket::get("/event/<series>/<event>/resign/<team>")]
-pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+async fn resign_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, ctx: Context<'_>, series: Series, event: &str, team: Id<Teams>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() {
@@ -1443,73 +1483,131 @@ pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'
                 }
             }
         }
-        div(class = "button-row") {
-            form(action = uri!(crate::event::resign_post(series, event, team)).to_string(), method = "post") {
-                : csrf;
-                input(type = "submit", value = "Yes, resign");
-            }
-        }
+        @let (errors, button) = button_form_ext(uri!(crate::event::resign_post(series, event, team)), csrf.as_ref(), ctx.errors().collect(), ResignFormSource::Resign, "Yes, resign");
+        : errors;
+        div(class = "button-row") : button;
     }).await?)
 }
 
+#[rocket::get("/event/<series>/<event>/resign/<team>")]
+pub(crate) async fn resign(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    resign_page(pool, me, uri, csrf, Context::default(), series, event, team).await
+}
+
+/// Metadata to ensure the correct page is displayed on form validation failure.
+#[derive(FromFormField)]
+pub(crate) enum ResignFormSource {
+    Enter,
+    Notifications,
+    Resign,
+    Teams,
+}
+
+impl ToHtml for ResignFormSource {
+    fn to_html(&self) -> RawHtml<String> {
+        html! {
+            input(type = "hidden", name = "source", value = match self {
+                Self::Enter => "enter",
+                Self::Notifications => "notifications",
+                Self::Resign => "resign",
+                Self::Teams => "teams",
+            });
+        }
+    }
+}
+
+#[derive(FromForm, CsrfForm)]
+pub(crate) struct ResignForm {
+    #[field(default = String::new())]
+    csrf: String,
+    source: ResignFormSource,
+}
+
 #[rocket::post("/event/<series>/<event>/resign/<team>", data = "<form>")]
-pub(crate) async fn resign_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, StatusOrError<ResignError>> {
+pub(crate) async fn resign_post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, team: Id<Teams>, form: Form<Contextual<'_, ResignForm>>) -> Result<RedirectOrContent, StatusOrError<ResignError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let team = Team::from_id(&mut transaction, team).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
-    form.verify(&csrf); //TODO option to resubmit on error page (with some “are you sure?” wording)
-    if data.is_ended() { return Err(ResignError::EventEnded.into()) }
-    let keep_record = data.is_started(&mut transaction).await? || sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1) AS "exists!""#, team.id as _).fetch_one(&mut *transaction).await?;
-    let msg = MessageBuilder::default()
-        .mention_team(&mut transaction, data.discord_guild, &team).await?
-        .push(if team.name_is_plural() { " have resigned from " } else { " has resigned from " })
-        .push_safe(data.display_name)
-        .push(".")
-        .build();
-    let members = if keep_record {
-        sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, team.id as _).execute(&mut *transaction).await?;
-        sqlx::query!(r#"SELECT member AS "id: Id<Users>", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, team.id as _).fetch(&mut *transaction)
-            .map_ok(|row| (row.id, row.status))
-            .try_collect::<Vec<_>>().await?
-    } else {
-        sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id<Users>", status AS "status: SignupStatus""#, team.id as _).fetch(&mut *transaction)
-            .map_ok(|row| (row.id, row.status))
-            .try_collect().await?
-    };
-    let mut me_in_team = false;
-    let mut notification_kind = SimpleNotificationKind::Resign;
-    for &(member_id, status) in &members {
-        if member_id == me.id {
-            me_in_team = true;
-            if !status.is_confirmed() { notification_kind = SimpleNotificationKind::Decline }
-            break
+    form.verify(&csrf);
+    if let Some(ref value) = form.value {
+        if data.is_ended() {
+            form.context.push_error(form::Error::validation("You can no longer resign from this event since it has already ended."));
         }
-    }
-    if me_in_team {
-        for (member_id, status) in members {
-            if member_id != me.id && status.is_confirmed() {
-                let notification_id = Id::<Notifications>::new(&mut transaction).await?;
-                sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", notification_id as _, member_id as _, notification_kind as _, series as _, event, me.id as _).execute(&mut *transaction).await?;
+        let keep_record = data.is_started(&mut transaction).await? || sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1) AS "exists!""#, team.id as _).fetch_one(&mut *transaction).await?;
+        let msg = MessageBuilder::default()
+            .mention_team(&mut transaction, data.discord_guild, &team).await?
+            .push(if team.name_is_plural() { " have resigned from " } else { " has resigned from " })
+            .push_safe(&data.display_name)
+            .push(".")
+            .build();
+        let members = if keep_record {
+            sqlx::query!(r#"UPDATE teams SET resigned = TRUE WHERE id = $1"#, team.id as _).execute(&mut *transaction).await?;
+            sqlx::query!(r#"SELECT member AS "id: Id<Users>", status AS "status: SignupStatus" FROM team_members WHERE team = $1"#, team.id as _).fetch(&mut *transaction)
+                .map_ok(|row| (row.id, row.status))
+                .try_collect::<Vec<_>>().await?
+        } else {
+            sqlx::query!(r#"DELETE FROM team_members WHERE team = $1 RETURNING member AS "id: Id<Users>", status AS "status: SignupStatus""#, team.id as _).fetch(&mut *transaction)
+                .map_ok(|row| (row.id, row.status))
+                .try_collect().await?
+        };
+        let mut me_in_team = false;
+        let mut notification_kind = SimpleNotificationKind::Resign;
+        for &(member_id, status) in &members {
+            if member_id == me.id {
+                me_in_team = true;
+                if !status.is_confirmed() { notification_kind = SimpleNotificationKind::Decline }
+                break
             }
         }
-        if let Some(organizer_channel) = data.discord_organizer_channel {
-            //TODO don't post this message for unconfirmed (or unqualified?) teams
-            organizer_channel.say(&*discord_ctx.read().await, msg).await?;
+        if !me_in_team {
+            form.context.push_error(form::Error::validation("Can't delete teams you're not part of."));
         }
-        if !keep_record {
-            sqlx::query!("DELETE FROM teams WHERE id = $1", team.id as _).execute(&mut *transaction).await?;
-        }
-        transaction.commit().await?;
-        Ok(Redirect::to(uri!(teams::get(series, event))))
+        Ok(if form.context.errors().next().is_some() {
+            RedirectOrContent::Content(match value.source {
+                ResignFormSource::Enter => enter::enter_form(transaction, http_client, discord_ctx, Some(me), uri, csrf.as_ref(), data, pic::EnterFormDefaults::Context(form.context)).await?,
+                ResignFormSource::Notifications => {
+                    transaction.rollback().await?;
+                    crate::notification::list(pool, Some(me), uri, csrf.as_ref(), form.context).await?
+                }
+                ResignFormSource::Resign => {
+                    transaction.rollback().await?;
+                    resign_page(pool, Some(me), uri, csrf, form.context, series, event, team.id).await.map_err(|e| match e {
+                        StatusOrError::Status(status) => StatusOrError::Status(status),
+                        StatusOrError::Err(e) => e.into(),
+                    })?
+                }
+                ResignFormSource::Teams => {
+                    transaction.rollback().await?;
+                    teams::list(pool, http_client, Some(me), uri, csrf, form.context, series, event).await.map_err(|e| match e {
+                        StatusOrError::Status(status) => StatusOrError::Status(status),
+                        StatusOrError::Err(e) => e.into(),
+                    })?
+                }
+            })
+        } else {
+            for (member_id, status) in members {
+                if member_id != me.id && status.is_confirmed() {
+                    let notification_id = Id::<Notifications>::new(&mut transaction).await?;
+                    sqlx::query!("INSERT INTO notifications (id, rcpt, kind, series, event, sender) VALUES ($1, $2, $3, $4, $5, $6)", notification_id as _, member_id as _, notification_kind as _, series as _, event, me.id as _).execute(&mut *transaction).await?;
+                }
+            }
+            if let Some(organizer_channel) = data.discord_organizer_channel {
+                //TODO don't post this message for unconfirmed (or unqualified?) teams
+                organizer_channel.say(&*discord_ctx.read().await, msg).await?;
+            }
+            if !keep_record {
+                sqlx::query!("DELETE FROM teams WHERE id = $1", team.id as _).execute(&mut *transaction).await?;
+            }
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(teams::get(series, event))))
+        })
     } else {
-        transaction.rollback().await?;
-        Err(ResignError::NotInTeam.into())
+        Err(StatusOrError::Err(ResignError::FormValue))
     }
 }
 
-#[rocket::get("/event/<series>/<event>/opt-out")]
-pub(crate) async fn opt_out(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+async fn opt_out_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, ctx: Context<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     if data.is_ended() {
@@ -1562,53 +1660,68 @@ pub(crate) async fn opt_out(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                 : data;
                 : "?";
             }
-            div(class = "button-row") {
-                form(action = uri!(crate::event::opt_out_post(series, event)).to_string(), method = "post") {
-                    : csrf;
-                    input(type = "submit", value = "Yes, opt out");
-                }
-            }
+            @let (errors, button) = button_form(uri!(crate::event::opt_out_post(series, event)), csrf.as_ref(), ctx.errors().collect(), "Yes, opt out");
+            : errors;
+            div(class = "button-row") : button;
         }
     }).await?)
 }
 
+#[rocket::get("/event/<series>/<event>/opt-out")]
+pub(crate) async fn opt_out(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    opt_out_page(pool, me, uri, csrf, Context::default(), series, event).await
+}
+
 #[rocket::post("/event/<series>/<event>/opt-out", data = "<form>")]
-pub(crate) async fn opt_out_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EmptyForm>>) -> Result<Redirect, StatusOrError<ResignError>> {
+pub(crate) async fn opt_out_post(pool: &State<PgPool>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EmptyForm>>) -> Result<RedirectOrContent, StatusOrError<ResignError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
-    form.verify(&csrf); //TODO option to resubmit on error page (with some “are you sure?” wording)
-    if data.is_ended() { return Err(ResignError::EventEnded.into()) }
-    if let Some(racetime) = me.racetime.as_ref() {
-        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM opt_outs WHERE series = $1 AND event = $2 AND racetime_id = $3) AS "exists!""#, data.series as _, &data.event, racetime.id).fetch_one(&mut *transaction).await? {
-            return Err(ResignError::DoubleResign.into())
+    form.verify(&csrf);
+    if form.value.is_some() {
+        if data.is_ended() {
+            form.context.push_error(form::Error::validation("You can no longer opt out from this event since it has already ended."));
         }
-    }
-    if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
-        id = team
-        AND series = $1
-        AND event = $2
-        AND member = $3
-        AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
-    ) AS "exists!""#, data.series as _, &data.event, me.id as _).fetch_one(&mut *transaction).await? {
-        return Err(ResignError::OptedIn.into())
-    }
-    if let Some(ref racetime) = me.racetime {
-        sqlx::query!(r#"INSERT INTO opt_outs (series, event, racetime_id) VALUES ($1, $2, $3)"#, series as _, event, racetime.id).execute(&mut *transaction).await?;
-        if let Some(organizer_channel) = data.discord_organizer_channel {
-            organizer_channel.say(&*discord_ctx.read().await, MessageBuilder::default()
-                .mention_user(&me)
-                .push(" has opted out from ")
-                .push_safe(data.display_name)
-                .push(".")
-                .build(),
-            ).await?;
+        if let Some(racetime) = me.racetime.as_ref() {
+            if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM opt_outs WHERE series = $1 AND event = $2 AND racetime_id = $3) AS "exists!""#, data.series as _, &data.event, racetime.id).fetch_one(&mut *transaction).await? {
+                form.context.push_error(form::Error::validation("You have already resigned from this event."));
+            }
         }
-        transaction.commit().await?;
-        Ok(Redirect::to(uri!(crate::http::index)))
+        if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams, team_members WHERE
+            id = team
+            AND series = $1
+            AND event = $2
+            AND member = $3
+            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+        ) AS "exists!""#, data.series as _, &data.event, me.id as _).fetch_one(&mut *transaction).await? {
+            form.context.push_error(form::Error::validation("You can no longer opt out since you have already entered this event."));
+        }
+        if me.racetime.is_none() {
+            form.context.push_error(form::Error::validation("Connect a racetime.gg account to your Mido's House account to opt out."));
+        }
+        Ok(if form.context.errors().next().is_some() {
+            transaction.rollback().await?;
+            RedirectOrContent::Content(opt_out_page(pool, Some(me), uri, csrf, form.context, series, event).await.map_err(|e| match e {
+                StatusOrError::Status(status) => StatusOrError::Status(status),
+                StatusOrError::Err(e) => e.into(),
+            })?)
+        } else {
+            let racetime = me.racetime.as_ref().expect("validated");
+            sqlx::query!(r#"INSERT INTO opt_outs (series, event, racetime_id) VALUES ($1, $2, $3)"#, series as _, event, racetime.id).execute(&mut *transaction).await?;
+            if let Some(organizer_channel) = data.discord_organizer_channel {
+                organizer_channel.say(&*discord_ctx.read().await, MessageBuilder::default()
+                    .mention_user(&me)
+                    .push(" has opted out from ")
+                    .push_safe(data.display_name)
+                    .push(".")
+                    .build(),
+                ).await?;
+            }
+            transaction.commit().await?;
+            RedirectOrContent::Redirect(Redirect::to(uri!(crate::http::index)))
+        })
     } else {
-        transaction.rollback().await?;
-        Err(ResignError::RaceTime.into())
+        Err(StatusOrError::Err(ResignError::FormValue))
     }
 }
 

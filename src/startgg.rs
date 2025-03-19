@@ -110,10 +110,10 @@ pub(crate) struct EventSetsQuery;
 )]
 pub(crate) struct ReportOneGameResultMutation;
 
-async fn query_inner<T: GraphQLQuery + 'static>(client: &reqwest::Client, auth_token: &str, variables: T::Variables, next_request: &mut Instant) -> Result<T::ResponseData, Error>
+async fn query_inner<T: GraphQLQuery + 'static>(http_client: &reqwest::Client, auth_token: &str, variables: T::Variables, next_request: &mut Instant) -> Result<T::ResponseData, Error>
 where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Send + Sync {
     sleep_until(*next_request).await;
-    let graphql_client::Response { data, errors, extensions: _ } = client.post("https://api.start.gg/gql/alpha")
+    let graphql_client::Response { data, errors, extensions: _ } = http_client.post("https://api.start.gg/gql/alpha")
         .bearer_auth(auth_token)
         .json(&T::build_query(variables))
         .send().await?
@@ -128,15 +128,15 @@ where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Se
     }
 }
 
-pub(crate) async fn query_uncached<T: GraphQLQuery + 'static>(client: &reqwest::Client, auth_token: &str, variables: T::Variables) -> Result<T::ResponseData, Error>
+pub(crate) async fn query_uncached<T: GraphQLQuery + 'static>(http_client: &reqwest::Client, auth_token: &str, variables: T::Variables) -> Result<T::ResponseData, Error>
 where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Send + Sync {
     lock!(cache = CACHE; {
         let (ref mut next_request, _) = *cache;
-        query_inner::<T>(client, auth_token, variables, next_request).await
+        query_inner::<T>(http_client, auth_token, variables, next_request).await
     })
 }
 
-pub(crate) async fn query_cached<T: GraphQLQuery + 'static>(client: &reqwest::Client, auth_token: &str, variables: T::Variables) -> Result<T::ResponseData, Error>
+pub(crate) async fn query_cached<T: GraphQLQuery + 'static>(http_client: &reqwest::Client, auth_token: &str, variables: T::Variables) -> Result<T::ResponseData, Error>
 where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Send + Sync {
     lock!(cache = CACHE; {
         let (ref mut next_request, ref mut cache) = *cache;
@@ -144,13 +144,13 @@ where T::Variables: Clone + Eq + Hash + Send + Sync, T::ResponseData: Clone + Se
             hash_map::Entry::Occupied(mut entry) => {
                 let (retrieved, entry) = entry.get_mut();
                 if retrieved.elapsed() >= Duration::from_secs(5 * 60) {
-                    *entry = query_inner::<T>(client, auth_token, variables, next_request).await?;
+                    *entry = query_inner::<T>(http_client, auth_token, variables, next_request).await?;
                     *retrieved = Instant::now();
                 }
                 entry.clone()
             }
             hash_map::Entry::Vacant(entry) => {
-                let data = query_inner::<T>(client, auth_token, variables, next_request).await?;
+                let data = query_inner::<T>(http_client, auth_token, variables, next_request).await?;
                 entry.insert((Instant::now(), data.clone()));
                 data
             }

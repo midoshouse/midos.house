@@ -55,7 +55,7 @@ pub(crate) enum UserFromRequestError {
     ViewAsNoSuchUser,
 }
 
-async fn handle_racetime_token_response(client: &reqwest::Client, cookies: &CookieJar<'_>, token: &TokenResponse<RaceTime>) -> Result<RaceTimeUser, UserFromRequestError> {
+async fn handle_racetime_token_response(http_client: &reqwest::Client, cookies: &CookieJar<'_>, token: &TokenResponse<RaceTime>) -> Result<RaceTimeUser, UserFromRequestError> {
     let mut cookie = Cookie::build(("racetime_token", token.access_token().to_owned()))
         .same_site(SameSite::Lax);
     if let Some(expires_in) = token.expires_in() {
@@ -67,14 +67,14 @@ async fn handle_racetime_token_response(client: &reqwest::Client, cookies: &Cook
             .same_site(SameSite::Lax)
             .permanent());
     }
-    Ok(client.get(format!("https://{}/o/userinfo", racetime_host()))
+    Ok(http_client.get(format!("https://{}/o/userinfo", racetime_host()))
         .bearer_auth(token.access_token())
         .send().await?
         .detailed_error_for_status().await?
         .json_with_text_in_error().await?)
 }
 
-async fn handle_discord_token_response(client: &reqwest::Client, cookies: &CookieJar<'_>, token: &TokenResponse<Discord>) -> Result<DiscordUser, UserFromRequestError> {
+async fn handle_discord_token_response(http_client: &reqwest::Client, cookies: &CookieJar<'_>, token: &TokenResponse<Discord>) -> Result<DiscordUser, UserFromRequestError> {
     let mut cookie = Cookie::build(("discord_token", token.access_token().to_owned()))
         .same_site(SameSite::Lax);
     if let Some(expires_in) = token.expires_in() {
@@ -86,15 +86,15 @@ async fn handle_discord_token_response(client: &reqwest::Client, cookies: &Cooki
             .same_site(SameSite::Lax)
             .permanent());
     }
-    Ok(client.get("https://discord.com/api/v10/users/@me")
+    Ok(http_client.get("https://discord.com/api/v10/users/@me")
         .bearer_auth(token.access_token())
         .send().await?
         .detailed_error_for_status().await?
         .json_with_text_in_error().await?)
 }
 
-async fn handle_challonge_token_response(client: &reqwest::Client, token: &TokenResponse<Challonge>) -> Result<ChallongeUser, UserFromRequestError> {
-    Ok(client.get("https://api.challonge.com/v2/me.json")
+async fn handle_challonge_token_response(http_client: &reqwest::Client, token: &TokenResponse<Challonge>) -> Result<ChallongeUser, UserFromRequestError> {
+    Ok(http_client.get("https://api.challonge.com/v2/me.json")
         .header(reqwest::header::ACCEPT, "application/json")
         .header(reqwest::header::CONTENT_TYPE, "application/vnd.api+json")
         .header("Authorization-Type", "v2")
@@ -104,10 +104,10 @@ async fn handle_challonge_token_response(client: &reqwest::Client, token: &Token
         .json_with_text_in_error::<ChallongeResponse<_>>().await?.data)
 }
 
-async fn handle_startgg_token_response(client: &reqwest::Client, token: &TokenResponse<StartGG>) -> Result<startgg::ID, UserFromRequestError> {
+async fn handle_startgg_token_response(http_client: &reqwest::Client, token: &TokenResponse<StartGG>) -> Result<startgg::ID, UserFromRequestError> {
     let startgg::current_user_query::ResponseData {
         current_user: Some(startgg::current_user_query::CurrentUserQueryCurrentUser { id: Some(id) }),
-    } = startgg::query_uncached::<startgg::CurrentUserQuery>(client, token.access_token(), startgg::current_user_query::Variables).await? else {
+    } = startgg::query_uncached::<startgg::CurrentUserQuery>(http_client, token.access_token(), startgg::current_user_query::Variables).await? else {
         return Err(UserFromRequestError::GraphQLQueryResponse)
     };
     Ok(id)
@@ -211,8 +211,8 @@ impl<'r> FromRequest<'r> for RaceTimeUser {
     async fn from_request(req: &'r Request<'_>) -> request::Outcome<Self, UserFromRequestError> {
         match req.guard::<&CookieJar<'_>>().await {
             Outcome::Success(cookies) => match req.guard::<&State<reqwest::Client>>().await {
-                Outcome::Success(client) => if let Some(token) = cookies.get_private("racetime_token") {
-                    match client.get(format!("https://{}/o/userinfo", racetime_host()))
+                Outcome::Success(http_client) => if let Some(token) = cookies.get_private("racetime_token") {
+                    match http_client.get(format!("https://{}/o/userinfo", racetime_host()))
                         .bearer_auth(token.value())
                         .send()
                         .err_into::<UserFromRequestError>()
@@ -224,7 +224,7 @@ impl<'r> FromRequest<'r> for RaceTimeUser {
                     }
                 } else if let Some(token) = cookies.get_private("racetime_refresh_token") {
                     match req.guard::<OAuth2<RaceTime>>().await {
-                        Outcome::Success(oauth) => Outcome::Success(guard_try!(handle_racetime_token_response(client, cookies, &guard_try!(oauth.refresh(token.value()).await)).await)),
+                        Outcome::Success(oauth) => Outcome::Success(guard_try!(handle_racetime_token_response(http_client, cookies, &guard_try!(oauth.refresh(token.value()).await)).await)),
                         Outcome::Error((status, ())) => Outcome::Error((status, UserFromRequestError::Cookie)),
                         Outcome::Forward(status) => Outcome::Forward(status),
                     }
@@ -419,9 +419,9 @@ pub(crate) enum RaceTimeCallbackError {
 }
 
 #[rocket::get("/auth/racetime")]
-pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<Redirect, RaceTimeCallbackError> {
+pub(crate) async fn racetime_callback(pool: &State<PgPool>, me: Option<User>, http_client: &State<reqwest::Client>, token: TokenResponse<RaceTime>, cookies: &CookieJar<'_>) -> Result<Redirect, RaceTimeCallbackError> {
     let mut transaction = pool.begin().await?;
-    let racetime_user = handle_racetime_token_response(client, cookies, &token).await?;
+    let racetime_user = handle_racetime_token_response(http_client, cookies, &token).await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(if User::from_racetime(&mut *transaction, &racetime_user.id).await?.is_some() {
         Redirect::to(redirect_uri)
@@ -441,9 +441,9 @@ pub(crate) enum DiscordCallbackError {
 }
 
 #[rocket::get("/auth/discord")]
-pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, client: &State<reqwest::Client>, token: TokenResponse<Discord>, cookies: &CookieJar<'_>) -> Result<Redirect, DiscordCallbackError> {
+pub(crate) async fn discord_callback(pool: &State<PgPool>, me: Option<User>, http_client: &State<reqwest::Client>, token: TokenResponse<Discord>, cookies: &CookieJar<'_>) -> Result<Redirect, DiscordCallbackError> {
     let mut transaction = pool.begin().await?;
-    let discord_user = handle_discord_token_response(client, cookies, &token).await?;
+    let discord_user = handle_discord_token_response(http_client, cookies, &token).await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
     Ok(if User::from_discord(&mut *transaction, discord_user.id).await?.is_some() {
         Redirect::to(redirect_uri)
@@ -459,9 +459,9 @@ pub(crate) enum ChallongeCallbackError {
 }
 
 #[rocket::get("/auth/challonge")]
-pub(crate) async fn challonge_callback(pool: &State<PgPool>, me: User, client: &State<reqwest::Client>, token: TokenResponse<Challonge>, cookies: &CookieJar<'_>) -> Result<Redirect, ChallongeCallbackError> {
+pub(crate) async fn challonge_callback(pool: &State<PgPool>, me: User, http_client: &State<reqwest::Client>, token: TokenResponse<Challonge>, cookies: &CookieJar<'_>) -> Result<Redirect, ChallongeCallbackError> {
     let mut transaction = pool.begin().await?;
-    let challonge_user = handle_challonge_token_response(client, &token).await?;
+    let challonge_user = handle_challonge_token_response(http_client, &token).await?;
     sqlx::query!("UPDATE users SET challonge_id = $1 WHERE id = $2", challonge_user.id, me.id as _).execute(&mut *transaction).await?;
     transaction.commit().await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());
@@ -475,9 +475,9 @@ pub(crate) enum StartGGCallbackError {
 }
 
 #[rocket::get("/auth/startgg")]
-pub(crate) async fn startgg_callback(pool: &State<PgPool>, me: User, client: &State<reqwest::Client>, token: TokenResponse<StartGG>, cookies: &CookieJar<'_>) -> Result<Redirect, StartGGCallbackError> {
+pub(crate) async fn startgg_callback(pool: &State<PgPool>, me: User, http_client: &State<reqwest::Client>, token: TokenResponse<StartGG>, cookies: &CookieJar<'_>) -> Result<Redirect, StartGGCallbackError> {
     let mut transaction = pool.begin().await?;
-    let startgg_id = handle_startgg_token_response(client, &token).await?;
+    let startgg_id = handle_startgg_token_response(http_client, &token).await?;
     sqlx::query!("UPDATE users SET startgg_id = $1 WHERE id = $2", startgg_id as _, me.id as _).execute(&mut *transaction).await?;
     transaction.commit().await?;
     let redirect_uri = cookies.get("redirect_to").and_then(|cookie| rocket::http::uri::Origin::try_from(cookie.value()).ok()).map_or_else(|| uri!(crate::http::index), |uri| uri.into_owned());

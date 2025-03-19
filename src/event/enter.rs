@@ -732,7 +732,7 @@ pub(crate) struct EnterForm {
     text_field2: String,
 }
 
-async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, client: &reqwest::Client, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &reqwest::Client, discord_ctx: &RwFuture<DiscordCtx>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, defaults: pic::EnterFormDefaults<'_>) -> Result<RawHtml<String>, Error> {
     //TODO if already entered, redirect to status page
     let my_invites = if let Some(ref me) = me {
         sqlx::query_scalar!(r#"SELECT team AS "team: Id<Teams>" FROM teams, team_members WHERE series = $1 AND event = $2 AND member = $3 AND status = 'unconfirmed'"#, data.series as _, &*data.event, me.id as _).fetch_all(&mut *transaction).await?
@@ -893,14 +893,14 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
                     }
                 }
                 TeamConfig::Pictionary => return Ok(pic::enter_form(transaction, me, uri, csrf, data, defaults).await?),
-                TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::Multiworld => return Ok(mw::enter_form(transaction, me, uri, csrf, data, defaults.into_context(), client).await?),
+                TeamConfig::CoOp | TeamConfig::TfbCoOp | TeamConfig::Multiworld => return Ok(mw::enter_form(transaction, me, uri, csrf, data, defaults.into_context(), http_client).await?),
             },
         }
     };
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
     let invites = html! {
         @for team_id in my_invites {
-            : crate::notification::team_invite(&mut transaction, me.as_ref().expect("got a team invite while not logged in"), csrf, team_id).await?;
+            : crate::notification::team_invite(&mut transaction, me.as_ref().expect("got a team invite while not logged in"), csrf, defaults.errors(), crate::notification::TeamInviteSource::Enter, team_id).await?;
         }
     };
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), html! {
@@ -910,8 +910,8 @@ async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_client: &re
     }).await?)
 }
 
-fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, me: Option<User>, uri: Origin<'b>, client: &reqwest::Client, csrf: Option<&'a CsrfToken>, data: Data<'c>, defaults: mw::EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
-    let team_members = defaults.racetime_members(client);
+fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a, Postgres>, me: Option<User>, uri: Origin<'b>, http_client: &reqwest::Client, csrf: Option<&'a CsrfToken>, data: Data<'c>, defaults: mw::EnterFormStep2Defaults<'d>) -> Pin<Box<dyn Future<Output = Result<RawHtml<String>, Error>> + Send + 'a>> {
+    let team_members = defaults.racetime_members(http_client);
     Box::pin(async move {
         let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, true).await?;
         let page_content = {
@@ -1011,14 +1011,14 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
 }
 
 #[rocket::get("/event/<series>/<event>/enter?<my_role>&<teammate>")]
-pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, client: &State<reqwest::Client>, series: Series, event: &str, my_role: Option<pic::Role>, teammate: Option<Id<Users>>) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, my_role: Option<pic::Role>, teammate: Option<Id<Users>>) -> Result<RawHtml<String>, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(enter_form(transaction, http_client, discord_ctx, me, uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
+    Ok(enter_form(transaction, http_client, discord_ctx, me, uri, csrf.as_ref(), data, pic::EnterFormDefaults::Values { my_role, teammate }).await?)
 }
 
 #[rocket::post("/event/<series>/<event>/enter", data = "<form>")]
-pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, client: &State<reqwest::Client>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
+pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Client>, discord_ctx: &State<RwFuture<DiscordCtx>>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, form: Form<Contextual<'_, EnterForm>>) -> Result<RedirectOrContent, StatusOrError<Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut form = form.into_inner();
@@ -1226,9 +1226,9 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
             team_config => {
                 let racetime_team = if let Some(ref racetime_team) = value.racetime_team {
                     if let Some(ref racetime) = me.racetime {
-                        if let Some(user) = racetime_bot::user_data(client, &racetime.id).await? {
+                        if let Some(user) = racetime_bot::user_data(http_client, &racetime.id).await? {
                             if user.teams.iter().any(|team| team.slug == *racetime_team) {
-                                let team = client.get(format!("https://{}/team/{racetime_team}/data", racetime_host()))
+                                let team = http_client.get(format!("https://{}/team/{racetime_team}/data", racetime_host()))
                                     .send().await?
                                     .detailed_error_for_status().await?
                                     .json_with_text_in_error::<mw::RaceTimeTeamData>().await?;
@@ -1393,14 +1393,14 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                         transaction.commit().await?;
                         RedirectOrContent::Redirect(Redirect::to(uri!(super::status(series, event))))
                     } else {
-                        RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?)
+                        RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, http_client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Values { racetime_team: racetime_team.expect("validated") }).await?)
                     })
                 }
             }
         }
         if value.step2 {
-            return Ok(RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Context(form.context)).await?))
+            return Ok(RedirectOrContent::Content(enter_form_step2(transaction, Some(me), uri, http_client, csrf.as_ref(), data, mw::EnterFormStep2Defaults::Context(form.context)).await?))
         }
     }
-    Ok(RedirectOrContent::Content(enter_form(transaction, http_client, discord_ctx, Some(me), uri, csrf.as_ref(), client, data, pic::EnterFormDefaults::Context(form.context)).await?))
+    Ok(RedirectOrContent::Content(enter_form(transaction, http_client, discord_ctx, Some(me), uri, csrf.as_ref(), data, pic::EnterFormDefaults::Context(form.context)).await?))
 }

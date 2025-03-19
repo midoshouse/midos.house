@@ -1702,11 +1702,11 @@ pub(crate) struct RaceTimeTeamMember {
     pub(crate) name: String,
 }
 
-pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>, client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
+pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>, http_client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
         if let Some(ref racetime) = me.racetime {
-            if let Some(racetime_user) = racetime_bot::user_data(client, &racetime.id).await? {
+            if let Some(racetime_user) = racetime_bot::user_data(http_client, &racetime.id).await? {
                 let mut errors = ctx.errors().collect_vec();
                 if racetime_user.teams.is_empty() {
                     html! {
@@ -1811,13 +1811,13 @@ impl<'v> EnterFormStep2Defaults<'v> {
         }
     }
 
-    pub(crate) fn racetime_members(&self, client: &reqwest::Client) -> impl Future<Output = Result<Vec<RaceTimeTeamMember>, Error>> + use<> {
+    pub(crate) fn racetime_members(&self, http_client: &reqwest::Client) -> impl Future<Output = Result<Vec<RaceTimeTeamMember>, Error>> + use<> {
         match self {
             Self::Context(ctx) => if let Some(team_slug) = ctx.field_value("racetime_team") {
-                let client = client.clone();
+                let http_client = http_client.clone();
                 let url = format!("https://{}/team/{team_slug}/data", racetime_host());
                 async move {
-                    Ok(client.get(url)
+                    Ok(http_client.get(url)
                         .send().await?
                         .detailed_error_for_status().await?
                         .json_with_text_in_error::<RaceTimeTeamData>().await?

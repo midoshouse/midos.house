@@ -724,8 +724,7 @@ impl<E: Into<Error>> From<E> for StatusOrError<Error> {
     }
 }
 
-#[rocket::get("/event/<series>/<event>/teams")]
-pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, ctx: Context<'_>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
     enum ShowStatus {
         Detailed,
         Confirmed,
@@ -733,7 +732,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
     }
 
     let mut transaction = pool.begin().await?;
-    let mut cache = Cache::new(http_client.inner().clone());
+    let mut cache = Cache::new(http_client.clone());
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let header = data.header(&mut transaction, me.as_ref(), Tab::Teams, false).await?;
     let mut show_status = ShowStatus::None;
@@ -776,7 +775,7 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
         false
     };
     let roles = data.team_config.roles();
-    let signups = signups_sorted(&mut transaction, &mut Cache::new(http_client.inner().clone()), me.as_ref(), &data, qualifier_kind, None).await?;
+    let signups = signups_sorted(&mut transaction, &mut Cache::new(http_client.clone()), me.as_ref(), &data, qualifier_kind, None).await?;
     let mut footnotes = Vec::default();
     let teams_label = if let TeamConfig::Solo = data.team_config { "Entrants" } else { "Teams" };
     let mut column_headers = Vec::default();
@@ -917,25 +916,20 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
                                                 @if *is_confirmed {
                                                     @if me.as_ref().map_or(false, |me| me == user) && members.iter().any(|member| !member.is_confirmed) {
                                                         : " ";
-                                                        span(class = "button-row") {
-                                                            form(action = uri!(crate::event::resign_post(series, event, team.id)).to_string(), method = "post") {
-                                                                : csrf;
-                                                                input(type = "submit", value = "Retract");
-                                                            }
-                                                        }
+                                                        @let (errors, button) = button_form_ext(uri!(crate::event::resign_post(series, event, team.id)), csrf.as_ref(), ctx.errors().collect(), event::ResignFormSource::Teams, "Retract");
+                                                        : errors;
+                                                        span(class = "button-row") : button;
                                                     }
                                                 } else {
                                                     : " ";
                                                     @if me.as_ref().map_or(false, |me| me == user) {
+                                                        @let (errors, accept_button) = button_form_ext(uri!(crate::event::confirm_signup(series, event, team.id)), csrf.as_ref(), ctx.errors().collect(), event::AcceptFormSource::Teams, "Accept");
+                                                        : errors;
+                                                        @let (errors, decline_button) = button_form_ext(uri!(crate::event::resign_post(series, event, team.id)), csrf.as_ref(), Vec::default(), event::ResignFormSource::Teams, "Decline");
+                                                        : errors;
                                                         span(class = "button-row") {
-                                                            form(action = uri!(crate::event::confirm_signup(series, event, team.id)).to_string(), method = "post") {
-                                                                : csrf;
-                                                                input(type = "submit", value = "Accept");
-                                                            }
-                                                            form(action = uri!(crate::event::resign_post(series, event, team.id)).to_string(), method = "post") {
-                                                                : csrf;
-                                                                input(type = "submit", value = "Decline");
-                                                            }
+                                                            : accept_button;
+                                                            : decline_button;
                                                             //TODO options to block sender or event
                                                         }
                                                     } else {
@@ -1168,4 +1162,9 @@ pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Clien
         }
     };
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("{teams_label} — {}", data.display_name), content).await?)
+}
+
+#[rocket::get("/event/<series>/<event>/teams")]
+pub(crate) async fn get(pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str) -> Result<RawHtml<String>, StatusOrError<Error>> {
+    list(pool, http_client, me, uri, csrf, Context::default(), series, event).await
 }
