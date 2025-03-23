@@ -100,7 +100,7 @@ pub(crate) struct User {
 impl User {
     pub(crate) fn into_entrant(self) -> Entrant {
         let racetime_id = self.racetime_url.and_then(|url| {
-            let (_, id) = regex_captures!("^https://racetime.gg/user/([0-9A-Za-z]+)$", &url)?;
+            let (_, id) = regex_captures!("^https://racetime.gg/user/([0-9A-Za-z]+)(?:/.*)?$", &url)?;
             Some(id.to_owned())
         });
         if let Some(id) = self.discord_id {
