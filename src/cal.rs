@@ -668,8 +668,8 @@ impl Race {
                             event: event.event.to_string(),
                             source: Source::League { id: race.id },
                             entrants: Entrants::Two([
-                                race.player_a.into_entrant(),
-                                race.player_b.into_entrant(),
+                                race.player_a.into_entrant(http_client).await?,
+                                race.player_b.into_entrant(http_client).await?,
                             ]),
                             phase: None,
                             round: Some(race.division),

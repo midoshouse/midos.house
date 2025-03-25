@@ -98,12 +98,17 @@ pub(crate) struct User {
 }
 
 impl User {
-    pub(crate) fn into_entrant(self) -> Entrant {
-        let racetime_id = self.racetime_url.and_then(|url| {
+    pub(crate) async fn into_entrant(self, http_client: &reqwest::Client) -> wheel::Result<Entrant> {
+        let url_part = self.racetime_url.and_then(|url| {
             let (_, id) = regex_captures!("^https://racetime.gg/user/([0-9A-Za-z]+)(?:/.*)?$", &url)?;
             Some(id.to_owned())
         });
-        if let Some(id) = self.discord_id {
+        let racetime_id = if let Some(url_part) = url_part {
+            racetime_bot::user_data(http_client, &url_part).await?.map(|user_data| user_data.id)
+        } else {
+            None
+        };
+        Ok(if let Some(id) = self.discord_id {
             Entrant::Discord {
                 twitch_username: self.twitch_username,
                 id, racetime_id,
@@ -114,7 +119,7 @@ impl User {
                 twitch_username: self.twitch_username,
                 racetime_id,
             }
-        }
+        })
     }
 }
 
