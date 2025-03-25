@@ -988,9 +988,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                             }
                             @match show_status {
                                 ShowStatus::Detailed => td {
-                                    @if members.iter().all(|member| member.is_confirmed) {
-                                        : "Confirmed";
-                                    } else {
+                                    @if let Some(unconfirmed) = members.iter().filter(|member| !member.is_confirmed).try_into_nonempty_iter() {
                                         @if let Ok(entrant) = members.iter().exactly_one() {
                                             @if let Some(flow) = &data.enter_flow {
                                                 @for requirement in &flow.requirements {
@@ -1091,17 +1089,16 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                                             }
                                         } else {
                                             : "Missing confirmation from ";
-                                            : English.join_html(members.iter()
-                                                .filter(|member| !member.is_confirmed)
-                                                .map(|member| html! {
-                                                    @match &member.user {
-                                                        MemberUser::MidosHouse(user) => : user;
-                                                        MemberUser::RaceTime { url, name, .. } => a(href = format!("https://{}{url}", racetime_host())) : name;
-                                                        MemberUser::Newcomer => @unreachable // only returned if signups_sorted is called with worst_case_extrapolation = true, which it isn't above
-                                                    }
-                                                })
-                                            );
+                                            : English.join_html(unconfirmed.map(|member| html! {
+                                                @match &member.user {
+                                                    MemberUser::MidosHouse(user) => : user;
+                                                    MemberUser::RaceTime { url, name, .. } => a(href = format!("https://{}{url}", racetime_host())) : name;
+                                                    MemberUser::Newcomer => @unreachable // only returned if signups_sorted is called with worst_case_extrapolation = true, which it isn't above
+                                                }
+                                            }));
                                         }
+                                    } else {
+                                        : "Confirmed";
                                     }
                                 }
                                 ShowStatus::Confirmed => td {

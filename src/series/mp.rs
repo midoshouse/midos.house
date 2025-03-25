@@ -15,7 +15,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the 1st season of the Mixed Pools tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ".";
                 }
                 h2 : "See also";
@@ -30,7 +30,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is the 2nd season of the Mixed Pools tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". Join ";
                     a(href = "https://discord.gg/cpvPMTPZtP") : "the Discord server";
                     : " for details.";
@@ -50,7 +50,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is the 3rd season of the Mixed Pools tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". Join ";
                     a(href = "https://discord.gg/cpvPMTPZtP") : "the Discord server";
                     : " for details.";

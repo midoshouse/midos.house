@@ -153,7 +153,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 article {
                     p {
                         : "Welcome to the 2023 SpeedGaming Live online OoTR tournament, organized by ";
-                        : English.join_html(data.organizers(&mut *transaction).await?);
+                        : English.join_html_opt(data.organizers(&mut *transaction).await?);
                         : ".";
                         h2 : "See also";
                         ul {
@@ -176,7 +176,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 article {
                     p {
                         : "Welcome to the 2023 SpeedGaming Live in-person OoTR tournament, organized by ";
-                        : English.join_html(data.organizers(&mut *transaction).await?);
+                        : English.join_html_opt(data.organizers(&mut *transaction).await?);
                         : ".";
                         h2 : "See also";
                         ul {
@@ -202,7 +202,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 article {
                     p {
                         : "Welcome to the 2024 SpeedGaming Live online OoTR tournament, organized by ";
-                        : English.join_html(data.organizers(&mut *transaction).await?);
+                        : English.join_html_opt(data.organizers(&mut *transaction).await?);
                         : ".";
                         h2 : "See also";
                         ul {
@@ -225,7 +225,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 article {
                     p {
                         : "Welcome to the 2024 SpeedGaming Live in-person OoTR tournament, organized by ";
-                        : English.join_html(data.organizers(&mut *transaction).await?);
+                        : English.join_html_opt(data.organizers(&mut *transaction).await?);
                         : ".";
                         h2 : "See also";
                         ul {

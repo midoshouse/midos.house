@@ -17,7 +17,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     : "This is the first charity beginner tournament for the ";
                     a(href = "https://autismsociety.org/") : "Autism of Society of America";
                     : ", organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ".";
                 }
                 h2 : "See also";

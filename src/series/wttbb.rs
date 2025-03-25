@@ -16,7 +16,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p(lang = "en") {
                     : "This is a friendly invitational tournament organised by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". The tournament is mainly aimed at players with an intermediate level. It allows players to play against each other in a friendly and fun environment and get their first taste of restreaming.";
                 }
                 p(lang = "fr") {
@@ -34,12 +34,12 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p(lang = "en") {
                     : "WeTryToBeBetter is a friendly invitational tournament organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". The tournament is entering its 2nd season after a successful first edition. It's aimed at players with an intermediate level and give them a chance to compete in a friendly, fun environment and get a taste about restreaming.";
                 }
                 p(lang = "fr") {
                     : "WeTryToBeBetter est un tournoi amical organisé par ";
-                    : French.join_html(data.organizers(transaction).await?);
+                    : French.join_html_opt(data.organizers(transaction).await?);
                     : ". Le tournoi entame sa 2e saison après une première édition réussie. Il s'adresse principalement aux joueurs de niveau intermédiaire et leur donne l'opportunité de s'affronter dans un environnement fun et décontracté et de s'initier au restreaming.";
                 }
                 p(lang = "fr") {

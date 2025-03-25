@@ -91,14 +91,14 @@ pub(crate) const S5_SETTINGS: &[Setting] = &[
 ];
 
 pub(crate) fn display_s3_draft_picks(picks: &draft::Picks) -> String {
-    English.join_str(
+    English.join_str_opt(
         S3_SETTINGS.iter().copied()
             .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _)| pick == other)).map(|(_, display)| display)),
     ).unwrap_or_else(|| format!("base settings"))
 }
 
 pub(crate) fn display_s4_draft_picks(picks: &draft::Picks) -> String {
-    English.join_str(
+    English.join_str_opt(
         S4_SETTINGS.iter().copied()
             .filter_map(|Setting { name, other, .. }|
                 picks.get(name)
@@ -111,7 +111,7 @@ pub(crate) fn display_s4_draft_picks(picks: &draft::Picks) -> String {
 }
 
 pub(crate) fn display_s5_draft_picks(picks: &draft::Picks) -> String {
-    English.join_str(
+    English.join_str_opt(
         S5_SETTINGS.iter().copied()
             .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _)| pick == other)).map(|(_, display)| display)),
     ).unwrap_or_else(|| format!("base settings"))
@@ -586,7 +586,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the first Ocarina of Time randomizer multiworld tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ".";
                 }
             }
@@ -595,7 +595,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the second Ocarina of Time randomizer multiworld tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". Click the “teams” link above to see the results of the qualifier async.";
                 }
                 h2 : "See also";
@@ -619,7 +619,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "Hello and welcome to the official rules document for the Ocarina of Time Randomizer Multiworld Tournament Season 3, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ".";
                 }
                 h2 : "Tournament Format";
@@ -847,7 +847,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "Hello and welcome to the official rules document for the Ocarina of Time Randomizer Multiworld Tournament Season 4, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ".";
                 }
                 h2 : "Ruleset";
@@ -1210,7 +1210,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 article {
                     p {
                         : "Hello and welcome to the official rules document for the Ocarina of Time Randomizer Multiworld Tournament Season 5, organized by ";
-                        : English.join_html(data.organizers(transaction).await?);
+                        : English.join_html_opt(data.organizers(transaction).await?);
                         : ".";
                     }
                     h2(id = "ruleset") : "Ruleset";

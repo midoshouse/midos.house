@@ -727,7 +727,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
         : header;
         @if let Some(content) = content {
             : content;
-        } else if let Some(organizers) = English.join_html(data.organizers(&mut transaction).await?) {
+        } else if let Some(organizers) = English.join_html_opt(data.organizers(&mut transaction).await?) {
             article {
                 p {
                     : "This event ";

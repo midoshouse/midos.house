@@ -515,12 +515,12 @@ impl Draft {
                                         options.push((name, display));
                                     }
                                 }
-                                if !options.is_empty() {
+                                if let Ok(options) = NEVec::try_from(options) {
                                     multi_options_settings.push(DraftSetting {
                                         name: setting.name,
                                         display: setting.display,
                                         options: options.iter().map(|(name, display)| DraftSettingChoice { name, display }).collect(),
-                                        description: Cow::Owned(format!("{}: {}", setting.name, English.join_str_with("or", options.into_iter().map(|(name, _)| name)).expect("has at least one option"))),
+                                        description: Cow::Owned(format!("{}: {}", setting.name, English.join_str_with("or", options.into_nonempty_iter().map(|(name, _)| name)))),
                                     });
                                 }
                             }
@@ -542,7 +542,7 @@ impl Draft {
                                             .map(|rsl::MultiOptionSetting { name, display, options, .. }|
                                                 DraftSetting {
                                                     options: options.iter().filter(|(_, _, lite, _)| !is_lite || *lite).map(|(name, display, _, _)| DraftSettingChoice { name, display }).collect(),
-                                                    description: Cow::Owned(format!("{name}: {}", English.join_str_with("or", options.iter().map(|(name, _, _, _)| name)).expect("has at least one option"))),
+                                                    description: Cow::Owned(format!("{name}: {}", English.join_str_with("or", options.iter().try_into_nonempty_iter().expect("has at least one option").map(|(name, _, _, _)| name)))),
                                                     name, display,
                                                 }
                                             )

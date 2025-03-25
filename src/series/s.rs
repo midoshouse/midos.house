@@ -27,7 +27,7 @@ impl Setting {
     pub(crate) fn description(&self) -> String {
         let options = iter::once(format!("default ({})", self.default_display))
             .chain(self.other.iter().map(|(name, display, _)| format!("{name} ({display})")));
-        format!("{}: {}", self.name, English.join_str_with("or", options).expect("has at least the default option"))
+        format!("{}: {}", self.name, English.join_str_opt_with("or", options).expect("has at least the default option"))
     }
 }
 
@@ -66,7 +66,7 @@ pub(crate) const S7_SETTINGS: [Setting; 31] = [
 ];
 
 pub(crate) fn display_s7_draft_picks(picks: &draft::Picks) -> String {
-    English.join_str(
+    English.join_str_opt(
         S7_SETTINGS.into_iter()
             .filter_map(|Setting { name, other, .. }| picks.get(name).and_then(|pick| other.iter().find(|(other, _, _)| pick == other)).map(|(_, display, _)| display)),
     ).unwrap_or_else(|| format!("base settings"))
@@ -235,9 +235,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 article {
                     p {
                         : "The Standard weeklies are a set of community races organized by the race mods (";
-                        : English.join_html(race_mods);
+                        : English.join_html_opt(race_mods);
                         : ") and main tournament organizers (";
-                        : English.join_html(main_tournament_organizers);
+                        : English.join_html_opt(main_tournament_organizers);
                         : ") in cooperation with ZeldaSpeedRuns. The races are open to all participants.";
                     }
                     p : "Starting from January 4, 2025, there will be alternating schedules:";
@@ -301,7 +301,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is the Challenge Cup portion of the 7th season of the main Ocarina of Time randomizer tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1zMbko0OG0UKQ6Mvc48if9hJEU5svC-aM9xv3J_Lkzn0/edit") : "the official document";
                     : " for details.";
@@ -321,7 +321,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     p : "The tournament will be hosted through a partnership between ZeldaSpeedRuns and The Silver Gauntlets to give 96 players a chance to participate in Season 8.";
                     p {
                         : "This event is organized by ";
-                        : English.join_html(data.organizers(transaction).await?);
+                        : English.join_html_opt(data.organizers(transaction).await?);
                         : ". Please contact us if you have any questions or concerns. We can be reached by pinging the ";
                         strong : "@Tourney Organisation";
                         : " role on Discord.";
@@ -1038,7 +1038,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is the Challenge Cup portion of the 8th season of the main Ocarina of Time randomizer tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1TY4ZjOaT55bx5rEE9uua4H2YfGNTWFOcueAZ4TuJkb4/edit") : "the official document";
                     : " for details.";

@@ -72,6 +72,12 @@ pub(crate) use {
         regex_is_match,
     },
     log_lock::*,
+    nonempty_collections::{
+        IntoIteratorExt as _,
+        IntoNonEmptyIterator,
+        NEVec,
+        NonEmptyIterator as _,
+    },
     ootr_utils::{
         camc::ChestTexture,
         spoiler::{

@@ -12,7 +12,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is the first tournament season of Battle Royale, a game mode played on 1-hit KO where players complete challenges in the seed to score points without dying. This season is organised by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1JB_CfbUFQwoTuV8RHniG1nfiXWki4n4NMFlKXDCp5P8/edit") : "the official document";
                     : " for details.";

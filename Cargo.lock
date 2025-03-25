@@ -3863,6 +3863,7 @@ dependencies = [
  "log-lock",
  "mimalloc",
  "noisy_float",
+ "nonempty-collections",
  "ootr-utils",
  "openssl",
  "racetime",
@@ -4009,6 +4010,12 @@ dependencies = [
  "memchr",
  "minimal-lexical",
 ]
+
+[[package]]
+name = "nonempty-collections"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7f301452dbaf00f14ca0c8204e46cf0c9a96f53543ac72cefa9b4d91c19e0ac"
 
 [[package]]
 name = "nu-ansi-term"

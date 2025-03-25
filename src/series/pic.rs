@@ -344,7 +344,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             h2 : "Further information";
             p {
                 : "The race is organized by ";
-                : English.join_html(data.organizers(transaction).await?);
+                : English.join_html_opt(data.organizers(transaction).await?);
                 : ". We will answer questions and inform about recent events on The Silver Gauntlets Discord in the #pictionary-spoiler-log channel (";
                 a(href = "https://discord.gg/m8z8ZqtN8H") : "invite link";
                 : " • ";

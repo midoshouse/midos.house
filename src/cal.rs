@@ -1805,7 +1805,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
             let name = if let Some(name) = team.name(&mut transaction).await? {
                 name.into_owned()
             } else {
-                format!("unnamed team ({})", English.join_str(team.members(&mut transaction).await?).unwrap_or_else(|| format!("no members")))
+                format!("unnamed team ({})", English.join_str_opt(team.members(&mut transaction).await?).unwrap_or_else(|| format!("no members")))
             };
             team_data.push((team.id.to_string(), name));
         }

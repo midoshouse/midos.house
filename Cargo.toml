@@ -85,6 +85,7 @@ uuid = "1"
 wheel = { git = "https://github.com/fenhl/wheel", branch = "rocket-forms", features = ["chrono", "racetime", "reqwest", "rocket", "serde", "serde_json", "serde_json_path_to_error"] }
 yup-oauth2 = "12"
 mimalloc = "0.1.43"
+nonempty-collections = "0.3.0"
 
 [target.'cfg(unix)'.dependencies]
 async-proto = { version = "0.24", features = ["chrono", "serde_json", "serenity", "uuid"] }

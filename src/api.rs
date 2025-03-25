@@ -97,7 +97,7 @@ impl fmt::Display for Scopes {
         if user_search { scopes.push("user_search") }
         if write { scopes.push("write") }
         let plural = scopes.len() != 1;
-        if let Some(scopes) = English.join_str(scopes) {
+        if let Some(scopes) = English.join_str_opt(scopes) {
             scopes.fmt(f)?;
             if plural {
                 write!(f, " scopes")

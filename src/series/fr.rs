@@ -15,7 +15,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p(lang = "fr") {
                     : "Voici la 3e saison du tournoi francophone, organisée par ";
-                    : French.join_html(data.organizers(transaction).await?);
+                    : French.join_html_opt(data.organizers(transaction).await?);
                     : ". Rejoignez ";
                     a(href = "https://discord.gg/wyhPVmquZC") : "le serveur Discord";
                     : " pour plus de détails.";
@@ -33,14 +33,14 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 article {
                     p(lang = "en") {
                         : "This is the 4th season of the Francophone tournament, organized by ";
-                        : English.join_html(&organizers);
+                        : English.join_html_opt(&organizers);
                         : ". Join ";
                         a(href = "https://discord.gg/wyhPVmquZC") : "the Discord server";
                         : " for details.";
                     }
                     p(lang = "fr") {
                         : "Voici la 4e saison du tournoi francophone, organisée par ";
-                        : French.join_html(organizers);
+                        : French.join_html_opt(organizers);
                         : ". Rejoignez ";
                         a(href = "https://discord.gg/wyhPVmquZC") : "le serveur Discord";
                         : " pour plus de détails.";
@@ -143,7 +143,7 @@ pub(crate) fn display_draft_picks(language: Language, all_settings: &[Setting], 
             },
             (_, _) => Cow::Borrowed(display),
         })));
-    language.join_str(picks_display).unwrap_or_else(|| format!("settings de base"))
+    language.join_str_opt(picks_display).unwrap_or_else(|| format!("settings de base"))
 }
 
 pub(crate) fn resolve_s3_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {

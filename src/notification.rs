@@ -189,7 +189,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                 }
                 : " for ";
                 : event;
-                @if let Some(teammates) = English.join_html(teammates) {
+                @if let Some(teammates) = English.join_html_opt(teammates) {
                     : " together with ";
                     : teammates;
                 }
@@ -212,7 +212,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                 : event;
                 : " as ";
                 : tfb::CoOpRole::try_from(my_role).expect("non-coop role in coop team");
-                @if let Some(teammates) = English.join_html(teammates) {
+                @if let Some(teammates) = English.join_html_opt(teammates) {
                     : " together with ";
                     : teammates;
                 }
@@ -235,7 +235,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                 : event;
                 : " as ";
                 : pic::Role::try_from(my_role).expect("non-Pictionary role in Pictionary team");
-                @if let Some(teammates) = English.join_html(teammates) {
+                @if let Some(teammates) = English.join_html_opt(teammates) {
                     : " together with ";
                     : teammates;
                 }
@@ -252,7 +252,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
                 : mw::Role::try_from(my_role).expect("non-multiworld role in multiworld team");
                 : " for team ";
                 a(href = format!("https://{}/team/{}", racetime_host(), team_row.racetime_slug.expect("multiworld team without racetime slug"))) : team_row.name; //TODO use Team type
-                @if let Some(teammates) = English.join_html(teammates) {
+                @if let Some(teammates) = English.join_html_opt(teammates) {
                     : " together with ";
                     : teammates;
                 }

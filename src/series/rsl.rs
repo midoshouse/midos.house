@@ -313,7 +313,7 @@ pub(crate) fn display_s7_draft_picks(picks: &draft::Picks) -> String {
     format!(
         "{} and {}",
         if picks.get("preset").map(|preset| &**preset).unwrap_or("league") == "lite" { "RSL-Lite weights" } else { "RSL weights" },
-        English.join_str(
+        English.join_str_opt(
             FORCE_OFF_SETTINGS.into_iter()
                 .filter(|ForceOffSetting { name, .. }| picks.get(*name).is_some_and(|pick| pick == "banned"))
                 .map(|ForceOffSetting { display, .. }| Cow::Borrowed(display))
@@ -388,7 +388,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the 1st season of the Random Settings League tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1wmoZHdwYijJwXLYgZbadjRYOGBNXio2hhKEIkFNgDgU/edit") : "the official document";
                     : " for details.";
@@ -399,7 +399,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the 2nd season of the Random Settings League tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ".";
                 }
                 h2 : "See also";
@@ -414,7 +414,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the 3rd season of the Random Settings League tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ".";
                 }
                 h2 : "See also";
@@ -429,7 +429,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is an archive of the 4th season of the Random Settings League tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ".";
                 }
                 h2 : "See also";
@@ -447,7 +447,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is the 5th season of the Random Settings League tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1Js03yFcMw_mWx4UO_3UJB39CNCKa0bsxlBEYrHPq5Os/edit") : "the official document";
                     : " for details.";
@@ -458,7 +458,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "This is the 6th season of the Random Settings League tournament, organized by ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". See ";
                     a(href = "https://docs.google.com/document/d/1xpZIVh6znG7mgyEUQk8J2B-_5PfbcERen-P4tDX6VqE/edit") : "the official document";
                     : " for details.";

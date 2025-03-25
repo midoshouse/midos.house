@@ -44,13 +44,13 @@ impl Language {
                     let parts = (hours > 0).then(|| format!("{hours} heure{}", if hours == 1 { "" } else { "s" })).into_iter()
                         .chain((mins > 0).then(|| format!("{mins} minute{}", if mins == 1 { "" } else { "s" })))
                         .chain((secs > 0).then(|| format!("{secs} seconde{}", if secs == 1 { "" } else { "s" })));
-                    French.join_str(parts).unwrap_or_else(|| format!("0 secondes"))
+                    French.join_str_opt(parts).unwrap_or_else(|| format!("0 secondes"))
                 }
                 _ => {
                     let parts = (hours > 0).then(|| format!("{hours} hour{}", if hours == 1 { "" } else { "s" })).into_iter()
                         .chain((mins > 0).then(|| format!("{mins} minute{}", if mins == 1 { "" } else { "s" })))
                         .chain((secs > 0).then(|| format!("{secs} second{}", if secs == 1 { "" } else { "s" })));
-                    English.join_str(parts).unwrap_or_else(|| format!("0 seconds"))
+                    English.join_str_opt(parts).unwrap_or_else(|| format!("0 seconds"))
                 }
             }
         } else {
@@ -58,101 +58,108 @@ impl Language {
         }
     }
 
-    pub(crate) fn join_html<T: ToHtml>(&self, elts: impl IntoIterator<Item = T>) -> Option<RawHtml<String>> {
+    pub(crate) fn join_html<T: ToHtml>(&self, elts: impl IntoNonEmptyIterator<Item = T>) -> RawHtml<String> {
         match self {
-            French | Portuguese => {
-                let mut elts = elts.into_iter().fuse();
-                match (elts.next(), elts.next()) {
-                    (None, _) => None,
-                    (Some(elt), None) => Some(html! {
-                        : elt;
-                    }),
-                    (Some(elt1), Some(elt2)) => {
-                        let mut rest = iter::once(elt2).chain(elts).collect_vec();
-                        let last = rest.pop().expect("rest contains at least elt3");
-                        Some(html! {
-                            : elt1;
-                            @for elt in rest {
-                                : ", ";
-                                : elt;
-                            }
-                            @match self {
-                                French => : " et ";
-                                Portuguese => : " e ";
-                                _ => @unreachable
-                            }
-                            : last;
-                        })
+            French | German | Portuguese => {
+                let (first, rest) = elts.into_nonempty_iter().next();
+                let mut rest = rest.fuse();
+                if let Some(second) = rest.next() {
+                    let mut rest = iter::once(second).chain(rest).collect_vec();
+                    let last = rest.pop().expect("rest contains at least second");
+                    html! {
+                        : first;
+                        @for elt in rest {
+                            : ", ";
+                            : elt;
+                        }
+                        @match self {
+                            French => : " et ";
+                            German => : " und ";
+                            Portuguese => : " e ";
+                            _ => @unreachable
+                        }
+                        : last;
                     }
+                } else {
+                    first.to_html()
                 }
             }
             _ => {
-                let mut elts = elts.into_iter().fuse();
-                match (elts.next(), elts.next(), elts.next()) {
-                    (None, _, _) => None,
-                    (Some(elt), None, _) => Some(html! {
-                        : elt;
-                    }),
-                    (Some(elt1), Some(elt2), None) => Some(html! {
-                        : elt1;
+                let (first, rest) = elts.into_nonempty_iter().next();
+                let mut rest = rest.fuse();
+                match (rest.next(), rest.next()) {
+                    (None, _) => first.to_html(),
+                    (Some(second), None) => html! {
+                        : first;
                         : " and ";
-                        : elt2;
-                    }),
-                    (Some(elt1), Some(elt2), Some(elt3)) => {
-                        let mut rest = iter::once(elt3).chain(elts).collect_vec();
-                        let last = rest.pop().expect("rest contains at least elt3");
-                        Some(html! {
-                            : elt1;
-                            : ", ";
-                            : elt2;
+                        : second;
+                    },
+                    (Some(second), Some(third)) => {
+                        let mut rest = [second, third].into_nonempty_iter().chain(rest).collect::<NEVec<_>>();
+                        let last = rest.pop().expect("rest contains at least second and third");
+                        html! {
+                            : first;
                             @for elt in rest {
                                 : ", ";
                                 : elt;
                             }
                             : ", and ";
                             : last;
-                        })
+                        }
                     }
                 }
             }
         }
     }
 
-    pub(crate) fn join_str<T: fmt::Display>(&self, elts: impl IntoIterator<Item = T>) -> Option<String> {
+    pub(crate) fn join_html_opt<T: ToHtml>(&self, elts: impl IntoIterator<Item = T>) -> Option<RawHtml<String>> {
+        elts.try_into_nonempty_iter().map(|iter| self.join_html(iter))
+    }
+
+    pub(crate) fn join_str<T: fmt::Display>(&self, elts: impl IntoNonEmptyIterator<Item = T>) -> String {
         match self {
             French => French.join_str_with("et", elts),
+            German => German.join_str_with("und", elts),
+            Portuguese => Portuguese.join_str_with("e", elts),
             _ => English.join_str_with("and", elts),
         }
     }
 
-    pub(crate) fn join_str_with<T: fmt::Display>(&self, conjunction: &str, elts: impl IntoIterator<Item = T>) -> Option<String> {
+    pub(crate) fn join_str_opt<T: fmt::Display>(&self, elts: impl IntoIterator<Item = T>) -> Option<String> {
+        elts.try_into_nonempty_iter().map(|iter| self.join_str(iter))
+    }
+
+    pub(crate) fn join_str_with<T: fmt::Display>(&self, conjunction: &str, elts: impl IntoNonEmptyIterator<Item = T>) -> String {
         match self {
-            French => {
-                let mut elts = elts.into_iter().fuse();
-                match (elts.next(), elts.next()) {
-                    (None, _) => None,
-                    (Some(elt), None) => Some(elt.to_string()),
-                    (Some(elt1), Some(elt2)) => {
-                        let mut rest = iter::once(elt2).chain(elts).collect_vec();
-                        let last = rest.pop().expect("rest contains at least elt2");
-                        Some(format!("{elt1}{} {conjunction} {last}", rest.into_iter().map(|elt| format!(", {elt}")).format("")))
-                    }
+            French | German | Portuguese => {
+                let (first, rest) = elts.into_nonempty_iter().next();
+                let mut rest = rest.fuse();
+                if let Some(second) = rest.next() {
+                    let mut rest = iter::once(second).chain(rest).collect_vec();
+                    let last = rest.pop().expect("rest contains at least second");
+                    format!("{first}{} {conjunction} {last}", rest.into_iter().map(|elt| format!(", {elt}")).format(""))
+                } else {
+                    first.to_string()
                 }
             }
             _ => {
-                let mut elts = elts.into_iter().fuse();
-                match (elts.next(), elts.next(), elts.next()) {
-                    (None, _, _) => None,
-                    (Some(elt), None, _) => Some(elt.to_string()),
-                    (Some(elt1), Some(elt2), None) => Some(format!("{elt1} {conjunction} {elt2}")),
-                    (Some(elt1), Some(elt2), Some(elt3)) => {
-                        let mut rest = [elt2, elt3].into_iter().chain(elts).collect_vec();
-                        let last = rest.pop().expect("rest contains at least elt2 and elt3");
-                        Some(format!("{elt1}, {}, {conjunction} {last}", rest.into_iter().format(", ")))
+                let (first, rest) = elts.into_nonempty_iter().next();
+                let mut rest = rest.fuse();
+                match (rest.next(), rest.next()) {
+                    (None, _) => first.to_string(),
+                    (Some(second), None) => format!("{first} {conjunction} {second}"),
+                    (Some(second), Some(third)) => {
+                        let mut rest = [second, third].into_nonempty_iter().chain(rest).collect::<NEVec<_>>();
+                        let last = rest.pop().expect("rest contains at least second and third");
+                        format!("{first}, {}, {conjunction} {last}", rest.into_iter().format(", "))
                     }
                 }
             }
         }
+    }
+
+    pub(crate) fn join_str_opt_with<T: fmt::Display>(&self, conjunction: &str, elts: impl IntoIterator<Item = T>) -> Option<String> {
+        elts.try_into_nonempty_iter().map(|iter| self.join_str_with(conjunction, iter))
     }
 }
 

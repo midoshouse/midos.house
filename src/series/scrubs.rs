@@ -12,7 +12,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "Season 5 of the Scrubs tournament is organized by Froppy, picks, ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". ";
                     a(href = "https://discord.gg/hpHngEY") : "Join the Discord server";
                     : " for details.";
@@ -47,7 +47,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
             article {
                 p {
                     : "Season 6 of the Scrubs tournament is organized by Froppy, picks, ";
-                    : English.join_html(data.organizers(transaction).await?);
+                    : English.join_html_opt(data.organizers(transaction).await?);
                     : ". ";
                     a(href = "https://discord.gg/hpHngEY") : "Join the Discord server";
                     : " for details.";
