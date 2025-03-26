@@ -428,28 +428,50 @@ impl Handler {
                     Entrants::Two(_) | Entrants::Three(_) => {
                         let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
                         if let Some(mut tfb_scores) = tfb_scores {
+                            let mut all_teams_found = true;
                             let mut teams = Vec::with_capacity(data.entrants.len());
                             for entrant in &data.entrants {
-                                let user = User::from_racetime(&mut *transaction, &entrant.user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                let team = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                teams.push((team, tfb_scores.remove(&entrant.user.id).expect("missing TFB score"), room.clone()));
+                                if_chain! {
+                                    if let Some(user) = User::from_racetime(&mut *transaction, &entrant.user.id).await.to_racetime()?;
+                                    if let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?;
+                                    then {
+                                        teams.push((team, tfb_scores.remove(&entrant.user.id).expect("missing TFB score"), room.clone()));
+                                    } else {
+                                        all_teams_found = false;
+                                    }
+                                }
                             }
-                            if let Ok(teams) = teams.try_into() {
-                                transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
-                            } else { //TODO separate function for reporting 3-entrant results
-                                report_ffa(ctx, cal_event, event, room).await?;
+                            if_chain! {
+                                if all_teams_found;
+                                if let Ok(teams) = teams.try_into();
+                                then {
+                                    transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                                } else { //TODO separate function for reporting 3-entrant results
+                                    report_ffa(ctx, cal_event, event, room).await?;
+                                }
                             }
                         } else {
+                            let mut all_teams_found = true;
                             let mut teams = Vec::with_capacity(data.entrants.len());
                             for entrant in &data.entrants {
-                                let user = User::from_racetime(&mut *transaction, &entrant.user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                let team = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?;
-                                teams.push((team, entrant.finish_time, room.clone()));
+                                if_chain! {
+                                    if let Some(user) = User::from_racetime(&mut *transaction, &entrant.user.id).await.to_racetime()?;
+                                    if let Some(team) = Team::from_event_and_member(&mut transaction, event.series, &event.event, user.id).await.to_racetime()?;
+                                    then {
+                                        teams.push((team, entrant.finish_time, room.clone()));
+                                    } else {
+                                        all_teams_found = false;
+                                    }
+                                }
                             }
-                            if let Ok(teams) = teams.try_into() {
-                                transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
-                            } else { //TODO separate function for reporting 3-entrant results
-                                report_ffa(ctx, cal_event, event, room).await?;
+                            if_chain! {
+                                if all_teams_found;
+                                if let Ok(teams) = teams.try_into();
+                                then {
+                                    transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                                } else { //TODO separate function for reporting 3-entrant results
+                                    report_ffa(ctx, cal_event, event, room).await?;
+                                }
                             }
                         }
                     }
@@ -499,19 +521,28 @@ impl Handler {
                                 }
                             }
                         }
+                        let mut all_teams_found = true;
                         let mut teams = Vec::with_capacity(team_times.len());
                         for (team_slug, times) in team_times {
-                            teams.push((
-                                Team::from_racetime(&mut transaction, event.series, &event.event, &team_slug).await.to_racetime()?.ok_or_else(|| Error::Custom(Box::new(sqlx::Error::RowNotFound)))?,
-                                times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many team members")),
-                                team_rooms.remove(&team_slug).expect("each team should have a room"),
-                            ));
+                            if let Some(team) = Team::from_racetime(&mut transaction, event.series, &event.event, &team_slug).await.to_racetime()? {
+                                teams.push((
+                                    team,
+                                    times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many team members")),
+                                    team_rooms.remove(&team_slug).expect("each team should have a room"),
+                                ));
+                            } else {
+                                all_teams_found = false;
+                            }
                         }
-                        if let Ok(teams) = teams.try_into() {
-                            transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
-                        } else { //TODO separate function for reporting 3-entrant results
-                            let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
-                            report_ffa(ctx, cal_event, event, room).await?;
+                        if_chain! {
+                            if all_teams_found;
+                            if let Ok(teams) = teams.try_into();
+                            then {
+                                transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                            } else { //TODO separate function for reporting 3-entrant results
+                                let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
+                                report_ffa(ctx, cal_event, event, room).await?;
+                            }
                         }
                     }
                 },
