@@ -306,7 +306,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     if cal_event.race.game.expect("found next game for race without game number") <= cal_event.race.game_count(&mut transaction).await.to_racetime()? / 2;
                     let discord_ctx = ctx.global_state.discord_ctx.read().await;
                     let data = discord_ctx.data.read().await;
-                    if let Some(command_ids) = data.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied());
+                    if let Some(Some(command_ids)) = data.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied());
                     then {
                         let mut msg_ctx = draft::MessageContext::Discord {
                             teams: next_game.teams().cloned().collect(),

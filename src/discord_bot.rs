@@ -205,7 +205,7 @@ pub(crate) struct CommandIds {
 }
 
 impl TypeMapKey for CommandIds {
-    type Value = HashMap<GuildId, CommandIds>;
+    type Value = HashMap<GuildId, Option<CommandIds>>;
 }
 
 pub(crate) const MULTIWORLD_GUILD: GuildId = GuildId::new(826935332867276820);
@@ -284,7 +284,9 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a DiscordCtx, interactio
     }
     Ok(match applicable_races.into_iter().at_most_one() {
         Ok(None) => {
-            let command_ids = *ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&interaction.guild_id()?)).expect("interaction called from outside registered guild");
+            let command_ids = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&interaction.guild_id()?))
+                .expect("interaction called from outside registered guild")
+                .expect("interaction called from guild with conflicting draft kinds");
             let mut content = MessageBuilder::default();
             match (Race::for_scheduling_channel(&mut transaction, &http_client, interaction.channel_id(), game, true).await?.is_empty(), game.is_some()) {
                 (false, false) => {
@@ -347,7 +349,9 @@ async fn check_draft_permissions<'a>(ctx: &'a DiscordCtx, interaction: &impl Gen
             if let Some(ref draft) = race.draft {
                 if draft.is_active_team(draft_kind, race.game, team.id).await? {
                     let msg_ctx = draft::MessageContext::Discord {
-                        command_ids: *ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)).expect("draft action called from outside registered guild"),
+                        command_ids: ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id))
+                            .expect("draft action called from outside registered guild")
+                            .expect("interaction called from guild with conflicting draft kinds"),
                         teams: race.teams().cloned().collect(),
                         transaction, guild_id, team,
                     };
@@ -546,6 +550,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         #[error("multiple conflicting draft kinds in the same Discord guild")]
                         struct DraftKindsError;
 
+                        ctx.data.write().await.entry::<CommandIds>().or_default().insert(guild.id, None);
                         return Err(Box::new(DraftKindsError) as Box<dyn std::error::Error + Send + Sync>)
                     }
                     draft_kind = Some(new_kind);
@@ -912,7 +917,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 Some(idx)
             });
             let commands = guild.set_commands(ctx, commands).await?;
-            ctx.data.write().await.entry::<CommandIds>().or_default().insert(guild.id, CommandIds {
+            ctx.data.write().await.entry::<CommandIds>().or_default().insert(guild.id, Some(CommandIds {
                 ban: ban.map(|idx| commands[idx].id),
                 delete_after: commands[delete_after].id,
                 draft: draft.map(|idx| commands[idx].id),
@@ -930,7 +935,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 status: commands[status].id,
                 watch_roles: commands[watch_roles].id,
                 yes: yes.map(|idx| commands[idx].id),
-            });
+            }));
             transaction.commit().await?;
             Ok(())
         }))
@@ -938,7 +943,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             match interaction {
                 Interaction::Command(interaction) => {
                     let guild_id = interaction.guild_id.expect("Discord slash command called outside of a guild");
-                    if let Some(&command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)) {
+                    if let Some(&Some(command_ids)) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id)) {
                         if Some(interaction.data.id) == command_ids.ban {
                             send_draft_settings_page(ctx, interaction, "ban", 0).await?;
                         } else if interaction.data.id == command_ids.delete_after {
@@ -2118,6 +2123,8 @@ pub(crate) enum Error {
     #[error(transparent)] EventData(#[from] event::DataError),
     #[error(transparent)] Serenity(#[from] serenity::Error),
     #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error("attempted to create scheduling thread in Discord guild that hasn't been initialized yet")]
+    UninitializedDiscordGuild(GuildId),
     #[error("attempted to create scheduling thread in Discord guild without command IDs")]
     UnregisteredDiscordGuild(GuildId),
 }
@@ -2125,7 +2132,11 @@ pub(crate) enum Error {
 pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transaction: Transaction<'a, Postgres>, race: &mut Race, game_count: i16) -> Result<Transaction<'a, Postgres>, Error> {
     let event = race.event(&mut transaction).await?;
     let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) else { return Ok(transaction) };
-    let Some(command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied()) else { return Err(Error::UnregisteredDiscordGuild(guild_id)) };
+    let command_ids = match ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied()) {
+        None => return Err(Error::UninitializedDiscordGuild(guild_id)),
+        Some(None) => return Err(Error::UnregisteredDiscordGuild(guild_id)),
+        Some(Some(command_ids)) => command_ids,
+    };
     let mut title = if_chain! {
         if let French = event.language;
         if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
