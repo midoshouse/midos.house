@@ -2126,7 +2126,7 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
     let event = race.event(&mut transaction).await?;
     let (Some(guild_id), Some(scheduling_channel)) = (event.discord_guild, event.discord_scheduling_channel) else { return Ok(transaction) };
     let Some(command_ids) = ctx.data.read().await.get::<CommandIds>().and_then(|command_ids| command_ids.get(&guild_id).copied()) else { return Err(Error::UnregisteredDiscordGuild(guild_id)) };
-    let title = if_chain! {
+    let mut title = if_chain! {
         if let French = event.language;
         if let (Some(phase), Some(round)) = (race.phase.as_ref(), race.round.as_ref());
         if let Some(Some(info_prefix)) = sqlx::query_scalar!("SELECT display_fr FROM phase_round_options WHERE series = $1 AND event = $2 AND phase = $3 AND round = $4", event.series as _, &event.event, phase, round).fetch_optional(&mut *transaction).await?;
@@ -2231,6 +2231,13 @@ pub(crate) async fn create_scheduling_thread<'a>(ctx: &DiscordCtx, mut transacti
             }
         }
     };
+    if title.len() > 100 {
+        // Discord thread titles are limited to 100 characters, unclear on specifics, limit to 100 bytes to be safe
+        let mut cutoff = 100 - "[…]".len();
+        while !title.is_char_boundary(cutoff) { cutoff -= 1 }
+        title.truncate(cutoff);
+        title.push_str("[…]");
+    }
     if let Some(draft_kind) = event.draft_kind() {
         if let Some(ref draft) = race.draft {
             let mut msg_ctx = draft::MessageContext::Discord {
