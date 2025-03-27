@@ -951,7 +951,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                             }
                             input(type = "text", name = &format!("startgg_id[{}]", team_member.id), value? = defaults.startgg_id(&team_member.id));
                             label(class = "help") {
-                                : "(Optional. Can be found by going to your ";
+                                : "(Optional. Can be copied by going to your ";
                                 a(href = "https://start.gg/") : "start.gg";
                                 : " profile and clicking your name.)";
                             }
@@ -1301,8 +1301,8 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                             if let Some(id) = value.startgg_id.get(&member.id) {
                                 if id.is_empty() {
                                     startgg_ids.push(None);
-                                } else if id.len() != 8 {
-                                    form.context.push_error(form::Error::validation("User IDs on start.gg are exactly 8 characters in length.").with_name(format!("startgg_id[{}]", member.id)));
+                                } else if !regex_is_match!("^[0-9a-f]{8}$", id) {
+                                    form.context.push_error(form::Error::validation("User IDs on start.gg are exactly 8 characters in length and consist only of digits and the letters a–f. You can find a start.gg user's ID on their profile next to their name.").with_name(format!("startgg_id[{}]", member.id)));
                                 } else {
                                     startgg_ids.push(Some(id.clone()));
                                 }
