@@ -78,6 +78,14 @@ impl Entrant {
         })
     }
 
+    pub(crate) fn name_is_plural(&self) -> bool {
+        match self {
+            Self::MidosHouseTeam(team) => team.name_is_plural(),
+            Self::Discord { .. } => false,
+            Self::Named { .. } => false, // assume solo (e.g. League)
+        }
+    }
+
     pub(crate) async fn to_html(&self, transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, running_text: bool) -> Result<RawHtml<String>, discord_bot::Error> {
         Ok(match self {
             Self::MidosHouseTeam(team) => team.to_html(transaction, running_text).await?,

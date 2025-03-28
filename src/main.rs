@@ -50,7 +50,8 @@ mod time;
 #[cfg(unix)] mod unix_socket;
 mod user;
 
-#[derive(Default, Clone, Copy, clap::ValueEnum)]
+#[allow(unused)] // variants only constructed under conditional compilation
+#[derive(Default, Clone, Copy)]
 enum Environment {
     #[cfg_attr(any(feature = "production", not(any(feature = "dev", feature = "local", debug_assertions))), default)]
     Production,
@@ -79,9 +80,9 @@ impl Environment {
 
     fn base_uri(&self) -> rocket::http::uri::Absolute<'static> {
         match self {
-            Self::Local => uri!("http://localhost:24814"),
-            Self::Dev => uri!("https://dev.midos.house"),
             Self::Production => uri!("https://midos.house"),
+            Self::Dev => uri!("https://dev.midos.house"),
+            Self::Local => uri!("http://localhost:24814"),
         }
     }
 }
