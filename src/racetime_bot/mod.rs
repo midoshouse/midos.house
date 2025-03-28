@@ -2194,6 +2194,7 @@ struct OfficialRaceData {
     restreams: HashMap<Url, RestreamState>,
     entrants: Vec<String>,
     fpa_invoked: bool,
+    /// Keys are racetime.gg team slugs if is_racetime_team_format, racetime.gg user IDs otherwise
     scores: HashMap<String, Option<tfb::Score>>,
 }
 

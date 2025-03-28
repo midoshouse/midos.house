@@ -366,7 +366,10 @@ impl Handler {
         let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, ref scores, .. }) = self.official_data else { return Ok(()) };
         if let Some(scores) = data.entrants.iter().map(|entrant| match entrant.status.value {
             EntrantStatusValue::Dnf => Some(tfb::Score::dnf(event.team_config)),
-            EntrantStatusValue::Done => scores.get(&entrant.user.id).and_then(|&score| score),
+            EntrantStatusValue::Done => {
+                let key = if let Some(ref team) = entrant.team { &team.slug } else { &entrant.user.id };
+                scores.get(key).and_then(|&score| score)
+            }
             _ => None,
         }.map(|score| (entrant.user.id.clone(), score))).collect() {
             ctx.say("All scores received. Thank you for playing Triforce Blitz, see you next race!").await?;
@@ -521,27 +524,53 @@ impl Handler {
                                 }
                             }
                         }
-                        let mut all_teams_found = true;
-                        let mut teams = Vec::with_capacity(team_times.len());
-                        for (team_slug, times) in team_times {
-                            if let Some(team) = Team::from_racetime(&mut transaction, event.series, &event.event, &team_slug).await.to_racetime()? {
-                                teams.push((
-                                    Entrant::MidosHouseTeam(team),
-                                    times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many team members")),
-                                    team_rooms.remove(&team_slug).expect("each team should have a room"),
-                                ));
-                            } else {
-                                all_teams_found = false;
+                        if let Some(mut tfb_scores) = tfb_scores {
+                            let mut all_teams_found = true;
+                            let mut teams = Vec::with_capacity(team_times.len());
+                            for team_slug in team_times.keys() {
+                                if let Some(team) = Team::from_racetime(&mut transaction, event.series, &event.event, &team_slug).await.to_racetime()? {
+                                    teams.push((
+                                        Entrant::MidosHouseTeam(team),
+                                        tfb_scores.remove(team_slug).expect("missing TFB score"),
+                                        team_rooms.remove(team_slug).expect("each team should have a room"),
+                                    ));
+                                } else {
+                                    all_teams_found = false;
+                                }
                             }
-                        }
-                        if_chain! {
-                            if all_teams_found;
-                            if let Ok(teams) = teams.try_into();
-                            then {
-                                transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
-                            } else { //TODO separate function for reporting 3-entrant results
-                                let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
-                                report_ffa(ctx, cal_event, event, room).await?;
+                            if_chain! {
+                                if all_teams_found;
+                                if let Ok(teams) = teams.try_into();
+                                then {
+                                    transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                                } else { //TODO separate function for reporting 3-entrant results
+                                    let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
+                                    report_ffa(ctx, cal_event, event, room).await?;
+                                }
+                            }
+                        } else {
+                            let mut all_teams_found = true;
+                            let mut teams = Vec::with_capacity(team_times.len());
+                            for (team_slug, times) in team_times {
+                                if let Some(team) = Team::from_racetime(&mut transaction, event.series, &event.event, &team_slug).await.to_racetime()? {
+                                    teams.push((
+                                        Entrant::MidosHouseTeam(team),
+                                        times.iter().try_fold(Duration::default(), |acc, &time| Some(acc + time?)).map(|total| total / u32::try_from(times.len()).expect("too many team members")),
+                                        team_rooms.remove(&team_slug).expect("each team should have a room"),
+                                    ));
+                                } else {
+                                    all_teams_found = false;
+                                }
+                            }
+                            if_chain! {
+                                if all_teams_found;
+                                if let Ok(teams) = teams.try_into();
+                                then {
+                                    transaction = report_1v1(transaction, ctx, cal_event, event, teams).await?;
+                                } else { //TODO separate function for reporting 3-entrant results
+                                    let room = Url::parse(&format!("https://{}{}", racetime_host(), data.url)).to_racetime()?;
+                                    report_ffa(ctx, cal_event, event, room).await?;
+                                }
                             }
                         }
                     }
