@@ -1704,8 +1704,8 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                     Series::TriforceBlitz => TimeDelta::hours(2),
                     Series::BattleRoyale => TimeDelta::hours(2) + TimeDelta::minutes(30),
                     Series::CoOp | Series::MixedPools | Series::Scrubs | Series::SpeedGaming | Series::WeTryToBeBetter => TimeDelta::hours(3),
-                    Series::CopaDoBrasil | Series::League | Series::Mq | Series::NineDaysOfSaws | Series::SongsOfHope | Series::Standard | Series::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
-                    Series::Multiworld | Series::Pictionary => TimeDelta::hours(4),
+                    Series::CopaDoBrasil | Series::League | Series::NineDaysOfSaws | Series::SongsOfHope | Series::Standard | Series::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
+                    Series::Mq | Series::Multiworld | Series::Pictionary => TimeDelta::hours(4),
                     Series::Rsl => TimeDelta::hours(4) + TimeDelta::minutes(30),
                 }))); //TODO better fallback duration estimates depending on participants
                 let mut urls = Vec::default();
