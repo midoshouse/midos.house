@@ -1053,6 +1053,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                         @match data.series {
                             | Series::CoOp
                             | Series::CopaDoBrasil
+                            | Series::MixedPools
                             | Series::Mq
                             | Series::Standard
                                 => p : "Please schedule your matches using the Discord match threads.";
@@ -1061,7 +1062,6 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                                 => p : "Planifiez vos matches dans les fils du canal dédié.";
                             | Series::BattleRoyale
                             | Series::League
-                            | Series::MixedPools
                             | Series::Rsl
                             | Series::Scrubs
                                 => @unimplemented // no signups on Mido's House

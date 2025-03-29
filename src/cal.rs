@@ -721,10 +721,6 @@ impl Race {
                 }
                 _ => unimplemented!(),
             },
-            Series::MixedPools => match &*event.event {
-                "1" | "2" | "3" => {}
-                _ => unimplemented!(),
-            },
             Series::Multiworld => match &*event.event {
                 "1" => {} // no match data available
                 _ => {} // new events are scheduled via Mido's House
@@ -865,6 +861,7 @@ impl Race {
             },
             | Series::CoOp //TODO add archives of seasons 1 and 2?
             | Series::CopaDoBrasil
+            | Series::MixedPools
             | Series::Mq
             | Series::SongsOfHope
             | Series::SpeedGaming

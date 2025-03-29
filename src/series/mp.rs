@@ -264,3 +264,9 @@ pub(crate) fn s3_settings() -> serde_json::Map<String, Json> {
         ]),
     ]
 }
+
+pub(crate) fn s4_settings() -> serde_json::Map<String, Json> {
+    let mut settings = s3_settings();
+    settings.insert(format!("user_message"), json!("4th Mixed Pools Tournament"));
+    settings
+}
