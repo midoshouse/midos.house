@@ -506,6 +506,17 @@ async fn internal_server_error(request: &Request<'_>) -> PageResult {
     }).await
 }
 
+#[rocket::catch(502)]
+async fn bad_gateway(request: &Request<'_>) -> PageResult {
+    let pool = request.guard::<&State<PgPool>>().await.expect("missing database pool");
+    let me = request.guard::<User>().await.succeeded();
+    let uri = request.guard::<Origin<'_>>().await.succeeded().unwrap_or_else(|| Origin(uri!(index)));
+    page(pool.begin().await?, &me, &uri, PageStyle { chests: ChestAppearances::TOKENS, ..PageStyle::default() }, "Bad Gateway — Mido's House", html! {
+        h1 : "Error 502: Bad Gateway";
+        p : "Sorry, there was a network error. Please try again. If this error persists, please contact Fenhl on Discord.";
+    }).await
+}
+
 #[rocket::catch(default)]
 async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
     eprintln!("responding with unexpected HTTP status code {} {} to request {request:?}", status.code, status.reason_lossy());
@@ -602,6 +613,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         bad_request,
         not_found,
         internal_server_error,
+        bad_gateway,
         fallback_catcher,
     ])
     .attach(rocket_csrf::Fairing::default())
