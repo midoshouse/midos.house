@@ -297,24 +297,45 @@ impl RaceSchedule {
         }
     }
 
-    pub(crate) fn set_async_start1(&mut self, new_start: DateTime<Utc>) {
-        match self {
-            Self::Async { start1, .. } => *start1 = Some(new_start),
-            _ => *self = Self::Async { start1: Some(new_start), start2: None, start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None },
+    pub(crate) fn set_async_start1(&mut self, new_start: DateTime<Utc>) -> Option<DateTime<Utc>> {
+        match *self {
+            Self::Unscheduled => {
+                *self = Self::Async { start1: Some(new_start), start2: None, start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None };
+                None
+            }
+            Self::Live { start, .. } => {
+                *self = Self::Async { start1: Some(new_start), start2: None, start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None };
+                Some(start)
+            }
+            Self::Async { ref mut start1, .. } => start1.replace(new_start),
         }
     }
 
-    pub(crate) fn set_async_start2(&mut self, new_start: DateTime<Utc>) {
-        match self {
-            Self::Async { start2, .. } => *start2 = Some(new_start),
-            _ => *self = Self::Async { start1: None, start2: Some(new_start), start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None },
+    pub(crate) fn set_async_start2(&mut self, new_start: DateTime<Utc>) -> Option<DateTime<Utc>> {
+        match *self {
+            Self::Unscheduled => {
+                *self = Self::Async { start1: None, start2: Some(new_start), start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None };
+                None
+            }
+            Self::Live { start, .. } => {
+                *self = Self::Async { start1: None, start2: Some(new_start), start3: None, end1: None, end2: None, end3: None, room1: None, room2: None, room3: None };
+                Some(start)
+            }
+            Self::Async { ref mut start2, .. } => start2.replace(new_start),
         }
     }
 
-    pub(crate) fn set_async_start3(&mut self, new_start: DateTime<Utc>) {
-        match self {
-            Self::Async { start3, .. } => *start3 = Some(new_start),
-            _ => *self = Self::Async { start1: None, start2: None, start3: Some(new_start), end1: None, end2: None, end3: None, room1: None, room2: None, room3: None },
+    pub(crate) fn set_async_start3(&mut self, new_start: DateTime<Utc>) -> Option<DateTime<Utc>> {
+        match *self {
+            Self::Unscheduled => {
+                *self = Self::Async { start1: None, start2: None, start3: Some(new_start), end1: None, end2: None, end3: None, room1: None, room2: None, room3: None };
+                None
+            }
+            Self::Live { start, .. } => {
+                *self = Self::Async { start1: None, start2: None, start3: Some(new_start), end1: None, end2: None, end3: None, room1: None, room2: None, room3: None };
+                Some(start)
+            }
+            Self::Async { ref mut start3, .. } => start3.replace(new_start),
         }
     }
 }

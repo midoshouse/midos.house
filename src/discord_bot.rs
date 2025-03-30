@@ -1486,19 +1486,18 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             )).await?;
                                             transaction.rollback().await?;
                                         } else {
-                                            let was_scheduled = !matches!(race.schedule, RaceSchedule::Unscheduled);
-                                            let kind = match race.entrants {
+                                            let (kind, was_scheduled) = match race.entrants {
                                                 Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
                                                     if team.as_ref().map_or(false, |team| team1 == team) {
-                                                        race.schedule.set_async_start1(start);
+                                                        let was_scheduled = race.schedule.set_async_start1(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
                                                         race.save(&mut transaction).await?;
-                                                        cal::EventKind::Async1
+                                                        (cal::EventKind::Async1, was_scheduled)
                                                     } else if team.as_ref().map_or(false, |team| team2 == team) {
-                                                        race.schedule.set_async_start2(start);
+                                                        let was_scheduled = race.schedule.set_async_start2(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
                                                         race.save(&mut transaction).await?;
-                                                        cal::EventKind::Async2
+                                                        (cal::EventKind::Async2, was_scheduled)
                                                     } else {
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                             .ephemeral(true)
@@ -1510,20 +1509,20 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 }
                                                 Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => {
                                                     if team.as_ref().map_or(false, |team| team1 == team) {
-                                                        race.schedule.set_async_start1(start);
+                                                        let was_scheduled = race.schedule.set_async_start1(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
                                                         race.save(&mut transaction).await?;
-                                                        cal::EventKind::Async1
+                                                        (cal::EventKind::Async1, was_scheduled)
                                                     } else if team.as_ref().map_or(false, |team| team2 == team) {
-                                                        race.schedule.set_async_start2(start);
+                                                        let was_scheduled = race.schedule.set_async_start2(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
                                                         race.save(&mut transaction).await?;
-                                                        cal::EventKind::Async2
+                                                        (cal::EventKind::Async2, was_scheduled)
                                                     } else if team.as_ref().map_or(false, |team| team3 == team) {
-                                                        race.schedule.set_async_start3(start);
+                                                        let was_scheduled = race.schedule.set_async_start3(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
                                                         race.save(&mut transaction).await?;
-                                                        cal::EventKind::Async3
+                                                        (cal::EventKind::Async3, was_scheduled)
                                                     } else {
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                             .ephemeral(true)
