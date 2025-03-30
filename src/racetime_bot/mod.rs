@@ -4550,14 +4550,16 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                                 let Some(event) = event::Data::new(&mut transaction, row.series, &row.event).await? else { continue };
                                 num_wanted_seeds += Race::for_event(&mut transaction, &global_state.http_client, &event).await?
                                     .into_iter()
-                                    .filter(|race| race
-                                        .cal_events()
-                                        .filter_map(|cal_event| cal_event.start())
-                                        .min()
-                                        .is_some_and(|start| {
-                                            let now = Utc::now();
-                                            start > now && start <= now + TimeDelta::days(1)
-                                        })
+                                    .filter(|race|
+                                        race.seed.files.is_none()
+                                        && race
+                                            .cal_events()
+                                            .filter_map(|cal_event| cal_event.start())
+                                            .min()
+                                            .is_some_and(|start| {
+                                                let now = Utc::now();
+                                                start > now && start <= now + TimeDelta::days(1)
+                                            })
                                     )
                                     .count();
                             }
