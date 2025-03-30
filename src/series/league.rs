@@ -85,6 +85,7 @@ pub(crate) struct Match {
     pub(crate) division: String,
     pub(crate) status: MatchStatus,
     pub(crate) restreamers: Vec<User>,
+    pub(crate) restream_language: Option<Language>,
 }
 
 #[derive(Debug, Deserialize)]

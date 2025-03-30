@@ -5,19 +5,19 @@ use crate::prelude::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Sequence, Deserialize, sqlx::Type, async_graphql::Enum, FromFormField)]
 #[sqlx(type_name = "language")]
 pub(crate) enum Language {
-    #[serde(rename = "en")]
+    #[serde(rename = "en", alias = "English")]
     #[sqlx(rename = "en")]
     #[field(value = "en")]
     English,
-    #[serde(rename = "fr")]
+    #[serde(rename = "fr", alias = "French")]
     #[sqlx(rename = "fr")]
     #[field(value = "fr")]
     French,
-    #[serde(rename = "de")]
+    #[serde(rename = "de", alias = "German")]
     #[sqlx(rename = "de")]
     #[field(value = "de")]
     German,
-    #[serde(rename = "pt")]
+    #[serde(rename = "pt", alias = "Portuguese")]
     #[sqlx(rename = "pt")]
     #[field(value = "pt")]
     Portuguese,
