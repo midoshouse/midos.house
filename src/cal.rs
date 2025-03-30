@@ -647,6 +647,17 @@ impl Race {
                     ).execute(&mut **transaction).await?;
                 }
             }
+            if race.restreamers.iter().any(|(language, new_restreamer)| found_race.restreamers.get(language).map_or(true, |old_restreamer| old_restreamer != new_restreamer)) {
+                if found_race.restreamers.iter().all(|(language, old_restreamer)| race.restreamers.get(language).map_or(true, |new_restreamer| old_restreamer == new_restreamer)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
+                    sqlx::query!("UPDATE races SET restreamer = $1, restreamer_fr = $2, restreamer_de = $3, restreamer_pt = $4 WHERE id = $5",
+                        race.restreamers.get(&English).or_else(|| found_race.restreamers.get(&English)),
+                        race.restreamers.get(&French).or_else(|| found_race.restreamers.get(&French)),
+                        race.restreamers.get(&German).or_else(|| found_race.restreamers.get(&German)),
+                        race.restreamers.get(&Portuguese).or_else(|| found_race.restreamers.get(&Portuguese)),
+                        found_race.id as _,
+                    ).execute(&mut **transaction).await?;
+                }
+            }
             Ok(())
         }
 
