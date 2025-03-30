@@ -24,7 +24,7 @@ production = []
 local = []
 
 [build-dependencies]
-gix = "0.70.0"
+git2 = "0.20" #TODO investigate replacing with gix
 thiserror = "2"
 
 [dependencies]

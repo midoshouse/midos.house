@@ -3851,7 +3851,6 @@ dependencies = [
  "enum-iterator",
  "futures",
  "git2",
- "gix",
  "graphql_client",
  "hyper 1.6.0",
  "ics",
