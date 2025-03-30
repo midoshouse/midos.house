@@ -581,105 +581,6 @@ impl Race {
     }
 
     pub(crate) async fn for_event(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, event: &event::Data<'_>) -> Result<Vec<Self>, Error> {
-        async fn update_race(transaction: &mut Transaction<'_, Postgres>, found_race: &mut Race, race: Race) -> sqlx::Result<()> {
-            if found_race.source != race.source { //TODO temporary code to add source data to existing races, remove once this has been applied
-                let (challonge_match, league_id, sheet_timestamp, startgg_event, startgg_set, speedgaming_id) = match race.source {
-                    Source::Manual => (None, None, None, None, None, None),
-                    Source::Challonge { id } => (Some(id), None, None, None, None, None),
-                    Source::League { id } => (None, Some(id), None, None, None, None),
-                    Source::Sheet { timestamp } => (None, None, Some(timestamp), None, None, None),
-                    Source::StartGG { ref event, ref set } => (None, None, None, Some(event), Some(set), None),
-                    Source::SpeedGaming { id } => (None, None, None, None, None, Some(id)),
-                };
-                sqlx::query!("UPDATE races SET
-                    challonge_match = $1,
-                    league_id = $2,
-                    sheet_timestamp = $3,
-                    startgg_event = $4,
-                    startgg_set = $5,
-                    speedgaming_id = $6
-                WHERE id = $7",
-                    challonge_match,
-                    league_id,
-                    sheet_timestamp,
-                    startgg_event,
-                    startgg_set as _,
-                    speedgaming_id,
-                    found_race.id as _,
-                ).execute(&mut **transaction).await?;
-            }
-            if !found_race.schedule.start_matches(&race.schedule) {
-                match race.schedule {
-                    RaceSchedule::Unscheduled => {
-                        found_race.schedule = RaceSchedule::Unscheduled;
-                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL, async_start3 = NULL WHERE id = $1", found_race.id as _).execute(&mut **transaction).await?;
-                    }
-                    RaceSchedule::Live { start, .. } => {
-                        match found_race.schedule {
-                            RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
-                            RaceSchedule::Live { start: ref mut old_start, .. } => *old_start = start,
-                            RaceSchedule::Async { .. } => unimplemented!("race listed as async in database was rescheduled as live"), //TODO
-                        }
-                        sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL, async_start3 = NULL WHERE id = $2", start, found_race.id as _).execute(&mut **transaction).await?;
-                    },
-                    RaceSchedule::Async { start1, start2, start3, .. } => {
-                        match found_race.schedule {
-                            RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
-                            RaceSchedule::Live { .. } => unimplemented!("race listed as live in database was rescheduled as async"), //TODO
-                            RaceSchedule::Async { start1: ref mut old_start1, start2: ref mut old_start2, start3: ref mut old_start3, .. } => {
-                                *old_start1 = start1;
-                                *old_start2 = start2;
-                                *old_start3 = start3;
-                            }
-                        }
-                        sqlx::query!("UPDATE races SET start = NULL, async_start1 = $1, async_start2 = $2, async_start3 = $3 WHERE id = $4", start1, start2, start3, found_race.id as _).execute(&mut **transaction).await?;
-                    }
-                }
-            }
-            if race.video_urls.iter().any(|(language, new_url)| found_race.video_urls.get(language).map_or(true, |old_url| old_url != new_url)) {
-                if found_race.video_urls.iter().all(|(language, old_url)| race.video_urls.get(language).map_or(true, |new_url| old_url == new_url)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
-                    sqlx::query!("UPDATE races SET video_url = $1, video_url_fr = $2, video_url_de = $3, video_url_pt = $4 WHERE id = $5",
-                        race.video_urls.get(&English).or_else(|| found_race.video_urls.get(&English)).map(|url| url.to_string()),
-                        race.video_urls.get(&French).or_else(|| found_race.video_urls.get(&French)).map(|url| url.to_string()),
-                        race.video_urls.get(&German).or_else(|| found_race.video_urls.get(&German)).map(|url| url.to_string()),
-                        race.video_urls.get(&Portuguese).or_else(|| found_race.video_urls.get(&Portuguese)).map(|url| url.to_string()),
-                        found_race.id as _,
-                    ).execute(&mut **transaction).await?;
-                }
-            }
-            if race.restreamers.iter().any(|(language, new_restreamer)| found_race.restreamers.get(language).map_or(true, |old_restreamer| old_restreamer != new_restreamer)) {
-                if found_race.restreamers.iter().all(|(language, old_restreamer)| race.restreamers.get(language).map_or(true, |new_restreamer| old_restreamer == new_restreamer)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
-                    sqlx::query!("UPDATE races SET restreamer = $1, restreamer_fr = $2, restreamer_de = $3, restreamer_pt = $4 WHERE id = $5",
-                        race.restreamers.get(&English).or_else(|| found_race.restreamers.get(&English)),
-                        race.restreamers.get(&French).or_else(|| found_race.restreamers.get(&French)),
-                        race.restreamers.get(&German).or_else(|| found_race.restreamers.get(&German)),
-                        race.restreamers.get(&Portuguese).or_else(|| found_race.restreamers.get(&Portuguese)),
-                        found_race.id as _,
-                    ).execute(&mut **transaction).await?;
-                }
-            }
-            Ok(())
-        }
-
-        async fn add_or_update_race(transaction: &mut Transaction<'_, Postgres>, races: &mut Vec<Race>, race: Race) -> sqlx::Result<()> {
-            if let Some(found_race) = races.iter_mut().find(|iter_race|
-                iter_race.series == race.series
-                && iter_race.event == race.event
-                && iter_race.phase == race.phase
-                && iter_race.round == race.round
-                && iter_race.game == race.game
-                && iter_race.entrants == race.entrants
-                && !iter_race.schedule_locked
-            ) {
-                update_race(transaction, found_race, race).await?;
-            } else {
-                // add race to database
-                race.save(transaction).await?;
-                races.push(race);
-            }
-            Ok(())
-        }
-
         let now = Utc::now();
         let mut races = Vec::default();
         for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut **transaction).await? {
@@ -690,69 +591,7 @@ impl Race {
                 "1" => {}
                 _ => unimplemented!(),
             },
-            Series::League => match &*event.event {
-                "4" => {}
-                "5" => {}
-                "6" => {}
-                "7" => {}
-                "8" => {
-                    let schedule = http_client.get("https://league.ootrandomizer.com/scheduleJson")
-                        .send().await?
-                        .detailed_error_for_status().await?
-                        .json_with_text_in_error::<league::Schedule>().await?;
-                    for race in schedule.matches {
-                        if race.id <= 502 { continue } // seasons 5 to 7
-                        let id = Id::<Races>::new(&mut *transaction).await?;
-                        add_or_update_race(&mut *transaction, &mut races, Self {
-                            series: event.series,
-                            event: event.event.to_string(),
-                            source: Source::League { id: race.id },
-                            entrants: Entrants::Two([
-                                race.player_a.into_entrant(http_client).await?,
-                                race.player_b.into_entrant(http_client).await?,
-                            ]),
-                            phase: None,
-                            round: Some(race.division),
-                            game: None,
-                            scheduling_thread: None,
-                            schedule: RaceSchedule::Live {
-                                start: race.time_utc,
-                                end: None,
-                                room: None,
-                            },
-                            schedule_updated_at: None,
-                            draft: None,
-                            seed: seed::Data::default(),
-                            video_urls: if let Some(twitch_username) = race.restreamers.iter().filter_map(|restreamer| restreamer.twitch_username.as_ref()).at_most_one().expect("multiple restreams for a League race") {
-                                //HACK: League schedule does not include language info, mark as English
-                                iter::once((English, Url::parse(&format!("https://twitch.tv/{twitch_username}"))?)).collect()
-                            } else {
-                                HashMap::default()
-                            },
-                            restreamers: if_chain! {
-                                if let Some(restreamer) = race.restreamers.into_iter().at_most_one().expect("multiple restreams for a League race");
-                                if let Some(racetime_id) = restreamer.racetime_id(http_client).await?;
-                                then {
-                                    //HACK: League schedule does not include language info, mark as English
-                                    iter::once((English, racetime_id)).collect()
-                                } else {
-                                    HashMap::default()
-                                }
-                            },
-                            last_edited_by: None,
-                            last_edited_at: None,
-                            ignored: match race.status {
-                                league::MatchStatus::Canceled => true,
-                                league::MatchStatus::Confirmed => false,
-                            },
-                            schedule_locked: false,
-                            notified: false,
-                            id,
-                        }).await?;
-                    }
-                }
-                _ => unimplemented!(),
-            },
+            Series::League => {} // this series is scheduled via the League website, which is auto-imported
             Series::Multiworld => match &*event.event {
                 "1" => {} // no match data available
                 _ => {} // new events are scheduled via Mido's House
@@ -1566,6 +1405,105 @@ pub(crate) enum RaceHandleMode {
     Notify,
     RaceTime,
     Discord,
+}
+
+async fn update_race(transaction: &mut Transaction<'_, Postgres>, found_race: &mut Race, race: Race) -> sqlx::Result<()> {
+    if found_race.source != race.source { //TODO temporary code to add source data to existing races, remove once this has been applied
+        let (challonge_match, league_id, sheet_timestamp, startgg_event, startgg_set, speedgaming_id) = match race.source {
+            Source::Manual => (None, None, None, None, None, None),
+            Source::Challonge { id } => (Some(id), None, None, None, None, None),
+            Source::League { id } => (None, Some(id), None, None, None, None),
+            Source::Sheet { timestamp } => (None, None, Some(timestamp), None, None, None),
+            Source::StartGG { ref event, ref set } => (None, None, None, Some(event), Some(set), None),
+            Source::SpeedGaming { id } => (None, None, None, None, None, Some(id)),
+        };
+        sqlx::query!("UPDATE races SET
+            challonge_match = $1,
+            league_id = $2,
+            sheet_timestamp = $3,
+            startgg_event = $4,
+            startgg_set = $5,
+            speedgaming_id = $6
+        WHERE id = $7",
+            challonge_match,
+            league_id,
+            sheet_timestamp,
+            startgg_event,
+            startgg_set as _,
+            speedgaming_id,
+            found_race.id as _,
+        ).execute(&mut **transaction).await?;
+    }
+    if !found_race.schedule.start_matches(&race.schedule) {
+        match race.schedule {
+            RaceSchedule::Unscheduled => {
+                found_race.schedule = RaceSchedule::Unscheduled;
+                sqlx::query!("UPDATE races SET start = NULL, async_start1 = NULL, async_start2 = NULL, async_start3 = NULL WHERE id = $1", found_race.id as _).execute(&mut **transaction).await?;
+            }
+            RaceSchedule::Live { start, .. } => {
+                match found_race.schedule {
+                    RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
+                    RaceSchedule::Live { start: ref mut old_start, .. } => *old_start = start,
+                    RaceSchedule::Async { .. } => unimplemented!("race listed as async in database was rescheduled as live"), //TODO
+                }
+                sqlx::query!("UPDATE races SET start = $1, async_start1 = NULL, async_start2 = NULL, async_start3 = NULL WHERE id = $2", start, found_race.id as _).execute(&mut **transaction).await?;
+            },
+            RaceSchedule::Async { start1, start2, start3, .. } => {
+                match found_race.schedule {
+                    RaceSchedule::Unscheduled => found_race.schedule = race.schedule,
+                    RaceSchedule::Live { .. } => unimplemented!("race listed as live in database was rescheduled as async"), //TODO
+                    RaceSchedule::Async { start1: ref mut old_start1, start2: ref mut old_start2, start3: ref mut old_start3, .. } => {
+                        *old_start1 = start1;
+                        *old_start2 = start2;
+                        *old_start3 = start3;
+                    }
+                }
+                sqlx::query!("UPDATE races SET start = NULL, async_start1 = $1, async_start2 = $2, async_start3 = $3 WHERE id = $4", start1, start2, start3, found_race.id as _).execute(&mut **transaction).await?;
+            }
+        }
+    }
+    if race.video_urls.iter().any(|(language, new_url)| found_race.video_urls.get(language).map_or(true, |old_url| old_url != new_url)) {
+        if found_race.video_urls.iter().all(|(language, old_url)| race.video_urls.get(language).map_or(true, |new_url| old_url == new_url)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
+            sqlx::query!("UPDATE races SET video_url = $1, video_url_fr = $2, video_url_de = $3, video_url_pt = $4 WHERE id = $5",
+                race.video_urls.get(&English).or_else(|| found_race.video_urls.get(&English)).map(|url| url.to_string()),
+                race.video_urls.get(&French).or_else(|| found_race.video_urls.get(&French)).map(|url| url.to_string()),
+                race.video_urls.get(&German).or_else(|| found_race.video_urls.get(&German)).map(|url| url.to_string()),
+                race.video_urls.get(&Portuguese).or_else(|| found_race.video_urls.get(&Portuguese)).map(|url| url.to_string()),
+                found_race.id as _,
+            ).execute(&mut **transaction).await?;
+        }
+    }
+    if race.restreamers.iter().any(|(language, new_restreamer)| found_race.restreamers.get(language).map_or(true, |old_restreamer| old_restreamer != new_restreamer)) {
+        if found_race.restreamers.iter().all(|(language, old_restreamer)| race.restreamers.get(language).map_or(true, |new_restreamer| old_restreamer == new_restreamer)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
+            sqlx::query!("UPDATE races SET restreamer = $1, restreamer_fr = $2, restreamer_de = $3, restreamer_pt = $4 WHERE id = $5",
+                race.restreamers.get(&English).or_else(|| found_race.restreamers.get(&English)),
+                race.restreamers.get(&French).or_else(|| found_race.restreamers.get(&French)),
+                race.restreamers.get(&German).or_else(|| found_race.restreamers.get(&German)),
+                race.restreamers.get(&Portuguese).or_else(|| found_race.restreamers.get(&Portuguese)),
+                found_race.id as _,
+            ).execute(&mut **transaction).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn add_or_update_race(transaction: &mut Transaction<'_, Postgres>, races: &mut Vec<Race>, race: Race) -> sqlx::Result<()> {
+    if let Some(found_race) = races.iter_mut().find(|iter_race|
+        iter_race.series == race.series
+        && iter_race.event == race.event
+        && iter_race.phase == race.phase
+        && iter_race.round == race.round
+        && iter_race.game == race.game
+        && iter_race.entrants == race.entrants
+        && !iter_race.schedule_locked
+    ) {
+        update_race(transaction, found_race, race).await?;
+    } else {
+        // add race to database
+        race.save(transaction).await?;
+        races.push(race);
+    }
+    Ok(())
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -2590,7 +2528,66 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                 match event.match_source() {
                     MatchSource::Manual => {}
                     MatchSource::Challonge { .. } => {} // Challonge's API doesn't provide enough data to automate race imports
-                    MatchSource::League => {}
+                    MatchSource::League => {
+                        let mut races = Vec::default();
+                        for id in sqlx::query_scalar!(r#"SELECT id AS "id: Id<Races>" FROM races WHERE series = $1 AND event = $2"#, event.series as _, &event.event).fetch_all(&mut *transaction).await? {
+                            races.push(Race::from_id(&mut transaction, &http_client, id).await?);
+                        }
+                        let schedule = http_client.get("https://league.ootrandomizer.com/scheduleJson")
+                            .send().await?
+                            .detailed_error_for_status().await?
+                            .json_with_text_in_error::<league::Schedule>().await?;
+                        for race in schedule.matches {
+                            if race.id <= 502 { continue } // seasons 5 to 7
+                            let id = Id::<Races>::new(&mut transaction).await?;
+                            add_or_update_race(&mut transaction, &mut races, Race {
+                                series: event.series,
+                                event: event.event.to_string(),
+                                source: Source::League { id: race.id },
+                                entrants: Entrants::Two([
+                                    race.player_a.into_entrant(&http_client).await?,
+                                    race.player_b.into_entrant(&http_client).await?,
+                                ]),
+                                phase: None,
+                                round: Some(race.division),
+                                game: None,
+                                scheduling_thread: None,
+                                schedule: RaceSchedule::Live {
+                                    start: race.time_utc,
+                                    end: None,
+                                    room: None,
+                                },
+                                schedule_updated_at: None,
+                                draft: None,
+                                seed: seed::Data::default(),
+                                video_urls: if let Some(twitch_username) = race.restreamers.iter().filter_map(|restreamer| restreamer.twitch_username.as_ref()).at_most_one().expect("multiple restreams for a League race") {
+                                    //HACK: League schedule does not include language info, mark as English
+                                    iter::once((English, Url::parse(&format!("https://twitch.tv/{twitch_username}"))?)).collect()
+                                } else {
+                                    HashMap::default()
+                                },
+                                restreamers: if_chain! {
+                                    if let Some(restreamer) = race.restreamers.into_iter().at_most_one().expect("multiple restreams for a League race");
+                                    if let Some(racetime_id) = restreamer.racetime_id(&http_client).await?;
+                                    then {
+                                        //HACK: League schedule does not include language info, mark as English
+                                        iter::once((English, racetime_id)).collect()
+                                    } else {
+                                        HashMap::default()
+                                    }
+                                },
+                                last_edited_by: None,
+                                last_edited_at: None,
+                                ignored: match race.status {
+                                    league::MatchStatus::Canceled => true,
+                                    league::MatchStatus::Confirmed => false,
+                                },
+                                schedule_locked: false,
+                                notified: false,
+                                id,
+                            }).await?;
+                        }
+                    }
                     MatchSource::StartGG(event_slug) => {
                         let (races, _) = startgg::races_to_import(&mut transaction, &http_client, &config, &event, event_slug).await?;
                         for race in races {
