@@ -1,5 +1,4 @@
 use {
-    futures::future::TryFutureExt as _,
     rocket::{
         http::{
             Cookie,

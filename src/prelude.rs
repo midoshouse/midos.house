@@ -58,6 +58,7 @@ pub(crate) use {
             self,
             Future,
             FutureExt as _,
+            TryFutureExt as _,
         },
         stream::{
             self,

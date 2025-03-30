@@ -4527,19 +4527,28 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
     Ok(Some(msg))
 }
 
-async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch::Receiver<()>, mut shutdown: rocket::Shutdown) -> Result<(), Error> {
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum PrepareSeedsError {
+    #[error(transparent)] Cal(#[from] cal::Error),
+    #[error(transparent)] EventData(#[from] event::DataError),
+    #[error(transparent)] Roll(#[from] RollError),
+    #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+}
+
+async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch::Receiver<()>, mut shutdown: rocket::Shutdown) -> Result<(), PrepareSeedsError> {
     'outer: loop {
-        let event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&global_state.db_pool).await.to_racetime()?;
+        let event_rows = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE end_time IS NULL OR end_time > NOW()"#).fetch_all(&global_state.db_pool).await?;
         for goal in all::<Goal>() {
             if let Some(settings) = goal.single_settings() {
                 if goal.preroll_seeds() == PrerollMode::Long && event_rows.iter().any(|row| goal.matches_event(row.series, &row.event)) {
                     loop {
-                        let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
+                        let mut transaction = global_state.db_pool.begin().await?;
                         let mut num_wanted_seeds = 1;
                         for row in &event_rows {
                             if goal.matches_event(row.series, &row.event) {
-                                let Some(event) = event::Data::new(&mut transaction, row.series, &row.event).await.to_racetime()? else { continue };
-                                num_wanted_seeds += Race::for_event(&mut transaction, &global_state.http_client, &event).await.to_racetime()?
+                                let Some(event) = event::Data::new(&mut transaction, row.series, &row.event).await? else { continue };
+                                num_wanted_seeds += Race::for_event(&mut transaction, &global_state.http_client, &event).await?
                                     .into_iter()
                                     .filter(|race| race
                                         .cal_events()
@@ -4553,9 +4562,9 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                                     .count();
                             }
                         }
-                        transaction.commit().await.to_racetime()?;
+                        transaction.commit().await?;
                         let num_prerolled_seeds = sqlx::query_scalar!("SELECT 1 FROM prerolled_seeds WHERE goal_name = $1", goal.as_str()).fetch(&global_state.db_pool)
-                            .try_fold(0, |acc, _| future::ok(acc + 1)).await.to_racetime()?;
+                            .try_fold(0, |acc, _| future::ok(acc + 1)).await?;
                         if num_prerolled_seeds >= num_wanted_seeds { break }
                         'seed: loop {
                             let mut seed_rx = global_state.clone().roll_seed(
@@ -4574,7 +4583,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                                         SeedRollUpdate::MovedForward(_) |
                                         SeedRollUpdate::Started => {}
                                         SeedRollUpdate::Done { seed, rsl_preset: _, unlock_spoiler_log: _ } => {
-                                            let extra = seed.extra(Utc::now()).await.to_racetime()?;
+                                            let extra = seed.extra(Utc::now()).await?;
                                             let [hash1, hash2, hash3, hash4, hash5] = match extra.file_hash {
                                                 Some(hash) => hash.map(Some),
                                                 None => [None; 5],
@@ -4596,7 +4605,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                                                         hash5 as _,
                                                         extra.password.map(|password| password.into_iter().map(char::from).collect::<String>()),
                                                         goal.unlock_spoiler_log(false, false) == UnlockSpoilerLog::Progression,
-                                                    ).execute(&global_state.db_pool).await.to_racetime()?;
+                                                    ).execute(&global_state.db_pool).await?;
                                                 }
                                                 _ => unimplemented!("unexpected seed files in prerolled seed"),
                                             }
@@ -4610,7 +4619,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                                             }
                                             continue 'seed
                                         }
-                                        SeedRollUpdate::Error(e) => return Err(e).to_racetime(),
+                                        SeedRollUpdate::Error(e) => return Err(e.into()),
                                         #[cfg(unix)] SeedRollUpdate::Message(_) => {}
                                     },
                                 }
@@ -4630,15 +4639,24 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
     Ok(())
 }
 
-async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shutdown) -> Result<(), Error> {
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum CreateRoomsError {
+    #[error(transparent)] Cal(#[from] cal::Error),
+    #[error(transparent)] Discord(#[from] serenity::Error),
+    #[error(transparent)] EventData(#[from] event::DataError),
+    #[error(transparent)] RaceTime(#[from] Error),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+}
+
+async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shutdown) -> Result<(), CreateRoomsError> {
     loop {
         select! {
             () = &mut shutdown => break,
             _ = sleep(Duration::from_secs(30)) => { //TODO exact timing (coordinate with everything that can change the schedule)
                 lock!(new_room_lock = global_state.new_room_lock; { // make sure a new room isn't handled before it's added to the database
-                    let mut transaction = global_state.db_pool.begin().await.to_racetime()?;
-                    for cal_event in cal::Event::rooms_to_open(&mut transaction, &global_state.http_client).await.to_racetime()? {
-                        let event = cal_event.race.event(&mut transaction).await.to_racetime()?;
+                    let mut transaction = global_state.db_pool.begin().await?;
+                    for cal_event in cal::Event::rooms_to_open(&mut transaction, &global_state.http_client).await? {
+                        let event = cal_event.race.event(&mut transaction).await?;
                         if let Some(msg) = create_room(&mut transaction, &*global_state.discord_ctx.read().await, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.extra_room_tx, &global_state.http_client, global_state.clean_shutdown.clone(), &cal_event, &event).await? {
                             let ctx = global_state.discord_ctx.read().await;
                             if cal_event.is_private_async_part() {
@@ -4648,38 +4666,38 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                     _ => format!("unlisted room for async part: {msg}"),
                                 };
                                 if let Some(channel) = event.discord_organizer_channel {
-                                    channel.say(&*ctx, &msg).await.to_racetime()?;
+                                    channel.say(&*ctx, &msg).await?;
                                 } else {
                                     // DM Fenhl
-                                    FENHL.create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, &msg).await.to_racetime()?;
+                                    FENHL.create_dm_channel(&*ctx).await?.say(&*ctx, &msg).await?;
                                 }
                                 for team in cal_event.active_teams() {
-                                    for member in team.members(&mut transaction).await.to_racetime()? {
+                                    for member in team.members(&mut transaction).await? {
                                         if let Some(discord) = member.discord {
-                                            discord.id.create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, &msg).await.to_racetime()?;
+                                            discord.id.create_dm_channel(&*ctx).await?.say(&*ctx, &msg).await?;
                                         }
                                     }
                                 }
                             } else {
                                 if let Some(channel) = event.discord_race_room_channel {
                                     if let Some(thread) = cal_event.race.scheduling_thread {
-                                        thread.say(&*ctx, &msg).await.to_racetime()?;
-                                        channel.send_message(&*ctx, CreateMessage::default().content(msg).allowed_mentions(CreateAllowedMentions::default())).await.to_racetime()?;
+                                        thread.say(&*ctx, &msg).await?;
+                                        channel.send_message(&*ctx, CreateMessage::default().content(msg).allowed_mentions(CreateAllowedMentions::default())).await?;
                                     } else {
-                                        channel.say(&*ctx, msg).await.to_racetime()?;
+                                        channel.say(&*ctx, msg).await?;
                                     }
                                 } else if let Some(thread) = cal_event.race.scheduling_thread {
-                                    thread.say(&*ctx, msg).await.to_racetime()?;
+                                    thread.say(&*ctx, msg).await?;
                                 } else if let Some(channel) = event.discord_organizer_channel {
-                                    channel.say(&*ctx, msg).await.to_racetime()?;
+                                    channel.say(&*ctx, msg).await?;
                                 } else {
                                     // DM Fenhl
-                                    FENHL.create_dm_channel(&*ctx).await.to_racetime()?.say(&*ctx, msg).await.to_racetime()?;
+                                    FENHL.create_dm_channel(&*ctx).await?.say(&*ctx, msg).await?;
                                 }
                             }
                         }
                     }
-                    transaction.commit().await.to_racetime()?;
+                    transaction.commit().await?;
                 });
             }
         }
@@ -4687,7 +4705,13 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
     Ok(())
 }
 
-async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRaceTime, shutdown: rocket::Shutdown) -> Result<(), Error> {
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum HandleRoomsError {
+    #[error(transparent)] RaceTime(#[from] Error),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
+}
+
+async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRaceTime, shutdown: rocket::Shutdown) -> Result<(), HandleRoomsError> {
     let mut last_crash = Instant::now();
     let mut wait_time = Duration::from_secs(1);
     loop {
@@ -4705,24 +4729,31 @@ async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRa
                 }
                 eprintln!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true));
                 if wait_time >= Duration::from_secs(16) {
-                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await.to_racetime()?;
+                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("failed to connect to racetime.gg (retrying in {}): {e} ({e:?})", English.format_duration(wait_time, true)))).await?;
                 }
                 sleep(wait_time).await;
                 last_crash = Instant::now();
             }
             Err(e) => {
-                wheel::night_report(&format!("{}/error", night_path()), Some(&format!("error handling racetime.gg rooms: {e} ({e:?})"))).await.to_racetime()?;
-                break Err(e)
+                wheel::night_report(&format!("{}/error", night_path()), Some(&format!("error handling racetime.gg rooms: {e} ({e:?})"))).await?;
+                break Err(e.into())
             }
         }
     }
 }
 
-pub(crate) async fn main(config: Config, shutdown: rocket::Shutdown, global_state: Arc<GlobalState>, seed_cache_rx: watch::Receiver<()>) -> Result<(), Error> {
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum MainError {
+    #[error(transparent)] CreateRooms(#[from] CreateRoomsError),
+    #[error(transparent)] HandleRooms(#[from] HandleRoomsError),
+    #[error(transparent)] PrepareSeeds(#[from] PrepareSeedsError),
+}
+
+pub(crate) async fn main(config: Config, shutdown: rocket::Shutdown, global_state: Arc<GlobalState>, seed_cache_rx: watch::Receiver<()>) -> Result<(), MainError> {
     let ((), (), ()) = tokio::try_join!(
-        prepare_seeds(global_state.clone(), seed_cache_rx, shutdown.clone()),
-        create_rooms(global_state.clone(), shutdown.clone()),
-        handle_rooms(global_state, if Environment::default().is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }, shutdown),
+        prepare_seeds(global_state.clone(), seed_cache_rx, shutdown.clone()).err_into::<MainError>(),
+        create_rooms(global_state.clone(), shutdown.clone()).err_into(),
+        handle_rooms(global_state, if Environment::default().is_dev() { &config.racetime_bot_dev } else { &config.racetime_bot_production }, shutdown).err_into(),
     )?;
     Ok(())
 }
