@@ -638,6 +638,7 @@ impl Goal {
                 ctx.say("Enable Master Quest using e.g. “!seed base 6mq” or “!seed draft advanced 12mq” / Activez les donjons Master Quest en utilisant par exemple : “!seed base 6mq” ou “!seed draft advanced 12mq”").await?;
             }
             Self::TriforceBlitz => {
+                ctx.say("!seed s4coop: Triforce Blitz season 4 co-op settings").await?;
                 ctx.say("!seed s3: Triforce Blitz season 3 settings").await?;
                 ctx.say("!seed jr: Jabu's Revenge").await?;
                 ctx.say("!seed s2: Triforce Blitz season 2 settings").await?;
@@ -750,6 +751,7 @@ impl Goal {
                                 row.locked_spoiler_log_path,
                                 None,
                                 None,
+                                false,
                                 None,
                                 row.hash1,
                                 row.hash2,
@@ -1168,6 +1170,7 @@ impl Goal {
                 [arg] if arg == "jr" => SeedCommandParseResult::Tfb { version: "v7.1.143-blitz-0.43", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz: Jabu's Revenge seed") },
                 [arg] if arg == "s2" => SeedCommandParseResult::Tfb { version: "v7.1.3-blitz-0.42", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S2 seed") },
                 [arg] if arg == "s3" => SeedCommandParseResult::Tfb { version: "LATEST", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S3 seed") },
+                [arg] if arg == "s4coop" => SeedCommandParseResult::TfbDev { coop: true, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 co-op seed") },
                 [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
             },
         })
@@ -1204,6 +1207,13 @@ pub(crate) enum SeedCommandParseResult {
     },
     Tfb {
         version: &'static str,
+        unlock_spoiler_log: UnlockSpoilerLog,
+        language: Language,
+        article: &'static str,
+        description: String,
+    },
+    TfbDev {
+        coop: bool,
         unlock_spoiler_log: UnlockSpoilerLog,
         language: Language,
         article: &'static str,
@@ -1622,7 +1632,8 @@ impl GlobalState {
                     Err(e) => return Err(e.into()),
                 }
             };
-            let uuid = tfb::parse_seed_url(response.url()).ok_or(RollError::TfbUrl)?;
+            let (is_dev, uuid) = tfb::parse_seed_url(response.url()).ok_or(RollError::TfbUrl)?;
+            debug_assert!(!is_dev);
             let response_body = response.text().await?;
             let file_hash = kuchiki::parse_html().one(response_body)
                 .select_first(".hash-icons").map_err(|()| RollError::TfbHtml)?
@@ -1635,7 +1646,88 @@ impl GlobalState {
                 seed: seed::Data {
                     file_hash: Some(file_hash.try_into().map_err(|_| RollError::TfbHash)?),
                     password: None,
-                    files: Some(seed::Files::TriforceBlitz { uuid }),
+                    files: Some(seed::Files::TriforceBlitz { is_dev, uuid }),
+                    progression_spoiler: unlock_spoiler_log == UnlockSpoilerLog::Progression,
+                },
+                rsl_preset: None,
+                unlock_spoiler_log,
+            }).await;
+            Ok(())
+        }.then(|res| async move {
+            match res {
+                Ok(()) => {}
+                Err(e) => { let _ = update_tx2.send(SeedRollUpdate::Error(e)).await; }
+            }
+        }));
+        update_rx
+    }
+
+    pub(crate) fn roll_tfb_dev_seed(self: Arc<Self>, delay_until: Option<DateTime<Utc>>, coop: bool, room: Option<String>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
+        let (update_tx, update_rx) = mpsc::channel(128);
+        let update_tx2 = update_tx.clone();
+        tokio::spawn(async move {
+            if let Some(max_sleep_duration) = delay_until.and_then(|delay_until| (delay_until - TimeDelta::minutes(15) - Utc::now()).to_std().ok()) {
+                // triforceblitz.com has a list of recently rolled seeds, making it easy to find a seed if you know when it was rolled.
+                // This is especially true for open races, whose rooms are opened an entire hour before start.
+                // To make this a bit more difficult, we start rolling the seed at a random point between the room being opened and 30 minutes before start.
+                let sleep_duration = rng().random_range(Duration::default()..max_sleep_duration);
+                sleep(sleep_duration).await;
+            }
+            let _ = update_tx.send(SeedRollUpdate::Started).await;
+            let mut form_data = match unlock_spoiler_log {
+                UnlockSpoilerLog::Now => vec![
+                    ("unlockMode", "UNLOCKED"),
+                ],
+                UnlockSpoilerLog::Progression => panic!("progression spoiler mode not supported by triforceblitz.com"),
+                UnlockSpoilerLog::After => if let Some(ref room) = room {
+                    vec![
+                        ("unlockMode", "RACETIME"),
+                        ("racetimeUrl", room),
+                    ]
+                } else {
+                    panic!("cannot set a Triforce Blitz seed to unlock after the race without a race room")
+                },
+                UnlockSpoilerLog::Never => vec![
+                    ("unlockMode", "LOCKED"),
+                ],
+            };
+            if coop {
+                form_data.push(("cooperative", "true"));
+            }
+            let mut attempts = 0;
+            let response = loop {
+                attempts += 1;
+                let response = self.http_client
+                    .post("https://dev.triforceblitz.com/seeds/generate")
+                    .form(&form_data)
+                    .timeout(Duration::from_secs(5 * 60))
+                    .send().await?
+                    .detailed_error_for_status().await;
+                match response {
+                    Ok(response) => break response,
+                    Err(wheel::Error::ResponseStatus { inner, .. }) if attempts < 3 && inner.status().is_some_and(|status| status.is_server_error()) => continue,
+                    Err(e) => return Err(e.into()),
+                }
+            };
+            let (is_dev, uuid) = tfb::parse_seed_url(response.url()).ok_or(RollError::TfbUrl)?;
+            debug_assert!(is_dev);
+            /*
+            let patch = self.http_client
+                .get(format!("https://dev.triforceblitz.com/seeds/{uuid}/patch"))
+                .send().await?
+                .detailed_error_for_status().await?
+                .bytes().await?;
+            if coop {
+                //TODO decode patch as zip, extract file hash from P1.zpf
+            } else {
+                //TODO extract file hash from patch, which is a .zpf
+            }
+            */
+            let _ = update_tx.send(SeedRollUpdate::Done {
+                seed: seed::Data {
+                    file_hash: None,
+                    password: None,
+                    files: Some(seed::Files::TriforceBlitz { is_dev, uuid }),
                     progression_spoiler: unlock_spoiler_log == UnlockSpoilerLog::Progression,
                 },
                 rsl_preset: None,
@@ -1897,10 +1989,10 @@ impl SeedRollUpdate {
                                 *id as i64, gen_time, file_stem, cal_event.race.id as _,
                             ).execute(db_pool).await.to_racetime()?;
                         }
-                        seed::Files::TriforceBlitz { uuid } => {
+                        seed::Files::TriforceBlitz { is_dev, uuid } => {
                             sqlx::query!(
-                                "UPDATE races SET tfb_uuid = $1 WHERE id = $2",
-                                uuid, cal_event.race.id as _,
+                                "UPDATE races SET is_tfb_dev = $1, tfb_uuid = $2 WHERE id = $3",
+                                is_dev, uuid, cal_event.race.id as _,
                             ).execute(db_pool).await.to_racetime()?;
                         }
                         seed::Files::TfbSotd { .. } => unimplemented!("Triforce Blitz seed of the day not supported for official races"),
@@ -1935,7 +2027,8 @@ impl SeedRollUpdate {
                 let seed_url = match seed.files.as_ref().expect("received seed with no files") {
                     seed::Files::MidosHouse { file_stem, .. } => format!("{}/seed/{file_stem}", base_uri()),
                     seed::Files::OotrWeb { id, .. } => format!("https://ootrandomizer.com/seed/get?id={id}"),
-                    seed::Files::TriforceBlitz { uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
+                    seed::Files::TriforceBlitz { is_dev: false, uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
+                    seed::Files::TriforceBlitz { is_dev: true, uuid } => format!("https://dev.triforceblitz.com/seeds/{uuid}"),
                     seed::Files::TfbSotd { ordinal, .. } => format!("https://www.triforceblitz.com/seed/daily/{ordinal}"),
                 };
                 ctx.say(if let French = language {
@@ -2152,7 +2245,8 @@ async fn set_bot_raceinfo(ctx: &RaceContext<GlobalState>, seed: &seed::Data, rsl
         seed_url = match seed.files.as_ref().expect("received seed with no files") {
             seed::Files::MidosHouse { file_stem, .. } => format!("{}/seed/{file_stem}", base_uri()),
             seed::Files::OotrWeb { id, .. } => format!("https://ootrandomizer.com/seed/get?id={id}"),
-            seed::Files::TriforceBlitz { uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
+            seed::Files::TriforceBlitz { is_dev: false, uuid } => format!("https://www.triforceblitz.com/seed/{uuid}"),
+            seed::Files::TriforceBlitz { is_dev: true, uuid } => format!("https://dev.triforceblitz.com/seeds/{uuid}"),
             seed::Files::TfbSotd { ordinal, .. } => format!("https://www.triforceblitz.com/seed/daily/{ordinal}"),
         },
     )).await
@@ -2485,6 +2579,12 @@ impl Handler {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
         self.roll_seed_inner(ctx, delay_until, Arc::clone(&ctx.global_state).roll_tfb_seed(delay_until, version, Some(format!("https://{}{}", racetime_host(), ctx.data().await.url)), unlock_spoiler_log), language, article, description).await;
+    }
+
+    async fn roll_tfb_dev_seed(&self, ctx: &RaceContext<GlobalState>, coop: bool, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
+        let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
+        let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
+        self.roll_seed_inner(ctx, delay_until, Arc::clone(&ctx.global_state).roll_tfb_dev_seed(delay_until, coop, Some(format!("https://{}{}", racetime_host(), ctx.data().await.url)), unlock_spoiler_log), language, article, description).await;
     }
 
     async fn queue_existing_seed(&self, ctx: &RaceContext<GlobalState>, seed: seed::Data, language: Language, article: &'static str, description: String) {
@@ -3301,9 +3401,9 @@ impl RaceHandler<GlobalState> for Handler {
                                 "Welcome to Triforce Blitz! Learn more at https://triforceblitz.com/",
                                 true,
                                 vec![
-                                    ("Roll S3 seed", ActionButton::Message {
-                                        message: format!("!seed s3"),
-                                        help_text: Some(format!("Create a Triforce Blitz season 3 seed.")),
+                                    ("Roll S4 co-op seed", ActionButton::Message {
+                                        message: format!("!seed s4coop"),
+                                        help_text: Some(format!("Create a Triforce Blitz season 4 co-op seed.")),
                                         survey: None,
                                         submit: None,
                                     }),
@@ -3325,6 +3425,7 @@ impl RaceHandler<GlobalState> for Handler {
                                                 kind: SurveyQuestionKind::Select,
                                                 placeholder: None,
                                                 options: vec![
+                                                    (format!("s3"), format!("S3")),
                                                     (format!("jr"), format!("Jabu's Revenge")),
                                                     (format!("s2"), format!("S2")),
                                                 ],
@@ -3493,7 +3594,7 @@ impl RaceHandler<GlobalState> for Handler {
                             } else {
                                 this.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(Some((event.series, &*event.event))), s::weekly_settings(), goal.unlock_spoiler_log(true, false), English, "a", format!("weekly seed")).await
                             },
-                            Goal::TriforceBlitz => this.roll_tfb_seed(ctx, "LATEST", goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S3 seed")).await,
+                            Goal::TriforceBlitz => this.roll_tfb_dev_seed(ctx, true, goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S4 co-op seed")).await,
                         },
                         RaceState::Draft { .. } => this.advance_draft(ctx, &state).await?,
                         RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => {}
@@ -3918,6 +4019,7 @@ impl RaceHandler<GlobalState> for Handler {
                             SeedCommandParseResult::Regular { settings, unlock_spoiler_log, language, article, description } => self.roll_seed(ctx, goal.preroll_seeds(), goal.rando_version(self.official_data.as_ref().map(|OfficialRaceData { event, .. }| (event.series, &*event.event))), settings, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::Rsl { preset, world_count, unlock_spoiler_log, language, article, description } => self.roll_rsl_seed(ctx, preset, world_count, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::Tfb { version, unlock_spoiler_log, language, article, description } => self.roll_tfb_seed(ctx, version, unlock_spoiler_log, language, article, description).await,
+                            SeedCommandParseResult::TfbDev { coop, unlock_spoiler_log, language, article, description } => self.roll_tfb_dev_seed(ctx, coop, unlock_spoiler_log, language, article, description).await,
                             SeedCommandParseResult::QueueExisting { data, language, article, description } => self.queue_existing_seed(ctx, data, language, article, description).await,
                             SeedCommandParseResult::SendPresets { language, msg } => {
                                 ctx.say(if let French = language {

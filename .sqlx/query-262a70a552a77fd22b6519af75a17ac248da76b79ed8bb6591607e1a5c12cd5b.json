@@ -1,30 +1,35 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT tfb_uuid, web_id, web_gen_time, file_stem, hash1 AS \"hash1: HashIcon\", hash2 AS \"hash2: HashIcon\", hash3 AS \"hash3: HashIcon\", hash4 AS \"hash4: HashIcon\", hash5 AS \"hash5: HashIcon\", seed_password FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3",
+  "query": "SELECT is_tfb_dev, tfb_uuid, web_id, web_gen_time, file_stem, hash1 AS \"hash1: HashIcon\", hash2 AS \"hash2: HashIcon\", hash3 AS \"hash3: HashIcon\", hash4 AS \"hash4: HashIcon\", hash5 AS \"hash5: HashIcon\", seed_password FROM asyncs WHERE series = $1 AND event = $2 AND kind = $3",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
+        "name": "is_tfb_dev",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 1,
         "name": "tfb_uuid",
         "type_info": "Uuid"
       },
       {
-        "ordinal": 1,
+        "ordinal": 2,
         "name": "web_id",
         "type_info": "Int8"
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "web_gen_time",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 3,
+        "ordinal": 4,
         "name": "file_stem",
         "type_info": "Text"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "hash1: HashIcon",
         "type_info": {
           "Custom": {
@@ -69,7 +74,7 @@
         }
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "hash2: HashIcon",
         "type_info": {
           "Custom": {
@@ -114,7 +119,7 @@
         }
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "hash3: HashIcon",
         "type_info": {
           "Custom": {
@@ -159,7 +164,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 8,
         "name": "hash4: HashIcon",
         "type_info": {
           "Custom": {
@@ -204,7 +209,7 @@
         }
       },
       {
-        "ordinal": 8,
+        "ordinal": 9,
         "name": "hash5: HashIcon",
         "type_info": {
           "Custom": {
@@ -249,7 +254,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "seed_password",
         "type_info": "Bpchar"
       }
@@ -275,6 +280,7 @@
       ]
     },
     "nullable": [
+      false,
       true,
       true,
       true,
@@ -287,5 +293,5 @@
       true
     ]
   },
-  "hash": "75b08c2807e451a7d30f8b70121d17b584fd9dc01a77ccefb05ebdb70a62f7dd"
+  "hash": "262a70a552a77fd22b6519af75a17ac248da76b79ed8bb6591607e1a5c12cd5b"
 }

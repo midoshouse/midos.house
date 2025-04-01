@@ -88,7 +88,7 @@ mimalloc = "0.1.43"
 nonempty-collections = "0.3.0"
 
 [target.'cfg(unix)'.dependencies]
-async-proto = { version = "0.24", features = ["chrono", "serde_json", "serenity", "uuid"] }
+async-proto = { version = "0.25", features = ["chrono", "serde_json", "serenity", "uuid"] }
 openssl = { version = "0.10", features = ["vendored"] }
 xdg = "2"
 

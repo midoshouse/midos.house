@@ -77,16 +77,20 @@ pub(crate) fn report_score_button(team_config: TeamConfig, finish_time: Option<D
     })
 }
 
-pub(crate) fn parse_seed_url(seed: &Url) -> Option<Uuid> {
+pub(crate) fn parse_seed_url(seed: &Url) -> Option<(bool, Uuid)> {
     if_chain! {
-        if let Some("triforceblitz.com" | "www.triforceblitz.com") = seed.host_str();
+        if let Some(is_dev) = match seed.host_str() {
+            Some("triforceblitz.com" | "www.triforceblitz.com") => Some(false),
+            Some("dev.triforceblitz.com") => Some(true),
+            _ => None,
+        };
         if let Some(mut path_segments) = seed.path_segments();
         if path_segments.next() == Some("seed");
         if let Some(segment) = path_segments.next();
         if let Ok(uuid) = Uuid::parse_str(segment);
         if path_segments.next().is_none();
         then {
-            Some(uuid)
+            Some((is_dev, uuid))
         } else {
             None
         }

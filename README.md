@@ -23,7 +23,7 @@ I'm also always looking for trusted members of the OoTR community willing to hel
 
 ## Translations
 
-Mido's House currently has an incomplete French translation which was created for the [Tournoi Francophone Saison 3](https://midos.house/event/fr/3) by that event's organizers. Let me know if you would like to proofread or extend this translation, or start a new one. A priority of the project is attention to detail, so I would include custom code to handle grammatical variations like case and gender where necessary. For example, the English Discord message for race results uses the word “defeat” or “defeats” depending on whether the winning team's name is grammatically singular or plural.
+Mido's House currently has an incomplete French translation which was created for the [Tournoi Francophone Saison 3](https://midos.house/event/fr/3) by that event's organizers. Let me know if you would like to proofread or extend this translation, or start a new one for a different language. A priority of the project is attention to detail, so I would include custom code to handle grammatical variations like case and gender where necessary. For example, the English Discord message for race results uses the word “defeat” or “defeats” depending on whether the winning team's name is grammatically singular or plural.
 
 # Dev notes
 

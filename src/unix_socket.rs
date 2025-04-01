@@ -190,6 +190,10 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
                                         global_state.clone().roll_tfb_seed(None, version, None, unlock_spoiler_log)
                                     }
+                                    Ok(SeedCommandParseResult::TfbDev { coop, unlock_spoiler_log, description, .. }) => {
+                                        Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
+                                        global_state.clone().roll_tfb_dev_seed(None, coop, None, unlock_spoiler_log)
+                                    }
                                     Ok(SeedCommandParseResult::QueueExisting { data, description, .. }) => {
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
                                         Some(SeedRollUpdate::Done { rsl_preset: None, unlock_spoiler_log: UnlockSpoilerLog::After, seed: data }).write(&mut sock).await.expect("error writing to UNIX socket");

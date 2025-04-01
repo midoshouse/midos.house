@@ -90,6 +90,7 @@ pub(crate) enum Files {
         file_stem: Cow<'static, str>,
     },
     TriforceBlitz {
+        is_dev: bool,
         uuid: Uuid,
     },
     TfbSotd {
@@ -108,6 +109,7 @@ impl Data {
         locked_spoiler_log_path: Option<String>,
         web_id: Option<i64>,
         web_gen_time: Option<DateTime<Utc>>,
+        is_tfb_dev: bool,
         tfb_uuid: Option<Uuid>,
         hash1: Option<HashIcon>,
         hash2: Option<HashIcon>,
@@ -125,7 +127,7 @@ impl Data {
             },
             password: password.map(|pw| pw.chars().map(|note| note.try_into().expect("invalid ocarina note in password, should be prevented by SQL constraint")).collect_vec().try_into().expect("invalid password length, should be prevented by SQL constraint")),
             files: match (file_stem, locked_spoiler_log_path, web_id, web_gen_time, tfb_uuid) {
-                (_, _, _, _, Some(uuid)) => Some(Files::TriforceBlitz { uuid }),
+                (_, _, _, _, Some(uuid)) => Some(Files::TriforceBlitz { is_dev: is_tfb_dev, uuid }),
                 (Some(file_stem), _, Some(id), Some(gen_time), None) => Some(Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) }),
                 (Some(file_stem), locked_spoiler_log_path, Some(id), None, None) => Some(if let Some(first_start) = [start, async_start1, async_start2, async_start3].into_iter().filter_map(identity).min() {
                     Files::OotrWeb { id, gen_time: first_start - TimeDelta::days(1), file_stem: Cow::Owned(file_stem) }
@@ -288,8 +290,12 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
                     }
                 }
             }
-            Some(Files::TriforceBlitz { uuid }) => td(colspan? = spoiler_logs.then_some("2")) {
-                a(href = format!("https://www.triforceblitz.com/seed/{uuid}")) : "View";
+            Some(Files::TriforceBlitz { is_dev, uuid }) => td(colspan? = spoiler_logs.then_some("2")) {
+                a(href = if is_dev {
+                    format!("https://dev.triforceblitz.com/seeds/{uuid}")
+                } else {
+                    format!("https://www.triforceblitz.com/seed/{uuid}")
+                }) : "View";
             }
             Some(Files::TfbSotd { ordinal, .. }) => td(colspan? = spoiler_logs.then_some("2")) {
                 a(href = format!("https://www.triforceblitz.com/seed/daily/{ordinal}")) : "View";
