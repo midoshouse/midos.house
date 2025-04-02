@@ -177,14 +177,14 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                 meta(charset = "utf-8");
                 title : title;
                 meta(name = "viewport", content = "width=device-width, initial-scale=1, shrink-to-fit=no");
-                link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(Suffix(style.chests.textures(), "png"))).to_string());
+                link(rel = "icon", sizes = "1024x1024", type = "image/png", href = uri!(favicon::favicon_png(Suffix(style.chests.textures(), "png"))));
                 link(rel = "stylesheet", href = static_url!("common.css"));
                 script(defer, src = static_url!("common.js"));
             }
             body(class = matches!(style.kind, PageKind::Banner).then(|| "fullscreen")) {
                 div {
                     nav(class? = matches!(style.kind, PageKind::Index).then(|| "index")) {
-                        a(class = "nav", href? = (!matches!(style.kind, PageKind::Index)).then(|| uri!(index).to_string())) {
+                        a(class = "nav", href? = (!matches!(style.kind, PageKind::Index)).then(|| uri!(index))) {
                             div(class = "logo") {
                                 @for chest in style.chests.0 {
                                     img(class = format!("chest chest-{}", char::from(chest.texture)), src = match chest.texture {
@@ -215,17 +215,17 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                                     }
                                     br;
                                     //TODO link to preferences
-                                    a(href = uri!(auth::logout(Some(uri))).to_string()) : "Sign out";
+                                    a(href = uri!(auth::logout(Some(uri)))) : "Sign out";
                                 } else {
-                                    a(href = uri!(auth::login(Some(uri))).to_string()) : "Sign in / Create account";
+                                    a(href = uri!(auth::login(Some(uri)))) : "Sign in / Create account";
                                 }
                                 @if !notifications.is_empty() {
                                     br;
                                 }
                             }
                             @if !notifications.is_empty() {
-                                a(href = uri!(notification::notifications).to_string()) {
-                                    : notifications.len().to_string();
+                                a(href = uri!(notification::notifications)) {
+                                    : notifications.len();
                                     @if notifications.len() == 1 {
                                         : " notification";
                                     } else {
@@ -249,7 +249,7 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                         : " • ";
                         a(href = "https://fenhl.net/disc") : "disclaimer";
                         : " • ";
-                        a(href = uri!(api::graphql_playground).to_string()) : "API";
+                        a(href = uri!(api::graphql_playground)) : "API";
                         : " • ";
                         a(href = "https://github.com/midoshouse/midos.house") {
                             @if style.mw_footer {
@@ -317,7 +317,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, 
             : "Mido's House is a platform where ";
             a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
             : " events like tournaments or community races can be organized. You may also be looking for the ";
-            a(href = uri!(crate::mw::index).to_string()) : "Mido's House Multiworld";
+            a(href = uri!(crate::mw::index)) : "Mido's House Multiworld";
             : " app.";
         }
         div(class = "section-list") {
@@ -353,9 +353,9 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, 
             }
         }
         p {
-            a(href = uri!(archive(_)).to_string()) : "Past events";
+            a(href = uri!(archive(_))) : "Past events";
             : " • ";
-            a(href = uri!(new_event).to_string()) : "Planning an event?";
+            a(href = uri!(new_event)) : "Planning an event?";
         }
         h1 : "Ongoing/upcoming races";
         p {
@@ -364,7 +364,7 @@ async fn index(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, 
                 span(class = "timezone") : "[unknown]";
                 : ") • ";
             }
-            a(href = uri!(cal::index_help).to_string()) : "Add to calendar";
+            a(href = uri!(cal::index_help)) : "Add to calendar";
         }
         @if races.is_empty() {
             i : "(none currently)";
@@ -410,7 +410,7 @@ async fn archive(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, sort: 
                     @if iter_sort == sort {
                         a(class = "button selected") : iter_sort.display_name();
                     } else {
-                        a(class = "button", href = uri!(archive((iter_sort != ArchiveSortKey::default()).then_some(iter_sort))).to_string()) : iter_sort.display_name();
+                        a(class = "button", href = uri!(archive((iter_sort != ArchiveSortKey::default()).then_some(iter_sort)))) : iter_sort.display_name();
                     }
                 }
             }

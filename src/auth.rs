@@ -335,16 +335,16 @@ pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             ul {
                 @if me.racetime.is_none() {
                     li {
-                        a(href = uri!(racetime_login(redirect_to.clone())).to_string()) : "Connect a racetime.gg account";
+                        a(href = uri!(racetime_login(redirect_to.clone()))) : "Connect a racetime.gg account";
                     }
                 }
                 @if me.discord.is_none() {
                     li {
-                        a(href = uri!(discord_login(redirect_to.clone())).to_string()) : "Connect a Discord account";
+                        a(href = uri!(discord_login(redirect_to.clone()))) : "Connect a Discord account";
                     }
                 }
                 li {
-                    a(href = uri!(logout(redirect_to)).to_string()) : "Sign out";
+                    a(href = uri!(logout(redirect_to))) : "Sign out";
                 }
             }
         }
@@ -352,12 +352,12 @@ pub(crate) async fn login(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
         html! {
             p : "To sign in or create a new account, please sign in via one of the following services:";
             div(class = "button-row large-button-row") {
-                a(class = "button", href = uri!(racetime_login(redirect_to.clone())).to_string()) {
+                a(class = "button", href = uri!(racetime_login(redirect_to.clone()))) {
                     img(src = static_url!("racetimeGG-favicon.svg"));
                     br;
                     : "Sign in with racetime.gg";
                 }
-                a(class = "button", href = uri!(discord_login(redirect_to)).to_string()) {
+                a(class = "button", href = uri!(discord_login(redirect_to))) {
                     img(src = static_url!("discord-favicon.ico"));
                     br;
                     : "Sign in with Discord";

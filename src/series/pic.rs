@@ -511,7 +511,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
             : full_form(uri!(enter::post(data.series, &*data.event)), csrf, html! {
                 legend {
                     : "Fill out this form to enter the race as a team. Your teammate will receive an invitation they have to accept to confirm the signup. If you don't have a team yet, you can ";
-                    a(href = uri!(event::find_team(data.series, &*data.event)).to_string()) : "look for a teammate";
+                    a(href = uri!(event::find_team(data.series, &*data.event))) : "look for a teammate";
                     : " instead.";
                 }
                 : form_field("team_name", &mut errors, html! {
@@ -538,7 +538,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
             : header;
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(enter::get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(enter::get(data.series, &*data.event, defaults.my_role(), defaults.teammate())))))) : "Sign in or create a Mido's House account";
                     : " to enter this race.";
                 }
             }
@@ -585,7 +585,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
         Some(html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(event::find_team(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(event::find_team(data.series, &*data.event)))))) : "Sign in or create a Mido's House account";
                     : " to add yourself to this list.";
                 }
             }
@@ -634,7 +634,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
                             @if can_invite_any {
                                 td {
                                     @if let Some(my_role) = invite {
-                                        a(class = "button", href = uri!(enter::get(data.series, &*data.event, my_role, Some(user.id))).to_string()) : "Invite";
+                                        a(class = "button", href = uri!(enter::get(data.series, &*data.event, my_role, Some(user.id)))) : "Invite";
                                     }
                                 }
                             }

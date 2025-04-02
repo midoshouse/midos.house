@@ -484,7 +484,7 @@ impl<'a> Data<'a> {
         };
         Ok(html! {
             h1 {
-                a(class = "nav", href? = (!matches!(tab, Tab::Info) || is_subpage).then(|| uri!(info(self.series, &*self.event)).to_string())) : &self.display_name;
+                a(class = "nav", href? = (!matches!(tab, Tab::Info) || is_subpage).then(|| uri!(info(self.series, &*self.event)))) : &self.display_name;
             }
             @if let Some(start) = self.start(&mut *transaction).await? {
                 h2 {
@@ -496,52 +496,52 @@ impl<'a> Data<'a> {
             }
             div(class = "button-row") {
                 @if let Tab::Info = tab {
-                    a(class = "button selected", href? = is_subpage.then(|| uri!(info(self.series, &*self.event)).to_string())) : "Info";
+                    a(class = "button selected", href? = is_subpage.then(|| uri!(info(self.series, &*self.event)))) : "Info";
                 } else {
-                    a(class = "button", href = uri!(info(self.series, &*self.event)).to_string()) : "Info";
+                    a(class = "button", href = uri!(info(self.series, &*self.event))) : "Info";
                 }
                 @let teams_label = if let TeamConfig::Solo = self.team_config { "Entrants" } else { "Teams" };
                 @if !self.hide_teams_tab {
                     @if let Tab::Teams = tab {
-                        a(class = "button selected", href? = is_subpage.then(|| uri!(teams::get(self.series, &*self.event)).to_string())) : teams_label;
+                        a(class = "button selected", href? = is_subpage.then(|| uri!(teams::get(self.series, &*self.event)))) : teams_label;
                     } else if let Some(ref teams_url) = self.teams_url {
                         a(class = "button", href = teams_url.to_string()) {
                             : favicon(teams_url);
                             : teams_label;
                         }
                     } else {
-                        a(class = "button", href = uri!(teams::get(self.series, &*self.event)).to_string()) : teams_label;
+                        a(class = "button", href = uri!(teams::get(self.series, &*self.event))) : teams_label;
                     }
                 }
                 @if !self.hide_races_tab && !self.is_single_race() {
                     @if let Tab::Races = tab {
-                        a(class = "button selected", href? = is_subpage.then(|| uri!(races(self.series, &*self.event)).to_string())) : "Races";
+                        a(class = "button selected", href? = is_subpage.then(|| uri!(races(self.series, &*self.event)))) : "Races";
                     } else {
-                        a(class = "button", href = uri!(races(self.series, &*self.event)).to_string()) : "Races";
+                        a(class = "button", href = uri!(races(self.series, &*self.event))) : "Races";
                     }
                 }
                 @if signed_up {
                     @if let Tab::MyStatus = tab {
-                        a(class = "button selected", href? = is_subpage.then(|| uri!(status(self.series, &*self.event)).to_string())) : "My Status";
+                        a(class = "button selected", href? = is_subpage.then(|| uri!(status(self.series, &*self.event)))) : "My Status";
                     } else {
-                        a(class = "button", href = uri!(status(self.series, &*self.event)).to_string()) : "My Status";
+                        a(class = "button", href = uri!(status(self.series, &*self.event))) : "My Status";
                     }
                 } else if !self.is_started(&mut *transaction).await? {
                     @if let Tab::Enter = tab {
-                        a(class = "button selected", href? = is_subpage.then(|| uri!(enter::get(self.series, &*self.event, _, _)).to_string())) : "Enter";
+                        a(class = "button selected", href? = is_subpage.then(|| uri!(enter::get(self.series, &*self.event, _, _)))) : "Enter";
                     } else if let Some(ref enter_url) = self.enter_url {
                         a(class = "button", href = enter_url.to_string()) {
                             : favicon(enter_url);
                             : "Enter";
                         }
                     } else {
-                        a(class = "button", href = uri!(enter::get(self.series, &*self.event, _, _)).to_string()) : "Enter";
+                        a(class = "button", href = uri!(enter::get(self.series, &*self.event, _, _))) : "Enter";
                     }
                     @if !matches!(self.team_config, TeamConfig::Solo) {
                         @if let Tab::FindTeam = tab {
-                            a(class = "button selected", href? = is_subpage.then(|| uri!(find_team(self.series, &*self.event)).to_string())) : "Find Teammates";
+                            a(class = "button selected", href? = is_subpage.then(|| uri!(find_team(self.series, &*self.event)))) : "Find Teammates";
                         } else {
-                            a(class = "button", href = uri!(find_team(self.series, &*self.event)).to_string()) : "Find Teammates";
+                            a(class = "button", href = uri!(find_team(self.series, &*self.event))) : "Find Teammates";
                         }
                     }
                 }
@@ -562,9 +562,9 @@ impl<'a> Data<'a> {
                 }
                 @if matches!(self.series, Series::League | Series::TriforceBlitz) && !self.is_ended() {
                     @if let Tab::Volunteer = tab {
-                        a(class = "button selected", href? = is_subpage.then(|| uri!(volunteer(self.series, &*self.event)).to_string())) : "Volunteer";
+                        a(class = "button selected", href? = is_subpage.then(|| uri!(volunteer(self.series, &*self.event)))) : "Volunteer";
                     } else {
-                        a(class = "button", href = uri!(volunteer(self.series, &*self.event)).to_string()) : "Volunteer";
+                        a(class = "button", href = uri!(volunteer(self.series, &*self.event))) : "Volunteer";
                     }
                 }
                 @if let Some(ref video_url) = self.video_url {
@@ -592,9 +592,9 @@ impl<'a> Data<'a> {
                 @if let Some(me) = me {
                     @if !self.is_ended() && self.organizers(transaction).await?.contains(me) {
                         @if let Tab::Configure = tab {
-                            a(class = "button selected", href? = is_subpage.then(|| uri!(configure::get(self.series, &*self.event)).to_string())) : "Configure";
+                            a(class = "button selected", href? = is_subpage.then(|| uri!(configure::get(self.series, &*self.event)))) : "Configure";
                         } else {
-                            a(class = "button", href = uri!(configure::get(self.series, &*self.event)).to_string()) : "Configure";
+                            a(class = "button", href = uri!(configure::get(self.series, &*self.event))) : "Configure";
                         }
                     }
                 }
@@ -606,7 +606,7 @@ impl<'a> Data<'a> {
 impl ToHtml for Data<'_> {
     fn to_html(&self) -> RawHtml<String> {
         html! {
-            a(href = uri!(info(self.series, &*self.event)).to_string()) {
+            a(href = uri!(info(self.series, &*self.event))) {
                 bdi : self.display_name;
             }
         }
@@ -787,11 +787,11 @@ pub(crate) async fn races(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &Stat
         } else if can_create && !any_races_ongoing_or_upcoming {
             div(class = "button-row") {
                 @match data.match_source() {
-                    MatchSource::Manual | MatchSource::Challonge { .. } => a(class = "button", href = uri!(crate::cal::create_race(series, event, _)).to_string()) : "New Race";
-                    //MatchSource::Challonge { .. } => a(class = "button", href = uri!(crate::cal::import_races(series, event)).to_string()) : "Import"; // disabled due to Challonge pagination bug
+                    MatchSource::Manual | MatchSource::Challonge { .. } => a(class = "button", href = uri!(crate::cal::create_race(series, event, _))) : "New Race";
+                    //MatchSource::Challonge { .. } => a(class = "button", href = uri!(crate::cal::import_races(series, event))) : "Import"; // disabled due to Challonge pagination bug
                     MatchSource::League => {}
                     MatchSource::StartGG(_) => @if !data.auto_import {
-                        a(class = "button", href = uri!(crate::cal::import_races(series, event)).to_string()) : "Import";
+                        a(class = "button", href = uri!(crate::cal::import_races(series, event))) : "Import";
                     }
                 }
             }
@@ -923,7 +923,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                                                     @if let Series::TriforceBlitz = data.series {
                                                         : form_field("pieces", &mut errors, html! {
                                                             label(for = "pieces") : "Number of Triforce Pieces found:";
-                                                            input(type = "number", min = "0", max = tfb::piece_count(data.team_config).to_string(), name = "pieces", value? = ctx.field_value("pieces"));
+                                                            input(type = "number", min = "0", max = tfb::piece_count(data.team_config), name = "pieces", value? = ctx.field_value("pieces"));
                                                         });
                                                         : form_field("time1", &mut errors, html! {
                                                             label(for = "time1") : "Time at which you found the most recent piece:";
@@ -1109,13 +1109,13 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                             } else {
                                 p { //TODO indicate whether qualified?
                                     : "Please see the rules document for how to qualify, and "; //TODO linkify
-                                    a(href = uri!(races(data.series, &*data.event)).to_string()) : "the race schedule";
+                                    a(href = uri!(races(data.series, &*data.event))) : "the race schedule";
                                     : " for upcoming qualifiers.";
                                 }
                             }
                             Series::SpeedGaming => p { //TODO indicate whether qualified?
                                 : "Please see the rules document for how to qualify, and "; //TODO linkify
-                                a(href = uri!(races(data.series, &*data.event)).to_string()) : "the race schedule";
+                                a(href = uri!(races(data.series, &*data.event))) : "the race schedule";
                                 : " for upcoming qualifiers.";
                             }
                             Series::TriforceBlitz => @if data.is_started(&mut transaction).await? {
@@ -1145,7 +1145,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                             //TODO options to change team name or swap roles
                         }, errors, "Save");
                         p {
-                            a(href = uri!(resign(data.series, &*data.event, row.id)).to_string()) : "Resign";
+                            a(href = uri!(resign(data.series, &*data.event, row.id))) : "Resign";
                         }
                     }
                 }
@@ -1164,7 +1164,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
             : header;
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(status(data.series, &*data.event))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(status(data.series, &*data.event)))))) : "Sign in or create a Mido's House account";
                     : " to view your status for this event.";
                 }
             }
@@ -1627,7 +1627,7 @@ async fn opt_out_page(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf: Op
     } else {
         return Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Opt Out — {}", data.display_name), html! {
             p {
-                a(href = uri!(auth::login(Some(uri!(opt_out(series, event))))).to_string()) : "Sign in or create a Mido's House account";
+                a(href = uri!(auth::login(Some(uri!(opt_out(series, event)))))) : "Sign in or create a Mido's House account";
                 : " to opt out of participating in ";
                 : data;
                 : ".";

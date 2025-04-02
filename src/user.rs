@@ -275,7 +275,7 @@ impl fmt::Display for User {
 impl ToHtml for User {
     fn to_html(&self) -> RawHtml<String> {
         html! {
-            a(href = uri!(profile(self.id)).to_string()) {
+            a(href = uri!(profile(self.id))) {
                 bdi : self.display_name();
             }
         }
@@ -335,7 +335,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                             : ".";
                         } else {
                             span { //HACK fix button styling (nth-child)
-                                a(class = "button", href = uri!(crate::auth::merge_accounts).to_string()) : "Merge Accounts";
+                                a(class = "button", href = uri!(crate::auth::merge_accounts)) : "Merge Accounts";
                             }
                         }
                     }
@@ -353,7 +353,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                         }
                         : " which does not belong to a Mido's House account. ";
                         span { //HACK fix button styling (nth-child)
-                            a(class = "button", href = uri!(crate::auth::register_racetime).to_string()) : "Add this racetime.gg account to your Mido's House account";
+                            a(class = "button", href = uri!(crate::auth::register_racetime)) : "Add this racetime.gg account to your Mido's House account";
                         }
                     }
                 }
@@ -361,7 +361,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
         } else {
             html! {
                 p {
-                    a(href = uri!(crate::auth::racetime_login(Some(uri!(profile(id))))).to_string()) : "Connect a racetime.gg account";
+                    a(href = uri!(crate::auth::racetime_login(Some(uri!(profile(id)))))) : "Connect a racetime.gg account";
                 }
             }
         }
@@ -420,7 +420,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                             : ".";
                         } else {
                             span { //HACK fix button styling (nth-child)
-                                a(class = "button", href = uri!(crate::auth::merge_accounts).to_string()) : "Merge Accounts";
+                                a(class = "button", href = uri!(crate::auth::merge_accounts)) : "Merge Accounts";
                             }
                         }
                     }
@@ -443,7 +443,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                         }
                         : " which does not belong to a Mido's House account. ";
                         span { //HACK fix button styling (nth-child)
-                            a(class = "button", href = uri!(crate::auth::register_discord).to_string()) : "Add this Discord account to your Mido's House account";
+                            a(class = "button", href = uri!(crate::auth::register_discord)) : "Add this Discord account to your Mido's House account";
                         }
                     }
                 }
@@ -451,7 +451,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
         } else {
             html! {
                 p {
-                    a(href = uri!(crate::auth::discord_login(Some(uri!(profile(id))))).to_string()) : "Connect a Discord account";
+                    a(href = uri!(crate::auth::discord_login(Some(uri!(profile(id)))))) : "Connect a Discord account";
                 }
             }
         }

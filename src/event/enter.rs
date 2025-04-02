@@ -220,7 +220,7 @@ impl Requirement {
                 if !is_checked.unwrap() {
                     //TODO offer to merge accounts like on profile
                     html_content = html! {
-                        a(href = uri!(crate::auth::racetime_login(Some(redirect_uri))).to_string()) : html_content;
+                        a(href = uri!(crate::auth::racetime_login(Some(redirect_uri)))) : html_content;
                     };
                 }
                 RequirementStatus {
@@ -262,7 +262,7 @@ impl Requirement {
                 if !is_checked.unwrap() {
                     //TODO offer to merge accounts like on profile
                     html_content = html! {
-                        a(href = uri!(crate::auth::discord_login(Some(redirect_uri))).to_string()) : html_content;
+                        a(href = uri!(crate::auth::discord_login(Some(redirect_uri)))) : html_content;
                     };
                 }
                 RequirementStatus {
@@ -296,7 +296,7 @@ impl Requirement {
                 };
                 if !is_checked.unwrap() {
                     html_content = html! {
-                        a(href = uri!(crate::auth::challonge_login(Some(redirect_uri))).to_string()) : html_content;
+                        a(href = uri!(crate::auth::challonge_login(Some(redirect_uri)))) : html_content;
                     };
                 }
                 RequirementStatus {
@@ -310,7 +310,7 @@ impl Requirement {
                 };
                 if !is_checked.unwrap() {
                     html_content = html! {
-                        a(href = uri!(crate::auth::startgg_login(Some(redirect_uri))).to_string()) : html_content;
+                        a(href = uri!(crate::auth::startgg_login(Some(redirect_uri)))) : html_content;
                     };
                 }
                 RequirementStatus {
@@ -324,7 +324,7 @@ impl Requirement {
                     @if is_checked.unwrap() {
                         : "Enter with your connected start.gg account"; //TODO show name and link to profile
                     } else {
-                        a(href = uri!(crate::auth::startgg_login(Some(redirect_uri))).to_string()) : "Connect a start.gg account to your Mido's House account";
+                        a(href = uri!(crate::auth::startgg_login(Some(redirect_uri)))) : "Connect a start.gg account to your Mido's House account";
                     }
                 };
                 let no_checked = defaults.field_value("startgg_radio").map_or(false, |value| value == "no");
@@ -807,7 +807,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_
                                 @if data.show_opt_out {
                                     p {
                                         : "If you would like to enter this event, please fill out the form below. If not, please ";
-                                        a(href = uri!(super::opt_out(data.series, &*data.event)).to_string()) : "opt out";
+                                        a(href = uri!(super::opt_out(data.series, &*data.event))) : "opt out";
                                         : ".";
                                     }
                                 } else {
@@ -854,7 +854,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_
                             html! {
                                 article {
                                     p {
-                                        a(href = uri!(auth::login(Some(uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
+                                        a(href = uri!(auth::login(Some(uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())))))) : "Sign in or create a Mido's House account";
                                         : " to enter";
                                         @if data.show_opt_out {
                                             : " or opt out of";
@@ -870,7 +870,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_
                                 article {
                                     p {
                                         : "This is an invitational event. ";
-                                        a(href = uri!(auth::login(Some(uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate()))))).to_string()) : "Sign in or create a Mido's House account";
+                                        a(href = uri!(auth::login(Some(uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())))))) : "Sign in or create a Mido's House account";
                                         : " to see if you're invited.";
                                     }
                                 }
@@ -927,7 +927,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                             : "racetime.gg Team: ";
                             a(href = format!("https://{}/team/{}", racetime_host(), defaults.racetime_team_slug().expect("missing racetime team slug"))) : defaults.racetime_team_name().expect("missing racetime team name");
                             : " • ";
-                            a(href = uri!(get(data.series, &*data.event, _, _)).to_string()) : "Change";
+                            a(href = uri!(get(data.series, &*data.event, _, _))) : "Change";
                         }
                         input(type = "hidden", name = "racetime_team", value = defaults.racetime_team_slug());
                         input(type = "hidden", name = "racetime_team_name", value = defaults.racetime_team_name());

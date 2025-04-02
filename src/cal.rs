@@ -1728,7 +1728,7 @@ pub(crate) async fn index_help(pool: &State<PgPool>, me: Option<User>, uri: Orig
     page(pool.begin().await?, &me, &uri, PageStyle::default(), "Calendar — Mido's House", html! {
         p {
             : "A calendar of all races across all events can be found at ";
-            code : uri!(base_uri(), index).to_string();
+            code : uri!(base_uri(), index);
             : " — by pasting this link into most calendar apps' “subscribe” feature instead of downloading it, you can get automatic updates as races are scheduled:";
         }
         ul {
@@ -1878,7 +1878,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
         html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(create_race(event.series, &*event.event, Some(NonZeroU8::new(if ctx.field_value("team3").is_some() { 3 } else { 2 }).unwrap())))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(create_race(event.series, &*event.event, Some(NonZeroU8::new(if ctx.field_value("team3").is_some() { 3 } else { 2 }).unwrap()))))))) : "Sign in or create a Mido's House account";
                     : " to create a race.";
                 }
             }
@@ -2094,11 +2094,11 @@ pub(crate) async fn race_table(
                             @if options.can_create {
                                 @if let Some(event) = event {
                                     @match event.match_source() {
-                                        MatchSource::Manual | MatchSource::Challonge { .. } => a(class = "button", href = uri!(create_race(races[0].series, &*races[0].event, _)).to_string()) : "New Race";
-                                        //MatchSource::Challonge { .. } => a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event)).to_string()) : "Import"; // disabled due to Challonge pagination bug
+                                        MatchSource::Manual | MatchSource::Challonge { .. } => a(class = "button", href = uri!(create_race(races[0].series, &*races[0].event, _))) : "New Race";
+                                        //MatchSource::Challonge { .. } => a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event))) : "Import"; // disabled due to Challonge pagination bug
                                         MatchSource::League => {}
                                         MatchSource::StartGG(_) => @if !event.auto_import {
-                                            a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event)).to_string()) : "Import";
+                                            a(class = "button", href = uri!(import_races(races[0].series, &*races[0].event))) : "Import";
                                         }
                                     }
                                 }
@@ -2124,7 +2124,7 @@ pub(crate) async fn race_table(
                         }
                         @if show_event {
                             td(class = "small-table-content") {
-                                a(href = uri!(event::info(event.series, &*event.event)).to_string()) : event.short_name();
+                                a(href = uri!(event::info(event.series, &*event.event))) : event.short_name();
                             }
                             td(class = "large-table-content") : event;
                         }
@@ -2271,7 +2271,7 @@ pub(crate) async fn race_table(
                         @if has_buttons {
                             td {
                                 @if options.can_edit {
-                                    a(class = "button", href = uri!(crate::cal::edit_race(race.series, &race.event, race.id, Some(uri))).to_string()) : "Edit";
+                                    a(class = "button", href = uri!(crate::cal::edit_race(race.series, &race.event, race.id, Some(uri)))) : "Edit";
                                 }
                             }
                         }
@@ -2335,7 +2335,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
             html! {
                 article {
                     p {
-                        a(href = uri!(auth::login(Some(uri!(import_races(event.series, &*event.event))))).to_string()) : "Sign in or create a Mido's House account";
+                        a(href = uri!(auth::login(Some(uri!(import_races(event.series, &*event.event)))))) : "Sign in or create a Mido's House account";
                         : " to import races.";
                     }
                 }
@@ -2396,7 +2396,7 @@ pub(crate) async fn import_races_form(mut transaction: Transaction<'_, Postgres>
             html! {
                 article {
                     p {
-                        a(href = uri!(auth::login(Some(uri!(import_races(event.series, &*event.event))))).to_string()) : "Sign in or create a Mido's House account";
+                        a(href = uri!(auth::login(Some(uri!(import_races(event.series, &*event.event)))))) : "Sign in or create a Mido's House account";
                         : " to import races.";
                     }
                 }
@@ -2843,7 +2843,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
         html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(edit_race(event.series, &*event.event, race.id, redirect_to))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(edit_race(event.series, &*event.event, race.id, redirect_to)))))) : "Sign in or create a Mido's House account";
                     : " to edit this race.";
                 }
             }
@@ -3397,7 +3397,7 @@ pub(crate) async fn add_file_hash_form(mut transaction: Transaction<'_, Postgres
         html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(add_file_hash(event.series, &*event.event, race.id))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(add_file_hash(event.series, &*event.event, race.id)))))) : "Sign in or create a Mido's House account";
                     : " to edit this race.";
                 }
             }

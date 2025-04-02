@@ -292,7 +292,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 h2 : "See also";
                 ul {
                     li {
-                        a(href = uri!(event::info(Series::Standard, "7cc")).to_string()) : "Challenge Cup";
+                        a(href = uri!(event::info(Series::Standard, "7cc"))) : "Challenge Cup";
                     }
                 }
             }
@@ -309,7 +309,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 h2 : "See also";
                 ul {
                     li {
-                        a(href = uri!(event::info(Series::Standard, "7")).to_string()) : "main bracket";
+                        a(href = uri!(event::info(Series::Standard, "7"))) : "main bracket";
                     }
                 }
             }
@@ -338,13 +338,13 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                             a(href = "https://discord.gg/qrGf6yNY4C") : "The Silver Gauntlets Discord";
                         }
                         li {
-                            a(href = uri!(event::races(Series::Standard, "8")).to_string()) : "Qualifier Schedule";
+                            a(href = uri!(event::races(Series::Standard, "8"))) : "Qualifier Schedule";
                         }
                         li {
                             a(href = "https://www.start.gg/tournament/ocarina-of-time-randomizer-standard-tournament-season-8/event/main-tournament") : "Brackets";
                         }
                         li {
-                            a(href = uri!(event::info(Series::Standard, "8cc")).to_string()) : "Challenge Cup";
+                            a(href = uri!(event::info(Series::Standard, "8cc"))) : "Challenge Cup";
                         }
                         li {
                             a(href = "https://wiki.ootrandomizer.com/index.php?title=Standard") : "OoTR Standard Racing Ruleset";
@@ -498,7 +498,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     }
                     p {
                         : "Dates for all Qualifiers can be found here: ";
-                        a(href = uri!(event::races(Series::Standard, "8")).to_string()) : "Season 8 Qualifier Schedule";
+                        a(href = uri!(event::races(Series::Standard, "8"))) : "Season 8 Qualifier Schedule";
                     }
                     p {
                         img(src = static_url!("event/s/8-qualifier-schedule.png"), style = "max-width: 100%; max-height: 100vh;");
@@ -1046,7 +1046,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 h2 : "See also";
                 ul {
                     li {
-                        a(href = uri!(event::info(Series::Standard, "8")).to_string()) : "main bracket";
+                        a(href = uri!(event::info(Series::Standard, "8"))) : "main bracket";
                     }
                 }
             }

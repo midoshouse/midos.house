@@ -888,7 +888,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                         tr(class? = is_dimmed.then_some("dimmed")) {
                             @match qualifier_kind {
                                 QualifierKind::Rank => td : team.as_ref().and_then(|team| team.qualifier_rank);
-                                QualifierKind::Score(_) => td : (signup_idx + 1).to_string();
+                                QualifierKind::Score(_) => td : signup_idx + 1;
                                 _ => {}
                             }
                             @if !matches!(data.team_config, TeamConfig::Solo) {

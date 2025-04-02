@@ -261,7 +261,7 @@ pub(crate) async fn team_invite(transaction: &mut Transaction<'_, Postgres>, me:
         }
         @let (errors, accept_button) = if matches!(event.team_config, TeamConfig::Pictionary) && my_role == Role::Sheikah && me.racetime.is_none() {
             (html! {}, html! {
-                a(class = "button", href = uri!(crate::auth::racetime_login(Some(uri!(notifications)))).to_string()) : "Connect racetime.gg Account to Accept";
+                a(class = "button", href = uri!(crate::auth::racetime_login(Some(uri!(notifications))))) : "Connect racetime.gg Account to Accept";
             })
         } else {
             button_form_ext(uri!(crate::event::confirm_signup(event.series, &*event.event, team_id)), csrf, errors, event::AcceptFormSource::from(source), "Accept")
@@ -299,7 +299,7 @@ pub(crate) async fn list(pool: &PgPool, me: Option<User>, uri: Origin<'_>, csrf:
     } else {
         page(transaction, &me, &uri, PageStyle { kind: PageKind::Notifications, ..PageStyle::default() }, "Notifications — Mido's House", html! {
             p {
-                a(href = uri!(auth::login(Some(uri!(notifications)))).to_string()) : "Sign in or create a Mido's House account";
+                a(href = uri!(auth::login(Some(uri!(notifications))))) : "Sign in or create a Mido's House account";
                 : " to view your notifications.";
             }
         }).await?

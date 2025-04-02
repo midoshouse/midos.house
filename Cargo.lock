@@ -265,47 +265,22 @@ dependencies = [
 
 [[package]]
 name = "async-proto"
-version = "0.24.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d153b0d936a708c1d8336dd0717888dc5fb6a0a812ca6f9be41372700bf7c1c"
-dependencies = [
- "async-proto-derive 0.24.3",
- "byteorder",
- "fallible_collections",
- "futures",
- "thiserror 2.0.12",
- "tokio",
- "tokio-tungstenite",
-]
-
-[[package]]
-name = "async-proto"
 version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "965106e83832332b345a28e8ce0cfb26ef33b87d0cec7335a23cc6153ebd9393"
 dependencies = [
- "async-proto-derive 0.25.0",
+ "async-proto-derive",
  "byteorder",
  "chrono",
  "fallible_collections",
+ "futures",
  "semver",
  "serde_json",
  "serenity",
  "thiserror 2.0.12",
  "tokio",
+ "tokio-tungstenite 0.26.2",
  "uuid",
-]
-
-[[package]]
-name = "async-proto-derive"
-version = "0.24.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6fe997e9a2adde38f6e48fccaae1cf7dd94094fca87cf128d61d9f1c2a32320d"
-dependencies = [
- "itertools 0.14.0",
- "proc-macro2",
- "quote",
- "syn 2.0.100",
 ]
 
 [[package]]
@@ -385,9 +360,9 @@ checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
 
 [[package]]
 name = "aws-lc-rs"
-version = "1.12.6"
+version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dabb68eb3a7aa08b46fddfd59a3d55c978243557a90ab804769f7e20e67d2b01"
+checksum = "19b756939cb2f8dc900aa6dcd505e6e2428e9cae7ff7b028c49e3946efa70878"
 dependencies = [
  "aws-lc-sys",
  "untrusted 0.7.1",
@@ -396,9 +371,9 @@ dependencies = [
 
 [[package]]
 name = "aws-lc-sys"
-version = "0.27.1"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77926887776171ced7d662120a75998e444d3750c951abfe07f90da130514b1f"
+checksum = "b9f7720b74ed28ca77f90769a71fd8c637a0137f6fae4ae947e1050229cff57f"
 dependencies = [
  "bindgen",
  "cc",
@@ -767,9 +742,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.34"
+version = "4.5.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e958897981290da2a852763fe9cdb89cd36977a5d729023127095fa94d95e2ff"
+checksum = "d8aa86934b44c19c50f87cc2790e19f54f7a67aedb64101c2e1a2e5ecfb73944"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -777,9 +752,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.5.34"
+version = "4.5.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83b0f35019843db2160b5bb19ae09b4e6411ac33fc6a712003c33e03090e2489"
+checksum = "2414dbb2dd0695280da6ea9261e327479e9d37b0630f6b53ba2a11c60c679fd9"
 dependencies = [
  "anstream",
  "anstyle",
@@ -1525,9 +1500,9 @@ dependencies = [
 
 [[package]]
 name = "flate2"
-version = "1.1.0"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11faaf5a5236997af9848be0bef4db95824b1d534ebc64d0f0c6cf3e67bd38dc"
+checksum = "7ced92e76e966ca2fd84c8f7aa01a4aea65b0eb6648d72f7c8f3e2764a67fece"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
@@ -3480,15 +3455,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
@@ -3539,10 +3505,11 @@ dependencies = [
 
 [[package]]
 name = "jobserver"
-version = "0.1.32"
+version = "0.1.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48d1dbcbbeb6a7fec7e059840aa538bd62aaccf972c7346c4d9d2059312853d0"
+checksum = "38f262f097c174adebe41eb73d66ae9c06b2844fb0da69969647bbddd9b0538a"
 dependencies = [
+ "getrandom 0.3.2",
  "libc",
 ]
 
@@ -3881,7 +3848,7 @@ dependencies = [
  "anyhow",
  "async-graphql",
  "async-graphql-rocket",
- "async-proto 0.25.0",
+ "async-proto",
  "async-trait",
  "base64 0.22.1",
  "chrono",
@@ -3934,7 +3901,7 @@ dependencies = [
  "typemap_rev",
  "url",
  "uuid",
- "wheel 0.14.4",
+ "wheel 0.15.0 (git+https://github.com/fenhl/wheel?branch=rocket-forms)",
  "xdg",
  "yup-oauth2",
 ]
@@ -4184,7 +4151,7 @@ name = "ootr-utils"
 version = "0.6.3"
 source = "git+https://github.com/midoshouse/rust-ootr-utils?branch=main#dd9a2fc641910a43bd3be9af029af79ec68da1b4"
 dependencies = [
- "async-proto 0.25.0",
+ "async-proto",
  "cargo_metadata 0.19.2",
  "dir-lock",
  "directories",
@@ -4199,7 +4166,7 @@ dependencies = [
  "sqlx",
  "thiserror 2.0.12",
  "tokio",
- "wheel 0.15.0",
+ "wheel 0.15.0 (git+https://github.com/fenhl/wheel?branch=main)",
  "which 7.0.2",
  "xdg",
 ]
@@ -4782,25 +4749,25 @@ checksum = "74765f6d916ee2faa39bc8e68e4f3ed8949b48cccdac59983d287a7cb71ce9c5"
 
 [[package]]
 name = "racetime"
-version = "0.25.1"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60f42fecc9fc09994a0a097a8b75cde70629a79f10629e41538f50513e6506bb"
+checksum = "499b9db3d6a244a50c032a8149f9a26afd808c71c1b5e63c4c54a4777d51578b"
 dependencies = [
  "async-trait",
  "chrono",
  "collect-mac",
  "futures",
  "http 1.3.1",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "lazy-regex",
  "reqwest 0.12.15",
  "serde",
  "serde_json_path_to_error",
  "serde_with",
  "shlex",
- "thiserror 1.0.69",
+ "thiserror 2.0.12",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.26.2",
  "url",
  "uuid",
 ]
@@ -5172,7 +5139,7 @@ dependencies = [
 [[package]]
 name = "rocket-util"
 version = "0.2.15"
-source = "git+https://github.com/fenhl/rocket-util?branch=forms#e5d13339f60556db467f3de3079cad760e8d111e"
+source = "git+https://github.com/fenhl/rocket-util?branch=forms#aa4f03a4e2f74d6d5762a1276a059eb5cab829a1"
 dependencies = [
  "ics",
  "image",
@@ -5185,7 +5152,7 @@ dependencies = [
 [[package]]
 name = "rocket-util-derive"
 version = "0.2.15"
-source = "git+https://github.com/fenhl/rocket-util?branch=forms#e5d13339f60556db467f3de3079cad760e8d111e"
+source = "git+https://github.com/fenhl/rocket-util?branch=forms#aa4f03a4e2f74d6d5762a1276a059eb5cab829a1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5320,9 +5287,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.0.3"
+version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e56a18552996ac8d29ecc3b190b4fdbb2d91ca4ec396de7bbffaf43f3d637e96"
+checksum = "d97817398dd4bb2e6da002002db259209759911da105da92bec29ccb12cf58bf"
 dependencies = [
  "bitflags 2.9.0",
  "errno",
@@ -5848,7 +5815,7 @@ dependencies = [
  "static_assertions",
  "time",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.21.0",
  "tracing",
  "typemap_rev",
  "typesize",
@@ -6473,7 +6440,7 @@ dependencies = [
  "fastrand",
  "getrandom 0.3.2",
  "once_cell",
- "rustix 1.0.3",
+ "rustix 1.0.5",
  "windows-sys 0.59.0",
 ]
 
@@ -6686,7 +6653,23 @@ dependencies = [
  "rustls-pki-types",
  "tokio",
  "tokio-rustls 0.25.0",
- "tungstenite",
+ "tungstenite 0.21.0",
+ "webpki-roots 0.26.8",
+]
+
+[[package]]
+name = "tokio-tungstenite"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a9daff607c6d2bf6c16fd681ccb7eecc83e4e2cdc1ca067ffaadfca5de7f084"
+dependencies = [
+ "futures-util",
+ "log",
+ "rustls 0.23.25",
+ "rustls-pki-types",
+ "tokio",
+ "tokio-rustls 0.26.2",
+ "tungstenite 0.26.2",
  "webpki-roots 0.26.8",
 ]
 
@@ -6907,6 +6890,26 @@ dependencies = [
  "rustls-pki-types",
  "sha1",
  "thiserror 1.0.69",
+ "url",
+ "utf-8",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4793cb5e56680ecbb1d843515b23b6de9a75eb04b66643e256a396d43be33c13"
+dependencies = [
+ "bytes",
+ "data-encoding",
+ "http 1.3.1",
+ "httparse",
+ "log",
+ "rand 0.9.0",
+ "rustls 0.23.25",
+ "rustls-pki-types",
+ "sha1",
+ "thiserror 2.0.12",
  "url",
  "utf-8",
 ]
@@ -7296,10 +7299,25 @@ dependencies = [
 
 [[package]]
 name = "wheel"
-version = "0.14.4"
-source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#947ebb1d18f789d6699fb506770290dce6258387"
+version = "0.15.0"
+source = "git+https://github.com/fenhl/wheel?branch=main#e83a20ea6a6249184ef007172dba7207f23a37d8"
 dependencies = [
- "async-proto 0.24.3",
+ "async-trait",
+ "clap",
+ "console-subscriber",
+ "futures",
+ "itertools 0.14.0",
+ "thiserror 2.0.12",
+ "tokio",
+ "wheel-derive 0.15.0 (git+https://github.com/fenhl/wheel?branch=main)",
+]
+
+[[package]]
+name = "wheel"
+version = "0.15.0"
+source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#38eb4e19470e92e5babf5eb9f0117c7918beaf63"
+dependencies = [
+ "async-proto",
  "async-trait",
  "chrono",
  "clap",
@@ -7309,34 +7327,20 @@ dependencies = [
  "racetime",
  "reqwest 0.12.15",
  "rocket",
+ "rocket-util",
  "serde",
  "serde_json",
  "serde_json_path_to_error",
  "thiserror 2.0.12",
  "tokio",
- "tungstenite",
- "wheel-derive 0.14.4",
-]
-
-[[package]]
-name = "wheel"
-version = "0.15.0"
-source = "git+https://github.com/fenhl/wheel?branch=main#76858f2ab0297fa9e9b2065014a6caae47ec16d1"
-dependencies = [
- "async-trait",
- "clap",
- "console-subscriber",
- "futures",
- "itertools 0.14.0",
- "thiserror 2.0.12",
- "tokio",
- "wheel-derive 0.15.0",
+ "tungstenite 0.26.2",
+ "wheel-derive 0.15.0 (git+https://github.com/fenhl/wheel?branch=rocket-forms)",
 ]
 
 [[package]]
 name = "wheel-derive"
-version = "0.14.4"
-source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#947ebb1d18f789d6699fb506770290dce6258387"
+version = "0.15.0"
+source = "git+https://github.com/fenhl/wheel?branch=main#e83a20ea6a6249184ef007172dba7207f23a37d8"
 dependencies = [
  "itertools 0.14.0",
  "proc-macro2",
@@ -7347,7 +7351,7 @@ dependencies = [
 [[package]]
 name = "wheel-derive"
 version = "0.15.0"
-source = "git+https://github.com/fenhl/wheel?branch=main#76858f2ab0297fa9e9b2065014a6caae47ec16d1"
+source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#38eb4e19470e92e5babf5eb9f0117c7918beaf63"
 dependencies = [
  "itertools 0.14.0",
  "proc-macro2",

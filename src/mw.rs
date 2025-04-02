@@ -12,7 +12,7 @@ pub(crate) async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
             : " seeds of the ";
             a(href = "https://ootrandomizer.com/") : "Ocarina of Time randomizer";
             : ". It supports cross-platform play between ";
-            a(href = uri!(platforms).to_string()) : "different platforms";
+            a(href = uri!(platforms)) : "different platforms";
             : ", and does not require port forwarding.";
         }
         div(class = "button-row large-button-row") {
@@ -21,7 +21,7 @@ pub(crate) async fn index(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_
                 br;
                 small : "supports EverDrive*, BizHawk, and Project64";
             }
-            a(class = "button", href = uri!(install_macos).to_string()) {
+            a(class = "button", href = uri!(install_macos)) {
                 : "Install instructions for macOS";
                 br;
                 small : "supports EverDrive*";
@@ -57,7 +57,7 @@ pub(crate) async fn platforms(pool: &State<PgPool>, me: Option<User>, uri: Origi
     let transaction = pool.begin().await?;
     page(transaction, &me, &uri, PageStyle { kind: PageKind::Center, mw_footer: true, ..PageStyle::default() }, "platform support — Mido's House Multiworld", html! {
         h1 {
-            a(href = uri!(index).to_string()) : "Mido's House Multiworld";
+            a(href = uri!(index)) : "Mido's House Multiworld";
             : " platform support status";
         }
         table {
@@ -81,7 +81,7 @@ pub(crate) async fn platforms(pool: &State<PgPool>, me: Option<User>, uri: Origi
                 }
                 td {
                     : "✓ (";
-                    a(href = uri!(install_macos).to_string()) : "install instructions";
+                    a(href = uri!(install_macos)) : "install instructions";
                     : ") *";
                 }
             }
@@ -149,7 +149,7 @@ pub(crate) async fn install_macos(pool: &State<PgPool>, me: Option<User>, uri: O
     let transaction = pool.begin().await?;
     page(transaction, &me, &uri, PageStyle { mw_footer: true, ..PageStyle::default() }, "macOS install instructions — Mido's House Multiworld", html! {
         h1 {
-            a(href = uri!(index).to_string()) : "Mido's House Multiworld";
+            a(href = uri!(index)) : "Mido's House Multiworld";
             : " install instructions for macOS";
         }
         p : "You will need administrator permissions.";

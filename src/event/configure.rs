@@ -42,7 +42,7 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, me: Option<U
         html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(get(event.series, &*event.event))))).to_string()) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(get(event.series, &*event.event)))))) : "Sign in or create a Mido's House account";
                     : " to configure this event.";
                 }
             }
