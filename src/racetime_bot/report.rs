@@ -361,10 +361,11 @@ async fn report_ffa(ctx: &RaceContext<GlobalState>, cal_event: &cal::Event, even
 }
 
 impl Handler {
-    pub(super) async fn check_tfb_finish(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
+    #[must_use = "should set cleaned_up if this returns true"]
+    pub(super) async fn check_tfb_finish(&self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
         let data = ctx.data().await;
-        let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, ref scores, .. }) = self.official_data else { return Ok(()) };
-        if let Some(scores) = data.entrants.iter().map(|entrant| match entrant.status.value {
+        let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, ref scores, .. }) = self.official_data else { return Ok(true) };
+        Ok(if let Some(scores) = data.entrants.iter().map(|entrant| match entrant.status.value {
             EntrantStatusValue::Dnf => Some(tfb::Score::dnf(event.team_config)),
             EntrantStatusValue::Done => {
                 let key = if let Some(ref team) = entrant.team { &team.slug } else { &entrant.user.id };
@@ -374,8 +375,10 @@ impl Handler {
         }.map(|score| (entrant.user.id.clone(), score))).collect() {
             ctx.say("All scores received. Thank you for playing Triforce Blitz, see you next race!").await?;
             self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, Some(scores)).await?;
-        }
-        Ok(())
+            true
+        } else {
+            false
+        })
     }
 
     pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, tfb_scores: Option<HashMap<String, tfb::Score>>) -> Result<(), Error> {

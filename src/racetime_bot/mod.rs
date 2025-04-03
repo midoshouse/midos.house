@@ -2324,6 +2324,7 @@ struct Handler {
     locked: bool,
     password_sent: bool,
     race_state: ArcRwLock<RaceState>,
+    cleaned_up: bool,
 }
 
 impl Handler {
@@ -2340,6 +2341,9 @@ impl Handler {
                         return true
                     }
                 }
+                if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return !existing_state.cleaned_up }
+            } else {
+                if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
             }
         } else {
             lock!(clean_shutdown = global_state.clean_shutdown; {
@@ -2349,8 +2353,8 @@ impl Handler {
                 }
                 assert!(clean_shutdown.open_rooms.insert(OpenRoom::RaceTime(race_data.url.clone())), "should_handle_inner called for new race room {} but clean_shutdown.open_rooms already contained this room", race_data.url);
             });
+            if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
         }
-        if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
         true
     }
 
@@ -3496,6 +3500,7 @@ impl RaceHandler<GlobalState> for Handler {
             locked: false,
             password_sent: false,
             race_state: ArcRwLock::new(race_state),
+            cleaned_up: false,
             official_data, high_seed_name, low_seed_name, fpa_enabled,
         };
         if let Some(OfficialRaceData { ref event, ref restreams, .. }) = this.official_data {
@@ -3986,7 +3991,9 @@ impl RaceHandler<GlobalState> for Handler {
                                     } else {
                                         format!("Score reported: {new_score}")
                                     }).await?;
-                                    self.check_tfb_finish(ctx).await?;
+                                    if self.check_tfb_finish(ctx).await? {
+                                        self.cleaned_up = true;
+                                    }
                                 } else {
                                     ctx.send_message(
                                         &format!("Sorry {reply_to}, I didn't quite understand that. Please use this button to try again:"),
@@ -4294,8 +4301,11 @@ impl RaceHandler<GlobalState> for Handler {
             }
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx, goal).await? {
                 if let Goal::TriforceBlitz | Goal::TriforceBlitzProgressionSpoiler = goal {
-                    self.check_tfb_finish(ctx).await?;
+                    if self.check_tfb_finish(ctx).await? {
+                        self.cleaned_up = true;
+                    }
                 } else {
+                    self.cleaned_up = true;
                     if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, .. }) = self.official_data {
                         self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, None).await?;
                     }
@@ -4328,6 +4338,7 @@ impl RaceHandler<GlobalState> for Handler {
                 if let Goal::Rsl = goal {
                     sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
                 }
+                self.cleaned_up = true;
             }
             _ => {}
         }
