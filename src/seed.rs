@@ -241,72 +241,83 @@ enum SpoilerStatus {
     NotFound,
 }
 
-pub(crate) fn table_header_cells(spoiler_logs: bool) -> RawHtml<String> {
-    html! {
-        th : "Hash";
-        th : "Patch File";
-        @if spoiler_logs {
-            th : "Spoiler Log";
-        }
-    }
-}
-
 pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, add_hash_url: Option<rocket::http::uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
     let extra = seed.extra(now).await?;
-    Ok(html! {
-        td {
-            @if let Some(file_hash) = extra.file_hash {
+    let mut seed_links = match seed.files {
+        Some(Files::OotrWeb { id, gen_time, .. }) if gen_time > now - WEB_TIMEOUT => Some(html! {
+            a(href = format!("https://ootrandomizer.com/seed/get?id={id}")) : "View";
+        }),
+        Some(Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem, .. }) => Some(html! {
+            a(href = format!("/seed/{file_stem}.{}", if let Some(world_count) = extra.world_count {
+                if world_count.get() > 1 { "zpfz" } else { "zpf" }
+            } else if Path::new(DIR).join(format!("{file_stem}.zpfz")).exists() {
+                "zpfz"
+            } else {
+                "zpf"
+            })) : "Patch File";
+            @if spoiler_logs {
+                @match extra.spoiler_status {
+                    SpoilerStatus::Unlocked(spoiler_file_name) => {
+                        : " • ";
+                        a(href = format!("/seed/{spoiler_file_name}")) : "Spoiler Log";
+                    }
+                    SpoilerStatus::Progression => {
+                        : " • ";
+                        a(href = format!("/seed/{file_stem}_Progression.json")) : "Progression Spoiler";
+                    }
+                    SpoilerStatus::Locked | SpoilerStatus::NotFound => {}
+                }
+            }
+        }),
+        Some(Files::TriforceBlitz { is_dev, uuid }) => Some(html! {
+            a(href = if is_dev {
+                format!("https://dev.triforceblitz.com/seeds/{uuid}")
+            } else {
+                format!("https://www.triforceblitz.com/seed/{uuid}")
+            }) : "View";
+        }),
+        Some(Files::TfbSotd { ordinal, .. }) => Some(html! {
+            a(href = format!("https://www.triforceblitz.com/seed/daily/{ordinal}")) : "View";
+        }),
+        None => None,
+    };
+    if extra.file_hash.is_none() {
+        if let Some(add_hash_url) = add_hash_url {
+            seed_links = Some(html! {
+                @if let Some(seed_links) = seed_links {
+                    : seed_links;
+                    : " • ";
+                }
+                a(class = "button", href = add_hash_url.to_string()) : "Add Hash";
+            });
+        }
+    }
+    Ok(match (extra.file_hash, seed_links) {
+        (None, None) => html! {},
+        (None, Some(seed_links)) => html! {
+            td : seed_links;
+        },
+        (Some(file_hash), None) => html! {
+            td {
                 div(class = "hash") {
                     @for hash_icon in file_hash {
                         : hash_icon.to_html();
                     }
                 }
-            } else if let Some(add_hash_url) = add_hash_url {
-                a(class = "button", href = add_hash_url.to_string()) : "Add";
             }
-        }
-        @match seed.files {
-            Some(Files::OotrWeb { id, gen_time, .. }) if gen_time > now - WEB_TIMEOUT => td(colspan? = spoiler_logs.then_some("2")) {
-                a(href = format!("https://ootrandomizer.com/seed/get?id={id}")) : "View";
-            }
-            Some(Files::OotrWeb { ref file_stem, .. } | Files::MidosHouse { ref file_stem, .. }) => {
-                td {
-                    a(href = format!("/seed/{file_stem}.{}", if let Some(world_count) = extra.world_count {
-                        if world_count.get() > 1 { "zpfz" } else { "zpf" }
-                    } else if Path::new(DIR).join(format!("{file_stem}.zpfz")).exists() {
-                        "zpfz"
-                    } else {
-                        "zpf"
-                    })) : "Download";
-                }
-                @if spoiler_logs {
-                    td {
-                        @match extra.spoiler_status {
-                            SpoilerStatus::Unlocked(spoiler_file_name) => a(href = format!("/seed/{spoiler_file_name}")) : "View";
-                            SpoilerStatus::Progression => a(href = format!("/seed/{file_stem}_Progression.json")) : "Progression";
-                            SpoilerStatus::Locked => : "locked";
-                            SpoilerStatus::NotFound => : "not found";
+        },
+        (Some(file_hash), Some(seed_links)) => html! {
+            td {
+                div(class = "seed") {
+                    div(class = "hash") {
+                        @for hash_icon in file_hash {
+                            : hash_icon.to_html();
                         }
                     }
+                    div(class = "seed-links") : seed_links;
                 }
             }
-            Some(Files::TriforceBlitz { is_dev, uuid }) => td(colspan? = spoiler_logs.then_some("2")) {
-                a(href = if is_dev {
-                    format!("https://dev.triforceblitz.com/seeds/{uuid}")
-                } else {
-                    format!("https://www.triforceblitz.com/seed/{uuid}")
-                }) : "View";
-            }
-            Some(Files::TfbSotd { ordinal, .. }) => td(colspan? = spoiler_logs.then_some("2")) {
-                a(href = format!("https://www.triforceblitz.com/seed/daily/{ordinal}")) : "View";
-            }
-            None => {
-                td;
-                @if spoiler_logs {
-                    td;
-                }
-            }
-        }
+        },
     })
 }
 
@@ -316,7 +327,9 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -
     Ok(html! {
         table(class = "seeds") {
             thead {
-                tr : table_header_cells(spoiler_logs);
+                tr {
+                    th : "Seed";
+                }
             }
             tbody {
                 @while let Some(seed) = seeds.next().await {

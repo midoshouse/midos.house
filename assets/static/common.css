@@ -459,17 +459,19 @@ footer,
         font-size: 128px;
     }
 
+    h1.hash,
     .seeds .hash {
         gap: 10px;
     }
 
+    h1 .hash-icon,
     .seeds .hash-icon {
         width: 50px;
         height: 50px;
     }
 }
 
-@media (min-width: 1792px) {
+@media (min-width: 1536px) {
     .hash {
         gap: 10px;
     }
@@ -590,5 +592,31 @@ footer,
     .favicon-container > .favicon:hover {
         background-color: white;
         color: black;
+    }
+}
+
+@media (hover: hover) {
+    .seed {
+        display: grid;
+        align-items: center;
+    }
+
+    .seed > * {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .seed-links {
+        z-index: 1;
+        opacity: 0%;
+    }
+
+    tr:hover .seed > .hash {
+        opacity: 35%;
+        filter: blur(2px);
+    }
+
+    tr:hover .seed > .seed-links {
+        opacity: 100%;
     }
 }

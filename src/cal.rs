@@ -2084,7 +2084,7 @@ pub(crate) async fn race_table(
                     th(colspan = "6") : "Entrants";
                     th : "Links";
                     @if has_seeds {
-                        : seed::table_header_cells(true);
+                        th : "Seed";
                     }
                     @if options.show_restream_consent {
                         th : "Restream Consent";
