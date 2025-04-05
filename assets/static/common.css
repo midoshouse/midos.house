@@ -112,11 +112,71 @@ span.button-row {
     padding-inline: 0;
 }
 
+.menu .button {
+    display: block;
+}
+
+.menu .button {
+    border-block-start-width: 0;
+    border-inline-start-width: 1px;
+}
+
+.menu .button:nth-child(1) {
+    border-block-start-width: 1px;
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+}
+
+.menu .button:nth-last-child(1) {
+    border-end-start-radius: 8px;
+    border-start-end-radius: 0;
+}
+
+.popover-wrapper {
+    position: relative;
+}
+
+.popover-wrapper button {
+    font-size: unset;
+    font-family: unset;
+}
+
+[popover] {
+    inset: unset;
+    width: auto;
+    height: auto;
+    padding: 0;
+    background: transparent;
+    border: none;
+    position: fixed;
+    top: 0px;
+    right: 0px;
+    pointer-events: none;
+}
+
+.menu {
+    display: none;
+    position: absolute;
+    top: calc(100% - 1px);
+    width: 50vw;
+    justify-content: start;
+}
+
+[popover]:popover-open + .menu {
+    display: grid;
+}
+
+[popover]:popover-open + * + button {
+    border-end-start-radius: 0 !important;
+    border-end-end-radius: 0 !important;
+}
+
 input[type="checkbox"] {
     width: 16px;
     height: 16px;
 }
 
+.popover-wrapper > button,
 input[type="text"],
 input[type="number"],
 input[type="submit"],
@@ -136,11 +196,13 @@ textarea,
     height: 64px;
 }
 
+.popover-wrapper > button,
 input[type="submit"],
 .button {
     border-inline-start-width: 0;
 }
 
+.button-row .popover-wrapper:nth-child(1) > button,
 fieldset input[type="submit"],
 .button-row form:nth-child(1) input[type="submit"],
 .button:nth-child(1) {
@@ -149,6 +211,7 @@ fieldset input[type="submit"],
     border-end-start-radius: 8px;
 }
 
+.button-row .popover-wrapper:nth-last-child(1) > button,
 fieldset input[type="submit"],
 .button-row form:nth-last-child(1) input[type="submit"],
 .button:nth-last-child(1) {
@@ -156,6 +219,7 @@ fieldset input[type="submit"],
     border-end-end-radius: 8px;
 }
 
+[popover]:popover-open + * + button,
 input[type="submit"]:hover,
 .button.selected,
 .button:hover {
@@ -477,6 +541,7 @@ footer,
         color: white;
     }
 
+    .button-row .popover-wrapper > button,
     input[type="text"],
     input[type="number"],
     input[type="submit"],
@@ -487,6 +552,7 @@ footer,
         border-color: white;
     }
 
+    [popover]:popover-open + * + button,
     input[type="submit"]:hover,
     .button.selected,
     .button:hover {

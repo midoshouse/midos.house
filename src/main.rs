@@ -184,6 +184,7 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
             .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(10))
         ).await?;
         let seed_metadata = Arc::default();
+        let ootr_api_client = Arc::new(ootr_web::ApiClient::new(http_client.clone(), config.ootr_api_key.clone(), config.ootr_api_key_encryption.clone()));
         let rocket = http::rocket(
             db_pool.clone(),
             discord_builder.ctx_fut.clone(),
@@ -191,6 +192,7 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
             config.clone(),
             port.unwrap_or_else(|| if Environment::default().is_dev() { 24814 } else { 24812 }),
             Arc::clone(&seed_metadata),
+            Arc::clone(&ootr_api_client),
         ).await?;
         let new_room_lock = Arc::default();
         let extra_room_tx = Arc::new(RwLock::new(mpsc::channel(1).0));
@@ -205,9 +207,8 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
             extra_room_tx,
             db_pool.clone(),
             http_client.clone(),
-            config.ootr_api_key.clone(),
-            config.ootr_api_key_encryption.clone(),
             startgg_token.clone(),
+            ootr_api_client,
             discord_builder.ctx_fut.clone(),
             Arc::clone(&clean_shutdown),
             seed_cache_tx,

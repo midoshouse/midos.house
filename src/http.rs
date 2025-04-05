@@ -537,7 +537,7 @@ async fn fallback_catcher(status: Status, request: &Request<'_>) -> PageResult {
     }).await
 }
 
-pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: Config, port: u16, seed_metadata: Arc<RwLock<HashMap<String, SeedMetadata>>>) -> Result<Rocket<rocket::Ignite>, crate::Error> {
+pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http_client: reqwest::Client, config: Config, port: u16, seed_metadata: Arc<RwLock<HashMap<String, SeedMetadata>>>, ootr_api_client: Arc<ootr_web::ApiClient>) -> Result<Rocket<rocket::Ignite>, crate::Error> {
     let discord_config = if Environment::default().is_dev() { &config.discord_dev } else { &config.discord_production };
     let racetime_config = if Environment::default().is_dev() { &config.racetime_oauth_dev } else { &config.racetime_oauth_production };
     Ok(rocket::custom(rocket::Config::figment().merge(rocket::Config {
@@ -575,6 +575,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         cal::create_race_post,
         cal::import_races,
         cal::import_races_post,
+        cal::practice_seed,
         cal::edit_race,
         cal::edit_race_post,
         cal::add_file_hash,
@@ -595,6 +596,7 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
         event::enter::get,
         event::enter::post,
         event::teams::get,
+        event::practice_seed,
         event::volunteer,
         event::configure::get,
         event::configure::post,
@@ -656,5 +658,6 @@ pub(crate) async fn rocket(pool: PgPool, discord_ctx: RwFuture<DiscordCtx>, http
     .manage(http_client)
     .manage(api::schema(pool))
     .manage(seed_metadata)
+    .manage(ootr_api_client)
     .ignite().await?)
 }

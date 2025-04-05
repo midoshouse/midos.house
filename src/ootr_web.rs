@@ -19,7 +19,6 @@ use {
         prelude::*,
         racetime_bot::{
             SeedRollUpdate,
-            UnlockSpoilerLog,
             VersionedBranch,
         },
     },
@@ -35,7 +34,7 @@ const KNOWN_GOOD_VERSIONS: [ootr_utils::Version; 4] = [
 
 const MULTIWORLD_RATE_LIMIT: Duration = Duration::from_secs(20);
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
 pub(crate) enum Error {
     #[error(transparent)] HeaderToStr(#[from] reqwest::header::ToStrError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -58,6 +57,21 @@ pub(crate) enum Error {
 impl From<mpsc::error::SendError<SeedRollUpdate>> for Error {
     fn from(_: mpsc::error::SendError<SeedRollUpdate>) -> Self {
         Self::ChannelClosed
+    }
+}
+
+impl IsNetworkError for Error {
+    fn is_network_error(&self) -> bool {
+        match self {
+            Self::HeaderToStr(_) => false,
+            Self::Reqwest(e) => e.is_network_error(),
+            Self::Wheel(e) => e.is_network_error(),
+            Self::ChannelClosed => false,
+            Self::PatchPathHeader => false,
+            Self::RandomSettings => false,
+            Self::Retries { .. } => false,
+            Self::UnexpectedSeedStatus(_) => false,
+        }
     }
 }
 

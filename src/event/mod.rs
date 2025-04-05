@@ -390,6 +390,12 @@ impl<'a> Data<'a> {
         }
     }
 
+    pub(crate) fn single_settings(&self) -> Option<serde_json::Map<String, serde_json::Value>> {
+        //TODO determine single settings for event, even if it's part of a multi-event goal without single settings
+        racetime_bot::Goal::for_event(self.series, &self.event)
+            .and_then(|goal| goal.single_settings())
+    }
+
     pub(crate) async fn start(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<DateTime<Utc>>, DataError> {
         Ok(if let Some(mut start) = self.base_start {
             if let Some(max_delay) = sqlx::query_scalar!("SELECT max_delay FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier'", self.series as _, &self.event).fetch_optional(&mut **transaction).await? {
@@ -545,19 +551,53 @@ impl<'a> Data<'a> {
                         }
                     }
                 }
-                @if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event) {
-                    @if goal.is_custom() { //TODO also support non-custom goals, needs either a list of the internal goal IDs or an adjustment to the startrace page's GET parameter parsing
-                        @let mut practice_url = Url::parse(&format!("https://{}/{}/startrace", racetime_host(), racetime_bot::CATEGORY))?;
-                        @let practice_url = practice_url
+                @let practice_seed_url = self.single_settings().map(|_| uri!(practice_seed(self.series, &*self.event)));
+                @let practice_race_url = if_chain! {
+                    if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event);
+                    if goal.is_custom(); //TODO also support non-custom goals, needs either a list of the internal goal IDs or an adjustment to the startrace page's GET parameter parsing
+                    then {
+                        let mut practice_url = Url::parse(&format!("https://{}/{}/startrace", racetime_host(), racetime_bot::CATEGORY))?;
+                        practice_url
                             .query_pairs_mut()
                             .append_pair(if goal.is_custom() { "custom_goal" } else { "goal" }, goal.as_str())
                             .extend_pairs(self.team_config.is_racetime_team_format().then_some([("team_race", "1"), ("require_even_teams", "1")]).into_iter().flatten())
                             .append_pair("hide_comments", "1")
                             .finish();
-                        a(class = "button", href = practice_url.to_string()) {
-                            : favicon(practice_url);
+                        Some(practice_url)
+                    } else {
+                        None
+                    }
+                };
+                @let practice_seed_button = practice_seed_url.map(|url| html! {
+                    a(class = "button", href = url) {
+                        : favicon(&Url::parse(&url.to_string()).unwrap());
+                        @if practice_race_url.is_some() {
+                            : "Roll Seed";
+                        } else {
                             : "Practice";
                         }
+                    }
+                });
+                @let practice_race_button = practice_race_url.map(|url| html! {
+                    a(class = "button", href = url.to_string()) {
+                        : favicon(&url);
+                        @if practice_seed_button.is_some() {
+                            : "Start Race";
+                        } else {
+                            : "Practice";
+                        }
+                    }
+                });
+                @match (practice_seed_button, practice_race_button) {
+                    (None, None) => {}
+                    (None, Some(button)) | (Some(button), None) => : button;
+                    (Some(practice_seed_button), Some(practice_race_button)) => div(class = "popover-wrapper") {
+                        div(id = "practice-menu", popover); //HACK workaround for lack of cross-browser support for CSS overlay property
+                        div(class = "menu") {
+                            : practice_seed_button;
+                            : practice_race_button;
+                        }
+                        button(popovertarget = "practice-menu") : "Practice ⯆";
                     }
                 }
                 @if matches!(self.series, Series::League | Series::TriforceBlitz) && !self.is_ended() {
@@ -1985,6 +2025,22 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         transaction.rollback().await?;
         RedirectOrContent::Content(status_page(pool.begin().await?, Some(me), uri, csrf.as_ref(), data, StatusContext::SubmitAsync(form.context)).await?)
     })
+}
+
+#[rocket::get("/event/<series>/<event>/practice")]
+pub(crate) async fn practice_seed(ootr_api_client: &State<Arc<ootr_web::ApiClient>>, series: Series, event: &str) -> Result<Redirect, StatusOrError<ootr_web::Error>> {
+    let goal = racetime_bot::Goal::for_event(series, event).ok_or(StatusOrError::Status(Status::NotFound))?;
+    let mut settings = goal.single_settings().ok_or(StatusOrError::Status(Status::NotFound))?;
+    settings.remove("password_lock");
+    let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
+    let web_version = ootr_api_client.can_roll_on_web(None, &goal.rando_version(Some((series, event))), world_count, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let (update_tx, update_rx) = mpsc::channel(128);
+    let res = ootr_api_client.roll_seed_web(update_tx, None, web_version, false, UnlockSpoilerLog::Now, settings).await;
+    drop(update_rx);
+    match res {
+        Ok(ootr_web::SeedInfo { id, .. }) => Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}"))),
+        Err(e) => Err(StatusOrError::Err(e)),
+    }
 }
 
 #[rocket::get("/event/<series>/<event>/volunteer")]

@@ -491,7 +491,7 @@ impl Goal {
     }
 
     /// Only returns a value for goals that only have one possible set of settings.
-    fn single_settings(&self) -> Option<serde_json::Map<String, Json>> {
+    pub(crate) fn single_settings(&self) -> Option<serde_json::Map<String, Json>> {
         match self {
             Self::Cc7 => None, // settings draft
             Self::CoOpS3 => Some(coop::s3_settings()),
@@ -1305,7 +1305,7 @@ pub(crate) struct GlobalState {
     pub(crate) http_client: reqwest::Client,
     #[allow(unused)] //TODO use for set reporting
     startgg_token: String,
-    ootr_api_client: ootr_web::ApiClient,
+    ootr_api_client: Arc<ootr_web::ApiClient>,
     pub(crate) discord_ctx: RwFuture<DiscordCtx>,
     clean_shutdown: Arc<Mutex<CleanShutdown>>,
     seed_cache_tx: watch::Sender<()>,
@@ -1319,9 +1319,8 @@ impl GlobalState {
         extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>,
         db_pool: PgPool,
         http_client: reqwest::Client,
-        ootr_api_key: String,
-        ootr_api_key_encryption: String,
         startgg_token: String,
+        ootr_api_client: Arc<ootr_web::ApiClient>,
         discord_ctx: RwFuture<DiscordCtx>,
         clean_shutdown: Arc<Mutex<CleanShutdown>>,
         seed_cache_tx: watch::Sender<()>,
@@ -1332,8 +1331,7 @@ impl GlobalState {
                 hostname: Cow::Borrowed(racetime_host()),
                 ..racetime::HostInfo::default()
             },
-            ootr_api_client: ootr_web::ApiClient::new(http_client.clone(), ootr_api_key, ootr_api_key_encryption),
-            new_room_lock, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, discord_ctx, clean_shutdown, seed_cache_tx, seed_metadata,
+            new_room_lock, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, ootr_api_client, discord_ctx, clean_shutdown, seed_cache_tx, seed_metadata,
         }
     }
 

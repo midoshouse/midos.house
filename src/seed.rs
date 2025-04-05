@@ -241,7 +241,7 @@ enum SpoilerStatus {
     NotFound,
 }
 
-pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, add_hash_url: Option<rocket::http::uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
+pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, add_hash_url: Option<rocket::http::uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
     let extra = seed.extra(now).await?;
     let mut seed_links = match seed.files {
         Some(Files::OotrWeb { id, gen_time, .. }) if gen_time > now - WEB_TIMEOUT => Some(html! {
@@ -294,28 +294,22 @@ pub(crate) async fn table_cells(now: DateTime<Utc>, seed: &Data, spoiler_logs: b
     }
     Ok(match (extra.file_hash, seed_links) {
         (None, None) => html! {},
-        (None, Some(seed_links)) => html! {
-            td : seed_links;
-        },
+        (None, Some(seed_links)) => seed_links,
         (Some(file_hash), None) => html! {
-            td {
+            div(class = "hash") {
+                @for hash_icon in file_hash {
+                    : hash_icon.to_html();
+                }
+            }
+        },
+        (Some(file_hash), Some(seed_links)) => html! {
+            div(class = "seed") {
                 div(class = "hash") {
                     @for hash_icon in file_hash {
                         : hash_icon.to_html();
                     }
                 }
-            }
-        },
-        (Some(file_hash), Some(seed_links)) => html! {
-            td {
-                div(class = "seed") {
-                    div(class = "hash") {
-                        @for hash_icon in file_hash {
-                            : hash_icon.to_html();
-                        }
-                    }
-                    div(class = "seed-links") : seed_links;
-                }
+                div(class = "seed-links") : seed_links;
             }
         },
     })
@@ -333,7 +327,9 @@ pub(crate) async fn table(seeds: impl Stream<Item = Data>, spoiler_logs: bool) -
             }
             tbody {
                 @while let Some(seed) = seeds.next().await {
-                    tr : table_cells(now, &seed, spoiler_logs, None).await?;
+                    tr {
+                        td : table_cell(now, &seed, spoiler_logs, None).await?;
+                    }
                 }
             }
         }

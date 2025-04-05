@@ -17,7 +17,6 @@ use {
             RollError,
             SeedCommandParseResult,
             SeedRollUpdate,
-            UnlockSpoilerLog,
             VersionedBranch,
         },
     },
