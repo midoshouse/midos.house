@@ -642,61 +642,7 @@ impl Race {
             },
             Series::Scrubs => match &*event.event {
                 "5" => {}
-                "6" => for row in sheets::values(http_client.clone(), "1w1AS87VMB7jE-qiFmSYPlCiLh8pf6F5fdYz_I0I8aE8", "B235:G").await? {
-                    let (time_et, group, round, matchup, restream) = match &*row {
-                        [time_et, _time_utc, group, round, matchup] => (time_et, group, round, matchup, ""),
-                        [time_et, _time_utc, group, round, matchup, restream] => (time_et, group, round, matchup, &**restream),
-                        _ => continue,
-                    };
-                    let id = Id::new(&mut *transaction).await?;
-                    let (phase, round, entrants) = if let "Qualifier" = &**round {
-                        let Some(round) = round.strip_prefix("Scrubs Qualifier ") else { continue };
-                        (format!("Live Qualifier"), round.to_owned(), Entrants::Open)
-                    } else {
-                        let Some((p1, p2)) = matchup.split_once(" vs. ") else { continue };
-                        (format!("Group {group}"), round.clone(), Entrants::Two([
-                            Entrant::Named { name: p1.to_owned(), racetime_id: None, twitch_username: None },
-                            Entrant::Named { name: p2.to_owned(), racetime_id: None, twitch_username: None },
-                        ]))
-                    };
-                    add_or_update_race(&mut *transaction, &mut races, Self {
-                        series: event.series,
-                        event: event.event.to_string(),
-                        source: Source::Manual, // sheet does not provide timestamps
-                        phase: Some(phase),
-                        round: Some(round),
-                        game: None,
-                        scheduling_thread: None,
-                        schedule: RaceSchedule::Live {
-                            start: {
-                                // source timestamp is without year, guess the year by assuming all races in the event are between 2024-09-01 and 2025-08-31
-                                let start = NaiveDateTime::parse_from_str(&format!("2024 at {time_et}"), "%Y at %b %d,  %I:%M%p")?.and_local_timezone(America::New_York).single_ok()?;
-                                if start < America::New_York.with_ymd_and_hms(2024, 9, 1, 0, 0, 0).single_ok()? {
-                                    NaiveDateTime::parse_from_str(&format!("2025 at {time_et}"), "%Y at %b %d,  %I:%M%p")?.and_local_timezone(America::New_York).single_ok()?
-                                } else {
-                                    start
-                                }
-                            }.with_timezone(&Utc),
-                            end: None,
-                            room: None,
-                        },
-                        schedule_updated_at: None,
-                        draft: None,
-                        seed: seed::Data::default(),
-                        video_urls: if restream.is_empty() {
-                            HashMap::default()
-                        } else {
-                            collect![English => format!("https://twitch.tv/{restream}").parse()?]
-                        },
-                        restreamers: HashMap::default(),
-                        last_edited_by: None,
-                        last_edited_at: None,
-                        ignored: false,
-                        schedule_locked: false,
-                        notified: false,
-                        id, entrants,
-                    }).await?;
-                },
+                "6" => {}
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {
