@@ -1441,15 +1441,21 @@ async fn update_race(transaction: &mut Transaction<'_, Postgres>, found_race: &m
 }
 
 async fn add_or_update_race(transaction: &mut Transaction<'_, Postgres>, races: &mut Vec<Race>, race: Race) -> sqlx::Result<()> {
-    if let Some(found_race) = races.iter_mut().find(|iter_race|
-        iter_race.series == race.series
-        && iter_race.event == race.event
-        && iter_race.phase == race.phase
-        && iter_race.round == race.round
-        && iter_race.game == race.game
-        && iter_race.entrants == race.entrants
-        && !iter_race.schedule_locked
-    ) {
+    if let Some(found_race) = races.iter_mut().find(|iter_race| match &race.source {
+        Source::Challonge { id } => if let Source::Challonge { id: iter_id } = &iter_race.source { iter_id == id } else { false },
+        Source::League { id } => if let Source::League { id: iter_id } = &iter_race.source { iter_id == id } else { false },
+        Source::StartGG { event, set } => if let Source::StartGG { event: iter_event, set: iter_set } = &iter_race.source { iter_event == event && iter_set == set } else { false },
+        Source::SpeedGaming { id } => if let Source::SpeedGaming { id: iter_id } = &iter_race.source { iter_id == id } else { false },
+        Source::Sheet { .. } | Source::Manual =>
+            matches!(iter_race.source, Source::Sheet { .. } | Source::Manual)
+            && iter_race.series == race.series
+            && iter_race.event == race.event
+            && iter_race.phase == race.phase
+            && iter_race.round == race.round
+            && iter_race.game == race.game
+            && iter_race.entrants == race.entrants
+            && !iter_race.schedule_locked,
+    }) {
         update_race(transaction, found_race, race).await?;
     } else {
         // add race to database
