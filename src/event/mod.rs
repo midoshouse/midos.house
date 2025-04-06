@@ -2032,6 +2032,7 @@ pub(crate) async fn practice_seed(ootr_api_client: &State<Arc<ootr_web::ApiClien
     let goal = racetime_bot::Goal::for_event(series, event).ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut settings = goal.single_settings().ok_or(StatusOrError::Status(Status::NotFound))?;
     settings.remove("password_lock");
+    settings.insert(format!("create_spoiler"), json!(true));
     let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
     let web_version = ootr_api_client.can_roll_on_web(None, &goal.rando_version(Some((series, event))), world_count, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
     let (update_tx, update_rx) = mpsc::channel(128);
