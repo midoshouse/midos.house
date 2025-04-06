@@ -1312,14 +1312,14 @@ impl Event {
             RaceSchedule::Unscheduled | RaceSchedule::Live { .. } => false,
             RaceSchedule::Async { start1, start2, start3, .. } => match self.race.entrants {
                 Entrants::Two(_) => match self.kind {
-                    EventKind::Async1 => start1.map_or(false, |start1| start2.map_or(true, |start2| start1 <= start2)),
-                    EventKind::Async2 => start2.map_or(false, |start2| start1.map_or(true, |start1| start2 < start1)),
+                    EventKind::Async1 => start1.is_some_and(|start1| start2.is_none_or(|start2| start1 <= start2)),
+                    EventKind::Async2 => start2.is_some_and(|start2| start1.is_none_or(|start1| start2 < start1)),
                     EventKind::Normal | EventKind::Async3 => unreachable!(),
                 },
                 Entrants::Three(_) => match self.kind {
-                    EventKind::Async1 => start1.map_or(false, |start1| start2.map_or(true, |start2| start1 <= start2) || start3.map_or(true, |start3| start1 <= start3)),
-                    EventKind::Async2 => start2.map_or(false, |start2| start1.map_or(true, |start1| start2 < start1) || start3.map_or(true, |start3| start2 <= start3)),
-                    EventKind::Async3 => start3.map_or(false, |start3| start1.map_or(true, |start1| start3 < start1) || start2.map_or(true, |start2| start3 < start2)),
+                    EventKind::Async1 => start1.is_some_and(|start1| start2.is_none_or(|start2| start1 <= start2) || start3.is_none_or(|start3| start1 <= start3)),
+                    EventKind::Async2 => start2.is_some_and(|start2| start1.is_none_or(|start1| start2 < start1) || start3.is_none_or(|start3| start2 <= start3)),
+                    EventKind::Async3 => start3.is_some_and(|start3| start1.is_none_or(|start1| start3 < start1) || start2.is_none_or(|start2| start3 < start2)),
                     EventKind::Normal => unreachable!(),
                 },
                 _ => unreachable!(),
@@ -1335,7 +1335,7 @@ impl Event {
     }
 
     pub(crate) async fn should_create_room(&self, transaction: &mut Transaction<'_, Postgres>, event: &event::Data<'_>) -> Result<RaceHandleMode, event::DataError> {
-        Ok(if racetime_bot::Goal::for_event(self.race.series, &self.race.event).map_or(false, |goal| goal.should_create_rooms()) {
+        Ok(if racetime_bot::Goal::for_event(self.race.series, &self.race.event).is_some_and(|goal| goal.should_create_rooms()) {
             if self.race.series == Series::SpeedGaming && self.race.event.ends_with("live") && event.is_started(transaction).await? {
                 // don't create racetime.gg rooms for in-person races
                 RaceHandleMode::Notify
@@ -1415,8 +1415,8 @@ async fn update_race(transaction: &mut Transaction<'_, Postgres>, found_race: &m
             }
         }
     }
-    if race.video_urls.iter().any(|(language, new_url)| found_race.video_urls.get(language).map_or(true, |old_url| old_url != new_url)) {
-        if found_race.video_urls.iter().all(|(language, old_url)| race.video_urls.get(language).map_or(true, |new_url| old_url == new_url)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
+    if race.video_urls.iter().any(|(language, new_url)| found_race.video_urls.get(language).is_none_or(|old_url| old_url != new_url)) {
+        if found_race.video_urls.iter().all(|(language, old_url)| race.video_urls.get(language).is_none_or(|new_url| old_url == new_url)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
             sqlx::query!("UPDATE races SET video_url = $1, video_url_fr = $2, video_url_de = $3, video_url_pt = $4 WHERE id = $5",
                 race.video_urls.get(&English).or_else(|| found_race.video_urls.get(&English)).map(|url| url.to_string()),
                 race.video_urls.get(&French).or_else(|| found_race.video_urls.get(&French)).map(|url| url.to_string()),
@@ -1426,8 +1426,8 @@ async fn update_race(transaction: &mut Transaction<'_, Postgres>, found_race: &m
             ).execute(&mut **transaction).await?;
         }
     }
-    if race.restreamers.iter().any(|(language, new_restreamer)| found_race.restreamers.get(language).map_or(true, |old_restreamer| old_restreamer != new_restreamer)) {
-        if found_race.restreamers.iter().all(|(language, old_restreamer)| race.restreamers.get(language).map_or(true, |new_restreamer| old_restreamer == new_restreamer)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
+    if race.restreamers.iter().any(|(language, new_restreamer)| found_race.restreamers.get(language).is_none_or(|old_restreamer| old_restreamer != new_restreamer)) {
+        if found_race.restreamers.iter().all(|(language, old_restreamer)| race.restreamers.get(language).is_none_or(|new_restreamer| old_restreamer == new_restreamer)) { //TODO make sure manually entered restreams aren't changed automatically, then remove this condition
             sqlx::query!("UPDATE races SET restreamer = $1, restreamer_fr = $2, restreamer_de = $3, restreamer_pt = $4 WHERE id = $5",
                 race.restreamers.get(&English).or_else(|| found_race.restreamers.get(&English)),
                 race.restreamers.get(&French).or_else(|| found_race.restreamers.get(&French)),
@@ -2446,7 +2446,7 @@ pub(crate) async fn import_races_post(discord_ctx: &State<RwFuture<DiscordCtx>>,
                 }
                 for race in &mut races {
                     let Source::Challonge { ref id } = race.source else { unreachable!("received non-Challonge race from challonge::races_to_import") };
-                    (race.phase, race.round) = if value.phase_round.get(id).map_or(true, |phase_round| phase_round.is_empty()) {
+                    (race.phase, race.round) = if value.phase_round.get(id).is_none_or(|phase_round| phase_round.is_empty()) {
                         (
                             value.phase.get(id).filter(|phase| !phase.is_empty()).map(|phase| phase.clone()),
                             value.round.get(id).filter(|round| !round.is_empty()).map(|round| round.clone()),
@@ -2836,7 +2836,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                             : form_table_cell(&field_name, &mut errors, html! {
                                 input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {
                                     ctx.field_value(&*field_name)
-                                } else if me.as_ref().and_then(|me| me.racetime.as_ref()).map_or(false, |racetime| race.restreamers.get(&language).map_or(false, |restreamer| *restreamer == racetime.id)) {
+                                } else if me.as_ref().and_then(|me| me.racetime.as_ref()).is_some_and(|racetime| race.restreamers.get(&language).is_some_and(|restreamer| *restreamer == racetime.id)) {
                                     Some("me")
                                 } else {
                                     race.restreamers.get(&language).map(|restreamer| restreamer.as_str()) //TODO display as racetime.gg profile URL
@@ -3290,7 +3290,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
                         }
                     }
                 } else {
-                    if value.restreamers.get(&language).map_or(false, |restreamer| !restreamer.is_empty()) {
+                    if value.restreamers.get(&language).is_some_and(|restreamer| !restreamer.is_empty()) {
                         form.context.push_error(form::Error::validation("Please either add a restream URL or remove the restreamer.").with_name(format!("restreamers.{}", language.short_code())));
                     }
                 }

@@ -189,7 +189,7 @@ impl ApiClient {
             fn normalize(self, branch: Option<ootr_utils::Branch>) -> Option<ootr_utils::Version> {
                 if let Some(supplementary) = self.supplementary.filter(|&supplementary| supplementary != 0) {
                     Some(ootr_utils::Version::from_branch(branch?, self.major, self.minor, self.patch, supplementary))
-                } else if branch.map_or(true, |branch| branch == ootr_utils::Branch::Dev) {
+                } else if branch.is_none_or(|branch| branch == ootr_utils::Branch::Dev) {
                     Some(ootr_utils::Version::from_dev(self.major, self.minor, self.patch))
                 } else {
                     None
@@ -223,7 +223,7 @@ impl ApiClient {
     pub(crate) async fn can_roll_on_web(&self, rsl_preset: Option<&rsl::VersionedPreset>, version: &VersionedBranch, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog) -> Option<ootr_utils::Version> {
         if world_count > 3 { return None }
         if let UnlockSpoilerLog::Progression = unlock_spoiler_log { return None }
-        if rsl_preset.is_some() && version.branch().map_or(true, |branch| branch.latest_web_name_random_settings().is_none()) { return None }
+        if rsl_preset.is_some() && version.branch().is_none_or(|branch| branch.latest_web_name_random_settings().is_none()) { return None }
         match version {
             VersionedBranch::Pinned(version) => {
                 if matches!(rsl_preset, Some(rsl::VersionedPreset::Xopar { .. })) && *version == ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 7, 1, 181, 1) || *version == ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 8, 0, 1, 1) {
@@ -282,7 +282,7 @@ impl ApiClient {
         let encrypt = version.is_release() && unlock_spoiler_log == UnlockSpoilerLog::Never;
         let api_key = if encrypt { &*self.api_key_encryption } else { &*self.api_key };
         let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
-        let password_lock = settings.remove("password_lock").map_or(false, |password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"));
+        let password_lock = settings.remove("password_lock").is_some_and(|password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"));
         let mw_permit = if is_mw {
             Some(match self.mw_seed_rollers.try_acquire() {
                 Ok(permit) => permit,
@@ -315,7 +315,7 @@ impl ApiClient {
         };
         let mut last_id = None;
         for attempt in 0u8.. {
-            if attempt >= 3 && delay_until.map_or(true, |delay_until| Utc::now() >= delay_until) {
+            if attempt >= 3 && delay_until.is_none_or(|delay_until| Utc::now() >= delay_until) {
                 drop(mw_permit);
                 return Err(Error::Retries {
                     num_retries: attempt,

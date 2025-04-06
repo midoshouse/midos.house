@@ -1874,7 +1874,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
     let mut looking_for_team = Vec::default();
     for row in sqlx::query!(r#"SELECT user_id AS "user: Id<Users>", availability, notes FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {
         let user = User::from_id(&mut *transaction, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
-        if me.as_ref().map_or(false, |me| user.id == me.id) { me_listed = true }
+        if me.as_ref().is_some_and(|me| user.id == me.id) { me_listed = true }
         looking_for_team.push((user, row.availability, row.notes));
     }
     let form = if me.is_some() {

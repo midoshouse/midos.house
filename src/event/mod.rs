@@ -433,11 +433,11 @@ impl<'a> Data<'a> {
     }
 
     pub(crate) async fn is_started(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<bool, DataError> {
-        Ok(self.start(transaction).await?.map_or(false, |start| start <= Utc::now()))
+        Ok(self.start(transaction).await?.is_some_and(|start| start <= Utc::now()))
     }
 
     fn is_ended(&self) -> bool {
-        self.end.map_or(false, |end| end <= Utc::now())
+        self.end.is_some_and(|end| end <= Utc::now())
     }
 
     pub(crate) async fn organizers(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<User>, Error> {
@@ -1804,7 +1804,7 @@ pub(crate) async fn request_async(pool: &State<PgPool>, me: User, uri: Origin<'_
         let async_kind = if let Some(ref team) = team {
             if let Some(async_kind) = data.active_async(&mut transaction, Some(team.id)).await? {
                 let requested = sqlx::query_scalar!(r#"SELECT requested IS NOT NULL AS "requested!" FROM async_teams WHERE team = $1 AND kind = $2"#, team.id as _, async_kind as _).fetch_optional(&mut *transaction).await?;
-                if requested.map_or(false, identity) {
+                if requested.is_some_and(identity) {
                     form.context.push_error(form::Error::validation("Your team has already requested this async."));
                 }
                 Some(async_kind)
@@ -1875,10 +1875,10 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
         let async_kind = if let Some(ref team) = team {
             if let Some(async_kind) = data.active_async(&mut transaction, Some(team.id)).await? {
                 let row = sqlx::query!(r#"SELECT requested IS NOT NULL AS "requested!", submitted IS NOT NULL AS "submitted!" FROM async_teams WHERE team = $1 AND kind = $2"#, team.id as _, async_kind as _).fetch_optional(&mut *transaction).await?;
-                if row.as_ref().map_or(false, |row| row.submitted) {
+                if row.as_ref().is_some_and(|row| row.submitted) {
                     form.context.push_error(form::Error::validation("You have already submitted times for this async. To make a correction or add vods, please contact the tournament organizers.")); //TODO allow adding vods via form but no other edits
                 }
-                if !row.map_or(false, |row| row.requested) {
+                if !row.is_some_and(|row| row.requested) {
                     form.context.push_error(form::Error::validation("You have not requested this async yet."));
                 }
                 Some(async_kind)

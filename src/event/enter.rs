@@ -319,7 +319,7 @@ impl Requirement {
                 }
             }
             Self::StartGG { optional: true } => {
-                let yes_checked = defaults.field_value("startgg_radio").map_or(true, |value| value == "yes");
+                let yes_checked = defaults.field_value("startgg_radio").is_none_or(|value| value == "yes");
                 let html_content = html! {
                     @if is_checked.unwrap() {
                         : "Enter with your connected start.gg account"; //TODO show name and link to profile
@@ -327,7 +327,7 @@ impl Requirement {
                         a(href = uri!(crate::auth::startgg_login(Some(redirect_uri)))) : "Connect a start.gg account to your Mido's House account";
                     }
                 };
-                let no_checked = defaults.field_value("startgg_radio").map_or(false, |value| value == "no");
+                let no_checked = defaults.field_value("startgg_radio").is_some_and(|value| value == "no");
                 RequirementStatus {
                     blocks_submit: false,
                     html_content: Box::new(move |errors| html! {
@@ -780,7 +780,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_
                                                 : " to participate in this race.";
                                             } else {
                                                 : "The race room will be opened around 30 minutes before the scheduled starting time. ";
-                                                @if me.as_ref().map_or(false, |me| me.racetime.is_some()) {
+                                                @if me.as_ref().is_some_and(|me| me.racetime.is_some()) {
                                                     : "You don't need to sign up beforehand.";
                                                 } else {
                                                     : "You will need a ";

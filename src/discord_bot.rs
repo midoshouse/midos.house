@@ -312,7 +312,7 @@ async fn check_scheduling_thread_permissions<'a>(ctx: &'a DiscordCtx, interactio
         Ok(Some(race)) => {
             let mut team = None;
             for iter_team in race.teams() {
-                if iter_team.members(&mut transaction).await?.into_iter().any(|member| member.discord.map_or(false, |discord| discord.id == interaction.user_id())) {
+                if iter_team.members(&mut transaction).await?.into_iter().any(|member| member.discord.is_some_and(|discord| discord.id == interaction.user_id())) {
                     team = Some(iter_team.clone());
                     break
                 }
@@ -545,7 +545,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
             let mut draft_kind = None;
             for event in &guild_events {
                 if let Some(new_kind) = event.draft_kind() {
-                    if draft_kind.map_or(false, |prev_kind| prev_kind != new_kind) {
+                    if draft_kind.is_some_and(|prev_kind| prev_kind != new_kind) {
                         #[derive(Debug, thiserror::Error)]
                         #[error("multiple conflicting draft kinds in the same Discord guild")]
                         struct DraftKindsError;
@@ -968,7 +968,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         return Ok(())
                                     }
                                 };
-                                if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
+                                if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id)) {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
                                         .content("Sorry, only event organizers can use this command.")
@@ -1037,7 +1037,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
                                                 _ => panic!("unexpected slash command option type"),
                                             });
-                                            if mq.map_or(false, |mq| mq != 0) {
+                                            if mq.is_some_and(|mq| mq != 0) {
                                                 //TODO different error messages depending on which player(s) didn't opt into MQ
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                     .ephemeral(true)
@@ -1056,7 +1056,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         } else if interaction.data.id == command_ids.post_status {
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, None).await? {
                                 let event = race.event(&mut transaction).await?;
-                                if event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
+                                if event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id)) {
                                     if let Some(draft_kind) = event.draft_kind() {
                                         if let Some(ref draft) = race.draft {
                                             let mut msg_ctx = draft::MessageContext::Discord {
@@ -1167,7 +1167,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             let mut transaction = ctx.data.read().await.get::<DbPool>().as_ref().expect("database connection pool missing from Discord context").begin().await?;
                             if let Some(event_row) = sqlx::query!(r#"SELECT series AS "series: Series", event FROM events WHERE discord_scheduling_channel = $1 AND end_time IS NULL"#, PgSnowflake(parent_channel) as _).fetch_optional(&mut *transaction).await? {
                                 let event = event::Data::new(&mut transaction, event_row.series, event_row.event).await?.expect("just received from database");
-                                if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id)) {
+                                if !event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id)) {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
                                         .content("Sorry, only event organizers can use this command.")
@@ -1286,7 +1286,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             });
                             if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
-                                let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
+                                let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id));
                                 let was_scheduled = !matches!(race.schedule, RaceSchedule::Unscheduled);
                                 if let Some(speedgaming_slug) = &event.speedgaming_slug {
                                     let response_content = if was_scheduled {
@@ -1434,7 +1434,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             });
                             if let Some((mut transaction, mut race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
-                                let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
+                                let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id));
                                 let was_scheduled = !matches!(race.schedule, RaceSchedule::Unscheduled);
                                 if let Some(speedgaming_slug) = &event.speedgaming_slug {
                                     let response_content = if was_scheduled {
@@ -1488,12 +1488,12 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         } else {
                                             let (kind, was_scheduled) = match race.entrants {
                                                 Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
-                                                    if team.as_ref().map_or(false, |team| team1 == team) {
+                                                    if team.as_ref().is_some_and(|team| team1 == team) {
                                                         let was_scheduled = race.schedule.set_async_start1(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
                                                         race.save(&mut transaction).await?;
                                                         (cal::EventKind::Async1, was_scheduled)
-                                                    } else if team.as_ref().map_or(false, |team| team2 == team) {
+                                                    } else if team.as_ref().is_some_and(|team| team2 == team) {
                                                         let was_scheduled = race.schedule.set_async_start2(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
                                                         race.save(&mut transaction).await?;
@@ -1508,17 +1508,17 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     }
                                                 }
                                                 Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => {
-                                                    if team.as_ref().map_or(false, |team| team1 == team) {
+                                                    if team.as_ref().is_some_and(|team| team1 == team) {
                                                         let was_scheduled = race.schedule.set_async_start1(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
                                                         race.save(&mut transaction).await?;
                                                         (cal::EventKind::Async1, was_scheduled)
-                                                    } else if team.as_ref().map_or(false, |team| team2 == team) {
+                                                    } else if team.as_ref().is_some_and(|team| team2 == team) {
                                                         let was_scheduled = race.schedule.set_async_start2(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
                                                         race.save(&mut transaction).await?;
                                                         (cal::EventKind::Async2, was_scheduled)
-                                                    } else if team.as_ref().map_or(false, |team| team3 == team) {
+                                                    } else if team.as_ref().is_some_and(|team| team3 == team) {
                                                         let was_scheduled = race.schedule.set_async_start3(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
                                                         race.save(&mut transaction).await?;
@@ -1647,7 +1647,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                             });
                             if let Some((mut transaction, race, team)) = check_scheduling_thread_permissions(ctx, interaction, game).await? {
                                 let event = race.event(&mut transaction).await?;
-                                let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.map_or(false, |discord| discord.id == interaction.user.id));
+                                let is_organizer = event.organizers(&mut transaction).await?.into_iter().any(|organizer| organizer.discord.is_some_and(|discord| discord.id == interaction.user.id));
                                 if event.speedgaming_slug.is_some() {
                                     interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                         .ephemeral(true)
@@ -1696,9 +1696,9 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             }
                                             RaceSchedule::Async { .. } => match race.entrants {
                                                 Entrants::Two([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2)]) => {
-                                                    if team.as_ref().map_or(false, |team| team1 == team) {
+                                                    if team.as_ref().is_some_and(|team| team1 == team) {
                                                         sqlx::query!("UPDATE races SET async_start1 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
-                                                    } else if team.as_ref().map_or(false, |team| team2 == team) {
+                                                    } else if team.as_ref().is_some_and(|team| team2 == team) {
                                                         sqlx::query!("UPDATE races SET async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
                                                     } else {
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1719,11 +1719,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     )).await?;
                                                 }
                                                 Entrants::Three([Entrant::MidosHouseTeam(ref team1), Entrant::MidosHouseTeam(ref team2), Entrant::MidosHouseTeam(ref team3)]) => {
-                                                    if team.as_ref().map_or(false, |team| team1 == team) {
+                                                    if team.as_ref().is_some_and(|team| team1 == team) {
                                                         sqlx::query!("UPDATE races SET async_start1 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
-                                                    } else if team.as_ref().map_or(false, |team| team2 == team) {
+                                                    } else if team.as_ref().is_some_and(|team| team2 == team) {
                                                         sqlx::query!("UPDATE races SET async_start2 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
-                                                    } else if team.as_ref().map_or(false, |team| team3 == team) {
+                                                    } else if team.as_ref().is_some_and(|team| team3 == team) {
                                                         sqlx::query!("UPDATE races SET async_start3 = NULL, schedule_updated_at = NOW() WHERE id = $1", race.id as _).execute(&mut *transaction).await?;
                                                     } else {
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1798,7 +1798,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
                                                 _ => panic!("unexpected slash command option type"),
                                             });
-                                            if mq.map_or(false, |mq| mq != 0) {
+                                            if mq.is_some_and(|mq| mq != 0) {
                                                 //TODO different error messages depending on which player(s) didn't opt into MQ
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
                                                     .ephemeral(true)

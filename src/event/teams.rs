@@ -201,7 +201,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
         QualifierKind::Score(score_kind) => {
             let mut scores = HashMap::<_, Vec<_>>::default();
             for race in Race::for_event(transaction, &cache.http_client, data).await? {
-                if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
+                if race.phase.as_ref().is_none_or(|phase| phase != "Qualifier") { continue }
                 let Ok(room) = race.rooms().exactly_one() else {
                     if let Some(extrapolate_for) = worst_case_extrapolation {
                         scores.entry(MemberUser::Newcomer).or_default();
@@ -448,7 +448,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             if worst_case_extrapolation.is_some() { unimplemented!("worst-case extrapolation for QualifierKind::SongsOfHope") } //TODO
             let mut entrant_data = HashMap::<_, (u8, _)>::default();
             for race in Race::for_event(transaction, &cache.http_client, data).await? {
-                if race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") { continue }
+                if race.phase.as_ref().is_none_or(|phase| phase != "Qualifier") { continue }
                 let Ok(room) = race.rooms().exactly_one() else { continue };
                 let room_data = cache.race_data(&room).await?;
                 if room_data.status.value != RaceStatusValue::Finished { continue }
@@ -641,7 +641,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 .then_with(|| team1.cmp(&team2))
             }
             QualifierKind::Rank => {
-                team1.as_ref().map_or(true, |team1| team1.qualifier_rank.is_none()).cmp(&team2.as_ref().map_or(true, |team2| team2.qualifier_rank.is_none())) // list qualified teams first
+                team1.as_ref().is_none_or(|team1| team1.qualifier_rank.is_none()).cmp(&team2.as_ref().is_none_or(|team2| team2.qualifier_rank.is_none())) // list qualified teams first
                 .then_with(|| team1.as_ref().and_then(|team1| team1.qualifier_rank).cmp(&team2.as_ref().and_then(|team2| team2.qualifier_rank)))
                 .then_with(|| team1.cmp(&team2))
             }
@@ -747,7 +747,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
         (Series::SpeedGaming, "2023onl" | "2024onl") | (Series::Standard, "8") => {
             if is_organizer {
                 show_status = ShowStatus::Detailed;
-            } else if !data.is_started(&mut transaction).await? && Race::for_event(&mut transaction, http_client, &data).await?.into_iter().all(|race| race.phase.as_ref().map_or(true, |phase| phase != "Qualifier") || race.is_ended()) {
+            } else if !data.is_started(&mut transaction).await? && Race::for_event(&mut transaction, http_client, &data).await?.into_iter().all(|race| race.phase.as_ref().is_none_or(|phase| phase != "Qualifier") || race.is_ended()) {
                 show_status = ShowStatus::Confirmed;
             }
             QualifierKind::Score(match (data.series, &*data.event) {
@@ -915,7 +915,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                                             : user;
                                             @if let Some(ref team) = team {
                                                 @if *is_confirmed {
-                                                    @if me.as_ref().map_or(false, |me| me == user) && members.iter().any(|member| !member.is_confirmed) {
+                                                    @if me.as_ref().is_some_and(|me| me == user) && members.iter().any(|member| !member.is_confirmed) {
                                                         : " ";
                                                         @let (errors, button) = button_form_ext(uri!(crate::event::resign_post(series, event, team.id)), csrf.as_ref(), ctx.errors().collect(), event::ResignFormSource::Teams, "Retract");
                                                         : errors;
@@ -923,7 +923,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                                                     }
                                                 } else {
                                                     : " ";
-                                                    @if me.as_ref().map_or(false, |me| me == user) {
+                                                    @if me.as_ref().is_some_and(|me| me == user) {
                                                         @let (errors, accept_button) = button_form_ext(uri!(crate::event::confirm_signup(series, event, team.id)), csrf.as_ref(), ctx.errors().collect(), event::AcceptFormSource::Teams, "Accept");
                                                         : errors;
                                                         @let (errors, decline_button) = button_form_ext(uri!(crate::event::resign_post(series, event, team.id)), csrf.as_ref(), Vec::default(), event::ResignFormSource::Teams, "Decline");
@@ -1122,7 +1122,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                             }
                             @if show_restream_consent {
                                 td {
-                                    @if team.as_ref().map_or(false, |team| team.restream_consent) {
+                                    @if team.as_ref().is_some_and(|team| team.restream_consent) {
                                         : "✓";
                                     }
                                 }

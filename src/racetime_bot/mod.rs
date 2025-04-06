@@ -1337,7 +1337,7 @@ impl GlobalState {
 
     pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, allow_web: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, mut settings: serde_json::Map<String, Json>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-        let password_lock = settings.get("password_lock").map_or(false, |password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"));
+        let password_lock = settings.get("password_lock").is_some_and(|password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"));
         settings.insert(format!("create_spoiler"), json!(match unlock_spoiler_log {
             UnlockSpoilerLog::Now | UnlockSpoilerLog::Progression | UnlockSpoilerLog::After => true,
             UnlockSpoilerLog::Never => password_lock, // spoiler log needs to be generated so the backend can read the password
@@ -1451,7 +1451,7 @@ impl GlobalState {
             let outer_tries = if web_version.is_some() { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script
             let mut last_error = None;
             for attempt in 0.. {
-                if attempt >= outer_tries && delay_until.map_or(true, |delay_until| Utc::now() >= delay_until) {
+                if attempt >= outer_tries && delay_until.is_none_or(|delay_until| Utc::now() >= delay_until) {
                     return Err(RollError::Retries {
                         num_retries: 3 * attempt,
                         last_error,
@@ -1777,7 +1777,7 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
     };
     #[cfg(unix)] {
         settings.insert(format!("rom"), json!(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join("oot-ntscu-1.0.z64")).ok_or(RollError::RomPath)?));
-        if settings.get("language").and_then(|language| language.as_str()).map_or(false, |language| matches!(language, "french" | "german")) {
+        if settings.get("language").and_then(|language| language.as_str()).is_some_and(|language| matches!(language, "french" | "german")) {
             settings.insert(format!("pal_rom"), json!(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join("oot-pal-1.0.z64")).ok_or(RollError::RomPath)?));
         }
     }
@@ -1785,7 +1785,7 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
     settings.insert(format!("create_compressed_rom"), json!(false));
     let mut last_error = None;
     for attempt in 0.. {
-        if attempt >= 3 && delay_until.map_or(true, |delay_until| Utc::now() >= delay_until) {
+        if attempt >= 3 && delay_until.is_none_or(|delay_until| Utc::now() >= delay_until) {
             return Err(RollError::Retries {
                 num_retries: attempt,
                 last_error,
@@ -2601,7 +2601,7 @@ impl Handler {
     async fn unlock_spoiler_log(&self, ctx: &RaceContext<GlobalState>, goal: Goal) -> Result<bool, Error> {
         lock!(@write state = self.race_state; {
             match *state {
-                RaceState::Rolled(seed::Data { files: Some(ref files), .. }) => if self.official_data.as_ref().map_or(true, |official_data| !official_data.cal_event.is_private_async_part()) {
+                RaceState::Rolled(seed::Data { files: Some(ref files), .. }) => if self.official_data.as_ref().is_none_or(|official_data| !official_data.cal_event.is_private_async_part()) {
                     if let UnlockSpoilerLog::Progression | UnlockSpoilerLog::After = goal.unlock_spoiler_log(self.is_official(), false /* we may try to unlock a log that's already unlocked, but other than that, this assumption doesn't break anything */) {
                         match files {
                             seed::Files::MidosHouse { file_stem, locked_spoiler_log_path } => if let Some(locked_spoiler_log_path) = locked_spoiler_log_path {
@@ -2791,7 +2791,7 @@ impl RaceHandler<GlobalState> for Handler {
                     let delay_until = cal_event.start().expect("handling room for official race without start time") - stream_delay - TimeDelta::minutes(5);
                     if let Ok(delay) = (delay_until - Utc::now()).to_std() {
                         let ctx = ctx.clone();
-                        let requires_emote_only = event.series == Series::SpeedGaming && cal_event.race.phase.as_ref().map_or(false, |phase| phase == "Bracket");
+                        let requires_emote_only = event.series == Series::SpeedGaming && cal_event.race.phase.as_ref().is_some_and(|phase| phase == "Bracket");
                         tokio::spawn(async move {
                             sleep_until(Instant::now() + delay).await;
                             if !Self::should_handle_inner(&*ctx.data().await, ctx.global_state.clone(), Some(None)).await { return }
@@ -4480,7 +4480,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                 lock!(@read extra_room_tx = extra_room_tx; { let _ = extra_room_tx.send(race_slug).await; });
                 Ok(room_url)
             }
-            Err(Error::Reqwest(e)) if e.status().map_or(false, |status| status.is_server_error()) => {
+            Err(Error::Reqwest(e)) if e.status().is_some_and(|status| status.is_server_error()) => {
                 // racetime.gg's auth endpoint has been known to return server errors intermittently.
                 // In that case, we simply try again in the next iteration of the sleep loop.
                 return Ok(None)

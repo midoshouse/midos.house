@@ -313,7 +313,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                 //TODO if this may be outdated, link to racetime.gg login page for refreshing
             }
         }
-    } else if me.as_ref().map_or(false, |me| me.id == user.id) {
+    } else if me.as_ref().is_some_and(|me| me.id == user.id) {
         if let Some(racetime_user) = racetime_user {
             if let Some(racetime_user) = User::from_racetime(&mut *transaction, &racetime_user.id).await? {
                 let fenhl = User::from_id(&mut *transaction, Id::from(14571800683221815449_u64)).await?.ok_or(PageError::FenhlUserData)?;
@@ -390,7 +390,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                 //TODO if this may be outdated, link to racetime.gg login page for refreshing
             }
         }
-    } else if me.as_ref().map_or(false, |me| me.id == user.id) {
+    } else if me.as_ref().is_some_and(|me| me.id == user.id) {
         if let Some(discord_user) = discord_user {
             if let Some(discord_user) = User::from_discord(&mut *transaction, discord_user.id).await? {
                 let fenhl = User::from_id(&mut *transaction, Id::from(14571800683221815449_u64)).await?.ok_or(PageError::FenhlUserData)?;
@@ -458,7 +458,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
     } else {
         html! {}
     };
-    Ok(page(transaction, &me, &uri, PageStyle { kind: if me.as_ref().map_or(false, |me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
+    Ok(page(transaction, &me, &uri, PageStyle { kind: if me.as_ref().is_some_and(|me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
         h1 {
             bdi : user.display_name();
         }

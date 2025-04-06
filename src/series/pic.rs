@@ -553,8 +553,8 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
     let mut looking_for_team = Vec::default();
     for row in sqlx::query!(r#"SELECT user_id AS "user: Id<Users>", role AS "role: RolePreference" FROM looking_for_team WHERE series = $1 AND event = $2"#, data.series as _, &data.event).fetch_all(&mut *transaction).await? {
         let user = User::from_id(&mut *transaction, row.user).await?.ok_or(FindTeamError::UnknownUser)?;
-        if me.as_ref().map_or(false, |me| user.id == me.id) { my_role = Some(row.role) }
-        let can_invite = me.as_ref().map_or(true, |me| user.id != me.id) && true /*TODO not already in a team with that user */;
+        if me.as_ref().is_some_and(|me| user.id == me.id) { my_role = Some(row.role) }
+        let can_invite = me.as_ref().is_none_or(|me| user.id != me.id) && true /*TODO not already in a team with that user */;
         looking_for_team.push((user, row.role, can_invite));
     }
     let form = if me.is_some() {
@@ -570,7 +570,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
                     label(class = "sheikah", for = "role-sheikah_only") : "Runner only";
                     input(id = "role-sheikah_preferred", class = "sheikah", type = "radio", name = "role", value = "sheikah_preferred", checked? = ctx.field_value("role") == Some("sheikah_preferred"));
                     label(class = "sheikah", for = "role-sheikah_preferred") : "Runner preferred";
-                    input(id = "role-no_preference", type = "radio", name = "role", value = "no_preference", checked? = ctx.field_value("role").map_or(true, |role| role == "no_preference"));
+                    input(id = "role-no_preference", type = "radio", name = "role", value = "no_preference", checked? = ctx.field_value("role").is_none_or(|role| role == "no_preference"));
                     label(for = "role-no_preference") : "No preference";
                     input(id = "role-gerudo_preferred", class = "gerudo", type = "radio", name = "role", value = "gerudo_preferred", checked? = ctx.field_value("role") == Some("gerudo_preferred"));
                     label(class = "gerudo", for = "role-gerudo_preferred") : "Pilot preferred";
