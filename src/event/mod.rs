@@ -570,7 +570,7 @@ impl<'a> Data<'a> {
                 };
                 @let practice_seed_button = practice_seed_url.map(|url| html! {
                     a(class = "button", href = url) {
-                        : favicon(&Url::parse(&url.to_string()).unwrap());
+                        : favicon(&Url::parse("https://ootrandomizer.com/").unwrap()); //TODO adjust based on seed host
                         @if practice_race_url.is_some() {
                             : "Roll Seed";
                         } else {
