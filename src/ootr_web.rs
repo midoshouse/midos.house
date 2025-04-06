@@ -88,6 +88,19 @@ pub(crate) struct SeedInfo {
     pub(crate) password: Option<[OcarinaNote; 6]>,
 }
 
+#[serde_as]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateSeedResponse {
+    #[serde_as(as = "DisplayFromStr")]
+    id: i64,
+}
+
+#[derive(Deserialize)]
+struct SeedStatusResponse {
+    status: u8,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SeedDetailsResponse {
@@ -99,7 +112,7 @@ pub(crate) struct ApiClient {
     api_key: String,
     api_key_encryption: String,
     next_request: Mutex<Instant>,
-    mw_seed_rollers: Semaphore,
+    mw_seed_rollers: Arc<Semaphore>,
     waiting: Mutex<Vec<mpsc::UnboundedSender<()>>>,
 }
 
@@ -107,7 +120,7 @@ impl ApiClient {
     pub(crate) fn new(http_client: reqwest::Client, api_key: String, api_key_encryption: String) -> Self {
         Self {
             next_request: Mutex::new(Instant::now() + MULTIWORLD_RATE_LIMIT),
-            mw_seed_rollers: Semaphore::new(2), // we're allowed to roll a maximum of 2 multiworld seeds at the same time
+            mw_seed_rollers: Arc::new(Semaphore::new(2)), // we're allowed to roll a maximum of 2 multiworld seeds at the same time
             waiting: Mutex::default(),
             http_client, api_key, api_key_encryption,
         }
@@ -246,20 +259,83 @@ impl ApiClient {
         }
     }
 
-    pub(crate) async fn roll_seed_web(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, version: ootr_utils::Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, mut settings: serde_json::Map<String, Json>) -> Result<SeedInfo, Error> {
-        #[serde_as]
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct CreateSeedResponse {
-            #[serde_as(as = "DisplayFromStr")]
-            id: i64,
-        }
+    async fn acquire_mw_permit(&self, update_tx: Option<&mpsc::Sender<SeedRollUpdate>>) -> Result<tokio::sync::OwnedSemaphorePermit, Error> {
+        Ok(match self.mw_seed_rollers.clone().try_acquire_owned() {
+            Ok(permit) => permit,
+            Err(TryAcquireError::Closed) => unreachable!(),
+            Err(TryAcquireError::NoPermits) => {
+                let (mut pos, mut pos_rx) = lock!(waiting = self.waiting; {
+                    let pos = waiting.len();
+                    let (pos_tx, pos_rx) = mpsc::unbounded_channel();
+                    waiting.push(pos_tx);
+                    (pos, pos_rx)
+                });
+                if let Some(update_tx) = update_tx {
+                    update_tx.send(SeedRollUpdate::Queued(pos.try_into().unwrap())).await?;
+                }
+                while pos > 0 {
+                    let () = pos_rx.recv().await.expect("queue position notifier closed");
+                    pos -= 1;
+                    if let Some(update_tx) = update_tx {
+                        update_tx.send(SeedRollUpdate::MovedForward(pos.try_into().unwrap())).await?;
+                    }
+                }
+                lock!(waiting = self.waiting; {
+                    let permit = self.mw_seed_rollers.clone().acquire_owned().await.expect("seed queue semaphore closed");
+                    waiting.remove(0);
+                    for tx in &*waiting {
+                        let _ = tx.send(());
+                    }
+                    permit
+                })
+            }
+        })
+    }
 
-        #[derive(Deserialize)]
-        struct SeedStatusResponse {
-            status: u8,
-        }
+    pub(crate) async fn roll_practice_seed(self: Arc<Self>, version: ootr_utils::Version, random_settings: bool, mut settings: serde_json::Map<String, Json>) -> Result<i64, Error> {
+        let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
+        settings.remove("password_lock");
+        settings.insert(format!("create_spoiler"), json!(true));
+        let mw_permit = if is_mw {
+            Some(self.acquire_mw_permit(None).await?)
+        } else {
+            None
+        };
+        let CreateSeedResponse { id } = self.post("https://ootrandomizer.com/api/v2/seed/create", Some(&[
+            ("key", &*self.api_key),
+            ("version", &*version.to_string_web(random_settings).ok_or(Error::RandomSettings)?),
+            ("locked", "false"),
+            ("passwordLock", "false"),
+        ]), Some(&settings), is_mw.then_some(MULTIWORLD_RATE_LIMIT)).await?
+            .detailed_error_for_status().await?
+            .json_with_text_in_error().await?;
+        tokio::spawn(async move {
+            loop {
+                sleep(Duration::from_secs(1)).await;
+                let resp = self.get(
+                    "https://ootrandomizer.com/api/v2/seed/status",
+                    Some(&[("key", &self.api_key), ("id", &id.to_string())]),
+                ).await?;
+                if resp.status() == StatusCode::NO_CONTENT { continue }
+                resp.error_for_status_ref()?;
+                match resp.json_with_text_in_error::<SeedStatusResponse>().await?.status {
+                    0 => continue, // still generating
+                    1 => break, // generated success
+                    2 => unreachable!(), // generated with link (not possible from API)
+                    3 => break, // failed to generate
+                    n => {
+                        drop(mw_permit);
+                        return Err(Error::UnexpectedSeedStatus(n))
+                    }
+                }
+            }
+            drop(mw_permit);
+            Ok(())
+        });
+        Ok(id)
+    }
 
+    pub(crate) async fn roll_seed_with_retry(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, version: ootr_utils::Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, mut settings: serde_json::Map<String, Json>) -> Result<SeedInfo, Error> {
         #[derive(Deserialize)]
         struct SettingsLog {
             file_hash: [HashIcon; 5],
@@ -284,32 +360,7 @@ impl ApiClient {
         let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
         let password_lock = settings.remove("password_lock").is_some_and(|password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"));
         let mw_permit = if is_mw {
-            Some(match self.mw_seed_rollers.try_acquire() {
-                Ok(permit) => permit,
-                Err(TryAcquireError::Closed) => unreachable!(),
-                Err(TryAcquireError::NoPermits) => {
-                    let (mut pos, mut pos_rx) = lock!(waiting = self.waiting; {
-                        let pos = waiting.len();
-                        let (pos_tx, pos_rx) = mpsc::unbounded_channel();
-                        waiting.push(pos_tx);
-                        (pos, pos_rx)
-                    });
-                    update_tx.send(SeedRollUpdate::Queued(pos.try_into().unwrap())).await?;
-                    while pos > 0 {
-                        let () = pos_rx.recv().await.expect("queue position notifier closed");
-                        pos -= 1;
-                        update_tx.send(SeedRollUpdate::MovedForward(pos.try_into().unwrap())).await?;
-                    }
-                    lock!(waiting = self.waiting; {
-                        let permit = self.mw_seed_rollers.acquire().await.expect("seed queue semaphore closed");
-                        waiting.remove(0);
-                        for tx in &*waiting {
-                            let _ = tx.send(());
-                        }
-                        permit
-                    })
-                }
-            })
+            Some(self.acquire_mw_permit(Some(&update_tx)).await?)
         } else {
             None
         };

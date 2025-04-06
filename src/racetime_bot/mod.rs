@@ -1373,7 +1373,7 @@ impl GlobalState {
                         // Start rolling the seed immediately upon the room being opened.
                         PrerollMode::Long => {}
                     }
-                    match self.ootr_api_client.roll_seed_web(update_tx.clone(), delay_until, web_version, false, unlock_spoiler_log, settings).await {
+                    match self.ootr_api_client.roll_seed_with_retry(update_tx.clone(), delay_until, web_version, false, unlock_spoiler_log, settings).await {
                         Ok(ootr_web::SeedInfo { id, gen_time, file_hash, file_stem, password }) => update_tx.send(SeedRollUpdate::Done {
                             seed: seed::Data {
                                 file_hash: Some(file_hash),
@@ -1522,7 +1522,7 @@ impl GlobalState {
                         let sleep_duration = rng().random_range(Duration::default()..max_sleep_duration);
                         sleep(sleep_duration).await;
                     }
-                    let ootr_web::SeedInfo { id, gen_time, file_hash, file_stem, password } = match self.ootr_api_client.roll_seed_web(update_tx.clone(), None /* always limit to 3 tries per settings */, web_version, true, unlock_spoiler_log, settings).await {
+                    let ootr_web::SeedInfo { id, gen_time, file_hash, file_stem, password } = match self.ootr_api_client.roll_seed_with_retry(update_tx.clone(), None /* always limit to 3 tries per settings */, web_version, true, unlock_spoiler_log, settings).await {
                         Ok(data) => data,
                         Err(ootr_web::Error::Retries { .. }) => continue,
                         Err(e) => return Err(e.into()), //TODO fall back to rolling locally for network errors

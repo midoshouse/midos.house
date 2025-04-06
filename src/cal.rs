@@ -2743,18 +2743,11 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, http_client: &State<reqw
     let goal = racetime_bot::Goal::for_event(series, event).ok_or(StatusOrError::Status(Status::NotFound))?;
     let mut transaction = pool.begin().await?;
     let race = Race::from_id(&mut transaction, http_client, id).await?;
-    let mut settings = race.single_settings(&mut transaction).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    settings.remove("password_lock");
-    settings.insert(format!("create_spoiler"), json!(true));
+    let settings = race.single_settings(&mut transaction).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
     let web_version = ootr_api_client.can_roll_on_web(None, &goal.rando_version(Some((series, event))), world_count, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let (update_tx, update_rx) = mpsc::channel(128);
-    let res = ootr_api_client.roll_seed_web(update_tx, None, web_version, false, UnlockSpoilerLog::Now, settings).await;
-    drop(update_rx);
-    match res {
-        Ok(ootr_web::SeedInfo { id, .. }) => Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}"))),
-        Err(e) => Err(StatusOrError::Err(e.into())),
-    }
+    let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, false, settings).await?;
+    Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
 }
 
 pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: event::Data<'_>, race: Race, redirect_to: Option<Origin<'_>>, ctx: Option<Context<'_>>) -> Result<RawHtml<String>, event::Error> {
