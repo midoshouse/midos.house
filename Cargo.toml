@@ -84,7 +84,7 @@ url = { version = "2", features = ["serde"] }
 uuid = "1"
 wheel = { git = "https://github.com/fenhl/wheel", branch = "rocket-forms", features = ["chrono", "racetime", "reqwest", "rocket", "serde_json"] }
 yup-oauth2 = "12"
-mimalloc = "0.1.43"
+#mimalloc = "0.1.43" # fails to compile on Ubuntu
 nonempty-collections = "0.3.0"
 
 [target.'cfg(unix)'.dependencies]
