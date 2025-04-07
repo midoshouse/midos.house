@@ -2859,7 +2859,10 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                 : "Challonge match: ";
                 : id;
             }
-            Source::League { id: _ } => p : "Source: league.ootrandomizer.com";
+            Source::League { id } => p {
+                : "league.ootrandomizer.com match ID: ";
+                : id;
+            }
             Source::Sheet { timestamp } => p {
                 : "Google Form submission timestamp: ";
                 : timestamp.format("%d/%m/%Y %H:%M:%S").to_string();
