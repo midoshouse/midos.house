@@ -131,13 +131,14 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
     Err(ParseUserError::Format)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize)]
+#[serde(tag = "type")]
 pub(crate) enum VersionedBranch {
-    Pinned(rando::Version),
-    Latest(rando::Branch),
+    Pinned(#[serde(rename = "version")] rando::Version),
+    Latest(#[serde(rename = "branch")] rando::Branch),
     Custom {
-        github_username: &'static str,
-        branch: &'static str,
+        github_username: Cow<'static, str>,
+        branch: Cow<'static, str>,
     },
 }
 
@@ -471,7 +472,7 @@ impl Goal {
             Self::MultiworldS4 => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 199)),
             Self::MultiworldS5 => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 64)),
             Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
-            Self::Pic7 => VersionedBranch::Custom { github_username: "fenhl", branch: "frogs2-melody" },
+            Self::Pic7 => VersionedBranch::Custom { github_username: Cow::Borrowed("fenhl"), branch: Cow::Borrowed("frogs2-melody") },
             Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl2023),
             Self::Sgl2024 => VersionedBranch::Latest(rando::Branch::Sgl2024),
             Self::SongsOfHope => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
@@ -1754,10 +1755,10 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
         }
         VersionedBranch::Custom { github_username, branch } => {
             let parent = {
-                #[cfg(unix)] { Path::new("/opt/git/github.com").join(github_username).join("OoT-Randomizer").join("branch") }
-                #[cfg(windows)] { UserDirs::new().ok_or(RollError::UserDirs)?.home_dir().join("git").join("github.com").join(github_username).join("OoT-Randomizer").join("branch") }
+                #[cfg(unix)] { Path::new("/opt/git/github.com").join(&*github_username).join("OoT-Randomizer").join("branch") }
+                #[cfg(windows)] { UserDirs::new().ok_or(RollError::UserDirs)?.home_dir().join("git").join("github.com").join(&*github_username).join("OoT-Randomizer").join("branch") }
             };
-            let dir = parent.join(branch);
+            let dir = parent.join(&*branch);
             if dir.exists() {
                 //TODO hard reset to remote instead?
                 //TODO use git2 or gix instead?
@@ -1768,7 +1769,7 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
                 command.arg("clone");
                 command.arg(format!("https://github.com/{github_username}/OoT-Randomizer.git"));
                 command.arg(format!("--branch={branch}"));
-                command.arg(branch);
+                command.arg(&*branch);
                 command.current_dir(parent);
                 command.check("git").await?;
             }
@@ -3559,7 +3560,7 @@ impl RaceHandler<GlobalState> for Handler {
             }
             lock!(@read state = this.race_state; {
                 if existing_seed.files.is_some() {
-                    this.queue_existing_seed(ctx, existing_seed, English, "a", format!("seed")).await;
+                    this.queue_existing_seed(ctx, existing_seed, English, "a", format!("seed")).await; //TODO better article/description
                 } else {
                     match *state {
                         RaceState::Init => match goal {
@@ -4655,7 +4656,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                 if goal.preroll_seeds() == PrerollMode::Long && event_rows.iter().any(|row| goal.matches_event(row.series, &row.event)) {
                     loop {
                         let mut transaction = global_state.db_pool.begin().await?;
-                        let mut num_wanted_seeds = 1;
+                        let mut num_wanted_seeds = 1; //TODO instead of counting the number of wanted seeds, preroll an additional seed for each specific upcoming race and store it in the races table
                         for row in &event_rows {
                             if goal.matches_event(row.series, &row.event) {
                                 let Some(event) = event::Data::new(&mut transaction, row.series, &row.event).await? else { continue };

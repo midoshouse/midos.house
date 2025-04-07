@@ -11,6 +11,7 @@ use {
     crate::{
         notification::SimpleNotificationKind,
         prelude::*,
+        racetime_bot::VersionedBranch,
     },
 };
 
@@ -390,6 +391,12 @@ impl<'a> Data<'a> {
         }
     }
 
+    pub(crate) fn rando_version(&self) -> Option<VersionedBranch> {
+        //TODO determine rando version from database
+        racetime_bot::Goal::for_event(self.series, &self.event)
+            .map(|goal| goal.rando_version(Some((self.series, &self.event))))
+    }
+
     pub(crate) fn single_settings(&self) -> Option<serde_json::Map<String, serde_json::Value>> {
         //TODO determine single settings for event, even if it's part of a multi-event goal without single settings
         racetime_bot::Goal::for_event(self.series, &self.event)
@@ -670,6 +677,7 @@ pub(crate) enum Error {
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Discord(#[from] crate::discord_bot::Error),
     #[error(transparent)] Io(#[from] io::Error),
+    #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
     #[error(transparent)] SeedData(#[from] seed::ExtraDataError),
@@ -696,6 +704,7 @@ impl IsNetworkError for Error {
             Self::Data(_) => false,
             Self::Discord(_) => false,
             Self::Io(e) => e.is_network_error(),
+            Self::OotrWeb(e) => e.is_network_error(),
             Self::Page(e) => e.is_network_error(),
             Self::Reqwest(e) => e.is_network_error(),
             Self::SeedData(e) => e.is_network_error(),
@@ -2028,12 +2037,15 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
 }
 
 #[rocket::get("/event/<series>/<event>/practice")]
-pub(crate) async fn practice_seed(ootr_api_client: &State<Arc<ootr_web::ApiClient>>, series: Series, event: &str) -> Result<Redirect, StatusOrError<ootr_web::Error>> {
-    let goal = racetime_bot::Goal::for_event(series, event).ok_or(StatusOrError::Status(Status::NotFound))?;
-    let settings = goal.single_settings().ok_or(StatusOrError::Status(Status::NotFound))?;
+pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, series: Series, event: &str) -> Result<Redirect, StatusOrError<Error>> {
+    let mut transaction = pool.begin().await?;
+    let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    transaction.commit().await?;
+    let version = data.rando_version().ok_or(StatusOrError::Status(Status::NotFound))?;
+    let settings = data.single_settings().ok_or(StatusOrError::Status(Status::NotFound))?;
     let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-    let web_version = ootr_api_client.can_roll_on_web(None, &goal.rando_version(Some((series, event))), world_count, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, false, settings).await.map_err(StatusOrError::Err)?;
+    let web_version = ootr_api_client.can_roll_on_web(None, &version, world_count, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, false, settings).await?;
     Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
 }
 

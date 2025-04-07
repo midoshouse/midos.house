@@ -242,6 +242,7 @@ enum SpoilerStatus {
 }
 
 pub(crate) async fn table_cell(now: DateTime<Utc>, seed: &Data, spoiler_logs: bool, add_hash_url: Option<rocket::http::uri::Origin<'_>>) -> Result<RawHtml<String>, ExtraDataError> {
+    //TODO show seed password when appropriate
     let extra = seed.extra(now).await?;
     let mut seed_links = match seed.files {
         Some(Files::OotrWeb { id, gen_time, .. }) if gen_time > now - WEB_TIMEOUT => Some(html! {
