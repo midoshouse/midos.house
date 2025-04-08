@@ -1,12 +1,9 @@
-use {
-    serde_json::Value as Json,
-    crate::{
-        event::{
-            Data,
-            InfoError,
-        },
-        prelude::*,
+use crate::{
+    event::{
+        Data,
+        InfoError,
     },
+    prelude::*,
 };
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
@@ -32,7 +29,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
     })
 }
 
-pub(crate) fn settings() -> serde_json::Map<String, Json> {
+pub(crate) fn settings() -> seed::Settings {
     collect![
         format!("user_message") => json!("Songs of Hope Charity Tournament"),
         format!("trials") => json!(0),

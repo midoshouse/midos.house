@@ -166,6 +166,8 @@ pub(crate) struct Data<'a> {
     pub(crate) discord_race_results_channel: Option<ChannelId>,
     pub(crate) discord_organizer_channel: Option<ChannelId>,
     pub(crate) discord_scheduling_channel: Option<ChannelId>,
+    pub(crate) rando_version: Option<VersionedBranch>,
+    pub(crate) single_settings: Option<seed::Settings>,
     pub(crate) team_config: TeamConfig,
     enter_flow: Option<enter::Flow>,
     show_opt_out: bool,
@@ -212,6 +214,8 @@ impl<'a> Data<'a> {
             discord_race_results_channel AS "discord_race_results_channel: PgSnowflake<ChannelId>",
             discord_organizer_channel AS "discord_organizer_channel: PgSnowflake<ChannelId>",
             discord_scheduling_channel AS "discord_scheduling_channel: PgSnowflake<ChannelId>",
+            rando_version AS "rando_version: Json<VersionedBranch>",
+            single_settings AS "single_settings: Json<seed::Settings>",
             team_config AS "team_config: TeamConfig",
             enter_flow AS "enter_flow: Json<enter::Flow>",
             show_opt_out,
@@ -243,6 +247,12 @@ impl<'a> Data<'a> {
                 discord_race_results_channel: row.discord_race_results_channel.map(|PgSnowflake(id)| id),
                 discord_organizer_channel: row.discord_organizer_channel.map(|PgSnowflake(id)| id),
                 discord_scheduling_channel: row.discord_scheduling_channel.map(|PgSnowflake(id)| id),
+                rando_version: row.rando_version.map(|Json(rando_version)| rando_version),
+                single_settings: if series == Series::CopaDoBrasil && event == "1" {
+                    Some(br::s1_settings()) // support for randomized starting song
+                } else {
+                    row.single_settings.map(|Json(single_settings)| single_settings)
+                },
                 team_config: row.team_config,
                 enter_flow: row.enter_flow.map(|Json(flow)| flow),
                 show_opt_out: row.show_opt_out,
@@ -389,18 +399,6 @@ impl<'a> Data<'a> {
             (Series::TournoiFrancophone, "4") => Some(draft::Kind::TournoiFrancoS4),
             (_, _) => None,
         }
-    }
-
-    pub(crate) fn rando_version(&self) -> Option<VersionedBranch> {
-        //TODO determine rando version from database
-        racetime_bot::Goal::for_event(self.series, &self.event)
-            .map(|goal| goal.rando_version(Some((self.series, &self.event))))
-    }
-
-    pub(crate) fn single_settings(&self) -> Option<serde_json::Map<String, serde_json::Value>> {
-        //TODO determine single settings for event, even if it's part of a multi-event goal without single settings
-        racetime_bot::Goal::for_event(self.series, &self.event)
-            .and_then(|goal| goal.single_settings())
     }
 
     pub(crate) async fn start(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<DateTime<Utc>>, DataError> {
@@ -558,7 +556,7 @@ impl<'a> Data<'a> {
                         }
                     }
                 }
-                @let practice_seed_url = self.single_settings().map(|_| uri!(practice_seed(self.series, &*self.event)));
+                @let practice_seed_url = self.single_settings.is_some().then(|| uri!(practice_seed(self.series, &*self.event)));
                 @let practice_race_url = if_chain! {
                     if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event);
                     if goal.is_custom(); //TODO also support non-custom goals, needs either a list of the internal goal IDs or an adjustment to the startrace page's GET parameter parsing
@@ -2041,8 +2039,8 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     transaction.commit().await?;
-    let version = data.rando_version().ok_or(StatusOrError::Status(Status::NotFound))?;
-    let settings = data.single_settings().ok_or(StatusOrError::Status(Status::NotFound))?;
+    let version = data.rando_version.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let settings = data.single_settings.ok_or(StatusOrError::Status(Status::NotFound))?;
     let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
     let web_version = ootr_api_client.can_roll_on_web(None, &version, world_count, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
     let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, false, settings).await?;

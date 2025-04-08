@@ -1,12 +1,9 @@
-use {
-    serde_json::Value as Json,
-    crate::{
-        event::{
-            Data,
-            InfoError,
-        },
-        prelude::*,
+use crate::{
+    event::{
+        Data,
+        InfoError,
     },
+    prelude::*,
 };
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
@@ -70,7 +67,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
     })
 }
 
-pub(crate) fn s2_settings() -> serde_json::Map<String, Json> {
+pub(crate) fn s2_settings() -> seed::Settings {
     collect![
         format!("user_message") => json!("2nd Mixed Pools Tournament"),
         format!("bridge") => json!("open"),
@@ -162,7 +159,7 @@ pub(crate) fn s2_settings() -> serde_json::Map<String, Json> {
     ]
 }
 
-pub(crate) fn s3_settings() -> serde_json::Map<String, Json> {
+pub(crate) fn s3_settings() -> seed::Settings {
     collect![
         format!("user_message") => json!("3rd Mixed Pools Tournament"),
         format!("bridge") => json!("open"),
@@ -265,7 +262,7 @@ pub(crate) fn s3_settings() -> serde_json::Map<String, Json> {
     ]
 }
 
-pub(crate) fn s4_settings() -> serde_json::Map<String, Json> {
+pub(crate) fn s4_settings() -> seed::Settings {
     let mut settings = s3_settings();
     settings.insert(format!("user_message"), json!("4th Mixed Pools Tournament"));
     settings

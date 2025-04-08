@@ -1,12 +1,9 @@
-use {
-    serde_json::Value as Json,
-    crate::{
-        event::{
-            Data,
-            InfoError,
-        },
-        prelude::*,
+use crate::{
+    event::{
+        Data,
+        InfoError,
     },
+    prelude::*,
 };
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
@@ -134,7 +131,7 @@ pub(crate) enum MatchStatus {
     Confirmed,
 }
 
-pub(crate) fn s8_settings() -> serde_json::Map<String, Json> {
+pub(crate) fn s8_settings() -> seed::Settings {
     collect![
         format!("user_message") => json!("OoTR League S8"),
         format!("password_lock") => json!(true),

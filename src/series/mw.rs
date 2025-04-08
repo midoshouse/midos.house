@@ -1,16 +1,13 @@
-use {
-    serde_json::Value as Json,
-    crate::{
-        event::{
-            Data,
-            Error,
-            FindTeamError,
-            InfoError,
-            Tab,
-            enter,
-        },
-        prelude::*,
+use crate::{
+    event::{
+        Data,
+        Error,
+        FindTeamError,
+        InfoError,
+        Tab,
+        enter,
     },
+    prelude::*,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type, FromFormField)]
@@ -117,7 +114,7 @@ pub(crate) fn display_s5_draft_picks(picks: &draft::Picks) -> String {
     ).unwrap_or_else(|| format!("base settings"))
 }
 
-pub(crate) fn resolve_s3_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
+pub(crate) fn resolve_s3_draft_settings(picks: &draft::Picks) -> seed::Settings {
     let wincon = picks.get("wincon").map(|wincon| &**wincon).unwrap_or("meds");
     let dungeons = picks.get("dungeons").map(|dungeons| &**dungeons).unwrap_or("tournament");
     let er = picks.get("er").map(|er| &**er).unwrap_or("off");
@@ -244,7 +241,7 @@ pub(crate) fn resolve_s3_draft_settings(picks: &draft::Picks) -> serde_json::Map
     ]
 }
 
-pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
+pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> seed::Settings {
     let gbk = picks.get("gbk").map(|gbk| &**gbk).unwrap_or("meds");
     let bridge = picks.get("bridge").map(|bridge| &**bridge).unwrap_or("meds");
     let trials = picks.get("trials").map(|trials| &**trials).unwrap_or("0");
@@ -407,7 +404,7 @@ pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map
     ]
 }
 
-pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
+pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> seed::Settings {
     let gbk = picks.get("gbk").map(|gbk| &**gbk).unwrap_or("meds");
     let bridge = picks.get("bridge").map(|bridge| &**bridge).unwrap_or("meds");
     let trials = picks.get("trials").map(|trials| &**trials).unwrap_or("0");

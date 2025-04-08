@@ -23,6 +23,8 @@ use {
 /// ootrandomizer.com seeds are deleted after 60 days (https://discord.com/channels/274180765816848384/1248210891636342846/1257367685658837126)
 const WEB_TIMEOUT: TimeDelta = TimeDelta::days(60);
 
+pub(crate) type Settings = serde_json::Map<String, serde_json::Value>;
+
 pub(crate) trait HashIconExt {
     fn to_html(&self) -> RawHtml<String>;
 }

@@ -1,12 +1,9 @@
-use {
-    serde_json::Value as Json,
-    crate::{
-        event::{
-            Data,
-            InfoError,
-        },
-        prelude::*,
+use crate::{
+    event::{
+        Data,
+        InfoError,
     },
+    prelude::*,
 };
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<RawHtml<String>, InfoError> {
@@ -122,7 +119,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
     })
 }
 
-pub(crate) fn beginner_preset() -> serde_json::Map<String, Json> {
+pub(crate) fn beginner_preset() -> seed::Settings {
     collect![
         format!("user_message") => json!("Standard Anti-Weekly Settings (Beginner)"),
         format!("reachable_locations") => json!("beatable"),
@@ -463,7 +460,7 @@ pub(crate) fn beginner_preset() -> serde_json::Map<String, Json> {
     ]
 }
 
-pub(crate) fn advanced_preset() -> serde_json::Map<String, Json> {
+pub(crate) fn advanced_preset() -> seed::Settings {
     let mut settings = beginner_preset();
     settings.insert(format!("user_message"), json!("Standard Anti-Weekly Settings (Advanced)"));
     settings.insert(format!("shuffle_silver_rupees"), json!("anywhere"));
@@ -477,7 +474,7 @@ pub(crate) fn advanced_preset() -> serde_json::Map<String, Json> {
     settings
 }
 
-pub(crate) fn s6_preset() -> serde_json::Map<String, Json> {
+pub(crate) fn s6_preset() -> seed::Settings {
     let mut settings = beginner_preset();
     settings.insert(format!("user_message"), json!("Standard Anti-Weekly Settings (S6)"));
     settings.insert(format!("open_deku"), json!(true));

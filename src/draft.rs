@@ -3,7 +3,6 @@ use {
         max_by_key,
         min_by_key,
     },
-    serde_json::Value as Json,
     crate::{
         event::teams::{
             self,
@@ -164,7 +163,7 @@ pub(crate) enum StepKind {
     BooleanChoice {
         team: Team,
     },
-    Done(serde_json::Map<String, Json>), //TODO use ootr_utils::Settings instead?
+    Done(seed::Settings), //TODO use ootr_utils::Settings instead?
     DoneRsl {
         preset: rsl::VersionedPreset,
         world_count: u8,

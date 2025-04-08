@@ -1,6 +1,5 @@
 use {
     collect_mac::collect,
-    serde_json::Value as Json,
     crate::{
         event::{
             Data,
@@ -57,7 +56,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
     })
 }
 
-pub(crate) fn s1_settings() -> serde_json::Map<String, Json> {
+pub(crate) fn s1_settings() -> seed::Settings {
     collect![
         format!("user_message") => json!("WeTryToBeBetter"),
         format!("bridge") => json!("dungeons"),
@@ -140,7 +139,7 @@ pub(crate) fn s1_settings() -> serde_json::Map<String, Json> {
     ]
 }
 
-pub(crate) fn s2_settings() -> serde_json::Map<String, Json> {
+pub(crate) fn s2_settings() -> seed::Settings {
     collect![
         format!("password_lock") => json!(true),
         format!("user_message") => json!("WeTryToBeBetter Season 2"),

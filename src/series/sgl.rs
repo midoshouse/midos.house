@@ -1,12 +1,9 @@
-use {
-    serde_json::Value as Json,
-    crate::{
-        event::{
-            Data,
-            InfoError,
-        },
-        prelude::*,
+use crate::{
+    event::{
+        Data,
+        InfoError,
     },
+    prelude::*,
 };
 
 /// Rate limit once per minute according to DMs with tsigma6
@@ -250,7 +247,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
     })
 }
 
-pub(crate) fn settings_2023() -> serde_json::Map<String, Json> {
+pub(crate) fn settings_2023() -> seed::Settings {
     collect![
         format!("user_message") => json!("SGL 2023"),
         format!("open_forest") => json!("closed_deku"),
@@ -336,7 +333,7 @@ pub(crate) fn settings_2023() -> serde_json::Map<String, Json> {
     ]
 }
 
-pub(crate) fn settings_2024() -> serde_json::Map<String, Json> {
+pub(crate) fn settings_2024() -> seed::Settings {
     collect![
         format!("user_message") => json!("SGL 2024 (Experimental)"),
         format!("open_forest") => json!("closed_deku"),

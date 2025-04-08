@@ -5,7 +5,6 @@ use {
         IntoUrl,
         StatusCode,
     },
-    serde_json::Value as Json,
     serde_with::{
         DeserializeFromStr,
         DisplayFromStr,
@@ -292,7 +291,7 @@ impl ApiClient {
         })
     }
 
-    pub(crate) async fn roll_practice_seed(self: Arc<Self>, version: ootr_utils::Version, random_settings: bool, mut settings: serde_json::Map<String, Json>) -> Result<i64, Error> {
+    pub(crate) async fn roll_practice_seed(self: Arc<Self>, version: ootr_utils::Version, random_settings: bool, mut settings: seed::Settings) -> Result<i64, Error> {
         let is_mw = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64")) > 1;
         settings.remove("password_lock");
         settings.insert(format!("create_spoiler"), json!(true));
@@ -335,7 +334,7 @@ impl ApiClient {
         Ok(id)
     }
 
-    pub(crate) async fn roll_seed_with_retry(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, version: ootr_utils::Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, mut settings: serde_json::Map<String, Json>) -> Result<SeedInfo, Error> {
+    pub(crate) async fn roll_seed_with_retry(&self, update_tx: mpsc::Sender<SeedRollUpdate>, delay_until: Option<DateTime<Utc>>, version: ootr_utils::Version, random_settings: bool, unlock_spoiler_log: UnlockSpoilerLog, mut settings: seed::Settings) -> Result<SeedInfo, Error> {
         #[derive(Deserialize)]
         struct SettingsLog {
             file_hash: [HashIcon; 5],

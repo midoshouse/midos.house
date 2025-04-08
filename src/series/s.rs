@@ -4,7 +4,6 @@ use {
         Display,
         FromStr,
     },
-    serde_json::Value as Json,
     crate::{
         event::{
             Data,
@@ -20,7 +19,7 @@ pub(crate) struct Setting {
     pub(crate) name: &'static str,
     pub(crate) display: &'static str,
     pub(crate) default_display: &'static str,
-    pub(crate) other: &'static [(&'static str, &'static str, fn() -> serde_json::Map<String, Json>)],
+    pub(crate) other: &'static [(&'static str, &'static str, fn() -> seed::Settings)],
 }
 
 impl Setting {
@@ -72,7 +71,7 @@ pub(crate) fn display_s7_draft_picks(picks: &draft::Picks) -> String {
     ).unwrap_or_else(|| format!("base settings"))
 }
 
-pub(crate) fn resolve_s7_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
+pub(crate) fn resolve_s7_draft_settings(picks: &draft::Picks) -> seed::Settings {
     let mut allowed_tricks = vec![
         "logic_fewer_tunic_requirements",
         "logic_grottos_without_agony",
@@ -193,7 +192,7 @@ impl WeeklyKind {
     }
 }
 
-// Make sure to keep the following in sync with each other and the actual settings:
+// Make sure to keep the following in sync with each other and the single_settings database entry:
 pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned(ootr_utils::Version::from_dev(8, 2, 57));
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
     static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/league/chests-8-8.2.55.json")).expect("failed to parse chest weights"));
@@ -214,7 +213,7 @@ fn long_weekly_settings() -> RawHtml<String> {
         }
     }
 }
-pub(crate) fn weekly_settings() -> serde_json::Map<String, Json> {
+pub(crate) fn weekly_settings() -> seed::Settings {
     league::s8_settings()
 }
 
@@ -1072,7 +1071,7 @@ pub(crate) fn weeklies_enter_form(me: Option<&User>) -> RawHtml<String> {
     }
 }
 
-pub(crate) fn s8_settings() -> serde_json::Map<String, Json> {
+pub(crate) fn s8_settings() -> seed::Settings {
     collect![
         format!("password_lock") => json!(true),
         format!("user_message") => json!("S8 Tournament"),

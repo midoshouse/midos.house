@@ -27,7 +27,6 @@ use {
     },
     reqwest::StatusCode,
     semver::Version,
-    serde_json::Value as Json,
     serenity::all::{
         CreateAllowedMentions,
         CreateMessage,
@@ -131,11 +130,12 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
     Err(ParseUserError::Format)
 }
 
-#[derive(Clone, Deserialize)]
-#[serde(tag = "type")]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub(crate) enum VersionedBranch {
     Pinned(#[serde(rename = "version")] rando::Version),
     Latest(#[serde(rename = "branch")] rando::Branch),
+    #[serde(rename_all = "camelCase")]
     Custom {
         github_username: Cow<'static, str>,
         branch: Cow<'static, str>,
@@ -465,7 +465,7 @@ impl Goal {
             Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
             Self::LeagueS8 => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 57)),
             Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
-            Self::MixedPoolsS3 => VersionedBranch::Latest(rando::Branch::DevFenhl),
+            Self::MixedPoolsS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 8, 1, 76, 4)),
             Self::MixedPoolsS4 => VersionedBranch::Latest(rando::Branch::DevFenhl),
             Self::Mq => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0)),
             Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
@@ -485,14 +485,14 @@ impl Goal {
             Self::TournoiFrancoS4 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105)),
             Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
             Self::TriforceBlitzProgressionSpoiler => VersionedBranch::Latest(rando::Branch::DevBlitz),
-            Self::WeTryToBeBetterS1 => VersionedBranch::Latest(rando::Branch::Dev),
+            Self::WeTryToBeBetterS1 => VersionedBranch::Pinned(rando::Version::from_dev(8, 0, 11)),
             Self::WeTryToBeBetterS2 => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0)),
             Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
         }
     }
 
     /// Only returns a value for goals that only have one possible set of settings.
-    pub(crate) fn single_settings(&self) -> Option<serde_json::Map<String, Json>> {
+    pub(crate) fn single_settings(&self) -> Option<seed::Settings> {
         match self {
             Self::Cc7 => None, // settings draft
             Self::CoOpS3 => Some(coop::s3_settings()),
@@ -1192,7 +1192,7 @@ enum DraftCommandParseResult {
 
 pub(crate) enum SeedCommandParseResult {
     Regular {
-        settings: serde_json::Map<String, Json>,
+        settings: seed::Settings,
         unlock_spoiler_log: UnlockSpoilerLog,
         language: Language,
         article: &'static str,
@@ -1336,7 +1336,7 @@ impl GlobalState {
         }
     }
 
-    pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, allow_web: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, mut settings: serde_json::Map<String, Json>, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
+    pub(crate) fn roll_seed(self: Arc<Self>, preroll: PrerollMode, allow_web: bool, delay_until: Option<DateTime<Utc>>, version: VersionedBranch, mut settings: seed::Settings, unlock_spoiler_log: UnlockSpoilerLog) -> mpsc::Receiver<SeedRollUpdate> {
         let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
         let password_lock = settings.get("password_lock").is_some_and(|password_lock| password_lock.as_bool().expect("password_lock setting wasn't a Boolean"));
         settings.insert(format!("create_spoiler"), json!(match unlock_spoiler_log {
@@ -1506,7 +1506,7 @@ impl GlobalState {
                 if let Some(web_version) = web_version.clone() {
                     #[derive(Deserialize)]
                     struct Plando {
-                        settings: serde_json::Map<String, Json>,
+                        settings: seed::Settings,
                     }
 
                     let plando_filename = BufRead::lines(&*output.stdout)
@@ -1743,7 +1743,7 @@ impl GlobalState {
     }
 }
 
-async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: VersionedBranch, unlock_spoiler_log: UnlockSpoilerLog, mut settings: serde_json::Map<String, Json>) -> Result<(String, Option<PathBuf>), RollError> {
+async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: VersionedBranch, unlock_spoiler_log: UnlockSpoilerLog, mut settings: seed::Settings) -> Result<(String, Option<PathBuf>), RollError> {
     let rando_path = match version {
         VersionedBranch::Pinned(version) => {
             version.clone_repo().await?;
@@ -2566,7 +2566,7 @@ impl Handler {
         });
     }
 
-    async fn roll_seed(&self, ctx: &RaceContext<GlobalState>, preroll: PrerollMode, version: VersionedBranch, settings: serde_json::Map<String, Json>, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
+    async fn roll_seed(&self, ctx: &RaceContext<GlobalState>, preroll: PrerollMode, version: VersionedBranch, settings: seed::Settings, unlock_spoiler_log: UnlockSpoilerLog, language: Language, article: &'static str, description: String) {
         let official_start = self.official_data.as_ref().map(|official_data| official_data.cal_event.start().expect("handling room for official race without start time"));
         let delay_until = official_start.map(|start| start - TimeDelta::minutes(15));
         self.roll_seed_inner(ctx, delay_until, Arc::clone(&ctx.global_state).roll_seed(preroll, true, delay_until, version, settings, unlock_spoiler_log), language, article, description).await;

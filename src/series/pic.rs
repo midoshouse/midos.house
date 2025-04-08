@@ -1,16 +1,13 @@
-use {
-    serde_json::Value as Json,
-    crate::{
-        event::{
-            Data,
-            Error,
-            FindTeamError,
-            InfoError,
-            Tab,
-            enter,
-        },
-        prelude::*,
+use crate::{
+    event::{
+        Data,
+        Error,
+        FindTeamError,
+        InfoError,
+        Tab,
+        enter,
     },
+    prelude::*,
 };
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
@@ -646,7 +643,7 @@ pub(crate) async fn find_team_form(mut transaction: Transaction<'_, Postgres>, m
     }).await?)
 }
 
-pub(crate) fn race7_settings() -> serde_json::Map<String, Json> {
+pub(crate) fn race7_settings() -> seed::Settings {
     collect![
         format!("user_message") => json!("7th Pictionary Spoiler Log Race"),
         format!("open_forest") => json!("closed_deku"),

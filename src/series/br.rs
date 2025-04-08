@@ -1,12 +1,9 @@
-use {
-    serde_json::Value as Json,
-    crate::{
-        event::{
-            Data,
-            InfoError,
-        },
-        prelude::*,
+use crate::{
+    event::{
+        Data,
+        InfoError,
     },
+    prelude::*,
 };
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
@@ -36,7 +33,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
     })
 }
 
-pub(crate) fn s1_settings() -> serde_json::Map<String, Json> {
+pub(crate) fn s1_settings() -> seed::Settings {
     let starting_song = ["minuet", "bolero", "serenade", "requiem", "nocturne", "prelude"].choose(&mut rng()).unwrap();
     collect![
         format!("user_message") => json!("Copa do Brasil"),

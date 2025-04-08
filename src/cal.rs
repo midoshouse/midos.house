@@ -1020,8 +1020,8 @@ impl Race {
         }
     }
 
-    async fn single_settings(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<serde_json::Map<String, serde_json::Value>>, event::DataError> {
-        Ok(self.event(transaction).await?.single_settings()) //TODO if None, try to determine single settings based on draft state, unify logic with seed rolling logic used when opening official race rooms
+    async fn single_settings(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<seed::Settings>, event::DataError> {
+        Ok(self.event(transaction).await?.single_settings) //TODO if None, try to determine single settings based on draft state, unify logic with seed rolling logic used when opening official race rooms
     }
 
     pub(crate) async fn save(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
@@ -1940,7 +1940,7 @@ pub(crate) async fn race_table(
                     hash_map::Entry::Occupied(entry) => entry.into_mut(),
                     hash_map::Entry::Vacant(entry) => entry.insert(race.event(&mut *transaction).await?),
                 };
-                if event.single_settings().is_none() && race.single_settings(&mut *transaction).await?.is_some() {
+                if event.single_settings.is_none() && race.single_settings(&mut *transaction).await?.is_some() {
                     break 'has_seeds true
                 }
             }
@@ -2145,7 +2145,7 @@ pub(crate) async fn race_table(
                                 } else {
                                     // hide seed if unfinished async
                                     //TODO show to the team that played the 1st async half
-                                    @if event.single_settings().is_none() && race.single_settings(&mut *transaction).await?.is_some() {
+                                    @if event.single_settings.is_none() && race.single_settings(&mut *transaction).await?.is_some() {
                                         a(class = "button", href = uri!(practice_seed(event.series, &*event.event, race.id))) {
                                             : favicon(&Url::parse("https://ootrandomizer.com/").unwrap()); //TODO adjust based on seed host
                                             : "Practice";
@@ -2669,12 +2669,13 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
 
 #[rocket::get("/event/<series>/<event>/races/<id>/practice")]
 pub(crate) async fn practice_seed(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, series: Series, event: &str, id: Id<Races>) -> Result<Redirect, StatusOrError<Error>> {
-    let goal = racetime_bot::Goal::for_event(series, event).ok_or(StatusOrError::Status(Status::NotFound))?;
+    let _ = (series, event);
     let mut transaction = pool.begin().await?;
     let race = Race::from_id(&mut transaction, http_client, id).await?;
+    let rando_version = race.event(&mut transaction).await?.rando_version.ok_or(StatusOrError::Status(Status::NotFound))?;
     let settings = race.single_settings(&mut transaction).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-    let web_version = ootr_api_client.can_roll_on_web(None, &goal.rando_version(Some((series, event))), world_count, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let web_version = ootr_api_client.can_roll_on_web(None, &rando_version, world_count, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
     let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, false, settings).await?;
     Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
 }

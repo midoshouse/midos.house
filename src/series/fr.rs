@@ -1,12 +1,9 @@
-use {
-    serde_json::Value as Json,
-    crate::{
-        event::{
-            Data,
-            InfoError,
-        },
-        prelude::*,
+use crate::{
+    event::{
+        Data,
+        InfoError,
     },
+    prelude::*,
 };
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
@@ -146,7 +143,7 @@ pub(crate) fn display_draft_picks(language: Language, all_settings: &[Setting], 
     language.join_str_opt(picks_display).unwrap_or_else(|| format!("settings de base"))
 }
 
-pub(crate) fn resolve_s3_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
+pub(crate) fn resolve_s3_draft_settings(picks: &draft::Picks) -> seed::Settings {
     // selected settings
     let weirdegg = picks.get("weirdegg").map(|weirdegg| &**weirdegg).unwrap_or("skip");
     let start = picks.get("start").map(|start| &**start).unwrap_or("random");
@@ -437,7 +434,7 @@ pub(crate) fn resolve_s3_draft_settings(picks: &draft::Picks) -> serde_json::Map
     ]
 }
 
-pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> serde_json::Map<String, Json> {
+pub(crate) fn resolve_s4_draft_settings(picks: &draft::Picks) -> seed::Settings {
     // selected settings
     let camc = picks.get("camc").map(|camc| &**camc).unwrap_or("on");
     let start_weirdegg = picks.get("start-weirdegg").map(|start_weirdegg| &**start_weirdegg).unwrap_or("random-skip");

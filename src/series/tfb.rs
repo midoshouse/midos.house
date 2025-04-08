@@ -207,7 +207,7 @@ impl From<CoOpRole> for event::Role {
     }
 }
 
-pub(crate) fn progression_spoiler_settings() -> serde_json::Map<String, Json> {
+pub(crate) fn progression_spoiler_settings() -> seed::Settings {
     collect![
         format!("user_message") => json!("Triforce Blitz Progression Spoiler"),
         format!("bridge") => json!("dungeons"),
