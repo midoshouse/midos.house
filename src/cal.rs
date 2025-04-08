@@ -2724,46 +2724,53 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                     }
                 }
             }
-            table {
-                thead {
-                    tr {
-                        th;
-                        th {
-                            : "Restream URL";
-                            br;
-                            small(style = "font-weight: normal;") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
-                        }
-                        //TODO hide restreamers column if the race room exists
-                        th {
-                            : "Restreamer";
-                            br;
-                            small(style = "font-weight: normal;") : "racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID. Enter “me” to assign yourself.";
+            @if race.series == Series::League && race.rooms().next().is_none() {
+                // restream data entered here would be automatically overwritten
+                fieldset {
+                    label : "To edit restream data, please use the League website.";
+                }
+            } else {
+                table {
+                    thead {
+                        tr {
+                            th;
+                            th {
+                                : "Restream URL";
+                                br;
+                                small(style = "font-weight: normal;") : "Please use the first available out of the following: Permanent Twitch highlight, YouTube or other video, Twitch past broadcast, Twitch channel.";
+                            }
+                            //TODO hide restreamers column if the race room exists
+                            th {
+                                : "Restreamer";
+                                br;
+                                small(style = "font-weight: normal;") : "racetime.gg profile URL, racetime.gg user ID, or Mido's House user ID. Enter “me” to assign yourself.";
+                            }
                         }
                     }
-                }
-                tbody {
-                    @for language in all::<Language>() {
-                        tr {
-                            th : language;
-                            @let field_name = format!("video_urls.{}", language.short_code());
-                            : form_table_cell(&field_name, &mut errors, html! {
-                                input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {
-                                    ctx.field_value(&*field_name).map(|room| room.to_string())
-                                } else {
-                                    race.video_urls.get(&language).map(|video_url| video_url.to_string())
+                    tbody {
+                        @for language in all::<Language>() {
+                            tr {
+                                th : language;
+                                @let field_name = format!("video_urls.{}", language.short_code());
+                                : form_table_cell(&field_name, &mut errors, html! {
+                                    input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {
+                                        ctx.field_value(&*field_name).map(|room| room.to_string())
+                                    } else {
+                                        race.video_urls.get(&language).map(|video_url| video_url.to_string())
+                                    });
                                 });
-                            });
-                            //TODO hide restreamers column if the race room exists
-                            @let field_name = format!("restreamers.{}", language.short_code());
-                            : form_table_cell(&field_name, &mut errors, html! {
-                                input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {
-                                    ctx.field_value(&*field_name)
-                                } else if me.as_ref().and_then(|me| me.racetime.as_ref()).is_some_and(|racetime| race.restreamers.get(&language).is_some_and(|restreamer| *restreamer == racetime.id)) {
-                                    Some("me")
-                                } else {
-                                    race.restreamers.get(&language).map(|restreamer| restreamer.as_str()) //TODO display as racetime.gg profile URL
+                                //TODO hide restreamers column if the race room exists
+                                @let field_name = format!("restreamers.{}", language.short_code());
+                                : form_table_cell(&field_name, &mut errors, html! {
+                                    input(type = "text", name = &field_name, value? = if let Some(ref ctx) = ctx {
+                                        ctx.field_value(&*field_name)
+                                    } else if me.as_ref().and_then(|me| me.racetime.as_ref()).is_some_and(|racetime| race.restreamers.get(&language).is_some_and(|restreamer| *restreamer == racetime.id)) {
+                                        Some("me")
+                                    } else {
+                                        race.restreamers.get(&language).map(|restreamer| restreamer.as_str()) //TODO display as racetime.gg profile URL
+                                    });
                                 });
-                            });
+                            }
                         }
                     }
                 }
@@ -2972,7 +2979,7 @@ pub(crate) struct EditRaceForm {
 pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, pool: &State<PgPool>, http_client: &State<reqwest::Client>, me: User, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: &str, id: Id<Races>, redirect_to: Option<Origin<'_>>, form: Form<Contextual<'_, EditRaceForm>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let event = event::Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let race = Race::from_id(&mut transaction, http_client, id).await?;
+    let mut race = Race::from_id(&mut transaction, http_client, id).await?;
     let mut form = form.into_inner();
     form.verify(&csrf);
     if race.series != event.series || race.event != event.event {
@@ -3224,53 +3231,28 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(edit_race_form(transaction, &*discord_ctx.read().await, Some(me), uri, csrf.as_ref(), event, race, redirect_to, Some(form.context)).await?)
         } else {
-            sqlx::query!(
-                "UPDATE races SET
-                    room = $1,
-                    async_room1 = $2,
-                    async_room2 = $3,
-                    async_room3 = $4,
-                    video_url = $5,
-                    restreamer = $6,
-                    video_url_fr = $7,
-                    restreamer_fr = $8,
-                    video_url_de = $9,
-                    restreamer_de = $10,
-                    video_url_pt = $11,
-                    restreamer_pt = $12,
-                    last_edited_by = $13,
-                    last_edited_at = NOW()
-                WHERE id = $14",
-                (!value.room.is_empty()).then(|| &value.room),
-                (!value.async_room1.is_empty()).then(|| &value.async_room1),
-                (!value.async_room2.is_empty()).then(|| &value.async_room2),
-                (!value.async_room3.is_empty()).then(|| &value.async_room3),
-                value.video_urls.get(&English).filter(|video_url| !video_url.is_empty()),
-                restreamers.get(&English),
-                value.video_urls.get(&French).filter(|video_url| !video_url.is_empty()),
-                restreamers.get(&French),
-                value.video_urls.get(&German).filter(|video_url| !video_url.is_empty()),
-                restreamers.get(&German),
-                value.video_urls.get(&Portuguese).filter(|video_url| !video_url.is_empty()),
-                restreamers.get(&Portuguese),
-                me.id as _,
-                id as _,
-            ).execute(&mut *transaction).await?;
-            if let Some([hash1, hash2, hash3, hash4, hash5]) = file_hash {
-                sqlx::query!(
-                    "UPDATE races SET hash1 = $1, hash2 = $2, hash3 = $3, hash4 = $4, hash5 = $5 WHERE id = $6",
-                    hash1 as _, hash2 as _, hash3 as _, hash4 as _, hash5 as _, id as _,
-                ).execute(&mut *transaction).await?;
+            match &mut race.schedule {
+                RaceSchedule::Unscheduled => {}
+                RaceSchedule::Live { room, .. } => *room = (!value.room.is_empty()).then(|| Url::parse(&value.room).expect("validated")),
+                RaceSchedule::Async { room1, room2, room3, .. } => {
+                    *room1 = (!value.async_room1.is_empty()).then(|| Url::parse(&value.async_room1).expect("validated"));
+                    *room2 = (!value.async_room2.is_empty()).then(|| Url::parse(&value.async_room2).expect("validated"));
+                    *room3 = (!value.async_room3.is_empty()).then(|| Url::parse(&value.async_room3).expect("validated"));
+                }
             }
-            if let Some(web_id) = web_id {
-                sqlx::query!("UPDATE races SET web_id = $1 WHERE id = $2", web_id as i64, id as _).execute(&mut *transaction).await?;
+            race.last_edited_by = Some(me.id);
+            race.last_edited_at = Some(Utc::now());
+            if race.series != Series::League || race.rooms().next().is_some() {
+                race.video_urls = value.video_urls.iter().filter(|(_, video_url)| !video_url.is_empty()).map(|(language, video_url)| (*language, Url::parse(video_url).expect("validated"))).collect();
+                race.restreamers = value.restreamers.clone();
             }
-            if let Some(web_gen_time) = web_gen_time {
-                sqlx::query!("UPDATE races SET web_gen_time = $1 WHERE id = $2", web_gen_time, id as _).execute(&mut *transaction).await?;
+            if let Some(file_hash) = file_hash {
+                race.seed.file_hash = Some(file_hash);
             }
-            if let Some(file_stem) = file_stem {
-                sqlx::query!("UPDATE races SET file_stem = $1 WHERE id = $2", file_stem, id as _).execute(&mut *transaction).await?;
+            if let (Some(id), Some(gen_time), Some(file_stem)) = (web_id, web_gen_time, file_stem) {
+                race.seed.files = Some(seed::Files::OotrWeb { id, gen_time, file_stem: Cow::Owned(file_stem) });
             }
+            race.save(&mut transaction).await?;
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(redirect_to.map(|Origin(uri)| uri.into_owned()).unwrap_or_else(|| uri!(event::races(event.series, &*event.event)))))
         }
