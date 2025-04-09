@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "DELETE FROM prerolled_seeds WHERE ctid IN (SELECT ctid FROM prerolled_seeds WHERE goal_name = $1 LIMIT 1) RETURNING\n                        goal_name,\n                        file_stem,\n                        locked_spoiler_log_path,\n                        hash1 AS \"hash1: HashIcon\",\n                        hash2 AS \"hash2: HashIcon\",\n                        hash3 AS \"hash3: HashIcon\",\n                        hash4 AS \"hash4: HashIcon\",\n                        hash5 AS \"hash5: HashIcon\",\n                        seed_password,\n                        progression_spoiler\n                    ",
+  "query": "DELETE FROM prerolled_seeds WHERE ctid IN (SELECT ctid FROM prerolled_seeds WHERE goal_name = $1 ORDER BY timestamp ASC NULLS FIRST LIMIT 1) RETURNING\n                        goal_name,\n                        file_stem,\n                        locked_spoiler_log_path,\n                        hash1 AS \"hash1: HashIcon\",\n                        hash2 AS \"hash2: HashIcon\",\n                        hash3 AS \"hash3: HashIcon\",\n                        hash4 AS \"hash4: HashIcon\",\n                        hash5 AS \"hash5: HashIcon\",\n                        seed_password,\n                        progression_spoiler\n                    ",
   "describe": {
     "columns": [
       {
@@ -272,5 +272,5 @@
       false
     ]
   },
-  "hash": "373fd45175816cc40d39fb9e62bb635b1262f6c15cdb28d47bf4f97fafb130c8"
+  "hash": "8b5b5baf93e61ba2e5254645d1bf7b0ca8330ffb62f67f60116c57d6b881c08b"
 }

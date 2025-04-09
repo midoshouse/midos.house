@@ -729,7 +729,7 @@ impl Goal {
                         French => ("une", format!("seed")),
                         _ => ("a", format!("seed")),
                     };
-                    if let Some(row) = sqlx::query!(r#"DELETE FROM prerolled_seeds WHERE ctid IN (SELECT ctid FROM prerolled_seeds WHERE goal_name = $1 LIMIT 1) RETURNING
+                    if let Some(row) = sqlx::query!(r#"DELETE FROM prerolled_seeds WHERE ctid IN (SELECT ctid FROM prerolled_seeds WHERE goal_name = $1 ORDER BY timestamp ASC NULLS FIRST LIMIT 1) RETURNING
                         goal_name,
                         file_stem,
                         locked_spoiler_log_path,
