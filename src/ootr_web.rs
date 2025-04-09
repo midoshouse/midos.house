@@ -237,7 +237,7 @@ impl ApiClient {
         if let UnlockSpoilerLog::Progression = unlock_spoiler_log { return None }
         if rsl_preset.is_some() && version.branch().is_none_or(|branch| branch.latest_web_name_random_settings().is_none()) { return None }
         match version {
-            VersionedBranch::Pinned(version) => {
+            VersionedBranch::Pinned { version } => {
                 if matches!(rsl_preset, Some(rsl::VersionedPreset::Xopar { .. })) && *version == ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 7, 1, 181, 1) || *version == ootr_utils::Version::from_branch(ootr_utils::Branch::DevR, 8, 0, 1, 1) {
                     return Some(ootr_utils::Version::from_branch(
                         version.branch(),
@@ -253,7 +253,7 @@ impl ApiClient {
                         .is_ok_and(|VersionsResponse { available_versions, .. }| available_versions.contains(version));
                 is_available.then(|| version.clone())
             }
-            VersionedBranch::Latest(branch) => self.get_versions(Some(*branch), rsl_preset.is_some()).await.ok().and_then(|response| response.currently_active_version),
+            VersionedBranch::Latest { branch } => self.get_versions(Some(*branch), rsl_preset.is_some()).await.ok().and_then(|response| response.currently_active_version),
             VersionedBranch::Custom { .. } => None,
         }
     }

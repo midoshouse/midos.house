@@ -133,8 +133,12 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub(crate) enum VersionedBranch {
-    Pinned(#[serde(rename = "version")] rando::Version),
-    Latest(#[serde(rename = "branch")] rando::Branch),
+    Pinned {
+        version: rando::Version,
+    },
+    Latest {
+        branch: rando::Branch,
+    },
     #[serde(rename_all = "camelCase")]
     Custom {
         github_username: Cow<'static, str>,
@@ -145,8 +149,8 @@ pub(crate) enum VersionedBranch {
 impl VersionedBranch {
     pub(crate) fn branch(&self) -> Option<rando::Branch> {
         match self {
-            Self::Pinned(version) => Some(version.branch()),
-            Self::Latest(branch) => Some(*branch),
+            Self::Pinned { version } => Some(version.branch()),
+            Self::Latest { branch } => Some(*branch),
             Self::Custom { .. } => None,
         }
     }
@@ -460,33 +464,33 @@ impl Goal {
 
     pub(crate) fn rando_version(&self, event: Option<(Series, &str)>) -> VersionedBranch {
         match self {
-            Self::Cc7 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
-            Self::CoOpS3 => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
-            Self::CopaDoBrasil => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 143)),
-            Self::LeagueS8 => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 57)),
-            Self::MixedPoolsS2 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17)),
-            Self::MixedPoolsS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 8, 1, 76, 4)),
-            Self::MixedPoolsS4 => VersionedBranch::Latest(rando::Branch::DevFenhl),
-            Self::Mq => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0)),
-            Self::MultiworldS3 => VersionedBranch::Pinned(rando::Version::from_dev(6, 2, 205)),
-            Self::MultiworldS4 => VersionedBranch::Pinned(rando::Version::from_dev(7, 1, 199)),
-            Self::MultiworldS5 => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 64)),
-            Self::NineDaysOfSaws => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2)),
+            Self::Cc7 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
+            Self::CoOpS3 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
+            Self::CopaDoBrasil => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 143) },
+            Self::LeagueS8 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 57) },
+            Self::MixedPoolsS2 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 7, 1, 117, 17) },
+            Self::MixedPoolsS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 8, 1, 76, 4) },
+            Self::MixedPoolsS4 => VersionedBranch::Latest { branch: rando::Branch::DevFenhl },
+            Self::Mq => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
+            Self::MultiworldS3 => VersionedBranch::Pinned { version: rando::Version::from_dev(6, 2, 205) },
+            Self::MultiworldS4 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 199) },
+            Self::MultiworldS5 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 64) },
+            Self::NineDaysOfSaws => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2) },
             Self::Pic7 => VersionedBranch::Custom { github_username: Cow::Borrowed("fenhl"), branch: Cow::Borrowed("frogs2-melody") },
-            Self::Sgl2023 => VersionedBranch::Latest(rando::Branch::Sgl2023),
-            Self::Sgl2024 => VersionedBranch::Latest(rando::Branch::Sgl2024),
-            Self::SongsOfHope => VersionedBranch::Pinned(rando::Version::from_dev(8, 1, 0)),
+            Self::Sgl2023 => VersionedBranch::Latest { branch: rando::Branch::Sgl2023 },
+            Self::Sgl2024 => VersionedBranch::Latest { branch: rando::Branch::Sgl2024 },
+            Self::SongsOfHope => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::StandardRuleset => if let Some((Series::Standard, "8" | "8cc")) = event {
-                VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0))
+                VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) }
             } else {
                 s::WEEKLY_RANDO_VERSION //TODO allow weekly organizers to configure this
             },
-            Self::TournoiFrancoS3 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1)),
-            Self::TournoiFrancoS4 => VersionedBranch::Pinned(rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105)),
-            Self::TriforceBlitz => VersionedBranch::Latest(rando::Branch::DevBlitz),
-            Self::TriforceBlitzProgressionSpoiler => VersionedBranch::Latest(rando::Branch::DevBlitz),
-            Self::WeTryToBeBetterS1 => VersionedBranch::Pinned(rando::Version::from_dev(8, 0, 11)),
-            Self::WeTryToBeBetterS2 => VersionedBranch::Pinned(rando::Version::from_dev(8, 2, 0)),
+            Self::TournoiFrancoS3 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevR, 7, 1, 143, 1) },
+            Self::TournoiFrancoS4 => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevRob, 8, 1, 45, 105) },
+            Self::TriforceBlitz => VersionedBranch::Latest { branch: rando::Branch::DevBlitz },
+            Self::TriforceBlitzProgressionSpoiler => VersionedBranch::Latest { branch: rando::Branch::DevBlitz },
+            Self::WeTryToBeBetterS1 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 0, 11) },
+            Self::WeTryToBeBetterS2 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
             Self::PicRs2 | Self::Rsl => panic!("randomizer version for this goal must be parsed from RSL script"),
         }
     }
@@ -1446,7 +1450,7 @@ impl GlobalState {
                 .check(PYTHON).await?
                 .stdout;
             let randomizer_version = String::from_utf8(randomizer_version)?.trim().parse::<rando::Version>()?;
-            let web_version = self.ootr_api_client.can_roll_on_web(Some(&preset), &VersionedBranch::Pinned(randomizer_version.clone()), world_count, unlock_spoiler_log).await;
+            let web_version = self.ootr_api_client.can_roll_on_web(Some(&preset), &VersionedBranch::Pinned { version: randomizer_version.clone() }, world_count, unlock_spoiler_log).await;
             // run the RSL script
             let _ = update_tx.send(SeedRollUpdate::Started).await;
             let outer_tries = if web_version.is_some() { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script
@@ -1745,11 +1749,11 @@ impl GlobalState {
 
 async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: VersionedBranch, unlock_spoiler_log: UnlockSpoilerLog, mut settings: seed::Settings) -> Result<(String, Option<PathBuf>), RollError> {
     let rando_path = match version {
-        VersionedBranch::Pinned(version) => {
+        VersionedBranch::Pinned { version } => {
             version.clone_repo().await?;
             version.dir()?
         }
-        VersionedBranch::Latest(branch) => {
+        VersionedBranch::Latest { branch } => {
             branch.clone_repo(true).await?;
             branch.dir(true)?
         }

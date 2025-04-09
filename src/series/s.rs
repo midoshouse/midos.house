@@ -193,7 +193,7 @@ impl WeeklyKind {
 }
 
 // Make sure to keep the following in sync with each other and the single_settings database entry:
-pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned(ootr_utils::Version::from_dev(8, 2, 57));
+pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(8, 2, 57) };
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
     static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/league/chests-8-8.2.55.json")).expect("failed to parse chest weights"));
 
