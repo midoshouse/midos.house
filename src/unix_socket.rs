@@ -119,7 +119,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                         for room in &clean_shutdown.open_rooms {
                                             println!("{room}");
                                         }
-                                        let notifier = Arc::clone(&clean_shutdown.notifier);
+                                        let notifier = clean_shutdown.notifier.clone();
                                         unlock!();
                                         notifier.notified().await;
                                         println!("preparing to stop Mido's House: sending reply");
