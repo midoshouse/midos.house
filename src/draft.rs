@@ -23,6 +23,18 @@ pub(crate) enum Error {
     RslRemoveType,
 }
 
+impl IsNetworkError for Error {
+    fn is_network_error(&self) -> bool {
+        match self {
+            Self::RslScriptPath(_) => false,
+            Self::Sql(_) => false,
+            Self::Wheel(e) => e.is_network_error(),
+            Self::RslExtraType => false,
+            Self::RslRemoveType => false,
+        }
+    }
+}
+
 pub(crate) type Picks = HashMap<Cow<'static, str>, Cow<'static, str>>;
 
 #[derive(Clone, Copy)]

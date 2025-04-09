@@ -1025,8 +1025,20 @@ impl Race {
         }
     }
 
-    async fn single_settings(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<seed::Settings>, event::DataError> {
-        Ok(self.event(transaction).await?.single_settings) //TODO if None, try to determine single settings based on draft state, unify logic with seed rolling logic used when opening official race rooms
+    async fn single_settings(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<seed::Settings>, Error> {
+        let event = self.event(transaction).await?;
+        Ok(if let Some(settings) = event.single_settings {
+            Some(settings)
+        } else if let Some(draft) = &self.draft {
+            let Some(draft_kind) = event.draft_kind() else { return Ok(None) };
+            match draft.next_step(draft_kind, None, &mut draft::MessageContext::None).await?.kind {
+                draft::StepKind::Done(settings) => Some(settings),
+                draft::StepKind::DoneRsl { .. } => None, //TODO
+                draft::StepKind::GoFirst | draft::StepKind::Ban { .. } | draft::StepKind::Pick { .. } | draft::StepKind::BooleanChoice { .. } => None,
+            }
+        } else {
+            None
+        })
     }
 
     pub(crate) async fn save(&self, transaction: &mut Transaction<'_, Postgres>) -> sqlx::Result<()> {
@@ -1383,6 +1395,7 @@ pub(crate) enum RaceHandleMode {
 pub(crate) enum Error {
     #[error(transparent)] ChronoParse(#[from] chrono::format::ParseError),
     #[error(transparent)] Discord(#[from] discord_bot::Error),
+    #[error(transparent)] Draft(#[from] draft::Error),
     #[error(transparent)] Event(#[from] event::DataError),
     #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
     #[error(transparent)] ParseInt(#[from] std::num::ParseIntError),
@@ -1417,6 +1430,7 @@ impl IsNetworkError for Error {
         match self {
             Self::ChronoParse(_) => false,
             Self::Discord(_) => false,
+            Self::Draft(e) => e.is_network_error(),
             Self::Event(_) => false,
             Self::OotrWeb(e) => e.is_network_error(),
             Self::ParseInt(_) => false,
