@@ -98,6 +98,7 @@ pub(crate) async fn races_to_import(transaction: &mut Transaction<'_, Postgres>,
                     scheduling_thread: None,
                     schedule: RaceSchedule::Unscheduled,
                     schedule_updated_at: None,
+                    fpa_invoked: false,
                     draft: if let Some(draft_kind) = event.draft_kind() {
                         Some(Draft::for_game1(transaction, http_client, draft_kind, event, None, [&team1, &team2]).await?)
                     } else {

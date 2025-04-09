@@ -390,10 +390,15 @@ impl Handler {
         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
         if cal_event.is_private_async_part() {
             ctx.say("@entrants Please remember to send the videos of your run to a tournament organizer.").await?;
+            if fpa_invoked {
+                sqlx::query!("UPDATE races SET fpa_invoked = TRUE WHERE id = $1", cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?;
+            }
             if let Some(organizer_channel) = event.discord_organizer_channel {
                 organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
                     //TODO mention organizer role
-                    .push("first half of async finished: <https://")
+                    .push("first half of async finished")
+                    .push(if fpa_invoked { " with FPA call" } else { "" })
+                    .push(": <https://")
                     .push(racetime_host())
                     .push(&ctx.data().await.url)
                     .push('>')

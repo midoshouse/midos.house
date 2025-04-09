@@ -1221,6 +1221,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         let race = Race {
                                             schedule: if reset_schedule { RaceSchedule::Unscheduled } else { race.schedule },
                                             schedule_updated_at: if reset_schedule { Some(Utc::now()) } else { race.schedule_updated_at },
+                                            fpa_invoked: if reset_schedule { false } else { race.fpa_invoked },
                                             draft: if reset_draft {
                                                 if_chain! {
                                                     if let Some(draft_kind) = event.draft_kind();
@@ -1240,6 +1241,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 race.draft
                                             },
                                             seed: if reset_schedule { seed::Data::default() } else { race.seed },
+                                            notified: race.notified && !reset_schedule,
                                             // explicitly listing remaining fields here instead of using `..race` so if the fields change they're kept/reset correctly
                                             id: race.id,
                                             series: race.series,
@@ -1256,7 +1258,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             last_edited_at: race.last_edited_at,
                                             ignored: race.ignored,
                                             schedule_locked: race.schedule_locked,
-                                            notified: race.notified && !reset_schedule,
                                         };
                                         race.save(&mut transaction).await?;
                                         transaction.commit().await?;

@@ -2832,7 +2832,7 @@ impl RaceHandler<GlobalState> for Handler {
                 (
                     cal_event.race.seed.clone(),
                     Some(OfficialRaceData {
-                        fpa_invoked: false,
+                        fpa_invoked: cal_event.race.fpa_invoked,
                         scores: HashMap::default(),
                         cal_event, event, goal, restreams, entrants,
                     }),
