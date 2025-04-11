@@ -193,28 +193,112 @@ impl WeeklyKind {
 }
 
 // Make sure to keep the following in sync with each other and the single_settings database entry:
-pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(8, 2, 57) };
+pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(8, 2, 64) };
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
-    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/league/chests-8-8.2.55.json")).expect("failed to parse chest weights"));
+    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/mw/chests-5-8.2.63.json")).expect("failed to parse chest weights"));
 
     WEIGHTS.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
 }
-pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "League";
+pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "MW tournament (solo)";
 fn long_weekly_settings() -> RawHtml<String> {
     html! {
         p {
             : "Settings are typically changed once every 2 or 4 weeks and posted in ";
             a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
             : " on Discord. Current settings starting with the Kokiri weekly on ";
-            : format_datetime(Utc.with_ymd_and_hms(2025, 3, 1, 23, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
-            : " are the ";
-            a(href = uri!(event::info(Series::League, "8"))) : "League season 8";
-            : " settings.";
+            : format_datetime(Utc.with_ymd_and_hms(2025, 4, 12, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
+            : " are a singleplayer variant of the settings for ";
+            a(href = uri!(event::info(Series::Multiworld, "5"))) : "the 5th multiworld tournament";
+            : ", with the following changes:";
         }
+        ul {
+            li : "5 Goal hints instead of 7";
+            li : "10 Sometimes hints instead of 9";
+            li : "Gossip stones at HF (Cow Grotto) and HC (Storms Grotto) disabled";
+        }
+        p : "Note that Fire Arrow Entry is allowed for these weeklies.";
     }
 }
 pub(crate) fn weekly_settings() -> seed::Settings {
-    league::s8_settings()
+    let mut settings = mw::resolve_s5_draft_settings(&HashMap::default());
+    settings.insert(format!("user_message"), json!("5th Multiworld Tournament (solo ver)"));
+    settings.insert(format!("world_count"), json!(1));
+    settings.insert(format!("hint_dist_user"), json!({
+        "name":                  "mw_path_solo",
+        "gui_name":              "MW Season 5 (solo)",
+        "description":           "Singleplayer variant of hints used for the Multiworld Tournament Season 5.",
+        "add_locations":         [
+            { "location": "Sheik in Kakariko", "types": ["always"] },
+            { "location": "Song from Ocarina of Time", "types": ["always"] },
+            { "location": "Deku Theater Skull Mask", "types": ["always"] },
+            { "location": "DMC Deku Scrub", "types": ["always"] },
+            { "location": "Deku Tree GS Basement Back Room", "types": ["sometimes"] },
+            { "location": "Water Temple GS River", "types": ["sometimes"] },
+            { "location": "Spirit Temple GS Hall After Sun Block Room", "types": ["sometimes"] }
+        ],
+        "remove_locations":      [
+            { "location": "Sheik in Crater", "types": ["sometimes"] },
+            { "location": "Song from Royal Familys Tomb", "types": ["sometimes"] },
+            { "location": "Sheik in Forest", "types": ["sometimes"] },
+            { "location": "Sheik at Temple", "types": ["sometimes"] },
+            { "location": "Sheik at Colossus", "types": ["sometimes"] },
+            { "location": "Graveyard Royal Familys Tomb Chest", "types": ["sometimes"] },
+            { "location": "Ganons Castle Shadow Trial Golden Gauntlets Chest", "types": ["sometimes"] }
+        ],
+        "add_items":             [],
+        "remove_items":          [
+            { "item": "Zeldas Lullaby", "types": ["woth", "goal"] },
+            { "item": "Boss Key (Forest Temple)", "types": ["woth", "goal"] },
+            { "item": "Boss Key (Fire Temple)", "types": ["woth", "goal"] },
+            { "item": "Boss Key (Water Temple)", "types": ["woth", "goal"] },
+            { "item": "Boss Key (Spirit Temple)", "types": ["woth", "goal"] },
+            { "item": "Boss Key (Shadow Temple)", "types": ["woth", "goal"] },
+            { "item": "Boss Key (Ganons Castle)", "types": ["woth", "goal"] },
+            { "item": "Small Key Ring (Forest Temple)", "types": ["woth", "goal"] },
+            { "item": "Small Key Ring (Fire Temple)", "types": ["woth", "goal"] },
+            { "item": "Small Key Ring (Water Temple)", "types": ["woth", "goal"] },
+            { "item": "Small Key Ring (Spirit Temple)", "types": ["woth", "goal"] },
+            { "item": "Small Key Ring (Shadow Temple)", "types": ["woth", "goal"] },
+            { "item": "Small Key Ring (Bottom of the Well)", "types": ["woth", "goal"] },
+            { "item": "Small Key Ring (Gerudo Training Ground)", "types": ["woth", "goal"] },
+            { "item": "Small Key Ring (Thieves Hideout)", "types": ["woth", "goal"] },
+            { "item": "Small Key Ring (Ganons Castle)", "types": ["woth", "goal"] },
+            { "item": "Small Key Ring (Treasure Chest Game)", "types": ["woth", "goal"] }
+        ],
+        "disabled":              [
+            "HF (Cow Grotto)",
+            "HC (Storms Grotto)"
+        ],
+        "dungeons_woth_limit":   40,
+        "dungeons_barren_limit": 40,
+        "one_hint_per_goal":     true,
+        "named_items_required":  true,
+        "vague_named_items":     false,
+        "use_default_goals":     true,
+        "upgrade_hints":         "on",
+        "combine_trial_hints":   true,
+        "distribution":          {
+            "trial":           {"order": 1, "weight": 0.0, "fixed":  0, "copies": 2},
+            "always":          {"order": 2, "weight": 0.0, "fixed":  0, "copies": 2},
+            "entrance":        {"order": 3, "weight": 0.0, "fixed":  2, "copies": 2},
+            "goal":            {"order": 4, "weight": 0.0, "fixed":  5, "copies": 2},
+            "sometimes":       {"order": 5, "weight": 1.0, "fixed":  0, "copies": 2},
+            "important_check": {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
+            "item":            {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
+            "dual":            {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
+            "dual_always":     {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
+            "woth":            {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
+            "barren":          {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
+            "random":          {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
+            "song":            {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
+            "overworld":       {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
+            "dungeon":         {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
+            "junk":            {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
+            "named-item":      {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
+            "entrance_always": {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2}
+        }
+    }));
+    settings
 }
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
