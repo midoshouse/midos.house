@@ -296,6 +296,7 @@ impl<'a> Data<'a> {
             (Series::MixedPools, "1") => from_file!("../../assets/event/mp/chests-1-6.2.100-fenhl.4.json"),
             (Series::MixedPools, "2") => from_file!("../../assets/event/mp/chests-2-7.1.117-fenhl.17.json"),
             (Series::MixedPools, "3") => from_file!("../../assets/event/mp/chests-3-8.1.36-fenhl.6.riir.4.json"),
+            (Series::MixedPools, "4") => from_file!("../../assets/event/mp/chests-4-8.2.69-fenhl.4.riir.5.json"),
             (Series::Mq, "1") => from_file!("../../assets/event/mq/chests-1-8.2.json"),
             (Series::Multiworld, "1" | "2") => ChestAppearances::VANILLA, // CAMC off or classic and no keys in overworld
             (Series::Multiworld, "3") => mw::s3_chests(&Draft {
