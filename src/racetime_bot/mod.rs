@@ -1750,8 +1750,8 @@ impl GlobalState {
 async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: VersionedBranch, unlock_spoiler_log: UnlockSpoilerLog, mut settings: seed::Settings) -> Result<(String, Option<PathBuf>), RollError> {
     let rando_path = match version {
         VersionedBranch::Pinned { version } => {
-            version.clone_repo().await?;
-            version.dir()?
+            version.clone_repo(true).await?;
+            version.dir(true)?
         }
         VersionedBranch::Latest { branch } => {
             branch.clone_repo(true).await?;
