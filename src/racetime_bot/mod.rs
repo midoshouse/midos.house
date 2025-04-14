@@ -105,7 +105,7 @@ pub(crate) async fn parse_user(transaction: &mut Transaction<'_, Postgres>, http
     }
     if regex_is_match!("^[0-9A-Za-z]+$", id_or_url) {
         return match user_data(http_client, id_or_url).await {
-            Ok(Some(_)) => Ok(id_or_url.to_owned()),
+            Ok(Some(user_data)) => Ok(user_data.id),
             Ok(None) => Err(ParseUserError::IdNotFound),
             Err(e) => Err(e.into()),
         }
