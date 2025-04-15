@@ -1308,6 +1308,7 @@ pub(crate) struct GlobalState {
     extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>,
     pub(crate) db_pool: PgPool,
     pub(crate) http_client: reqwest::Client,
+    insecure_http_client: reqwest::Client,
     #[allow(unused)] //TODO use for set reporting
     startgg_token: String,
     ootr_api_client: Arc<ootr_web::ApiClient>,
@@ -1324,6 +1325,7 @@ impl GlobalState {
         extra_room_tx: Arc<RwLock<mpsc::Sender<String>>>,
         db_pool: PgPool,
         http_client: reqwest::Client,
+        insecure_http_client: reqwest::Client,
         startgg_token: String,
         ootr_api_client: Arc<ootr_web::ApiClient>,
         discord_ctx: RwFuture<DiscordCtx>,
@@ -1336,7 +1338,7 @@ impl GlobalState {
                 hostname: Cow::Borrowed(racetime_host()),
                 ..racetime::HostInfo::default()
             },
-            new_room_lock, racetime_config, extra_room_tx, db_pool, http_client, startgg_token, ootr_api_client, discord_ctx, clean_shutdown, seed_cache_tx, seed_metadata,
+            new_room_lock, racetime_config, extra_room_tx, db_pool, http_client, insecure_http_client, startgg_token, ootr_api_client, discord_ctx, clean_shutdown, seed_cache_tx, seed_metadata,
         }
     }
 
@@ -1700,7 +1702,7 @@ impl GlobalState {
             let mut attempts = 0;
             let response = loop {
                 attempts += 1;
-                let response = self.http_client
+                let response = self.insecure_http_client // dev.triforceblitz.com generates plain HTTP redirects
                     .post("https://dev.triforceblitz.com/seeds/generate")
                     .form(&form_data)
                     .timeout(Duration::from_secs(5 * 60))

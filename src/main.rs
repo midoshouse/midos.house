@@ -175,6 +175,12 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
             .hickory_dns(true)
             .https_only(true)
             .build()?;
+        let insecure_http_client = reqwest::Client::builder()
+            .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION"), " (https://github.com/midoshouse/midos.house)"))
+            .timeout(Duration::from_secs(30))
+            .use_rustls_tls()
+            .hickory_dns(true)
+            .build()?;
         let discord_config = if Environment::default().is_dev() { &config.discord_dev } else { &config.discord_production };
         let discord_builder = serenity_utils::builder(discord_config.bot_token.clone()).await?;
         let db_pool = PgPool::connect_with(PgConnectOptions::default()
@@ -207,6 +213,7 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
             extra_room_tx,
             db_pool.clone(),
             http_client.clone(),
+            insecure_http_client,
             startgg_token.clone(),
             ootr_api_client,
             discord_builder.ctx_fut.clone(),
