@@ -1637,7 +1637,7 @@ impl GlobalState {
                     Err(e) => return Err(e.into()),
                 }
             };
-            let (is_dev, uuid) = tfb::parse_seed_url(response.url()).ok_or(RollError::TfbUrl)?;
+            let (is_dev, uuid) = tfb::parse_seed_url(response.url()).ok_or_else(|| RollError::TfbUrl(response.url().clone()))?;
             debug_assert!(!is_dev);
             let response_body = response.text().await?;
             let file_hash = kuchiki::parse_html().one(response_body)
@@ -1714,7 +1714,7 @@ impl GlobalState {
                     Err(e) => return Err(e.into()),
                 }
             };
-            let (is_dev, uuid) = tfb::parse_seed_url(response.url()).ok_or(RollError::TfbUrl)?;
+            let (is_dev, uuid) = tfb::parse_seed_url(response.url()).ok_or_else(|| RollError::TfbUrl(response.url().clone()))?;
             debug_assert!(is_dev);
             /*
             let patch = self.http_client
@@ -1901,8 +1901,8 @@ pub(crate) enum RollError {
     TfbHash,
     #[error("failed to parse Triforce Blitz seed page")]
     TfbHtml,
-    #[error("Triforce Blitz website returned unexpected URL")]
-    TfbUrl,
+    #[error("Triforce Blitz website returned unexpected URL: {0}")]
+    TfbUrl(Url),
     #[cfg(windows)]
     #[error("failed to access user directories")]
     UserDirs,
