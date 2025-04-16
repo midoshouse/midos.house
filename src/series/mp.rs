@@ -345,7 +345,6 @@ pub(crate) fn s4_settings() -> seed::Settings {
         format!("no_guard_stealth") => json!(true),
         format!("no_epona_race") => json!(true),
         format!("skip_some_minigame_phases") => json!(true),
-        format!("complete_mask_quest") => json!(true),
         format!("free_scarecrow") => json!(true),
         format!("ruto_already_f1_jabu") => json!(true),
         format!("chicken_count") => json!(3),
