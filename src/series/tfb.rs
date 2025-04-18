@@ -85,7 +85,7 @@ pub(crate) fn parse_seed_url(seed: &Url) -> Option<(bool, Uuid)> {
             _ => None,
         };
         if let Some(mut path_segments) = seed.path_segments();
-        if path_segments.next() == Some("seed");
+        if path_segments.next() == Some(if is_dev { "seeds" } else { "seed" });
         if let Some(segment) = path_segments.next();
         if let Ok(uuid) = Uuid::parse_str(segment);
         if path_segments.next().is_none();
