@@ -249,6 +249,8 @@ pub(crate) async fn page(mut transaction: Transaction<'_, Postgres>, me: &Option
                         : " • ";
                         a(href = "https://fenhl.net/disc") : "disclaimer";
                         : " • ";
+                        a(href = "https://status.midos.house/") : "status";
+                        : " • ";
                         a(href = uri!(api::graphql_playground)) : "API";
                         : " • ";
                         a(href = "https://github.com/midoshouse/midos.house") {
