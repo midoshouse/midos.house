@@ -401,6 +401,7 @@ impl<'a> Data<'a> {
             (Series::Standard, "7" | "7cc") => Some(draft::Kind::S7),
             (Series::TournoiFrancophone, "3") => Some(draft::Kind::TournoiFrancoS3),
             (Series::TournoiFrancophone, "4") => Some(draft::Kind::TournoiFrancoS4),
+            (Series::TournoiFrancophone, "5") => Some(draft::Kind::TournoiFrancoS5),
             (_, _) => None,
         }
     }

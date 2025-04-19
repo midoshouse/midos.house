@@ -567,7 +567,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Blocks the weights of a setting from being changed."),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("ban")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("ban")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Verrouille un setting à sa valeur par défaut.")
@@ -605,7 +605,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Sets a weight of a setting to 0."),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("draft")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Choisit un setting pour la race.")
@@ -632,7 +632,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         )
                             .required(false)
                         ),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("first")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("first")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Partir premier dans la phase de pick&ban.")
@@ -656,7 +656,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(match draft_kind {
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::RslS7 => return None,
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("no")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("no")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Répond à la négative dans une question fermée.")
@@ -827,7 +827,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         )
                             .required(false)
                         ),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("second")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("second")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Partir second dans la phase de pick&ban.")
@@ -858,7 +858,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Skips your current turn of the weights draft."),
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("skip")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("skip")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Skip le dernier pick du draft.")
@@ -907,7 +907,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 let idx = commands.len();
                 commands.push(match draft_kind {
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 | draft::Kind::RslS7 => return None,
-                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => CreateCommand::new("yes")
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("yes")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
                         .description("Répond à l'affirmative dans une question fermée.")
@@ -1012,7 +1012,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
                                         transaction.commit().await?;
                                     }
-                                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => {
+                                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => {
                                         let settings = &mut race.draft.as_mut().unwrap().settings;
                                         if settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
                                             let mut transaction = msg_ctx.into_transaction();
@@ -1775,7 +1775,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
                                         transaction.commit().await?;
                                     }
-                                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 => {
+                                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => {
                                         let settings = &mut race.draft.as_mut().unwrap().settings;
                                         if settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
                                             let mut transaction = msg_ctx.into_transaction();

@@ -71,6 +71,7 @@ pub(crate) enum Kind {
     RslS7,
     TournoiFrancoS3,
     TournoiFrancoS4,
+    TournoiFrancoS5,
 }
 
 impl Kind {
@@ -82,6 +83,7 @@ impl Kind {
             | Self::MultiworldS5
             | Self::RslS7
             | Self::TournoiFrancoS4
+            | Self::TournoiFrancoS5
                 => English,
             | Self::TournoiFrancoS3
                 => French,
@@ -291,7 +293,7 @@ impl Draft {
                     }
                 }
             },
-            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => {
+            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 => {
                 let mut team_ids = [team1.id, team2.id];
                 team_ids.shuffle(&mut rng());
                 team_ids
@@ -312,7 +314,7 @@ impl Draft {
                     (loser == Id::from(17814073240662869290_u64) || winner == Id::from(17814073240662869290_u64))
                         .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
                 ),
-                Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => {
+                Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 => {
                     let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", loser as _, winner as _).fetch_all(&mut **transaction).await?;
                     let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
                     let mq_ok = team_rows.iter().all(|row| row.mq_ok);
@@ -336,6 +338,7 @@ impl Draft {
             Kind::MultiworldS5 => self.skipped_bans + u8::try_from(mw::S5_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS3 => self.skipped_bans + u8::try_from(fr::S3_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::TournoiFrancoS4 => self.skipped_bans + u8::try_from(fr::S4_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
+            Kind::TournoiFrancoS5 => self.skipped_bans + u8::try_from(fr::S5_SETTINGS.into_iter().filter(|&fr::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
         }
     }
 
@@ -1213,10 +1216,11 @@ impl Draft {
                     }
                 }
             }
-            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => {
+            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 => {
                 let all_settings = match kind {
                     Kind::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
                     Kind::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
+                    Kind::TournoiFrancoS5 => &fr::S5_SETTINGS[..],
                     Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::RslS7 | Kind::S7 => unreachable!(),
                 };
                 if let Some(went_first) = self.went_first {
@@ -1229,10 +1233,11 @@ impl Draft {
                     let team = match (kind, pick_count, went_first) {
                         (_, 0, true) | (_, 1, false) | (_, 2, true) | (_, 3, false) | (_, 4, false) | (_, 5, true) | (_, 6, true) | (_, 7, false) | (Kind::TournoiFrancoS3, 8, true) | (Kind::TournoiFrancoS3, 9, false) => Team::HighSeed,
                         (_, 0, false) | (_, 1, true) | (_, 2, false) | (_, 3, true) | (_, 4, true) | (_, 5, false) | (_, 6, false) | (_, 7, true) | (Kind::TournoiFrancoS3, 8, false) | (Kind::TournoiFrancoS3, 9, true) => Team::LowSeed,
-                        (Kind::TournoiFrancoS3, 10.., _) | (Kind::TournoiFrancoS4, 8.., _) => return Ok(Step {
+                        (Kind::TournoiFrancoS3, 10.., _) | (Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5, 8.., _) => return Ok(Step {
                             kind: StepKind::Done(match kind {
                                 Kind::TournoiFrancoS3 => fr::resolve_s3_draft_settings(&self.settings),
                                 Kind::TournoiFrancoS4 => fr::resolve_s4_draft_settings(&self.settings),
+                                Kind::TournoiFrancoS5 => fr::resolve_s5_draft_settings(&self.settings),
                                 Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::RslS7 | Kind::S7 => unreachable!(),
                             }),
                             message: match msg_ctx {
@@ -1258,9 +1263,13 @@ impl Draft {
                                     let low_seed = low_seed.remove(0);
                                     MessageBuilder::default()
                                         .mention_team(transaction, Some(*guild_id), team.choose(high_seed, low_seed)).await?
-                                        .push(" : Est-ce que les donjons seront mixés avec les intérieurs et les grottos ? Répondez en utilisant ")
+                                        .push(if let French = kind.language() {
+                                            " : Est-ce que les donjons seront mixés avec les intérieurs et les grottos ? Répondez en utilisant "
+                                        } else {
+                                            ": Should dungeon entrances be mixed with interiors and grottos? Use "
+                                        })
                                         .mention_command(command_ids.yes.unwrap(), "yes")
-                                        .push(" ou ")
+                                        .push(if let French = kind.language() { " ou " } else { " or " })
                                         .mention_command(command_ids.no.unwrap(), "no")
                                         .push('.')
                                         .build()
@@ -1351,10 +1360,15 @@ impl Draft {
                                 let round_count = match kind {
                                     Kind::TournoiFrancoS3 => 10,
                                     Kind::TournoiFrancoS4 => 8,
+                                    Kind::TournoiFrancoS5 => 8,
                                     Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::RslS7 | Kind::S7 => unreachable!(),
                                 };
                                 let hard_settings_ok = self.settings.get("hard_settings_ok").map(|hard_settings_ok| &**hard_settings_ok).unwrap_or("no") == "ok";
-                                let can_ban = n < round_count - 2 || self.settings.get(team.choose("high_seed_has_picked", "low_seed_has_picked")).map(|has_picked| &**has_picked).unwrap_or("no") == "yes";
+                                let can_ban = match kind {
+                                    Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => n < round_count - 2 || self.settings.get(team.choose("high_seed_has_picked", "low_seed_has_picked")).map(|has_picked| &**has_picked).unwrap_or("no") == "yes",
+                                    Kind::TournoiFrancoS5 => n == 4 || n == 5,
+                                    Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::RslS7 | Kind::S7 => unreachable!(),
+                                };
                                 let skippable = n == round_count - 1 && can_ban;
                                 let (hard_settings, classic_settings) = all_settings.iter()
                                     .filter(|&&fr::Setting { name, .. }| !self.settings.contains_key(name))
@@ -2807,10 +2821,11 @@ impl Draft {
                     },
                 }
             }
-            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 => {
+            Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 => {
                 let all_settings = match kind {
                     Kind::TournoiFrancoS3 => &fr::S3_SETTINGS[..],
                     Kind::TournoiFrancoS4 => &fr::S4_SETTINGS[..],
+                    Kind::TournoiFrancoS5 => &fr::S5_SETTINGS[..],
                     Kind::MultiworldS3 | Kind::MultiworldS4 | Kind::MultiworldS5 | Kind::RslS7 | Kind::S7 => unreachable!(),
                 };
                 let resolved_action = match action {
