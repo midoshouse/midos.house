@@ -365,14 +365,14 @@ impl Handler {
     pub(super) async fn check_tfb_finish(&self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
         let data = ctx.data().await;
         let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, ref scores, .. }) = self.official_data else { return Ok(true) };
-        Ok(if let Some(scores) = data.entrants.iter().map(|entrant| match entrant.status.value {
-            EntrantStatusValue::Dnf => Some(tfb::Score::dnf(event.team_config)),
-            EntrantStatusValue::Done => {
-                let key = if let Some(ref team) = entrant.team { &team.slug } else { &entrant.user.id };
-                scores.get(key).and_then(|&score| score)
+        Ok(if let Some(scores) = data.entrants.iter().map(|entrant| {
+            let key = if let Some(ref team) = entrant.team { &team.slug } else { &entrant.user.id };
+            match entrant.status.value {
+                EntrantStatusValue::Dnf => Some((key.clone(), tfb::Score::dnf(event.team_config))),
+                EntrantStatusValue::Done => scores.get(key).and_then(|&score| Some((key.clone(), score?))),
+                _ => None,
             }
-            _ => None,
-        }.map(|score| (entrant.user.id.clone(), score))).collect() {
+        }).collect() {
             ctx.say("All scores received. Thank you for playing Triforce Blitz, see you next race!").await?;
             self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, Some(scores)).await?;
             true
