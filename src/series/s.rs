@@ -224,9 +224,9 @@ pub(crate) fn weekly_settings() -> seed::Settings {
     settings.insert(format!("user_message"), json!("5th Multiworld Tournament (solo ver)"));
     settings.insert(format!("world_count"), json!(1));
     settings.insert(format!("hint_dist_user"), json!({
-        "name":                  "mw_path_solo",
-        "gui_name":              "MW Season 5 (solo)",
-        "description":           "Singleplayer variant of hints used for the Multiworld Tournament Season 5.",
+        "name":                  "weekly",
+        "gui_name":              "Weekly",
+        "description":           "Hint distribution for the weekly races.",
         "add_locations":         [
             { "location": "Sheik in Kakariko", "types": ["always"] },
             { "location": "Song from Ocarina of Time", "types": ["always"] },
