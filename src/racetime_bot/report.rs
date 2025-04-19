@@ -364,7 +364,7 @@ impl Handler {
     #[must_use = "should set cleaned_up if this returns true"]
     pub(super) async fn check_tfb_finish(&self, ctx: &RaceContext<GlobalState>) -> Result<bool, Error> {
         let data = ctx.data().await;
-        let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, ref scores, .. }) = self.official_data else { return Ok(true) };
+        let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, breaks_used, ref scores, .. }) = self.official_data else { return Ok(true) };
         Ok(if let Some(scores) = data.entrants.iter().map(|entrant| {
             let key = if let Some(ref team) = entrant.team { &team.slug } else { &entrant.user.id };
             match entrant.status.value {
@@ -374,14 +374,14 @@ impl Handler {
             }
         }).collect() {
             ctx.say("All scores received. Thank you for playing Triforce Blitz, see you next race!").await?;
-            self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, Some(scores)).await?;
+            self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, breaks_used || self.breaks.is_some(), Some(scores)).await?;
             true
         } else {
             false
         })
     }
 
-    pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, tfb_scores: Option<HashMap<String, tfb::Score>>) -> Result<(), Error> {
+    pub(super) async fn official_race_finished(&self, ctx: &RaceContext<GlobalState>, data: RwLockReadGuard<'_, RaceData>, cal_event: &cal::Event, event: &event::Data<'_>, fpa_invoked: bool, breaks_used: bool, tfb_scores: Option<HashMap<String, tfb::Score>>) -> Result<(), Error> {
         let stream_delay = match cal_event.race.entrants {
             Entrants::Open | Entrants::Count { .. } => event.open_stream_delay,
             Entrants::Two(_) | Entrants::Three(_) | Entrants::Named(_) => event.invitational_stream_delay,
@@ -393,11 +393,14 @@ impl Handler {
             if fpa_invoked {
                 sqlx::query!("UPDATE races SET fpa_invoked = TRUE WHERE id = $1", cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?;
             }
+            if breaks_used {
+                sqlx::query!("UPDATE races SET breaks_used = TRUE WHERE id = $1", cal_event.race.id as _).execute(&mut *transaction).await.to_racetime()?;
+            }
             if let Some(organizer_channel) = event.discord_organizer_channel {
                 organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
                     //TODO mention organizer role
                     .push("first half of async finished")
-                    .push(if fpa_invoked { " with FPA call" } else { "" })
+                    .push(if fpa_invoked { " with FPA call" } else if event.manual_reporting_with_breaks && breaks_used { " with breaks" } else { "" })
                     .push(": <https://")
                     .push(racetime_host())
                     .push(&ctx.data().await.url)
@@ -410,6 +413,31 @@ impl Handler {
                 let mut msg = MessageBuilder::default();
                 //TODO mention organizer role
                 msg.push("race finished with FPA call: <https://");
+                msg.push(racetime_host());
+                msg.push(&ctx.data().await.url);
+                msg.push('>');
+                if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. }) {
+                    msg.push(" — please manually ");
+                    if let Some(results_channel) = event.discord_race_results_channel {
+                        msg.push("post the announcement in ");
+                        msg.mention(&results_channel);
+                    }
+                    if let Some(startgg_set_url) = cal_event.race.startgg_set_url().to_racetime()? {
+                        if event.discord_race_results_channel.is_some() {
+                            msg.push(" and ");
+                        }
+                        msg.push_named_link_no_preview("report the result on start.gg", startgg_set_url);
+                    }
+                    msg.push(" after adjusting the times");
+                }
+                //TODO note to manually initialize high seed for next game's draft (if any) and use `/post-status`
+                organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
+            }
+        } else if event.manual_reporting_with_breaks && breaks_used {
+            if let Some(organizer_channel) = event.discord_organizer_channel {
+                let mut msg = MessageBuilder::default();
+                //TODO mention organizer role
+                msg.push("race finished with breaks: <https://");
                 msg.push(racetime_host());
                 msg.push(&ctx.data().await.url);
                 msg.push('>');

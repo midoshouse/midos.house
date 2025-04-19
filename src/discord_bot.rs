@@ -1222,6 +1222,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             schedule: if reset_schedule { RaceSchedule::Unscheduled } else { race.schedule },
                                             schedule_updated_at: if reset_schedule { Some(Utc::now()) } else { race.schedule_updated_at },
                                             fpa_invoked: if reset_schedule { false } else { race.fpa_invoked },
+                                            breaks_used: if reset_schedule { false } else { race.breaks_used },
                                             draft: if reset_draft {
                                                 if_chain! {
                                                     if let Some(draft_kind) = event.draft_kind();

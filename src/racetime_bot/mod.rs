@@ -2306,6 +2306,7 @@ struct OfficialRaceData {
     restreams: HashMap<Url, RestreamState>,
     entrants: Vec<String>,
     fpa_invoked: bool,
+    breaks_used: bool,
     /// Keys are racetime.gg team slugs if is_racetime_team_format, racetime.gg user IDs otherwise
     scores: HashMap<String, Option<tfb::Score>>,
 }
@@ -2839,6 +2840,7 @@ impl RaceHandler<GlobalState> for Handler {
                     cal_event.race.seed.clone(),
                     Some(OfficialRaceData {
                         fpa_invoked: cal_event.race.fpa_invoked,
+                        breaks_used: cal_event.race.breaks_used,
                         scores: HashMap::default(),
                         cal_event, event, goal, restreams, entrants,
                     }),
@@ -4311,8 +4313,8 @@ impl RaceHandler<GlobalState> for Handler {
                     }
                 } else {
                     self.cleaned_up = true;
-                    if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, .. }) = self.official_data {
-                        self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, None).await?;
+                    if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, breaks_used, .. }) = self.official_data {
+                        self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, breaks_used || self.breaks.is_some(), None).await?;
                     }
                 }
             },

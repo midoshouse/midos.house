@@ -178,6 +178,7 @@ pub(crate) struct Data<'a> {
     pub(crate) invitational_stream_delay: Duration,
     pub(crate) retime_window: Duration,
     pub(crate) auto_import: bool,
+    pub(crate) manual_reporting_with_breaks: bool,
     pub(crate) language: Language,
 }
 
@@ -226,6 +227,7 @@ impl<'a> Data<'a> {
             invitational_stream_delay,
             retime_window,
             auto_import,
+            manual_reporting_with_breaks,
             language AS "language: Language"
         FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(&mut **transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
@@ -263,6 +265,7 @@ impl<'a> Data<'a> {
                 invitational_stream_delay: decode_pginterval(row.invitational_stream_delay)?,
                 retime_window: decode_pginterval(row.retime_window)?,
                 auto_import: row.auto_import,
+                manual_reporting_with_breaks: row.manual_reporting_with_breaks,
                 language: row.language,
                 series, event,
             }))

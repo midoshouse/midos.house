@@ -30,6 +30,25 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, me: Option<U
                     input(type = "text", name = "min_schedule_notice", value = ctx.field_value("min_schedule_notice").map(Cow::Borrowed).unwrap_or_else(|| Cow::Owned(unparse_duration(event.min_schedule_notice)))); //TODO h:m:s fields?
                     label(class = "help") : "(Races must be scheduled at least this far in advance. Can be configured to be as low as 0 seconds, but note that if a race is scheduled less than 30 minutes in advance, the room is opened immediately, and if a race is scheduled less than 15 minutes in advance, the seed is posted immediately.)";
                 });
+                @if matches!(event.match_source(), MatchSource::StartGG(_)) || event.discord_race_results_channel.is_some() {
+                    : form_field("retime_window", &mut errors, html! {
+                        label(for = "retime_window") : "Retime window:";
+                        input(type = "text", name = "retime_window", value = ctx.field_value("retime_window").map(Cow::Borrowed).unwrap_or_else(|| Cow::Owned(unparse_duration(event.retime_window)))); //TODO h:m:s fields?
+                        label(class = "help") {
+                            : "(If the time difference between ";
+                            @if event.team_config.is_racetime_team_format() {
+                                : "teams'";
+                            } else {
+                                : "runners'";
+                            }
+                            : " finish times is less than this, the result is not auto-reported.)";
+                        }
+                    });
+                    : form_field("manual_reporting_with_breaks", &mut errors, html! {
+                        input(type = "checkbox", id = "manual_reporting_with_breaks", name = "manual_reporting_with_breaks", checked? = ctx.field_value("manual_reporting_with_breaks").map_or(event.manual_reporting_with_breaks, |value| value == "on"));
+                        label(for = "manual_reporting_with_breaks") : "Disable automatic result reporting if !breaks command is used";
+                    });
+                }
             }, errors, "Save")
         } else {
             html! {
@@ -68,6 +87,8 @@ pub(crate) struct ConfigureForm {
     auto_import: Option<bool>,
     #[field(default = String::new())]
     min_schedule_notice: String,
+    retime_window: Option<String>,
+    manual_reporting_with_breaks: Option<bool>,
 }
 
 #[rocket::post("/event/<series>/<event>/configure", data = "<form>")]
@@ -89,6 +110,16 @@ pub(crate) async fn post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: 
             form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("min_schedule_notice"));
             None
         };
+        let retime_window = if let Some(retime_window) = &value.retime_window {
+            if let Some(time) = parse_duration(retime_window, DurationUnit::Hours) {
+                Some(time)
+            } else {
+                form.context.push_error(form::Error::validation("Duration must be formatted like “1:23:45” or “1h 23m 45s”.").with_name("retime_window"));
+                None
+            }
+        } else {
+            None
+        };
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(configure_form(transaction, Some(me), uri, csrf.as_ref(), data, form.context).await?)
         } else {
@@ -97,6 +128,12 @@ pub(crate) async fn post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: 
             }
             if let Some(min_schedule_notice) = min_schedule_notice {
                 sqlx::query!("UPDATE events SET min_schedule_notice = $1 WHERE series = $2 AND event = $3", min_schedule_notice as _, data.series as _, &data.event).execute(&mut *transaction).await?;
+            }
+            if let Some(retime_window) = retime_window {
+                sqlx::query!("UPDATE events SET retime_window = $1 WHERE series = $2 AND event = $3", retime_window as _, data.series as _, &data.event).execute(&mut *transaction).await?;
+            }
+            if let Some(manual_reporting_with_breaks) = value.manual_reporting_with_breaks {
+                sqlx::query!("UPDATE events SET manual_reporting_with_breaks = $1 WHERE series = $2 AND event = $3", manual_reporting_with_breaks, data.series as _, &data.event).execute(&mut *transaction).await?;
             }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(super::info(series, event))))
