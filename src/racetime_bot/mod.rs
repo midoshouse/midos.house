@@ -2897,8 +2897,17 @@ impl RaceHandler<GlobalState> for Handler {
                     }
                 }
                 if let RaceStatusValue::Pending | RaceStatusValue::InProgress = data.status.value { //TODO also check this in official races
-                    //TODO get chatlog and recover breaks config instead of sending this
-                    ctx.say("@entrants I just restarted and it looks like the race is already in progress. If the !breaks command was used, break notifications may be broken now. Sorry about that.").await?;
+                    if_chain! {
+                        if let Ok(log) = ctx.global_state.http_client.get(format!("https://{}{}/log", racetime_host(), data.url)).send().await;
+                        if let Ok(log) = log.detailed_error_for_status().await;
+                        if let Ok(log) = log.text().await; //TODO stream response
+                        if !log.to_ascii_lowercase().contains("break"); //TODO parse chatlog and recover breaks config instead of sending this
+                        then {
+                            // no breaks configured, can safely restart
+                        } else {
+                            ctx.say("@entrants I just restarted and it looks like the race is already in progress. If the !breaks command was used, break notifications may be broken now. Sorry about that.").await?;
+                        }
+                    }
                 } else {
                     match race_state {
                         RaceState::Init => match goal {
