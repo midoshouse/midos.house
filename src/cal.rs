@@ -2498,13 +2498,13 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                     breaks_used: false,
                                     draft: None,
                                     seed: seed::Data::default(),
-                                    video_urls: if let Some(twitch_username) = match_data.restreamers.iter().filter_map(|restreamer| restreamer.twitch_username.as_ref()).at_most_one().expect("multiple restreams for a League race") {
+                                    video_urls: if let Ok(twitch_username) = match_data.restreamers.iter().filter_map(|restreamer| restreamer.twitch_username.as_ref()).exactly_one() { //TODO notify on multiple restreams
                                         iter::once((match_data.restream_language.unwrap_or(English), Url::parse(&format!("https://twitch.tv/{twitch_username}"))?)).collect()
                                     } else {
                                         HashMap::default()
                                     },
                                     restreamers: if_chain! {
-                                        if let Some(restreamer) = match_data.restreamers.into_iter().at_most_one().expect("multiple restreams for a League race");
+                                        if let Ok(restreamer) = match_data.restreamers.into_iter().exactly_one(); //TODO notify on multiple restreams
                                         if let Some(racetime_id) = restreamer.racetime_id(&http_client).await?;
                                         then {
                                             iter::once((match_data.restream_language.unwrap_or(English), racetime_id)).collect()
