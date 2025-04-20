@@ -74,6 +74,27 @@ pub(crate) enum ClientMessage {
     },
 }
 
+#[derive(Protocol)]
+pub(crate) enum PrepareStopUpdate {
+    AcquiringMutex,
+    WaitingForRooms(HashSet<racetime_bot::OpenRoom>),
+}
+
+impl fmt::Display for PrepareStopUpdate {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AcquiringMutex => write!(f, "acquiring clean shutdown mutex"),
+            Self::WaitingForRooms(rooms) => {
+                write!(f, "waiting for {} rooms to close:", rooms.len())?;
+                for room in rooms {
+                    write!(f, "\n{room}")?;
+                }
+                Ok(())
+            }
+        }
+    }
+}
+
 pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<Mutex<racetime_bot::CleanShutdown>>, global_state: Arc<racetime_bot::GlobalState>) -> wheel::Result<()> {
     fs::remove_file(PATH).await.missing_ok()?;
     let listener = UnixListener::bind(PATH).at(PATH)?;
@@ -110,27 +131,20 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                 0u8.write(&mut sock).await.expect("error writing to UNIX socket");
                             }
                             Ok(ClientMessage::PrepareStop { no_new_rooms }) => {
-                                println!("preparing to stop Mido's House: acquiring clean shutdown mutex");
+                                Some(PrepareStopUpdate::AcquiringMutex).write(&mut sock).await.expect("error writing to UNIX socket");
                                 lock!(clean_shutdown = clean_shutdown; {
                                     clean_shutdown.requested = true;
                                     if no_new_rooms { clean_shutdown.block_new = true }
                                     if !clean_shutdown.open_rooms.is_empty() {
-                                        println!("preparing to stop Mido's House: waiting for {} rooms to close:", clean_shutdown.open_rooms.len());
-                                        for room in &clean_shutdown.open_rooms {
-                                            println!("{room}");
-                                        }
+                                        Some(PrepareStopUpdate::WaitingForRooms(clean_shutdown.open_rooms.clone())).write(&mut sock).await.expect("error writing to UNIX socket");
                                         let notifier = clean_shutdown.notifier.clone();
                                         unlock!();
                                         notifier.notified().await;
-                                        println!("preparing to stop Mido's House: sending reply");
-                                        0u8.write(&mut sock).await.expect("error writing to UNIX socket");
-                                        println!("preparing to stop Mido's House: done");
+                                        None::<PrepareStopUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
                                         break
                                     }
                                 });
-                                println!("preparing to stop Mido's House: sending reply");
-                                0u8.write(&mut sock).await.expect("error writing to UNIX socket");
-                                println!("preparing to stop Mido's House: done");
+                                None::<PrepareStopUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
                                 break
                             }
                             Ok(ClientMessage::Roll { version, settings, spoiler_log }) => if let Json::Object(settings) = settings {

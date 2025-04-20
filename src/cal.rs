@@ -1175,6 +1175,7 @@ impl Ord for Race {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum EventKind {
     Normal,
     Async1,

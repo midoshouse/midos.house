@@ -18,7 +18,10 @@ use {
     tokio::net::UnixStream,
     crate::{
         racetime_bot::SeedRollUpdate,
-        unix_socket::ClientMessage as Subcommand,
+        unix_socket::{
+            ClientMessage as Subcommand,
+            PrepareStopUpdate,
+        },
     },
 };
 
@@ -146,8 +149,9 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
                 u8::read(&mut sock).await?;
             }
             #[cfg(unix)] Subcommand::PrepareStop { .. } => {
-                println!("{} preparing to stop Mido's House: waiting for reply", Utc::now().format("%Y-%m-%d %H:%M:%S"));
-                u8::read(&mut sock).await?;
+                while let Some(update) = Option::<PrepareStopUpdate>::read(&mut sock).await? {
+                    println!("{} preparing to stop Mido's House: {update}", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                }
                 println!("{} preparing to stop Mido's House: done", Utc::now().format("%Y-%m-%d %H:%M:%S"));
             }
             #[cfg(unix)] Subcommand::Roll { .. } | Subcommand::RollRsl { .. } | Subcommand::Seed { .. } => while let Some(update) = Option::<SeedRollUpdate>::read(&mut sock).await? {

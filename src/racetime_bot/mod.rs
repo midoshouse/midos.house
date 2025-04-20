@@ -1270,7 +1270,8 @@ impl FromStr for Goal {
     }
 }
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(unix, derive(Protocol))]
 pub(crate) enum OpenRoom {
     Discord(Id<Races>, cal::EventKind),
     RaceTime(String),
