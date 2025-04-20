@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams WHERE id = $1",
+  "query": "SELECT id AS \"id: Id<Teams>\", series AS \"series: Series\", event, name, racetime_slug, teams.startgg_id AS \"startgg_id: startgg::ID\", plural_name, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams, team_members WHERE series = $1 AND event = $2 AND NOT resigned AND id = team AND member = $3",
   "describe": {
     "columns": [
       {
@@ -10,31 +10,41 @@
       },
       {
         "ordinal": 1,
-        "name": "name",
+        "name": "series: Series",
         "type_info": "Varchar"
       },
       {
         "ordinal": 2,
+        "name": "event",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
         "name": "racetime_slug",
         "type_info": "Text"
       },
       {
-        "ordinal": 3,
+        "ordinal": 5,
         "name": "startgg_id: startgg::ID",
         "type_info": "Text"
       },
       {
-        "ordinal": 4,
+        "ordinal": 6,
         "name": "plural_name",
         "type_info": "Bool"
       },
       {
-        "ordinal": 5,
+        "ordinal": 7,
         "name": "restream_consent",
         "type_info": "Bool"
       },
       {
-        "ordinal": 6,
+        "ordinal": 8,
         "name": "mw_impl: mw::Impl",
         "type_info": {
           "Custom": {
@@ -49,17 +59,21 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 9,
         "name": "qualifier_rank",
         "type_info": "Int2"
       }
     ],
     "parameters": {
       "Left": [
+        "Text",
+        "Text",
         "Int8"
       ]
     },
     "nullable": [
+      false,
+      false,
       false,
       true,
       true,
@@ -70,5 +84,5 @@
       true
     ]
   },
-  "hash": "1108d3ed81e12f06dc57508963dea88a7def24552b9c09fe7d3787c17186dab9"
+  "hash": "7c48d9cd018298b9c10ce832ad1dfa3e33c4b263157581e0a8a8c86989857ed1"
 }

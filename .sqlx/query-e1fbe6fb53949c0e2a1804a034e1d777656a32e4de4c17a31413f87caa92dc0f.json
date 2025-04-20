@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams WHERE startgg_id = $1",
+  "query": "SELECT id AS \"id: Id<Teams>\", series AS \"series: Series\", event, name, racetime_slug, teams.startgg_id AS \"startgg_id: startgg::ID\", plural_name, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams, team_members WHERE\n            id = team\n            AND series = $1\n            AND event = $2\n            AND member = $3\n            AND NOT resigned\n            AND NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')\n        ",
   "describe": {
     "columns": [
       {
@@ -10,31 +10,41 @@
       },
       {
         "ordinal": 1,
-        "name": "name",
+        "name": "series: Series",
         "type_info": "Varchar"
       },
       {
         "ordinal": 2,
+        "name": "event",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
         "name": "racetime_slug",
         "type_info": "Text"
       },
       {
-        "ordinal": 3,
+        "ordinal": 5,
         "name": "startgg_id: startgg::ID",
         "type_info": "Text"
       },
       {
-        "ordinal": 4,
+        "ordinal": 6,
         "name": "plural_name",
         "type_info": "Bool"
       },
       {
-        "ordinal": 5,
+        "ordinal": 7,
         "name": "restream_consent",
         "type_info": "Bool"
       },
       {
-        "ordinal": 6,
+        "ordinal": 8,
         "name": "mw_impl: mw::Impl",
         "type_info": {
           "Custom": {
@@ -49,17 +59,21 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 9,
         "name": "qualifier_rank",
         "type_info": "Int2"
       }
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Text",
+        "Text",
+        "Int8"
       ]
     },
     "nullable": [
+      false,
+      false,
       false,
       true,
       true,
@@ -70,5 +84,5 @@
       true
     ]
   },
-  "hash": "fb42c791cf4332e3a3f6ba5d1a5ec1cb9a6345705d7bfa3ca5ff7821154d1c3d"
+  "hash": "e1fbe6fb53949c0e2a1804a034e1d777656a32e4de4c17a31413f87caa92dc0f"
 }

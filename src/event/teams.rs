@@ -548,6 +548,8 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     .map_ok(|row| TeamRow {
                         team: Team {
                             id: row.id,
+                            series: data.series,
+                            event: data.event.to_string(),
                             name: row.name,
                             racetime_slug: row.racetime_slug,
                             startgg_id: row.startgg_id,
@@ -577,6 +579,8 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     .map_ok(|row| TeamRow {
                         team: Team {
                             id: row.id,
+                            series: data.series,
+                            event: data.event.to_string(),
                             name: row.name,
                             racetime_slug: row.racetime_slug,
                             startgg_id: row.startgg_id,

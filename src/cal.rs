@@ -643,7 +643,7 @@ impl Race {
                     fpa_invoked: false,
                     breaks_used: false,
                     draft: None,
-                    seed: seed::Data::default(), //TODO
+                    seed: seed::Data::default(),
                     video_urls: event.video_url.iter().map(|video_url| (English, video_url.clone())).collect(), //TODO sync between event and race? Video URL fields for other languages on event::Data?
                     restreamers: HashMap::default(),
                     last_edited_by: None,
@@ -1823,14 +1823,18 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
     }
     Ok(if let Some(ref value) = form.value {
         let team1 = Team::from_id(&mut transaction, value.team1).await?;
-        if let Some(_) = team1 {
-            //TODO validate that this team is for this event
+        if let Some(team1) = &team1 {
+            if team1.series != event.series || team1.event != event.event {
+                form.context.push_error(form::Error::validation("This team is for a different event.").with_name("team1"));
+            }
         } else {
             form.context.push_error(form::Error::validation("There is no team with this ID.").with_name("team1"));
         }
         let team2 = Team::from_id(&mut transaction, value.team2).await?;
-        if let Some(_) = team2 {
-            //TODO validate that this team is for this event
+        if let Some(team2) = &team2 {
+            if team2.series != event.series || team2.event != event.event {
+                form.context.push_error(form::Error::validation("This team is for a different event.").with_name("team2"));
+            }
         } else {
             form.context.push_error(form::Error::validation("There is no team with this ID.").with_name("team2"));
         }
@@ -1839,8 +1843,10 @@ pub(crate) async fn create_race_post(pool: &State<PgPool>, discord_ctx: &State<R
         }
         let team3 = if let Some(team3) = value.team3 {
             let team3 = Team::from_id(&mut transaction, team3).await?;
-            if let Some(_) = team3 {
-                //TODO validate that this team is for this event
+            if let Some(team3) = &team3 {
+                if team3.series != event.series || team3.event != event.event {
+                    form.context.push_error(form::Error::validation("This team is for a different event.").with_name("team3"));
+                }
             } else {
                 form.context.push_error(form::Error::validation("There is no team with this ID.").with_name("team3"));
             }

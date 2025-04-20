@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams WHERE series = $1 AND event = $2 AND racetime_slug = $3",
+  "query": "SELECT id AS \"id: Id<Teams>\", series AS \"series: Series\", event, name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams WHERE series = $1 AND event = $2 AND racetime_slug = $3",
   "describe": {
     "columns": [
       {
@@ -10,31 +10,41 @@
       },
       {
         "ordinal": 1,
-        "name": "name",
+        "name": "series: Series",
         "type_info": "Varchar"
       },
       {
         "ordinal": 2,
+        "name": "event",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 3,
+        "name": "name",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
         "name": "racetime_slug",
         "type_info": "Text"
       },
       {
-        "ordinal": 3,
+        "ordinal": 5,
         "name": "startgg_id: startgg::ID",
         "type_info": "Text"
       },
       {
-        "ordinal": 4,
+        "ordinal": 6,
         "name": "plural_name",
         "type_info": "Bool"
       },
       {
-        "ordinal": 5,
+        "ordinal": 7,
         "name": "restream_consent",
         "type_info": "Bool"
       },
       {
-        "ordinal": 6,
+        "ordinal": 8,
         "name": "mw_impl: mw::Impl",
         "type_info": {
           "Custom": {
@@ -49,7 +59,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 9,
         "name": "qualifier_rank",
         "type_info": "Int2"
       }
@@ -63,6 +73,8 @@
     },
     "nullable": [
       false,
+      false,
+      false,
       true,
       true,
       true,
@@ -72,5 +84,5 @@
       true
     ]
   },
-  "hash": "e2c46f79437b204dd4625149bab175654f7b06e0b2dcb02ca443c0e082811283"
+  "hash": "3dc46a37250b3eff202afcd8cb0f543111b0789181f0444576ce18cb8f4c8d88"
 }
