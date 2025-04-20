@@ -188,6 +188,12 @@ textarea,
     padding: 8px;
 }
 
+.popover-wrapper > button,
+input[type="submit"],
+.button {
+    text-wrap: nowrap;
+}
+
 .large-button-row .button {
     text-align: center;
 }
