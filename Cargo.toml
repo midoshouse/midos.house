@@ -56,7 +56,9 @@ kuchiki = "0.8"
 lazy-regex = "3"
 log = "0.4"
 log-lock = { git = "https://github.com/fenhl/log-lock", branch = "main" }
+#mimalloc = "0.1.43" # fails to compile on Ubuntu
 noisy_float = "0.2"
+nonempty-collections = "0.3.0"
 ootr-utils = { git = "https://github.com/midoshouse/rust-ootr-utils", branch = "main", features = ["sqlx"] }
 racetime = "0.26"
 rand = "0.9"
@@ -75,6 +77,7 @@ serde_plain = "1"
 serde_with = { version = "3", features = ["json"] }
 serenity = { version = "0.12.4", default-features = false, features = ["client", "gateway", "model", "rustls_backend", "temp_cache"] }
 serenity-utils = { git = "https://github.com/fenhl/serenity-utils", branch = "main" }
+smart-default = "0.7.1"
 sqlx = { version = "0.8.3", default-features = false, features = ["chrono", "json", "macros", "postgres", "runtime-tokio", "tls-rustls-ring-webpki", "uuid"] }
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "net", "parking_lot", "process", "sync", "time"] }
@@ -84,8 +87,6 @@ url = { version = "2", features = ["serde"] }
 uuid = "1"
 wheel = { git = "https://github.com/fenhl/wheel", branch = "rocket-forms", features = ["chrono", "racetime", "reqwest", "rocket", "serde_json"] }
 yup-oauth2 = "12"
-#mimalloc = "0.1.43" # fails to compile on Ubuntu
-nonempty-collections = "0.3.0"
 
 [target.'cfg(unix)'.dependencies]
 async-proto = { version = "0.25", features = ["chrono", "serde_json", "serenity", "uuid"] }

@@ -12,6 +12,7 @@ use {
         },
         prelude::*,
         racetime_bot::{
+            CleanShutdownUpdate,
             Goal,
             PrerollMode,
             RollError,
@@ -78,6 +79,8 @@ pub(crate) enum ClientMessage {
 pub(crate) enum PrepareStopUpdate {
     AcquiringMutex,
     WaitingForRooms(HashSet<racetime_bot::OpenRoom>),
+    RoomOpened(racetime_bot::OpenRoom),
+    RoomClosed(racetime_bot::OpenRoom),
 }
 
 impl fmt::Display for PrepareStopUpdate {
@@ -91,6 +94,8 @@ impl fmt::Display for PrepareStopUpdate {
                 }
                 Ok(())
             }
+            Self::RoomOpened(room) => write!(f, "new room opened: {room}"),
+            Self::RoomClosed(room) => write!(f, "room closed: {room}"),
         }
     }
 }
@@ -132,18 +137,34 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                             }
                             Ok(ClientMessage::PrepareStop { no_new_rooms }) => {
                                 Some(PrepareStopUpdate::AcquiringMutex).write(&mut sock).await.expect("error writing to UNIX socket");
-                                lock!(clean_shutdown = clean_shutdown; {
+                                let mut notifier = lock!(clean_shutdown = clean_shutdown; {
                                     clean_shutdown.requested = true;
                                     if no_new_rooms { clean_shutdown.block_new = true }
-                                    if !clean_shutdown.open_rooms.is_empty() {
+                                    if clean_shutdown.open_rooms.is_empty() {
+                                        broadcast::channel(1).1
+                                    } else {
                                         Some(PrepareStopUpdate::WaitingForRooms(clean_shutdown.open_rooms.clone())).write(&mut sock).await.expect("error writing to UNIX socket");
-                                        let notifier = clean_shutdown.notifier.clone();
-                                        unlock!();
-                                        notifier.notified().await;
-                                        None::<PrepareStopUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
-                                        break
+                                        clean_shutdown.updates.subscribe()
                                     }
                                 });
+                                loop {
+                                    match notifier.recv().await {
+                                        Ok(CleanShutdownUpdate::RoomOpened(room)) => Some(PrepareStopUpdate::RoomOpened(room)).write(&mut sock).await.expect("error writing to UNIX socket"),
+                                        Ok(CleanShutdownUpdate::RoomClosed(room)) => Some(PrepareStopUpdate::RoomClosed(room)).write(&mut sock).await.expect("error writing to UNIX socket"),
+                                        Ok(CleanShutdownUpdate::Empty) => break,
+                                        Err(broadcast::error::RecvError::Closed) => break,
+                                        Err(broadcast::error::RecvError::Lagged(_)) => notifier = lock!(clean_shutdown = clean_shutdown; {
+                                            clean_shutdown.requested = true;
+                                            if no_new_rooms { clean_shutdown.block_new = true }
+                                            if clean_shutdown.open_rooms.is_empty() {
+                                                broadcast::channel(1).1
+                                            } else {
+                                                Some(PrepareStopUpdate::WaitingForRooms(clean_shutdown.open_rooms.clone())).write(&mut sock).await.expect("error writing to UNIX socket");
+                                                clean_shutdown.updates.subscribe()
+                                            }
+                                        }),
+                                    }
+                                }
                                 None::<PrepareStopUpdate>.write(&mut sock).await.expect("error writing to UNIX socket");
                                 break
                             }

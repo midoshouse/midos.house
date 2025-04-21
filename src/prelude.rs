@@ -159,6 +159,7 @@ pub(crate) use {
         process::Command,
         select,
         sync::{
+            broadcast,
             mpsc,
             watch,
         },
@@ -184,6 +185,7 @@ pub(crate) use {
             IsNetworkError,
             LocalResultExt as _,
             ReqwestResponseExt as _,
+            SendResultExt as _,
         },
     },
     crate::{

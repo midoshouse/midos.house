@@ -283,7 +283,7 @@ impl ApiClient {
                     let permit = self.mw_seed_rollers.clone().acquire_owned().await.expect("seed queue semaphore closed");
                     waiting.remove(0);
                     for tx in &*waiting {
-                        let _ = tx.send(());
+                        tx.send(()).allow_unreceived();
                     }
                     permit
                 })

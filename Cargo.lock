@@ -3911,6 +3911,7 @@ dependencies = [
  "serde_with",
  "serenity",
  "serenity-utils",
+ "smart-default",
  "sqlx",
  "thiserror 2.0.12",
  "tokio",
@@ -6002,6 +6003,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "smart-default"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0eb01866308440fc64d6c44d9e86c5cc17adfe33c4d6eed55da9145044d0ffc1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.100",
+]
+
+[[package]]
 name = "socket2"
 version = "0.5.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7313,7 +7325,7 @@ dependencies = [
 [[package]]
 name = "wheel"
 version = "0.15.0"
-source = "git+https://github.com/fenhl/wheel?branch=main#e83a20ea6a6249184ef007172dba7207f23a37d8"
+source = "git+https://github.com/fenhl/wheel?branch=main#21df9959dba1ea22814b80c5417e8c3664df8ed9"
 dependencies = [
  "async-trait",
  "clap",
@@ -7328,7 +7340,7 @@ dependencies = [
 [[package]]
 name = "wheel"
 version = "0.15.0"
-source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#38eb4e19470e92e5babf5eb9f0117c7918beaf63"
+source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#1a48e0f58345eb12925cea90792e82879be2d73c"
 dependencies = [
  "async-proto",
  "async-trait",
@@ -7353,7 +7365,7 @@ dependencies = [
 [[package]]
 name = "wheel-derive"
 version = "0.15.0"
-source = "git+https://github.com/fenhl/wheel?branch=main#e83a20ea6a6249184ef007172dba7207f23a37d8"
+source = "git+https://github.com/fenhl/wheel?branch=main#21df9959dba1ea22814b80c5417e8c3664df8ed9"
 dependencies = [
  "itertools 0.14.0",
  "proc-macro2",
@@ -7364,7 +7376,7 @@ dependencies = [
 [[package]]
 name = "wheel-derive"
 version = "0.15.0"
-source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#38eb4e19470e92e5babf5eb9f0117c7918beaf63"
+source = "git+https://github.com/fenhl/wheel?branch=rocket-forms#1a48e0f58345eb12925cea90792e82879be2d73c"
 dependencies = [
  "itertools 0.14.0",
  "proc-macro2",

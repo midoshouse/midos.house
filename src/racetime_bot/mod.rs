@@ -31,12 +31,9 @@ use {
         CreateAllowedMentions,
         CreateMessage,
     },
+    smart_default::SmartDefault,
     tokio::{
         io::AsyncWriteExt as _,
-        sync::{
-            Notify,
-            mpsc,
-        },
         time::timeout,
     },
     crate::{
@@ -1291,12 +1288,21 @@ impl fmt::Display for OpenRoom {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone)]
+#[cfg_attr(not(unix), allow(dead_code))]
+pub(crate) enum CleanShutdownUpdate {
+    RoomOpened(OpenRoom),
+    RoomClosed(OpenRoom),
+    Empty,
+}
+
+#[derive(SmartDefault)]
 pub(crate) struct CleanShutdown {
     pub(crate) requested: bool,
     pub(crate) block_new: bool,
     pub(crate) open_rooms: HashSet<OpenRoom>,
-    pub(crate) notifier: Arc<Notify>,
+    #[default(broadcast::Sender::new(128))]
+    pub(crate) updates: broadcast::Sender<CleanShutdownUpdate>,
 }
 
 impl CleanShutdown {
@@ -1469,7 +1475,7 @@ impl GlobalState {
             let randomizer_version = String::from_utf8(randomizer_version)?.trim().parse::<rando::Version>()?;
             let web_version = self.ootr_api_client.can_roll_on_web(Some(&preset), &VersionedBranch::Pinned { version: randomizer_version.clone() }, world_count, unlock_spoiler_log).await;
             // run the RSL script
-            let _ = update_tx.send(SeedRollUpdate::Started).await;
+            update_tx.send(SeedRollUpdate::Started).await.allow_unreceived();
             let outer_tries = if web_version.is_some() { 5 } else { 1 }; // when generating locally, retries are already handled by the RSL script
             let mut last_error = None;
             for attempt in 0.. {
@@ -1549,7 +1555,7 @@ impl GlobalState {
                         Err(ootr_web::Error::Retries { .. }) => continue,
                         Err(e) => return Err(e.into()), //TODO fall back to rolling locally for network errors
                     };
-                    let _ = update_tx.send(SeedRollUpdate::Done {
+                    update_tx.send(SeedRollUpdate::Done {
                         seed: seed::Data {
                             file_hash: Some(file_hash),
                             files: Some(seed::Files::OotrWeb {
@@ -1561,7 +1567,7 @@ impl GlobalState {
                         },
                         rsl_preset: if let rsl::VersionedPreset::Xopar { preset, .. } = preset { Some(preset) } else { None },
                         unlock_spoiler_log,
-                    }).await;
+                    }).await.allow_unreceived();
                     return Ok(())
                 } else {
                     let patch_filename = BufRead::lines(&*output.stdout)
@@ -1577,7 +1583,7 @@ impl GlobalState {
                         fs::remove_file(rsl_script_path.join("patches").join(extra_output_filename)).await.missing_ok()?;
                     }
                     fs::rename(patch_path, Path::new(seed::DIR).join(&patch_filename)).await?;
-                    let _ = update_tx.send(match regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) {
+                    update_tx.send(match regex_captures!(r"^(.+)\.zpfz?$", &patch_filename) {
                         Some((_, file_stem)) => SeedRollUpdate::Done {
                             seed: seed::Data {
                                 file_hash: None, password: None, // will be read from spoiler log
@@ -1591,7 +1597,7 @@ impl GlobalState {
                             unlock_spoiler_log,
                         },
                         None => SeedRollUpdate::Error(RollError::PatchPath),
-                    }).await;
+                    }).await.allow_unreceived();
                     return Ok(())
                 }
             }
@@ -1599,7 +1605,7 @@ impl GlobalState {
         }.then(|res| async move {
             match res {
                 Ok(()) => {}
-                Err(e) => { let _ = update_tx2.send(SeedRollUpdate::Error(e)).await; }
+                Err(e) => update_tx2.send(SeedRollUpdate::Error(e)).await.allow_unreceived(),
             }
         }));
         update_rx
@@ -1616,7 +1622,7 @@ impl GlobalState {
                 let sleep_duration = rng().random_range(Duration::default()..max_sleep_duration);
                 sleep(sleep_duration).await;
             }
-            let _ = update_tx.send(SeedRollUpdate::Started).await;
+            update_tx.send(SeedRollUpdate::Started).await.allow_unreceived();
             let form_data = match unlock_spoiler_log {
                 UnlockSpoilerLog::Now => vec![
                     ("unlockSetting", "ALWAYS"),
@@ -1662,7 +1668,7 @@ impl GlobalState {
                 .filter_map(NodeRef::into_element_ref)
                 .filter_map(|elt| elt.attributes.borrow().get("title").and_then(|title| title.parse().ok()))
                 .collect_vec();
-            let _ = update_tx.send(SeedRollUpdate::Done {
+            update_tx.send(SeedRollUpdate::Done {
                 seed: seed::Data {
                     file_hash: Some(file_hash.try_into().map_err(|_| RollError::TfbHash)?),
                     password: None,
@@ -1671,12 +1677,12 @@ impl GlobalState {
                 },
                 rsl_preset: None,
                 unlock_spoiler_log,
-            }).await;
+            }).await.allow_unreceived();
             Ok(())
         }.then(|res| async move {
             match res {
                 Ok(()) => {}
-                Err(e) => { let _ = update_tx2.send(SeedRollUpdate::Error(e)).await; }
+                Err(e) => update_tx2.send(SeedRollUpdate::Error(e)).await.allow_unreceived(),
             }
         }));
         update_rx
@@ -1693,7 +1699,7 @@ impl GlobalState {
                 let sleep_duration = rng().random_range(Duration::default()..max_sleep_duration);
                 sleep(sleep_duration).await;
             }
-            let _ = update_tx.send(SeedRollUpdate::Started).await;
+            update_tx.send(SeedRollUpdate::Started).await.allow_unreceived();
             let mut form_data = match unlock_spoiler_log {
                 UnlockSpoilerLog::Now => vec![
                     ("unlockMode", "UNLOCKED"),
@@ -1743,7 +1749,7 @@ impl GlobalState {
                 //TODO extract file hash from patch, which is a .zpf
             }
             */
-            let _ = update_tx.send(SeedRollUpdate::Done {
+            update_tx.send(SeedRollUpdate::Done {
                 seed: seed::Data {
                     file_hash: None,
                     password: None,
@@ -1752,12 +1758,12 @@ impl GlobalState {
                 },
                 rsl_preset: None,
                 unlock_spoiler_log,
-            }).await;
+            }).await.allow_unreceived();
             Ok(())
         }.then(|res| async move {
             match res {
                 Ok(()) => {}
-                Err(e) => { let _ = update_tx2.send(SeedRollUpdate::Error(e)).await; }
+                Err(e) => update_tx2.send(SeedRollUpdate::Error(e)).await.allow_unreceived(),
             }
         }));
         update_rx
@@ -2372,7 +2378,9 @@ impl Handler {
                     unlock!();
                     return false
                 }
-                assert!(clean_shutdown.open_rooms.insert(OpenRoom::RaceTime(race_data.url.clone())), "should_handle_inner called for new race room {} but clean_shutdown.open_rooms already contained this room", race_data.url);
+                let room = OpenRoom::RaceTime(race_data.url.clone());
+                assert!(clean_shutdown.open_rooms.insert(room.clone()), "should_handle_inner called for new race room {} but clean_shutdown.open_rooms already contained this room", race_data.url);
+                clean_shutdown.updates.send(CleanShutdownUpdate::RoomOpened(room)).allow_unreceived();
             });
             if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
         }
@@ -2674,9 +2682,11 @@ impl RaceHandler<GlobalState> for Handler {
             let res = join_handle.await;
             lock!(@read data = race_data; {
                 lock!(clean_shutdown = global_state.clean_shutdown; {
-                    assert!(clean_shutdown.open_rooms.remove(&OpenRoom::RaceTime(data.url.clone())));
-                    if clean_shutdown.requested && clean_shutdown.open_rooms.is_empty() {
-                        clean_shutdown.notifier.notify_waiters();
+                    let room = OpenRoom::RaceTime(data.url.clone());
+                    assert!(clean_shutdown.open_rooms.remove(&room));
+                    clean_shutdown.updates.send(CleanShutdownUpdate::RoomClosed(room)).allow_unreceived();
+                    if clean_shutdown.open_rooms.is_empty() {
+                        clean_shutdown.updates.send(CleanShutdownUpdate::Empty).allow_unreceived();
                     }
                 });
                 if let Ok(()) = res {
@@ -4614,7 +4624,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                     cal::EventKind::Async2 => { sqlx::query!("UPDATE races SET async_room2 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?; }
                     cal::EventKind::Async3 => { sqlx::query!("UPDATE races SET async_room3 = $1 WHERE id = $2", room_url.to_string(), cal_event.race.id as _).execute(&mut **transaction).await.to_racetime()?; }
                 }
-                lock!(@read extra_room_tx = extra_room_tx; { let _ = extra_room_tx.send(race_slug).await; });
+                lock!(@read extra_room_tx = extra_room_tx; extra_room_tx.send(race_slug).await.allow_unreceived());
                 Ok(room_url)
             }
             Err(Error::Reqwest(e)) if e.status().is_some_and(|status| status.is_server_error()) => {
@@ -4628,15 +4638,19 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             let task_clean_shutdown = clean_shutdown.clone();
             lock!(clean_shutdown = clean_shutdown; {
                 if clean_shutdown.should_handle_new() {
-                    assert!(clean_shutdown.open_rooms.insert(OpenRoom::Discord(cal_event.race.id, cal_event.kind)));
+                    let room = OpenRoom::Discord(cal_event.race.id, cal_event.kind);
+                    assert!(clean_shutdown.open_rooms.insert(room.clone()));
+                    clean_shutdown.updates.send(CleanShutdownUpdate::RoomOpened(room)).allow_unreceived();
                     let cal_event = cal_event.clone();
                     tokio::spawn(async move {
                         println!("Discord race handler started");
                         let res = tokio::spawn(crate::discord_bot::handle_race()).await;
                         lock!(clean_shutdown = task_clean_shutdown; {
-                            assert!(clean_shutdown.open_rooms.remove(&OpenRoom::Discord(cal_event.race.id, cal_event.kind)));
-                            if clean_shutdown.requested && clean_shutdown.open_rooms.is_empty() {
-                                clean_shutdown.notifier.notify_waiters();
+                            let room = OpenRoom::Discord(cal_event.race.id, cal_event.kind);
+                            assert!(clean_shutdown.open_rooms.remove(&room));
+                            clean_shutdown.updates.send(CleanShutdownUpdate::RoomClosed(room)).allow_unreceived();
+                            if clean_shutdown.open_rooms.is_empty() {
+                                clean_shutdown.updates.send(CleanShutdownUpdate::Empty).allow_unreceived();
                             }
                         });
                         if let Ok(()) = res {
