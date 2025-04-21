@@ -989,6 +989,14 @@ impl Race {
         Ok(tuples)
     }
 
+    pub(crate) fn has_any_room(&self) -> bool {
+        match &self.schedule {
+            RaceSchedule::Unscheduled => false,
+            RaceSchedule::Live { room, .. } => room.is_some(),
+            RaceSchedule::Async { room1, room2, room3, .. } => room1.is_some() || room2.is_some() || room3.is_some(),
+        }
+    }
+
     pub(crate) fn has_room_for(&self, team: &Team) -> bool {
         match &self.schedule {
             RaceSchedule::Unscheduled => false,
@@ -2523,7 +2531,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                 };
                                 if let Some(race) = races.iter_mut().find(|race| if let Source::League { id } = race.source { id == match_data.id } else { false }) {
                                     if !race.schedule_locked {
-                                        let is_upcoming = race.rooms().next().is_none(); // stop automatically updating certain fields once a room is open
+                                        let is_upcoming = !race.has_any_room(); // stop automatically updating certain fields once a room is open
                                         *race = Race {
                                             id: race.id,
                                             schedule: if is_upcoming { new_race.schedule } else { mem::take(&mut race.schedule) },
@@ -2764,7 +2772,7 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                     }
                 }
             }
-            @if race.series == Series::League && race.rooms().next().is_none() {
+            @if race.series == Series::League && !race.has_any_room() {
                 // restream data entered here would be automatically overwritten
                 fieldset {
                     label : "To edit restream data, please use the League website.";
@@ -3282,7 +3290,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
             }
             race.last_edited_by = Some(me.id);
             race.last_edited_at = Some(Utc::now());
-            if race.series != Series::League || race.rooms().next().is_some() {
+            if race.series != Series::League || race.has_any_room() {
                 race.video_urls = value.video_urls.iter().filter(|(_, video_url)| !video_url.is_empty()).map(|(language, video_url)| (*language, Url::parse(video_url).expect("validated"))).collect();
                 race.restreamers = value.restreamers.clone();
             }
