@@ -1039,7 +1039,7 @@ impl Race {
         }
     }
 
-    async fn single_settings(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<seed::Settings>, Error> {
+    pub(crate) async fn single_settings(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Option<seed::Settings>, Error> {
         let event = self.event(transaction).await?;
         Ok(if let Some(settings) = event.single_settings {
             Some(settings)

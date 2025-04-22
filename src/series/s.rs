@@ -10,7 +10,10 @@ use {
             InfoError,
         },
         prelude::*,
-        racetime_bot::VersionedBranch,
+        racetime_bot::{
+            PrerollMode,
+            VersionedBranch,
+        },
     },
 };
 
@@ -193,112 +196,128 @@ impl WeeklyKind {
 }
 
 // Make sure to keep the following in sync with each other and the single_settings database entry:
-pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(8, 2, 64) };
+pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevFenhl, 8, 2, 69, 6) };
+pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Long;
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
-    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/mw/chests-5-8.2.63.json")).expect("failed to parse chest weights"));
+    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/mp/chests-4-8.2.69-fenhl.4.riir.5.json")).expect("failed to parse chest weights"));
 
     WEIGHTS.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
 }
-pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "MW tournament (solo)";
+pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "mixed pools";
 fn long_weekly_settings() -> RawHtml<String> {
     html! {
         p {
             : "Settings are typically changed once every 2 or 4 weeks and posted in ";
             a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
             : " on Discord. Current settings starting with the Kokiri weekly on ";
-            : format_datetime(Utc.with_ymd_and_hms(2025, 4, 12, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
-            : " are a singleplayer variant of the settings for ";
-            a(href = uri!(event::info(Series::Multiworld, "5"))) : "the 5th multiworld tournament";
-            : ", with the following changes:";
+            : format_datetime(Utc.with_ymd_and_hms(2025, 4, 26, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
+            : " are the settings for the 4th mixed pools tournament."; //TODO link to event once public
         }
-        ul {
-            li : "5 Goal hints instead of 7";
-            li : "10 Sometimes hints instead of 9";
-            li : "Gossip stones at HF (Cow Grotto) and HC (Storms Grotto) disabled";
-        }
-        p : "Note that Fire Arrow Entry is allowed for these weeklies.";
     }
 }
 pub(crate) fn weekly_settings() -> seed::Settings {
-    let mut settings = mw::resolve_s5_draft_settings(&HashMap::default());
-    settings.insert(format!("user_message"), json!("5th Multiworld Tournament (solo ver)"));
-    settings.insert(format!("world_count"), json!(1));
-    settings.insert(format!("hint_dist_user"), json!({
-        "name":                  "weekly",
-        "gui_name":              "Weekly",
-        "description":           "Hint distribution for the weekly races.",
-        "add_locations":         [
-            { "location": "Sheik in Kakariko", "types": ["always"] },
-            { "location": "Song from Ocarina of Time", "types": ["always"] },
-            { "location": "Deku Theater Skull Mask", "types": ["always"] },
-            { "location": "DMC Deku Scrub", "types": ["always"] },
-            { "location": "Deku Tree GS Basement Back Room", "types": ["sometimes"] },
-            { "location": "Water Temple GS River", "types": ["sometimes"] },
-            { "location": "Spirit Temple GS Hall After Sun Block Room", "types": ["sometimes"] }
-        ],
-        "remove_locations":      [
-            { "location": "Sheik in Crater", "types": ["sometimes"] },
-            { "location": "Song from Royal Familys Tomb", "types": ["sometimes"] },
-            { "location": "Sheik in Forest", "types": ["sometimes"] },
-            { "location": "Sheik at Temple", "types": ["sometimes"] },
-            { "location": "Sheik at Colossus", "types": ["sometimes"] },
-            { "location": "Graveyard Royal Familys Tomb Chest", "types": ["sometimes"] },
-            { "location": "Ganons Castle Shadow Trial Golden Gauntlets Chest", "types": ["sometimes"] }
-        ],
-        "add_items":             [],
-        "remove_items":          [
-            { "item": "Zeldas Lullaby", "types": ["woth", "goal"] },
-            { "item": "Boss Key (Forest Temple)", "types": ["woth", "goal"] },
-            { "item": "Boss Key (Fire Temple)", "types": ["woth", "goal"] },
-            { "item": "Boss Key (Water Temple)", "types": ["woth", "goal"] },
-            { "item": "Boss Key (Spirit Temple)", "types": ["woth", "goal"] },
-            { "item": "Boss Key (Shadow Temple)", "types": ["woth", "goal"] },
-            { "item": "Boss Key (Ganons Castle)", "types": ["woth", "goal"] },
-            { "item": "Small Key Ring (Forest Temple)", "types": ["woth", "goal"] },
-            { "item": "Small Key Ring (Fire Temple)", "types": ["woth", "goal"] },
-            { "item": "Small Key Ring (Water Temple)", "types": ["woth", "goal"] },
-            { "item": "Small Key Ring (Spirit Temple)", "types": ["woth", "goal"] },
-            { "item": "Small Key Ring (Shadow Temple)", "types": ["woth", "goal"] },
-            { "item": "Small Key Ring (Bottom of the Well)", "types": ["woth", "goal"] },
-            { "item": "Small Key Ring (Gerudo Training Ground)", "types": ["woth", "goal"] },
-            { "item": "Small Key Ring (Thieves Hideout)", "types": ["woth", "goal"] },
-            { "item": "Small Key Ring (Ganons Castle)", "types": ["woth", "goal"] },
-            { "item": "Small Key Ring (Treasure Chest Game)", "types": ["woth", "goal"] }
-        ],
-        "disabled":              [
-            "HF (Cow Grotto)",
-            "HC (Storms Grotto)"
-        ],
-        "dungeons_woth_limit":   40,
-        "dungeons_barren_limit": 40,
-        "one_hint_per_goal":     true,
-        "named_items_required":  true,
-        "vague_named_items":     false,
-        "use_default_goals":     true,
-        "upgrade_hints":         "on",
-        "combine_trial_hints":   true,
-        "distribution":          {
-            "trial":           {"order": 1, "weight": 0.0, "fixed":  0, "copies": 2},
-            "always":          {"order": 2, "weight": 0.0, "fixed":  0, "copies": 2},
-            "entrance":        {"order": 3, "weight": 0.0, "fixed":  2, "copies": 2},
-            "goal":            {"order": 4, "weight": 0.0, "fixed":  5, "copies": 2},
-            "sometimes":       {"order": 5, "weight": 1.0, "fixed":  0, "copies": 2},
-            "important_check": {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
-            "item":            {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
-            "dual":            {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
-            "dual_always":     {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
-            "woth":            {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
-            "barren":          {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
-            "random":          {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
-            "song":            {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
-            "overworld":       {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
-            "dungeon":         {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
-            "junk":            {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
-            "named-item":      {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2},
-            "entrance_always": {"order": 0, "weight": 1.0, "fixed":  0, "copies": 2}
-        }
-    }));
-    settings
+    collect![
+        format!("user_message") => json!("4th Mixed Pools Tournament"),
+        format!("bridge") => json!("open"),
+        format!("bridge_medallions") => json!(2),
+        format!("trials") => json!(0),
+        format!("shuffle_ganon_bosskey") => json!("dungeons"),
+        format!("open_deku") => json!(true),
+        format!("open_forest") => json!(true),
+        format!("require_gohma") => json!(false),
+        format!("open_kakariko") => json!("open"),
+        format!("open_door_of_time") => json!(true),
+        format!("zora_fountain") => json!("open"),
+        format!("gerudo_fortress") => json!("open"),
+        format!("starting_age") => json!("random"),
+        format!("shuffle_interior_entrances") => json!("all"),
+        format!("shuffle_grotto_entrances") => json!(true),
+        format!("shuffle_dungeon_entrances") => json!("all"),
+        format!("shuffle_bosses") => json!("full"),
+        format!("shuffle_ganon_tower") => json!(true),
+        format!("shuffle_overworld_entrances") => json!(true),
+        format!("mix_entrance_pools") => json!([
+            "Interior",
+            "GrottoGrave",
+            "Dungeon",
+            "Overworld",
+            "Boss",
+        ]),
+        format!("shuffle_gerudo_valley_river_exit") => json!("balanced"),
+        format!("owl_drops") => json!("balanced"),
+        format!("warp_songs") => json!("balanced"),
+        format!("shuffle_child_spawn") => json!("balanced"),
+        format!("shuffle_adult_spawn") => json!("balanced"),
+        format!("exclusive_one_ways") => json!(true),
+        format!("shopsanity") => json!("4"),
+        format!("shuffle_scrubs") => json!("low"),
+        format!("adult_trade_start") => json!([
+            "Prescription",
+            "Eyeball Frog",
+            "Eyedrops",
+            "Claim Check",
+        ]),
+        format!("shuffle_mapcompass") => json!("startwith"),
+        format!("enhance_map_compass") => json!(true),
+        format!("free_bombchu_drops") => json!(false),
+        format!("disabled_locations") => json!([
+            "Kak 30 Gold Skulltula Reward",
+            "Kak 40 Gold Skulltula Reward",
+            "Kak 50 Gold Skulltula Reward",
+        ]),
+        format!("allowed_tricks") => json!([
+            "logic_fewer_tunic_requirements",
+            "logic_grottos_without_agony",
+            "logic_child_deadhand",
+            "logic_man_on_roof",
+            "logic_dc_jump",
+            "logic_rusted_switches",
+            "logic_windmill_poh",
+            "logic_crater_bean_poh_with_hovers",
+            "logic_forest_vines",
+            "logic_lens_botw",
+            "logic_lens_castle",
+            "logic_lens_gtg",
+            "logic_lens_shadow",
+            "logic_lens_shadow_platform",
+            "logic_lens_bongo",
+            "logic_lens_spirit",
+            "logic_deku_b1_webs_with_bow",
+            "logic_visible_collisions",
+        ]),
+        format!("starting_inventory") => json!([
+            "ocarina",
+            "farores_wind",
+            "zeldas_letter",
+        ]),
+        format!("start_with_consumables") => json!(true),
+        format!("start_with_rupees") => json!(true),
+        format!("skip_reward_from_rauru") => json!(true),
+        format!("no_escape_sequence") => json!(true),
+        format!("no_guard_stealth") => json!(true),
+        format!("no_epona_race") => json!(true),
+        format!("skip_some_minigame_phases") => json!(true),
+        format!("free_scarecrow") => json!(true),
+        format!("ruto_already_f1_jabu") => json!(true),
+        format!("chicken_count") => json!(3),
+        format!("big_poe_count") => json!(1),
+        format!("hint_dist") => json!("mixed_pools"),
+        format!("misc_hints") => json!([
+            "altar",
+            "ganondorf",
+            "warp_songs_and_owls",
+            "20_skulltulas",
+        ]),
+        format!("correct_chest_appearances") => json!("both"),
+        format!("minor_items_as_major_chest") => json!([
+            "shields",
+        ]),
+        format!("correct_potcrate_appearances") => json!("off"),
+        format!("clearer_item_models") => json!([]),
+        format!("blue_fire_arrows") => json!(true),
+        format!("junk_ice_traps") => json!("off"),
+        format!("ice_trap_appearance") => json!("junk_only"),
+    ]
 }
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
