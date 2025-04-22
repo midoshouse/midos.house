@@ -167,6 +167,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69f7f8c3906b62b754cd5326047894316021dcfe5a194c8ea52bdd94934a3457"
 
 [[package]]
+name = "arrays"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c9810d892911da7c1cc723e12a5c47645ae4f82daf5e6d73cc73f1cc6fcf1e1"
+
+[[package]]
 name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -246,7 +252,7 @@ version = "7.0.16"
 source = "git+https://github.com/fenhl/async-graphql?branch=forms#f913952031d887638159251da8937a23d82db4b2"
 dependencies = [
  "async-graphql",
- "rocket",
+ "rocket 0.6.0-dev",
  "serde",
  "serde_json",
  "tokio-util",
@@ -336,6 +342,12 @@ checksum = "f28d99ec8bfea296261ca1af174f24225171fea9664ba9003cbebee704810528"
 dependencies = [
  "num-traits",
 ]
+
+[[package]]
+name = "atomic"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c59bdb34bc650a32731b31bd8f0829cc15d24a708ee31559e0bb34f2bc320cba"
 
 [[package]]
 name = "atomic"
@@ -917,7 +929,7 @@ dependencies = [
  "rand 0.8.5",
  "sha2",
  "subtle",
- "time",
+ "time 0.3.41",
  "version_check",
 ]
 
@@ -1484,7 +1496,7 @@ version = "0.10.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8cb01cd46b0cf372153850f4c6c272d9cbea2da513e07538405148f95bd789f3"
 dependencies = [
- "atomic",
+ "atomic 0.6.0",
  "pear",
  "serde",
  "toml",
@@ -1566,6 +1578,12 @@ name = "fs_extra"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
+
+[[package]]
+name = "fuchsia-cprng"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06f77d526c1a601b7c4cdd98f54b5eaabffc14d5f2f0296febdc7f357c6d3ba"
 
 [[package]]
 name = "futf"
@@ -1691,6 +1709,12 @@ checksum = "c31b6d751ae2c7f11320402d34e41349dd1016f8d5d45e48c4312bc8625af50c"
 dependencies = [
  "byteorder",
 ]
+
+[[package]]
+name = "gcc"
+version = "0.3.55"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
 
 [[package]]
 name = "generator"
@@ -3461,6 +3485,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
 
 [[package]]
+name = "itermore"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fed0daf803a3818d3693fe1fdd82d8ac0f41d0ea3f05709d5e144c4eb2b85ba5"
+dependencies = [
+ "arrays",
+]
+
+[[package]]
 name = "itertools"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3492,9 +3525,9 @@ checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
 name = "jiff"
-version = "0.2.9"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59ec30f7142be6fe14e1b021f50b85db8df2d4324ea6e91ec3e5dcde092021d0"
+checksum = "5a064218214dc6a10fbae5ec5fa888d80c45d611aba169222fc272072bf7aef6"
 dependencies = [
  "jiff-static",
  "jiff-tzdb-platform",
@@ -3507,9 +3540,9 @@ dependencies = [
 
 [[package]]
 name = "jiff-static"
-version = "0.2.9"
+version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "526b834d727fd59d37b076b0c3236d9adde1b1729a4361e20b2026f738cc1dbe"
+checksum = "199b7932d97e325aff3a7030e141eafe7f2c6268e1d1b24859b753a627f45254"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3651,6 +3684,16 @@ name = "libm"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8355be11b20d696c8f18f6cc018c4e372165b1fa8126cef092399c9951984ffa"
+
+[[package]]
+name = "libmimalloc-sys"
+version = "0.1.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec9d6fac27761dabcd4ee73571cdb06b7022dc99089acbe5435691edffaac0f4"
+dependencies = [
+ "cc",
+ "libc",
+]
 
 [[package]]
 name = "libredox"
@@ -3860,6 +3903,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "mhstatus"
+version = "0.1.0"
+source = "git+https://github.com/midoshouse/status.midos.house?branch=main#14021df2caa35846ef4787a129b9867653437c9f"
+dependencies = [
+ "async-proto",
+ "base64 0.22.1",
+ "dir-lock",
+ "directories",
+ "futures",
+ "gix",
+ "itermore",
+ "itertools 0.14.0",
+ "log-lock",
+ "mimalloc",
+ "rocket 0.5.1",
+ "rocket-util 0.2.15 (git+https://github.com/fenhl/rocket-util?branch=main)",
+ "rust-crypto",
+ "serde",
+ "serde_json_path_to_error",
+ "thiserror 2.0.12",
+ "tokio",
+ "wheel 0.15.0 (git+https://github.com/fenhl/wheel?branch=main)",
+ "which 7.0.3",
+ "xdg",
+]
+
+[[package]]
 name = "midos-house"
 version = "0.1.0"
 dependencies = [
@@ -3892,6 +3962,7 @@ dependencies = [
  "lazy-regex",
  "log",
  "log-lock",
+ "mhstatus",
  "noisy_float",
  "nonempty-collections",
  "ootr-utils",
@@ -3899,8 +3970,8 @@ dependencies = [
  "racetime",
  "rand 0.9.1",
  "reqwest 0.12.15",
- "rocket",
- "rocket-util",
+ "rocket 0.6.0-dev",
+ "rocket-util 0.2.15 (git+https://github.com/fenhl/rocket-util?branch=forms)",
  "rocket_csrf",
  "rocket_oauth2",
  "semver",
@@ -3922,6 +3993,15 @@ dependencies = [
  "wheel 0.15.0 (git+https://github.com/fenhl/wheel?branch=rocket-forms)",
  "xdg",
  "yup-oauth2",
+]
+
+[[package]]
+name = "mimalloc"
+version = "0.1.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "995942f432bbb4822a7e9c3faa87a695185b0d09273ba85f097b54f4e458f2af"
+dependencies = [
+ "libmimalloc-sys",
 ]
 
 [[package]]
@@ -4784,6 +4864,29 @@ dependencies = [
 
 [[package]]
 name = "rand"
+version = "0.3.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64ac302d8f83c0c1974bf758f6b041c6c8ada916fbb44a609158ca8b064cc76c"
+dependencies = [
+ "libc",
+ "rand 0.4.6",
+]
+
+[[package]]
+name = "rand"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "552840b97013b1a26992c11eac34bdd778e464601a4c2054b5f0bff7c6761293"
+dependencies = [
+ "fuchsia-cprng",
+ "libc",
+ "rand_core 0.3.1",
+ "rdrand",
+ "winapi",
+]
+
+[[package]]
+name = "rand"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a6b1679d49b24bbfe0c803429aa1874472f50d9b363131f0e89fc356b544d03"
@@ -4849,6 +4952,21 @@ dependencies = [
 
 [[package]]
 name = "rand_core"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a6fdeb83b075e8266dcc8762c22776f6877a63111121f5f8c7411e5be7eed4b"
+dependencies = [
+ "rand_core 0.4.2",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c33a3c44ca05fa6f1807d8e6743f3824e8509beca625669633be0acbdf509dc"
+
+[[package]]
+name = "rand_core"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90bde5296fc891b0cef12a6d03ddccc162ce7b2aff54160af9338f8d40df6d19"
@@ -4890,6 +5008,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16abd0c1b639e9eb4d7c50c0b8100b0d0f849be2349829c740fe8e6eb4816429"
 dependencies = [
  "rand_core 0.5.1",
+]
+
+[[package]]
+name = "rdrand"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "678054eb77286b51581ba43620cc911abf02758c91f93f479767aed0f90458b2"
+dependencies = [
+ "rand_core 0.3.1",
 ]
 
 [[package]]
@@ -5100,6 +5227,43 @@ dependencies = [
 
 [[package]]
 name = "rocket"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a516907296a31df7dc04310e7043b61d71954d703b603cc6867a026d7e72d73f"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "atomic 0.5.3",
+ "binascii",
+ "bytes",
+ "either",
+ "figment",
+ "futures",
+ "indexmap 2.9.0",
+ "log",
+ "memchr",
+ "multer",
+ "num_cpus",
+ "parking_lot",
+ "pin-project-lite",
+ "rand 0.8.5",
+ "ref-cast",
+ "rocket_codegen 0.5.1",
+ "rocket_http 0.5.1",
+ "serde",
+ "state",
+ "tempfile",
+ "time 0.3.41",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "ubyte",
+ "version_check",
+ "yansi",
+]
+
+[[package]]
+name = "rocket"
 version = "0.6.0-dev"
 source = "git+https://github.com/fenhl/Rocket?branch=forms#0cd31819726c7381b8c421b9a2d7315e0a7fca39"
 dependencies = [
@@ -5124,15 +5288,15 @@ dependencies = [
  "rand 0.8.5",
  "ref-cast",
  "ref-swap",
- "rocket_codegen",
- "rocket_http",
+ "rocket_codegen 0.6.0-dev",
+ "rocket_http 0.6.0-dev",
  "rustls 0.23.26",
  "s2n-quic-h3",
  "serde",
  "state",
  "tempfile",
  "thread_local",
- "time",
+ "time 0.3.41",
  "tinyvec",
  "tokio",
  "tokio-rustls 0.26.2",
@@ -5152,9 +5316,19 @@ source = "git+https://github.com/fenhl/rocket-util?branch=forms#aa4f03a4e2f74d6d
 dependencies = [
  "ics",
  "image",
- "rocket",
- "rocket-util-derive",
+ "rocket 0.6.0-dev",
+ "rocket-util-derive 0.2.15 (git+https://github.com/fenhl/rocket-util?branch=forms)",
  "rocket_csrf",
+ "thiserror 2.0.12",
+]
+
+[[package]]
+name = "rocket-util"
+version = "0.2.15"
+source = "git+https://github.com/fenhl/rocket-util?branch=main#37d3347d372e10e8bf06335fe4fdf19c3f5f0613"
+dependencies = [
+ "rocket 0.5.1",
+ "rocket-util-derive 0.2.15 (git+https://github.com/fenhl/rocket-util?branch=main)",
  "thiserror 2.0.12",
 ]
 
@@ -5169,6 +5343,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "rocket-util-derive"
+version = "0.2.15"
+source = "git+https://github.com/fenhl/rocket-util?branch=main#37d3347d372e10e8bf06335fe4fdf19c3f5f0613"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.100",
+]
+
+[[package]]
+name = "rocket_codegen"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "575d32d7ec1a9770108c879fc7c47815a80073f96ca07ff9525a94fcede1dd46"
+dependencies = [
+ "devise",
+ "glob",
+ "indexmap 2.9.0",
+ "proc-macro2",
+ "quote",
+ "rocket_http 0.5.1",
+ "syn 2.0.100",
+ "unicode-xid",
+ "version_check",
+]
+
+[[package]]
 name = "rocket_codegen"
 version = "0.6.0-dev"
 source = "git+https://github.com/fenhl/Rocket?branch=forms#0cd31819726c7381b8c421b9a2d7315e0a7fca39"
@@ -5178,7 +5379,7 @@ dependencies = [
  "indexmap 2.9.0",
  "proc-macro2",
  "quote",
- "rocket_http",
+ "rocket_http 0.6.0-dev",
  "syn 2.0.100",
  "unicode-xid",
  "version_check",
@@ -5192,7 +5393,34 @@ dependencies = [
  "base64 0.13.1",
  "bcrypt",
  "rand 0.8.5",
- "rocket",
+ "rocket 0.6.0-dev",
+]
+
+[[package]]
+name = "rocket_http"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e274915a20ee3065f611c044bd63c40757396b6dbc057d6046aec27f14f882b9"
+dependencies = [
+ "cookie",
+ "either",
+ "futures",
+ "http 0.2.12",
+ "hyper 0.14.32",
+ "indexmap 2.9.0",
+ "log",
+ "memchr",
+ "pear",
+ "percent-encoding",
+ "pin-project-lite",
+ "ref-cast",
+ "serde",
+ "smallvec",
+ "stable-pattern",
+ "state",
+ "time 0.3.41",
+ "tokio",
+ "uncased",
 ]
 
 [[package]]
@@ -5210,7 +5438,7 @@ dependencies = [
  "serde",
  "stable-pattern",
  "state",
- "time",
+ "time 0.3.41",
  "tinyvec",
  "uncased",
 ]
@@ -5228,7 +5456,7 @@ dependencies = [
  "hyper-util",
  "log",
  "rand 0.8.5",
- "rocket",
+ "rocket 0.6.0-dev",
  "serde",
  "serde_json",
  "url",
@@ -5255,6 +5483,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-crypto"
+version = "0.2.36"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f76d05d3993fd5f4af9434e8e436db163a12a9d40e1a58a726f27a01dfd12a2a"
+dependencies = [
+ "gcc",
+ "libc",
+ "rand 0.3.23",
+ "rustc-serialize",
+ "time 0.1.45",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5271,6 +5512,12 @@ name = "rustc-hash"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
+
+[[package]]
+name = "rustc-serialize"
+version = "0.3.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe834bc780604f4674073badbad26d7219cadfb4a2275802db12cbae17498401"
 
 [[package]]
 name = "rustc_version"
@@ -5779,7 +6026,7 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "serde_with_macros",
- "time",
+ "time 0.3.41",
 ]
 
 [[package]]
@@ -5822,7 +6069,7 @@ dependencies = [
  "serde_cow",
  "serde_json",
  "static_assertions",
- "time",
+ "time 0.3.41",
  "tokio",
  "tokio-tungstenite 0.21.0",
  "tracing",
@@ -6538,6 +6785,17 @@ dependencies = [
 
 [[package]]
 name = "time"
+version = "0.1.45"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b797afad3f312d1c66a56d11d0316f916356d11bd158fbc6ca6389ff6bf805a"
+dependencies = [
+ "libc",
+ "wasi 0.10.0+wasi-snapshot-preview1",
+ "winapi",
+]
+
+[[package]]
+name = "time"
 version = "0.3.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7619e19bc266e0f9c5e6686659d394bc57973859340060a69221e57dbc0c40"
@@ -6964,7 +7222,7 @@ dependencies = [
  "parking_lot",
  "secrecy",
  "serde_json",
- "time",
+ "time 0.3.41",
  "typesize-derive",
  "url",
 ]
@@ -7184,6 +7442,12 @@ checksum = "cccddf32554fecc6acb585f82a32a72e28b48f8c4c1883ddfeeeaa96f7d8e519"
 
 [[package]]
 name = "wasi"
+version = "0.10.0+wasi-snapshot-preview1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a143597ca7c7793eff794def352d41792a93c481eb1042423ff7ff72ba2c31f"
+
+[[package]]
+name = "wasi"
 version = "0.11.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
@@ -7332,6 +7596,11 @@ dependencies = [
  "console-subscriber",
  "futures",
  "itertools 0.14.0",
+ "rocket 0.5.1",
+ "rocket-util 0.2.15 (git+https://github.com/fenhl/rocket-util?branch=main)",
+ "serde",
+ "serde_json",
+ "serde_json_path_to_error",
  "thiserror 2.0.12",
  "tokio",
  "wheel-derive 0.15.0 (git+https://github.com/fenhl/wheel?branch=main)",
@@ -7351,8 +7620,8 @@ dependencies = [
  "itertools 0.14.0",
  "racetime",
  "reqwest 0.12.15",
- "rocket",
- "rocket-util",
+ "rocket 0.6.0-dev",
+ "rocket-util 0.2.15 (git+https://github.com/fenhl/rocket-util?branch=forms)",
  "serde",
  "serde_json",
  "serde_json_path_to_error",
@@ -7914,7 +8183,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.12",
- "time",
+ "time 0.3.41",
  "tokio",
  "url",
 ]

@@ -87,6 +87,7 @@ url = { version = "2", features = ["serde"] }
 uuid = "1"
 wheel = { git = "https://github.com/fenhl/wheel", branch = "rocket-forms", features = ["chrono", "racetime", "reqwest", "rocket", "serde_json"] }
 yup-oauth2 = "12"
+mhstatus = { git = "https://github.com/midoshouse/status.midos.house", branch = "main" }
 
 [target.'cfg(unix)'.dependencies]
 async-proto = { version = "0.25", features = ["chrono", "serde_json", "serenity", "uuid"] }

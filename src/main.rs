@@ -14,6 +14,7 @@ use {
     crate::prelude::*,
 };
 #[cfg(unix)] use {
+    mhstatus::PrepareStopUpdate,
     openssl as _, // `vendored` feature required to fix release build
     tokio::{
         io::{
@@ -24,10 +25,7 @@ use {
     },
     crate::{
         racetime_bot::SeedRollUpdate,
-        unix_socket::{
-            ClientMessage as Subcommand,
-            PrepareStopUpdate,
-        },
+        unix_socket::ClientMessage as Subcommand,
     },
 };
 

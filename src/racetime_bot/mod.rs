@@ -11,6 +11,7 @@ use {
         NodeRef,
         traits::TendrilSink as _,
     },
+    mhstatus::OpenRoom,
     ootr_utils as rando,
     racetime::{
         Error,
@@ -1267,27 +1268,6 @@ impl FromStr for Goal {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(unix, derive(Protocol))]
-pub(crate) enum OpenRoom {
-    Discord(Id<Races>, cal::EventKind),
-    RaceTime(String),
-}
-
-impl fmt::Display for OpenRoom {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Discord(race_id, kind) => write!(f, "Discord race handler for {}race {race_id}", match kind {
-                cal::EventKind::Normal => "",
-                cal::EventKind::Async1 => "async 1 of ",
-                cal::EventKind::Async2 => "async 2 of ",
-                cal::EventKind::Async3 => "async 3 of ",
-            }),
-            Self::RaceTime(room_url) => write!(f, "https://{}{room_url}", racetime_host()),
-        }
-    }
-}
-
 #[derive(Clone)]
 #[cfg_attr(not(unix), allow(dead_code))]
 pub(crate) enum CleanShutdownUpdate {
@@ -2378,7 +2358,10 @@ impl Handler {
                     unlock!();
                     return false
                 }
-                let room = OpenRoom::RaceTime(race_data.url.clone());
+                let room = OpenRoom::RaceTime {
+                    room_url: race_data.url.clone(),
+                    public: !race_data.unlisted,
+                };
                 assert!(clean_shutdown.open_rooms.insert(room.clone()), "should_handle_inner called for new race room {} but clean_shutdown.open_rooms already contained this room", race_data.url);
                 clean_shutdown.updates.send(CleanShutdownUpdate::RoomOpened(room)).allow_unreceived();
             });
@@ -2682,7 +2665,10 @@ impl RaceHandler<GlobalState> for Handler {
             let res = join_handle.await;
             lock!(@read data = race_data; {
                 lock!(clean_shutdown = global_state.clean_shutdown; {
-                    let room = OpenRoom::RaceTime(data.url.clone());
+                    let room = OpenRoom::RaceTime {
+                        room_url: data.url.clone(),
+                        public: !data.unlisted,
+                    };
                     assert!(clean_shutdown.open_rooms.remove(&room));
                     clean_shutdown.updates.send(CleanShutdownUpdate::RoomClosed(room)).allow_unreceived();
                     if clean_shutdown.open_rooms.is_empty() {
@@ -4638,7 +4624,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             let task_clean_shutdown = clean_shutdown.clone();
             lock!(clean_shutdown = clean_shutdown; {
                 if clean_shutdown.should_handle_new() {
-                    let room = OpenRoom::Discord(cal_event.race.id, cal_event.kind);
+                    let room = OpenRoom::Discord(cal_event.race.id.into(), cal_event.kind);
                     assert!(clean_shutdown.open_rooms.insert(room.clone()));
                     clean_shutdown.updates.send(CleanShutdownUpdate::RoomOpened(room)).allow_unreceived();
                     let cal_event = cal_event.clone();
@@ -4646,7 +4632,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                         println!("Discord race handler started");
                         let res = tokio::spawn(crate::discord_bot::handle_race()).await;
                         lock!(clean_shutdown = task_clean_shutdown; {
-                            let room = OpenRoom::Discord(cal_event.race.id, cal_event.kind);
+                            let room = OpenRoom::Discord(cal_event.race.id.into(), cal_event.kind);
                             assert!(clean_shutdown.open_rooms.remove(&room));
                             clean_shutdown.updates.send(CleanShutdownUpdate::RoomClosed(room)).allow_unreceived();
                             if clean_shutdown.open_rooms.is_empty() {

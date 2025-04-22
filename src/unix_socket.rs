@@ -3,6 +3,7 @@ use {
         ReadError,
         ReadErrorKind,
     },
+    mhstatus::PrepareStopUpdate,
     serde_json::Value as Json,
     tokio::net::UnixListener,
     crate::{
@@ -75,31 +76,6 @@ pub(crate) enum ClientMessage {
         user_id: Id<Users>,
         scene: u8,
     },
-}
-
-#[derive(Protocol)]
-pub(crate) enum PrepareStopUpdate {
-    AcquiringMutex,
-    WaitingForRooms(HashSet<racetime_bot::OpenRoom>),
-    RoomOpened(racetime_bot::OpenRoom),
-    RoomClosed(racetime_bot::OpenRoom),
-}
-
-impl fmt::Display for PrepareStopUpdate {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::AcquiringMutex => write!(f, "acquiring clean shutdown mutex"),
-            Self::WaitingForRooms(rooms) => {
-                write!(f, "waiting for {} rooms to close:", rooms.len())?;
-                for room in rooms {
-                    write!(f, "\n{room}")?;
-                }
-                Ok(())
-            }
-            Self::RoomOpened(room) => write!(f, "new room opened: {room}"),
-            Self::RoomClosed(room) => write!(f, "room closed: {room}"),
-        }
-    }
 }
 
 pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<Mutex<racetime_bot::CleanShutdown>>, global_state: Arc<racetime_bot::GlobalState>) -> wheel::Result<()> {

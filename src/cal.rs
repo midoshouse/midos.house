@@ -27,6 +27,7 @@ use {
         sheets,
     },
 };
+pub(crate) use mhstatus::EventKind;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Source {
@@ -1180,15 +1181,6 @@ impl Ord for Race {
             .then_with(|| self.game.cmp(&other.game))
             .then_with(|| self.id.cmp(&other.id))
     }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[cfg_attr(unix, derive(Protocol))]
-pub(crate) enum EventKind {
-    Normal,
-    Async1,
-    Async2,
-    Async3,
 }
 
 #[derive(Clone)]

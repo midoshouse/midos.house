@@ -198,3 +198,9 @@ where i64: FromFormField<'v>, u64: FromFormField<'v> {
 
     fn default() -> Option<Self> { None }
 }
+
+impl From<Id<Races>> for mhstatus::RaceId {
+    fn from(id: Id<Races>) -> Self {
+        Self(id.inner)
+    }
+}
