@@ -37,6 +37,8 @@ pub(crate) enum ClientMessage {
     PrepareStop {
         #[clap(long)]
         no_new_rooms: bool,
+        #[clap(long)]
+        async_proto: bool,
     },
     Roll {
         version: ootr_utils::Version,
@@ -135,7 +137,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                 transaction.commit().await.expect("error cleaning up Discord roles");
                                 0u8.write(&mut sock).await.expect("error writing to UNIX socket");
                             }
-                            Ok(ClientMessage::PrepareStop { no_new_rooms }) => {
+                            Ok(ClientMessage::PrepareStop { no_new_rooms, async_proto: _ }) => {
                                 Some(PrepareStopUpdate::AcquiringMutex).write(&mut sock).await.expect("error writing to UNIX socket");
                                 let mut notifier = lock!(clean_shutdown = clean_shutdown; {
                                     clean_shutdown.requested = true;

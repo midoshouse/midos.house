@@ -15,7 +15,13 @@ use {
 };
 #[cfg(unix)] use {
     openssl as _, // `vendored` feature required to fix release build
-    tokio::net::UnixStream,
+    tokio::{
+        io::{
+            AsyncWriteExt as _,
+            stdout,
+        },
+        net::UnixStream,
+    },
     crate::{
         racetime_bot::SeedRollUpdate,
         unix_socket::{
@@ -148,11 +154,18 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
             #[cfg(unix)] Subcommand::CleanupRoles { .. } => {
                 u8::read(&mut sock).await?;
             }
-            #[cfg(unix)] Subcommand::PrepareStop { .. } => {
+            #[cfg(unix)] Subcommand::PrepareStop { async_proto: false, .. } => {
                 while let Some(update) = Option::<PrepareStopUpdate>::read(&mut sock).await? {
                     println!("{} preparing to stop Mido's House: {update}", Utc::now().format("%Y-%m-%d %H:%M:%S"));
                 }
                 println!("{} preparing to stop Mido's House: done", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+            }
+            #[cfg(unix)] Subcommand::PrepareStop { async_proto: true, .. } => {
+                let mut stdout = stdout();
+                while let Some(update) = Option::<PrepareStopUpdate>::read(&mut sock).await? {
+                    update.write(&mut stdout).await?;
+                    stdout.flush().await?;
+                }
             }
             #[cfg(unix)] Subcommand::Roll { .. } | Subcommand::RollRsl { .. } | Subcommand::Seed { .. } => while let Some(update) = Option::<SeedRollUpdate>::read(&mut sock).await? {
                 println!("{} {update:#?}", Utc::now().format("%Y-%m-%d %H:%M:%S"));
