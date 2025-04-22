@@ -25,6 +25,7 @@ local = []
 
 [build-dependencies]
 git2 = "0.20" # gix is much slower here
+semver = "1"
 thiserror = "2"
 
 [dependencies]

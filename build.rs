@@ -16,6 +16,7 @@ use {
         Oid,
         Repository,
     },
+    semver::Version,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -78,5 +79,11 @@ fn main() -> Result<(), Error> {
         writeln!(&mut out_f, "    }};")?;
     }
     writeln!(&mut out_f, "}}")?;
+    let mut out_f = File::create(Path::new(&env::var_os("OUT_DIR").unwrap()).join("version.rs"))?;
+    let version = env!("CARGO_PKG_VERSION").parse::<Version>().unwrap();
+    assert!(version.pre.is_empty());
+    assert!(version.build.is_empty());
+    let commit_hash = repo.head().unwrap().peel_to_commit().unwrap().id();
+    writeln!(&mut out_f, "pub const CLAP_VERSION: &str = {:?};", format!("{version} ({commit_hash})")).unwrap();
     Ok(())
 }

@@ -57,6 +57,8 @@ mod time;
 #[cfg(unix)] mod unix_socket;
 mod user;
 
+include!(concat!(env!("OUT_DIR"), "/version.rs"));
+
 #[allow(unused)] // variants only constructed under conditional compilation
 #[derive(Default, Clone, Copy)]
 enum Environment {
@@ -119,6 +121,7 @@ fn parse_port(arg: &str) -> Result<u16, std::num::ParseIntError> {
 enum Subcommand {}
 
 #[derive(clap::Parser)]
+#[clap(version = CLAP_VERSION)]
 struct Args {
     #[clap(long, value_parser = parse_port)]
     port: Option<u16>,
