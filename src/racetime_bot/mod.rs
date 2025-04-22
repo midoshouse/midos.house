@@ -4814,10 +4814,7 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                             .cal_events()
                             .filter_map(|cal_event| cal_event.start())
                             .min()
-                            .is_some_and(|start| {
-                                let now = Utc::now();
-                                start > now && start <= now + TimeDelta::days(1)
-                            })
+                            .is_some_and(|start| start > Utc::now())
                         {
                             'seed: loop {
                                 let mut seed_rx = global_state.clone().roll_seed(
