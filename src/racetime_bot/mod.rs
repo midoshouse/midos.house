@@ -4639,7 +4639,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             let task_clean_shutdown = clean_shutdown.clone();
             lock!(clean_shutdown = clean_shutdown; {
                 if clean_shutdown.should_handle_new() {
-                    let room = OpenRoom::Discord(cal_event.race.id.into(), cal_event.kind);
+                    let room = OpenRoom::Discord { id: cal_event.race.id.into(), kind: cal_event.kind };
                     assert!(clean_shutdown.open_rooms.insert(room.clone()));
                     clean_shutdown.updates.send(CleanShutdownUpdate::RoomOpened(room)).allow_unreceived();
                     let cal_event = cal_event.clone();
@@ -4647,7 +4647,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                         println!("Discord race handler started");
                         let res = tokio::spawn(crate::discord_bot::handle_race()).await;
                         lock!(clean_shutdown = task_clean_shutdown; {
-                            let room = OpenRoom::Discord(cal_event.race.id.into(), cal_event.kind);
+                            let room = OpenRoom::Discord { id: cal_event.race.id.into(), kind: cal_event.kind };
                             assert!(clean_shutdown.open_rooms.remove(&room));
                             clean_shutdown.updates.send(CleanShutdownUpdate::RoomClosed(room)).allow_unreceived();
                             if clean_shutdown.open_rooms.is_empty() {
