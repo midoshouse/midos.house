@@ -4833,7 +4833,10 @@ async fn prepare_seeds(global_state: Arc<GlobalState>, mut seed_cache_rx: watch:
                                             SeedRollUpdate::Queued(_) |
                                             SeedRollUpdate::MovedForward(_) |
                                             SeedRollUpdate::Started => {}
-                                            SeedRollUpdate::Done { seed, rsl_preset: _, unlock_spoiler_log: _ } => {
+                                            SeedRollUpdate::Done { mut seed, rsl_preset: _, unlock_spoiler_log: _ } => {
+                                                let extra = seed.extra(Utc::now()).await?;
+                                                seed.file_hash = extra.file_hash;
+                                                seed.password = extra.password;
                                                 // reload race data in case anything changed during seed rolling
                                                 let mut transaction = global_state.db_pool.begin().await?;
                                                 let mut race = Race::from_id(&mut transaction, &global_state.http_client, race.id).await?;
