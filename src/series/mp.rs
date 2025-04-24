@@ -363,6 +363,7 @@ pub(crate) fn s4_settings() -> seed::Settings {
         format!("correct_potcrate_appearances") => json!("off"),
         format!("clearer_item_models") => json!([]),
         format!("blue_fire_arrows") => json!(true),
+        format!("tcg_requires_lens") => json!(true),
         format!("junk_ice_traps") => json!("off"),
         format!("ice_trap_appearance") => json!("junk_only"),
     ]
