@@ -196,7 +196,7 @@ impl WeeklyKind {
 }
 
 // Make sure to keep the following in sync with each other and the single_settings database entry:
-pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevFenhl, 8, 2, 69, 6) };
+pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevFenhl, 8, 2, 69, 7) };
 pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Long;
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
     static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/mp/chests-4-8.2.69-fenhl.4.riir.5.json")).expect("failed to parse chest weights"));
@@ -216,108 +216,7 @@ fn long_weekly_settings() -> RawHtml<String> {
     }
 }
 pub(crate) fn weekly_settings() -> seed::Settings {
-    collect![
-        format!("user_message") => json!("4th Mixed Pools Tournament"),
-        format!("bridge") => json!("open"),
-        format!("bridge_medallions") => json!(2),
-        format!("trials") => json!(0),
-        format!("shuffle_ganon_bosskey") => json!("dungeons"),
-        format!("open_deku") => json!(true),
-        format!("open_forest") => json!(true),
-        format!("require_gohma") => json!(false),
-        format!("open_kakariko") => json!("open"),
-        format!("open_door_of_time") => json!(true),
-        format!("zora_fountain") => json!("open"),
-        format!("gerudo_fortress") => json!("open"),
-        format!("starting_age") => json!("random"),
-        format!("shuffle_interior_entrances") => json!("all"),
-        format!("shuffle_grotto_entrances") => json!(true),
-        format!("shuffle_dungeon_entrances") => json!("all"),
-        format!("shuffle_bosses") => json!("full"),
-        format!("shuffle_ganon_tower") => json!(true),
-        format!("shuffle_overworld_entrances") => json!(true),
-        format!("mix_entrance_pools") => json!([
-            "Interior",
-            "GrottoGrave",
-            "Dungeon",
-            "Overworld",
-            "Boss",
-        ]),
-        format!("shuffle_gerudo_valley_river_exit") => json!("balanced"),
-        format!("owl_drops") => json!("balanced"),
-        format!("warp_songs") => json!("balanced"),
-        format!("shuffle_child_spawn") => json!("balanced"),
-        format!("shuffle_adult_spawn") => json!("balanced"),
-        format!("exclusive_one_ways") => json!(true),
-        format!("shopsanity") => json!("4"),
-        format!("shuffle_scrubs") => json!("low"),
-        format!("adult_trade_start") => json!([
-            "Prescription",
-            "Eyeball Frog",
-            "Eyedrops",
-            "Claim Check",
-        ]),
-        format!("shuffle_mapcompass") => json!("startwith"),
-        format!("enhance_map_compass") => json!(true),
-        format!("free_bombchu_drops") => json!(false),
-        format!("disabled_locations") => json!([
-            "Kak 30 Gold Skulltula Reward",
-            "Kak 40 Gold Skulltula Reward",
-            "Kak 50 Gold Skulltula Reward",
-        ]),
-        format!("allowed_tricks") => json!([
-            "logic_fewer_tunic_requirements",
-            "logic_grottos_without_agony",
-            "logic_child_deadhand",
-            "logic_man_on_roof",
-            "logic_dc_jump",
-            "logic_rusted_switches",
-            "logic_windmill_poh",
-            "logic_crater_bean_poh_with_hovers",
-            "logic_forest_vines",
-            "logic_lens_botw",
-            "logic_lens_castle",
-            "logic_lens_gtg",
-            "logic_lens_shadow",
-            "logic_lens_shadow_platform",
-            "logic_lens_bongo",
-            "logic_lens_spirit",
-            "logic_deku_b1_webs_with_bow",
-            "logic_visible_collisions",
-        ]),
-        format!("starting_inventory") => json!([
-            "ocarina",
-            "farores_wind",
-            "zeldas_letter",
-        ]),
-        format!("start_with_consumables") => json!(true),
-        format!("start_with_rupees") => json!(true),
-        format!("skip_reward_from_rauru") => json!(true),
-        format!("no_escape_sequence") => json!(true),
-        format!("no_guard_stealth") => json!(true),
-        format!("no_epona_race") => json!(true),
-        format!("skip_some_minigame_phases") => json!(true),
-        format!("free_scarecrow") => json!(true),
-        format!("ruto_already_f1_jabu") => json!(true),
-        format!("chicken_count") => json!(3),
-        format!("big_poe_count") => json!(1),
-        format!("hint_dist") => json!("mixed_pools"),
-        format!("misc_hints") => json!([
-            "altar",
-            "ganondorf",
-            "warp_songs_and_owls",
-            "20_skulltulas",
-        ]),
-        format!("correct_chest_appearances") => json!("both"),
-        format!("minor_items_as_major_chest") => json!([
-            "shields",
-        ]),
-        format!("correct_potcrate_appearances") => json!("off"),
-        format!("clearer_item_models") => json!([]),
-        format!("blue_fire_arrows") => json!(true),
-        format!("junk_ice_traps") => json!("off"),
-        format!("ice_trap_appearance") => json!("junk_only"),
-    ]
+    mp::s4_settings()
 }
 
 pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Data<'_>) -> Result<Option<RawHtml<String>>, InfoError> {
