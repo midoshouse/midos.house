@@ -75,7 +75,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     p {
                         strong {
                             : "Deadline is ";
-                            : format_datetime(Utc.with_ymd_and_hms(2025, 5, 13, 23, 50, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
+                            : format_datetime(Utc.with_ymd_and_hms(2025, 5, 13, 23, 59, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: true, running_text: true });
                             : ".";
                             br;
                             : "Start of the first round is May 14th after the wheel spin.";
