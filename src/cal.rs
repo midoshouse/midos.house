@@ -3284,7 +3284,7 @@ pub(crate) async fn edit_race_post(discord_ctx: &State<RwFuture<DiscordCtx>>, po
             race.last_edited_at = Some(Utc::now());
             if race.series != Series::League || race.has_any_room() {
                 race.video_urls = value.video_urls.iter().filter(|(_, video_url)| !video_url.is_empty()).map(|(language, video_url)| (*language, Url::parse(video_url).expect("validated"))).collect();
-                race.restreamers = value.restreamers.clone();
+                race.restreamers = restreamers;
             }
             if let Some(file_hash) = file_hash {
                 race.seed.file_hash = Some(file_hash);
