@@ -1008,6 +1008,8 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                                                         enter::Requirement::TextField2 { .. } => {}
                                                         enter::Requirement::YesNo { .. } => {}
                                                         enter::Requirement::Rules { .. } => {}
+                                                        enter::Requirement::HardSettingsOk => {}
+                                                        enter::Requirement::MqOk => {}
                                                         enter::Requirement::RestreamConsent { .. } => {}
                                                         enter::Requirement::Qualifier { .. } => {} //TODO
                                                         enter::Requirement::TripleQualifier { .. } => {} //TODO
