@@ -1084,7 +1084,7 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> seed::Settings 
         } else {
             json!("off")
         },
-        format!("correct_potcrate_appearances") => json!("textures_content"),
+        format!("correct_potcrate_appearances") => json!("textures_unchecked"),
         format!("key_appearance_match_dungeon") => json!(true),
         format!("potcrate_textures_specific") => json!([]),
         format!("blue_fire_arrows") => json!(true),
