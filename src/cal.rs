@@ -2713,6 +2713,7 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, http_client: &State<reqw
     let race = Race::from_id(&mut transaction, http_client, id).await?;
     let rando_version = race.event(&mut transaction).await?.rando_version.ok_or(StatusOrError::Status(Status::NotFound))?;
     let settings = race.single_settings(&mut transaction).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
+    transaction.commit().await?;
     let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
     let web_version = ootr_api_client.can_roll_on_web(None, &rando_version, world_count, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
     let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, false, settings).await?;

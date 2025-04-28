@@ -279,14 +279,14 @@ impl ApiClient {
                         update_tx.send(SeedRollUpdate::MovedForward(pos.try_into().unwrap())).await?;
                     }
                 }
+                let permit = self.mw_seed_rollers.clone().acquire_owned().await.expect("seed queue semaphore closed");
                 lock!(waiting = self.waiting; {
-                    let permit = self.mw_seed_rollers.clone().acquire_owned().await.expect("seed queue semaphore closed");
                     waiting.remove(0);
                     for tx in &*waiting {
                         tx.send(()).allow_unreceived();
                     }
-                    permit
-                })
+                });
+                permit
             }
         })
     }
