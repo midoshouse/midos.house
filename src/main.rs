@@ -9,7 +9,10 @@ use {
     serde_json_inner as _, // `preserve_order` feature required to correctly render progression spoilers
     sqlx::{
         ConnectOptions as _,
-        postgres::PgConnectOptions,
+        postgres::{
+            PgConnectOptions,
+            PgPoolOptions,
+        },
     },
     crate::prelude::*,
 };
@@ -201,12 +204,14 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
             .build()?;
         let discord_config = if Environment::default().is_dev() { &config.discord_dev } else { &config.discord_production };
         let discord_builder = serenity_utils::builder(discord_config.bot_token.clone()).await?;
-        let db_pool = PgPool::connect_with(PgConnectOptions::default()
-            .username("mido")
-            .database(if Environment::default().is_dev() { "fados_house" } else { "midos_house" })
-            .application_name("midos-house")
-            .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(10))
-        ).await?;
+        let db_pool = PgPoolOptions::default()
+            .max_connections(16)
+            .connect_with(PgConnectOptions::default()
+                .username("mido")
+                .database(if Environment::default().is_dev() { "fados_house" } else { "midos_house" })
+                .application_name("midos-house")
+                .log_slow_statements(log::LevelFilter::Warn, Duration::from_secs(10))
+            ).await?;
         let seed_metadata = Arc::default();
         let ootr_api_client = Arc::new(ootr_web::ApiClient::new(http_client.clone(), config.ootr_api_key.clone(), config.ootr_api_key_encryption.clone()));
         let rocket = http::rocket(
