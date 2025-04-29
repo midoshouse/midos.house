@@ -1318,7 +1318,7 @@ pub(crate) struct GlobalState {
     pub(crate) db_pool: PgPool,
     pub(crate) http_client: reqwest::Client,
     insecure_http_client: reqwest::Client,
-    #[allow(unused)] //TODO use for set reporting
+    league_api_key: String,
     startgg_token: String,
     ootr_api_client: Arc<ootr_web::ApiClient>,
     pub(crate) discord_ctx: RwFuture<DiscordCtx>,
@@ -1335,6 +1335,7 @@ impl GlobalState {
         db_pool: PgPool,
         http_client: reqwest::Client,
         insecure_http_client: reqwest::Client,
+        league_api_key: String,
         startgg_token: String,
         ootr_api_client: Arc<ootr_web::ApiClient>,
         discord_ctx: RwFuture<DiscordCtx>,
@@ -1347,7 +1348,7 @@ impl GlobalState {
                 hostname: Cow::Borrowed(racetime_host()),
                 ..racetime::HostInfo::default()
             },
-            new_room_lock, racetime_config, extra_room_tx, db_pool, http_client, insecure_http_client, startgg_token, ootr_api_client, discord_ctx, clean_shutdown, seed_cache_tx, seed_metadata,
+            new_room_lock, racetime_config, extra_room_tx, db_pool, http_client, insecure_http_client, league_api_key, startgg_token, ootr_api_client, discord_ctx, clean_shutdown, seed_cache_tx, seed_metadata,
         }
     }
 

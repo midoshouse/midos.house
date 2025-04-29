@@ -237,6 +237,7 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
             db_pool.clone(),
             http_client.clone(),
             insecure_http_client,
+            config.league_api_key.clone(),
             startgg_token.clone(),
             ootr_api_client,
             discord_builder.ctx_fut.clone(),

@@ -131,6 +131,15 @@ pub(crate) enum MatchStatus {
     Confirmed,
 }
 
+/// Returns a string encoding the given duration in the format expected by the `/reportResultFromMidoHouse` endpoint.
+pub(crate) fn format_duration(duration: Duration) -> String {
+    let secs = duration.as_secs();
+    let hours = secs / 3600;
+    let mins = (secs % 3600) / 60;
+    let secs = secs % 60;
+    format!("{hours:02}:{mins:02}:{secs:02}")
+}
+
 pub(crate) fn s8_settings() -> seed::Settings {
     collect![
         format!("user_message") => json!("OoTR League S8"),

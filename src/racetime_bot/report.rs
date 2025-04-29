@@ -14,6 +14,7 @@ trait Score {
     fn sort_key(&self) -> Self::SortKey;
     fn time_window(&self, other: &Self) -> Option<Duration>;
     fn format(&self, language: Language) -> Cow<'_, str>;
+    fn as_duration(&self) -> Option<Option<Duration>>;
 }
 
 impl Score for Option<Duration> {
@@ -40,6 +41,10 @@ impl Score for Option<Duration> {
             _ => self.map_or(Cow::Borrowed("DNF"), |time| Cow::Owned(English.format_duration(time, false))),
         }
     }
+
+    fn as_duration(&self) -> Option<Option<Duration>> {
+        Some(*self)
+    }
 }
 
 impl Score for tfb::Score {
@@ -62,6 +67,10 @@ impl Score for tfb::Score {
 
     fn format(&self, _: Language) -> Cow<'_, str> {
         Cow::Owned(self.to_string())
+    }
+
+    fn as_duration(&self) -> Option<Option<Duration>> {
+        None
     }
 }
 
@@ -271,8 +280,41 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
             };
             results_channel.say(&*ctx.global_state.discord_ctx.read().await, msg).await.to_racetime()?;
         }
-        if cal_event.race.game.is_none() { //TODO also auto-report multi-game matches (report all games but the last as match progress)
-            if let cal::Source::StartGG { ref set, .. } = cal_event.race.source {
+        match cal_event.race.source {
+            cal::Source::Manual | cal::Source::Sheet { .. } => {}
+            cal::Source::Challonge { .. } => {} //TODO
+            cal::Source::League { id } => if let (Some(winner), Some(loser), Some(winning_time), Some(losing_time)) = (
+                match &winner {
+                    Entrant::MidosHouseTeam(team) => team.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one().ok().and_then(|member| member.racetime).map(|racetime| racetime.id),
+                    Entrant::Discord { racetime_id, .. } | Entrant::Named { racetime_id, .. } => racetime_id.clone(),
+                },
+                match &loser {
+                    Entrant::MidosHouseTeam(team) => team.members(&mut transaction).await.to_racetime()?.into_iter().exactly_one().ok().and_then(|member| member.racetime).map(|racetime| racetime.id),
+                    Entrant::Discord { racetime_id, .. } | Entrant::Named { racetime_id, .. } => racetime_id.clone(),
+                },
+                winning_time.as_duration(),
+                losing_time.as_duration(),
+            ) {
+                let mut form = collect![as HashMap<_, _>:
+                    "id" => id.to_string(),
+                    "racetimeRoom" => format!("https://{}{}", racetime_host(), ctx.data().await.url),
+                    "fpa" => format!("0"), //TODO also report races with FPA calls
+                    "winner" => winner,
+                    "loser" => loser,
+                ];
+                if let Some(winning_time) = winning_time {
+                    form.insert("winningTime", league::format_duration(winning_time));
+                }
+                if let Some(losing_time) = losing_time {
+                    form.insert("losingTime", league::format_duration(losing_time));
+                }
+                ctx.global_state.http_client.post("https://league.ootrandomizer.com/reportResultFromMidoHouse")
+                    .bearer_auth(&ctx.global_state.league_api_key)
+                    .form(&form)
+                    .send().await?
+                    .detailed_error_for_status().await.to_racetime()?;
+            },
+            cal::Source::StartGG { ref set, .. } => if cal_event.race.game.is_none() { //TODO also auto-report multi-game matches (report all games but the last as match progress)
                 if let Entrant::MidosHouseTeam(Team { startgg_id: Some(winner_entrant_id), .. }) = &winner {
                     startgg::query_uncached::<startgg::ReportOneGameResultMutation>(&ctx.global_state.http_client, &ctx.global_state.startgg_token, startgg::report_one_game_result_mutation::Variables {
                         set_id: set.clone(),
@@ -289,8 +331,9 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                         organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await.to_racetime()?;
                     }
                 }
-            }
-        } //TODO debug errors returned from this mutation
+            },
+            cal::Source::SpeedGaming { .. } => {} //TODO
+        }
         if_chain! {
             if let Entrant::MidosHouseTeam(winner) = winner;
             if let Entrant::MidosHouseTeam(loser) = loser;

@@ -14,6 +14,7 @@ pub(crate) struct Config {
     pub(crate) challonge_api_key: String,
     pub(crate) discord_production: ConfigDiscord,
     pub(crate) discord_dev: ConfigDiscord,
+    pub(crate) league_api_key: String,
     pub(crate) ootr_api_key: String,
     pub(crate) ootr_api_key_encryption: String,
     pub(crate) racetime_bot_production: ConfigRaceTime,
