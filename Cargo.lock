@@ -4815,6 +4815,7 @@ dependencies = [
  "serde_json",
  "serde_json_path_to_error",
  "serde_plain",
+ "serde_urlencoded",
  "serde_with",
  "serenity",
  "serenity-utils",

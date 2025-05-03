@@ -311,7 +311,7 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                 let request = ctx.global_state.http_client.post("https://league.ootrandomizer.com/reportResultFromMidoHouse")
                     .bearer_auth(&ctx.global_state.league_api_key)
                     .form(&form);
-                println!("reporting result to League website {request:?}");
+                println!("reporting result to League website: {:?}", serde_urlencoded::to_string(&form));
                 request.send().await?.detailed_error_for_status().await.to_racetime()?;
             },
             cal::Source::StartGG { ref set, .. } => if cal_event.race.game.is_none() { //TODO also auto-report multi-game matches (report all games but the last as match progress)
