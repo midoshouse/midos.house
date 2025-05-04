@@ -1360,7 +1360,7 @@ impl Event {
                     EventKind::Async3 => start3.is_some_and(|start3| start1.is_none_or(|start1| start3 < start1) || start2.is_none_or(|start2| start3 < start2)),
                     EventKind::Normal => unreachable!(),
                 },
-                _ => unreachable!(),
+                Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => unreachable!(),
             },
         }
     }
