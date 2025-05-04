@@ -84,11 +84,11 @@ pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>,
 pub(crate) struct ConfigureForm {
     #[field(default = String::new())]
     csrf: String,
-    auto_import: Option<bool>,
+    auto_import: bool,
     #[field(default = String::new())]
     min_schedule_notice: String,
     retime_window: Option<String>,
-    manual_reporting_with_breaks: Option<bool>,
+    manual_reporting_with_breaks: bool,
 }
 
 #[rocket::post("/event/<series>/<event>/configure", data = "<form>")]
@@ -123,8 +123,8 @@ pub(crate) async fn post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: 
         if form.context.errors().next().is_some() {
             RedirectOrContent::Content(configure_form(transaction, Some(me), uri, csrf.as_ref(), data, form.context).await?)
         } else {
-            if let Some(auto_import) = value.auto_import {
-                sqlx::query!("UPDATE events SET auto_import = $1 WHERE series = $2 AND event = $3", auto_import, data.series as _, &data.event).execute(&mut *transaction).await?;
+            if let MatchSource::StartGG(_) = data.match_source() {
+                sqlx::query!("UPDATE events SET auto_import = $1 WHERE series = $2 AND event = $3", value.auto_import, data.series as _, &data.event).execute(&mut *transaction).await?;
             }
             if let Some(min_schedule_notice) = min_schedule_notice {
                 sqlx::query!("UPDATE events SET min_schedule_notice = $1 WHERE series = $2 AND event = $3", min_schedule_notice as _, data.series as _, &data.event).execute(&mut *transaction).await?;
@@ -132,8 +132,8 @@ pub(crate) async fn post(pool: &State<PgPool>, me: User, uri: Origin<'_>, csrf: 
             if let Some(retime_window) = retime_window {
                 sqlx::query!("UPDATE events SET retime_window = $1 WHERE series = $2 AND event = $3", retime_window as _, data.series as _, &data.event).execute(&mut *transaction).await?;
             }
-            if let Some(manual_reporting_with_breaks) = value.manual_reporting_with_breaks {
-                sqlx::query!("UPDATE events SET manual_reporting_with_breaks = $1 WHERE series = $2 AND event = $3", manual_reporting_with_breaks, data.series as _, &data.event).execute(&mut *transaction).await?;
+            if matches!(data.match_source(), MatchSource::StartGG(_)) || data.discord_race_results_channel.is_some() {
+                sqlx::query!("UPDATE events SET manual_reporting_with_breaks = $1 WHERE series = $2 AND event = $3", value.manual_reporting_with_breaks, data.series as _, &data.event).execute(&mut *transaction).await?;
             }
             transaction.commit().await?;
             RedirectOrContent::Redirect(Redirect::to(uri!(super::info(series, event))))
