@@ -330,6 +330,7 @@ pub(crate) fn display_s7_draft_picks(picks: &draft::Picks) -> String {
 pub(crate) async fn resolve_s7_draft_weights(script_path: &Path, picks: &draft::Picks) -> Result<Weights, draft::Error> {
     let is_lite = picks.get("preset").map(|preset| &**preset).unwrap_or("league") == "lite";
     let mut weights = fs::read_json::<Weights>(script_path.join("weights").join("rsl_season7.json")).await?;
+    weights.weights.insert(format!("password_lock"), collect![format!("true") => 1, format!("false") => 0]);
     if is_lite {
         let ovr = fs::read_json::<Weights>(script_path.join("weights").join("beginner_override.json")).await?;
         for (option, value) in ovr.options {
