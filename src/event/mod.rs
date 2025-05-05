@@ -1109,14 +1109,17 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                             | Series::CopaDoBrasil
                             | Series::MixedPools
                             | Series::Mq
+                            | Series::Rsl
                             | Series::Standard
-                                => p : "Please schedule your matches using the Discord match threads.";
                             | Series::TournoiFrancophone
                             | Series::WeTryToBeBetter
-                                => p : "Planifiez vos matches dans les fils du canal dédié.";
+                                => @if let French = data.language {
+                                    p : "Planifiez vos matches dans les fils du canal dédié.";
+                                } else {
+                                    p : "Please schedule your matches using the Discord match threads.";
+                                }
                             | Series::BattleRoyale
                             | Series::League
-                            | Series::Rsl
                             | Series::Scrubs
                                 => @unimplemented // no signups on Mido's House
                             Series::Multiworld => @if data.is_started(&mut transaction).await? {

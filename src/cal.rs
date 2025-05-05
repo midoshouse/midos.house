@@ -657,8 +657,7 @@ impl Race {
             }.save(&mut *transaction).await?,
             Series::Rsl => match &*event.event {
                 "1" => {} // no match data available
-                "2" | "3" | "4" | "5" | "6" => {}
-                _ => unimplemented!(),
+                _ => {} // new events are scheduled via Mido's House
             },
             Series::Scrubs => match &*event.event {
                 "5" => {}
@@ -1373,7 +1372,7 @@ impl Event {
     }
 
     pub(crate) async fn should_create_room(&self, transaction: &mut Transaction<'_, Postgres>, event: &event::Data<'_>) -> Result<RaceHandleMode, event::DataError> {
-        Ok(if racetime_bot::Goal::for_event(self.race.series, &self.race.event).is_some_and(|goal| goal.should_create_rooms()) {
+        Ok(if racetime_bot::Goal::for_event(self.race.series, &self.race.event).is_some() {
             if self.race.series == Series::SpeedGaming && self.race.event.ends_with("live") && event.is_started(transaction).await? {
                 // don't create racetime.gg rooms for in-person races
                 RaceHandleMode::Notify

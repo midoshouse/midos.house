@@ -539,39 +539,6 @@ impl Goal {
         }
     }
 
-    pub(crate) fn should_create_rooms(&self) -> bool {
-        match self {
-            | Self::MixedPoolsS2
-            | Self::MixedPoolsS3
-            | Self::NineDaysOfSaws
-            | Self::Rsl
-                => false,
-            | Self::Cc7
-            | Self::CoOpS3
-            | Self::CopaDoBrasil
-            | Self::LeagueS8
-            | Self::MixedPoolsS4
-            | Self::Mq
-            | Self::MultiworldS3
-            | Self::MultiworldS4
-            | Self::MultiworldS5
-            | Self::Pic7
-            | Self::PicRs2
-            | Self::Sgl2023
-            | Self::Sgl2024
-            | Self::SongsOfHope
-            | Self::StandardRuleset
-            | Self::TournoiFrancoS3
-            | Self::TournoiFrancoS4
-            | Self::TournoiFrancoS5
-            | Self::TriforceBlitz
-            | Self::TriforceBlitzProgressionSpoiler
-            | Self::WeTryToBeBetterS1
-            | Self::WeTryToBeBetterS2
-                => true,
-        }
-    }
-
     async fn send_presets(&self, ctx: &RaceContext<GlobalState>) -> Result<(), Error> {
         match self {
             | Self::Pic7
@@ -622,20 +589,24 @@ impl Goal {
                 ctx.say("!seed day8: S6 + dungeon ER").await?;
                 ctx.say("!seed day9: S6").await?;
             }
-            Self::Rsl => for preset in all::<rsl::Preset>() {
-                ctx.say(format!("!seed{}: {}", match preset {
-                    rsl::Preset::League => String::default(),
-                    rsl::Preset::Multiworld => format!(" {} <worldcount>", preset.name()),
-                    _ => format!(" {}", preset.name()),
-                }, match preset {
-                    rsl::Preset::League => "official Random Settings League weights",
-                    rsl::Preset::Beginner => "random settings for beginners, see https://zsr.link/mKzPO for details",
-                    rsl::Preset::Intermediate => "a step between Beginner and League",
-                    rsl::Preset::Ddr => "League but always normal damage and with cutscenes useful for tricks in the DDR ruleset",
-                    rsl::Preset::CoOp => "weights tuned for co-op play",
-                    rsl::Preset::Multiworld => "weights tuned for multiworld",
-                })).await?;
-            },
+            Self::Rsl => {
+                for preset in all::<rsl::Preset>() {
+                    ctx.say(format!("!seed{}: {}", match preset {
+                        rsl::Preset::League => String::default(),
+                        rsl::Preset::Multiworld => format!(" {} <worldcount>", preset.name()),
+                        _ => format!(" {}", preset.name()),
+                    }, match preset {
+                        rsl::Preset::League => "official Random Settings League weights",
+                        rsl::Preset::Beginner => "random settings for beginners, see https://zsr.link/mKzPO for details",
+                        rsl::Preset::Intermediate => "a step between Beginner and League",
+                        rsl::Preset::Ddr => "League but always normal damage and with cutscenes useful for tricks in the DDR ruleset",
+                        rsl::Preset::CoOp => "weights tuned for co-op play",
+                        rsl::Preset::Multiworld => "weights tuned for multiworld",
+                    })).await?;
+                }
+                ctx.say("!seed draft: Pick the weights here in the chat.").await?;
+                ctx.say("!seed draft lite: Pick the weights here in the chat, but limit picks to RSL-Lite.").await?;
+            }
             Self::StandardRuleset => {
                 ctx.say("!seed s8: The settings for season 8 of the main tournament").await?;
                 ctx.say("!seed weekly: The current weekly settings").await?;
