@@ -45,11 +45,13 @@ pub(crate) enum Requirement {
     /// Must have a racetime.gg account connected to their Mido's House account
     RaceTime,
     /// Must be on a list of invited racetime.gg users
+    #[serde(rename_all = "camelCase")]
     RaceTimeInvite {
         invites: HashSet<String>,
         #[serde(default)]
         #[serde_as(as = "Option<DeserializeRawHtml>")]
         text: Option<RawHtml<String>>,
+        error_text: Option<String>,
     },
     /// Must have a Twitch account connected to their racetime.gg account
     Twitch,
@@ -695,17 +697,21 @@ impl Requirement {
             Self::External { .. } => form_ctx.push_error(form::Error::validation("Please complete event entry via the external method.")),
             _ => if !self.is_checked(transaction, http_client, discord_ctx, me, data).await?.unwrap_or(false) {
                 form_ctx.push_error(form::Error::validation(match self {
-                    Self::RaceTime => "A racetime.gg account is required to enter this event. Go to your Mido's House profile and select “Connect a racetime.gg account”.", //TODO direct link?
-                    Self::RaceTimeInvite { .. } => if me.racetime.is_some() {
-                        "This is an invitational event and it looks like you're not invited."
+                    Self::RaceTime => Cow::Borrowed("A racetime.gg account is required to enter this event. Go to your Mido's House profile and select “Connect a racetime.gg account”."), //TODO direct link?
+                    Self::RaceTimeInvite { error_text, .. } => if me.racetime.is_some() {
+                        if let Some(error_text) = error_text {
+                            Cow::Owned(error_text.clone())
+                        } else {
+                            Cow::Borrowed("This is an invitational event and it looks like you're not invited.")
+                        }
                     } else {
-                        "This event uses an invite list of racetime.gg users. Go to your Mido's House profile and select “Connect a racetime.gg account” to check whether you're invited." //TODO direct link?
+                        Cow::Borrowed("This event uses an invite list of racetime.gg users. Go to your Mido's House profile and select “Connect a racetime.gg account” to check whether you're invited.") //TODO direct link?
                     },
-                    Self::Twitch => "A Twitch account is required to enter this event. Go to the “Twitch & connections” section of your racetime.gg settings to connect one.", //TODO direct link?
-                    Self::Discord => "A Discord account is required to enter this event. Go to your Mido's House profile and select “Connect a Discord account”.", //TODO direct link?
-                    Self::DiscordGuild { .. } => "You must join the event's Discord server to enter.", //TODO invite link?
-                    Self::Challonge => "A Challonge account is required to enter this event.", //TODO link to /login/challonge
-                    Self::QualifierPlacement { .. } => "You have not secured a qualifying placement.", //TODO different message if the player has overqualified or overqualifying due to opt-outs is still possible
+                    Self::Twitch => Cow::Borrowed("A Twitch account is required to enter this event. Go to the “Twitch & connections” section of your racetime.gg settings to connect one."), //TODO direct link?
+                    Self::Discord => Cow::Borrowed("A Discord account is required to enter this event. Go to your Mido's House profile and select “Connect a Discord account”."), //TODO direct link?
+                    Self::DiscordGuild { .. } => Cow::Borrowed("You must join the event's Discord server to enter."), //TODO invite link?
+                    Self::Challonge => Cow::Borrowed("A Challonge account is required to enter this event."), //TODO link to /login/challonge
+                    Self::QualifierPlacement { .. } => Cow::Borrowed("You have not secured a qualifying placement."), //TODO different message if the player has overqualified or overqualifying due to opt-outs is still possible
                     | Self::StartGG { .. }
                     | Self::TextField { .. }
                     | Self::TextField2 { .. }
