@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, hard_settings_ok, mq_ok, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams WHERE\n                    series = $1\n                    AND event = $2\n                    AND NOT resigned\n                    AND (\n                        EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)\n                        OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')\n                    )\n                ",
+  "query": "SELECT id AS \"id: Id<Teams>\", name, racetime_slug, startgg_id AS \"startgg_id: startgg::ID\", plural_name, hard_settings_ok, mq_ok, lite_ok, restream_consent, mw_impl AS \"mw_impl: mw::Impl\", qualifier_rank FROM teams WHERE\n                    series = $1\n                    AND event = $2\n                    AND NOT resigned\n                    AND (\n                        EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)\n                        OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')\n                    )\n                ",
   "describe": {
     "columns": [
       {
@@ -40,11 +40,16 @@
       },
       {
         "ordinal": 7,
-        "name": "restream_consent",
+        "name": "lite_ok",
         "type_info": "Bool"
       },
       {
         "ordinal": 8,
+        "name": "restream_consent",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 9,
         "name": "mw_impl: mw::Impl",
         "type_info": {
           "Custom": {
@@ -59,7 +64,7 @@
         }
       },
       {
-        "ordinal": 9,
+        "ordinal": 10,
         "name": "qualifier_rank",
         "type_info": "Int2"
       }
@@ -80,9 +85,10 @@
       false,
       false,
       false,
+      false,
       true,
       true
     ]
   },
-  "hash": "80e91277f76d0337d8eaed5fa87040f0d845bb2ca344671a38af43f24f0b5af2"
+  "hash": "f6845a9d3141839651a2e8347021cace48efe391c2050e22cd9d931efca88fce"
 }

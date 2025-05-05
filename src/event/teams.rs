@@ -168,6 +168,7 @@ pub(crate) struct SignupsTeam {
     pub(crate) qualification: Qualification,
     hard_settings_ok: bool,
     mq_ok: bool,
+    lite_ok: bool,
 }
 
 pub(crate) struct Cache {
@@ -432,6 +433,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     },
                     hard_settings_ok: false,
                     mq_ok: false,
+                    lite_ok: false,
                 });
             }
             signups
@@ -523,6 +525,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     qualification: Qualification::Single { qualified: qualification_level == QualificationLevel::Qualified },
                     hard_settings_ok: false,
                     mq_ok: false,
+                    lite_ok: false,
                 }).collect()
         }
         QualifierKind::None | QualifierKind::Rank | QualifierKind::Single { .. } => {
@@ -530,13 +533,14 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                 team: Team,
                 hard_settings_ok: bool,
                 mq_ok: bool,
+                lite_ok: bool,
                 pieces: Option<i16>,
                 qualified: bool,
             }
 
             let teams = if let QualifierKind::Rank = qualifier_kind {
                 // teams are manually ranked so include ones that haven't submitted qualifier asyncs
-                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
+                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, hard_settings_ok, mq_ok, lite_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
                     series = $1
                     AND event = $2
                     AND NOT resigned
@@ -560,12 +564,13 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         },
                         hard_settings_ok: row.hard_settings_ok,
                         mq_ok: row.mq_ok,
+                        lite_ok: row.lite_ok,
                         pieces: None,
                         qualified: false,
                     })
                     .try_collect::<Vec<_>>().await?
             } else {
-                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
+                sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, submitted IS NOT NULL AS "qualified!", pieces, hard_settings_ok, mq_ok, lite_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams LEFT OUTER JOIN async_teams ON (id = team) WHERE
                     series = $1
                     AND event = $2
                     AND NOT resigned
@@ -591,6 +596,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                         },
                         hard_settings_ok: row.hard_settings_ok,
                         mq_ok: row.mq_ok,
+                        lite_ok: row.lite_ok,
                         pieces: row.pieces,
                         qualified: row.qualified,
                     })
@@ -624,6 +630,7 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     },
                     hard_settings_ok: team.hard_settings_ok,
                     mq_ok: team.mq_ok,
+                    lite_ok: team.lite_ok,
                     members,
                 });
             }
@@ -838,13 +845,19 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
         }),
         ShowStatus::None => {}
     }
-    if let Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4) = data.draft_kind() {
-        column_headers.push(html! {
-            th : "Advanced Settings OK";
-        });
-        column_headers.push(html! {
-            th : "MQ OK";
-        });
+    match data.draft_kind() {
+        None | Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5) => {}
+        Some(draft::Kind::RslS7) => column_headers.push(html! {
+            th : "RSL-Lite OK";
+        }),
+        Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5) => {
+            column_headers.push(html! {
+                th : "Advanced Settings OK";
+            });
+            column_headers.push(html! {
+                th : "MQ OK";
+            });
+        }
     }
     if show_restream_consent {
         column_headers.push(html! {
@@ -874,7 +887,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                         }
                     }
                 } else {
-                    @for (signup_idx, SignupsTeam { team, members, qualification, hard_settings_ok, mq_ok }) in signups.into_iter().enumerate() {
+                    @for (signup_idx, SignupsTeam { team, members, qualification, hard_settings_ok, mq_ok, lite_ok }) in signups.into_iter().enumerate() {
                         @let is_dimmed = match qualifier_kind {
                             QualifierKind::None => false,
                             QualifierKind::Rank => false, // unknown cutoff
@@ -1010,6 +1023,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                                                         enter::Requirement::Rules { .. } => {}
                                                         enter::Requirement::HardSettingsOk => {}
                                                         enter::Requirement::MqOk => {}
+                                                        enter::Requirement::LiteOk => {}
                                                         enter::Requirement::RestreamConsent { .. } => {}
                                                         enter::Requirement::Qualifier { .. } => {} //TODO
                                                         enter::Requirement::TripleQualifier { .. } => {} //TODO
@@ -1114,15 +1128,23 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                                 }
                                 ShowStatus::None => {}
                             }
-                            @if let Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4) = data.draft_kind() {
-                                td {
-                                    @if hard_settings_ok {
+                            @match data.draft_kind() {
+                                None | Some(draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5) => {}
+                                Some(draft::Kind::RslS7) => td {
+                                    @if lite_ok {
                                         : "✓";
                                     }
                                 }
-                                td {
-                                    @if mq_ok {
-                                        : "✓";
+                                Some(draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5) => {
+                                    td {
+                                        @if hard_settings_ok {
+                                            : "✓";
+                                        }
+                                    }
+                                    td {
+                                        @if mq_ok {
+                                            : "✓";
+                                        }
                                     }
                                 }
                             }

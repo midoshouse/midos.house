@@ -1008,23 +1008,43 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 match draft_kind {
                                     draft::Kind::RslS7 => {
                                         let settings = &mut race.draft.as_mut().unwrap().settings;
-                                        let mut transaction = msg_ctx.into_transaction();
                                         let lite = interaction.data.options.get(0).map(|option| match option.value {
                                             CommandDataOptionValue::Boolean(lite) => lite,
                                             _ => panic!("unexpected slash command option type"),
                                         });
-                                        settings.insert(Cow::Borrowed("preset"), Cow::Borrowed(if lite.is_some_and(identity) { "lite" } else { "league" }));
-                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
-                                        transaction.commit().await?;
+                                        if settings.get("lite_ok").map(|lite_ok| &**lite_ok).unwrap_or("no") == "ok" {
+                                            let mut transaction = msg_ctx.into_transaction();
+                                            if let Some(lite) = lite {
+                                                settings.insert(Cow::Borrowed("preset"), Cow::Borrowed(if lite { "lite" } else { "league" }));
+                                                sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
+                                                transaction.commit().await?;
+                                            } else {
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content(MessageBuilder::default().push("Sorry, please specify the ").push_mono("lite").push(" parameter.").build())
+                                                )).await?;
+                                                transaction.rollback().await?;
+                                                return Ok(())
+                                            }
+                                        } else {
+                                            if lite.is_some_and(identity) {
+                                                //TODO different error messages depending on which player(s) didn't opt into RSL-Lite
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content("Sorry, either you or your opponent didn't opt into RSL-Lite.")
+                                                )).await?;
+                                                return Ok(())
+                                            }
+                                        }
                                     }
                                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => {
                                         let settings = &mut race.draft.as_mut().unwrap().settings;
+                                        let mq = interaction.data.options.get(0).map(|option| match option.value {
+                                            CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
+                                            _ => panic!("unexpected slash command option type"),
+                                        });
                                         if settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
                                             let mut transaction = msg_ctx.into_transaction();
-                                            let mq = interaction.data.options.get(0).map(|option| match option.value {
-                                                CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
-                                                _ => panic!("unexpected slash command option type"),
-                                            });
                                             if let Some(mq) = mq {
                                                 settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq.to_string()));
                                                 sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
@@ -1038,10 +1058,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 return Ok(())
                                             }
                                         } else {
-                                            let mq = interaction.data.options.get(0).map(|option| match option.value {
-                                                CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
-                                                _ => panic!("unexpected slash command option type"),
-                                            });
                                             if mq.is_some_and(|mq| mq != 0) {
                                                 //TODO different error messages depending on which player(s) didn't opt into MQ
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1739,23 +1755,43 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                 match draft_kind {
                                     draft::Kind::RslS7 => {
                                         let settings = &mut race.draft.as_mut().unwrap().settings;
-                                        let mut transaction = msg_ctx.into_transaction();
                                         let lite = interaction.data.options.get(0).map(|option| match option.value {
                                             CommandDataOptionValue::Boolean(lite) => lite,
                                             _ => panic!("unexpected slash command option type"),
                                         });
-                                        settings.insert(Cow::Borrowed("preset"), Cow::Borrowed(if lite.is_some_and(identity) { "lite" } else { "league" }));
-                                        sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
-                                        transaction.commit().await?;
+                                        if settings.get("lite_ok").map(|lite_ok| &**lite_ok).unwrap_or("no") == "ok" {
+                                            let mut transaction = msg_ctx.into_transaction();
+                                            if let Some(lite) = lite {
+                                                settings.insert(Cow::Borrowed("preset"), Cow::Borrowed(if lite { "lite" } else { "league" }));
+                                                sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
+                                                transaction.commit().await?;
+                                            } else {
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content(MessageBuilder::default().push("Sorry, please specify the ").push_mono("lite").push(" parameter.").build())
+                                                )).await?;
+                                                transaction.rollback().await?;
+                                                return Ok(())
+                                            }
+                                        } else {
+                                            if lite.is_some_and(identity) {
+                                                //TODO different error messages depending on which player(s) didn't opt into RSL-Lite
+                                                interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
+                                                    .ephemeral(true)
+                                                    .content("Sorry, either you or your opponent didn't opt into RSL-Lite.")
+                                                )).await?;
+                                                return Ok(())
+                                            }
+                                        }
                                     }
                                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => {
                                         let settings = &mut race.draft.as_mut().unwrap().settings;
+                                        let mq = interaction.data.options.get(0).map(|option| match option.value {
+                                            CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
+                                            _ => panic!("unexpected slash command option type"),
+                                        });
                                         if settings.get("mq_ok").map(|mq_ok| &**mq_ok).unwrap_or("no") == "ok" {
                                             let mut transaction = msg_ctx.into_transaction();
-                                            let mq = interaction.data.options.get(0).map(|option| match option.value {
-                                                CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
-                                                _ => panic!("unexpected slash command option type"),
-                                            });
                                             if let Some(mq) = mq {
                                                 settings.insert(Cow::Borrowed("mq_dungeons_count"), Cow::Owned(mq.to_string()));
                                                 sqlx::query!("UPDATE races SET draft_state = $1 WHERE id = $2", Json(race.draft.as_ref().unwrap()) as _, race.id as _).execute(&mut *transaction).await?;
@@ -1769,10 +1805,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 return Ok(())
                                             }
                                         } else {
-                                            let mq = interaction.data.options.get(0).map(|option| match option.value {
-                                                CommandDataOptionValue::Integer(mq) => u8::try_from(mq).expect("MQ count out of range"),
-                                                _ => panic!("unexpected slash command option type"),
-                                            });
                                             if mq.is_some_and(|mq| mq != 0) {
                                                 //TODO different error messages depending on which player(s) didn't opt into MQ
                                                 interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()

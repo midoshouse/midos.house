@@ -308,12 +308,19 @@ impl Draft {
             went_first: None,
             skipped_bans: 0,
             settings: match kind {
-                Kind::S7 | Kind::RslS7 | Kind::MultiworldS3 | Kind::MultiworldS5 => HashMap::default(),
+                Kind::S7 | Kind::MultiworldS3 | Kind::MultiworldS5 => HashMap::default(),
                 // accessibility accommodation for The Aussie Boiiz in mw/4 to default to CSMC
                 Kind::MultiworldS4 => HashMap::from_iter(
                     (loser == Id::from(17814073240662869290_u64) || winner == Id::from(17814073240662869290_u64))
                         .then_some((Cow::Borrowed("special_csmc"), Cow::Borrowed("yes"))),
                 ),
+                Kind::RslS7 => {
+                    let team_rows = sqlx::query!("SELECT lite_ok FROM teams WHERE id = $1 OR id = $2", loser as _, winner as _).fetch_all(&mut **transaction).await?;
+                    let lite_ok = team_rows.iter().all(|row| row.lite_ok);
+                    collect![as HashMap<_, _>:
+                        Cow::Borrowed("lite_ok") => Cow::Borrowed(if lite_ok { "ok" } else { "no" }),
+                    ]
+                }
                 Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 => {
                     let team_rows = sqlx::query!("SELECT hard_settings_ok, mq_ok FROM teams WHERE id = $1 OR id = $2", loser as _, winner as _).fetch_all(&mut **transaction).await?;
                     let hard_settings_ok = team_rows.iter().all(|row| row.hard_settings_ok);
@@ -702,9 +709,11 @@ impl Draft {
                                 } else {
                                     builder.push(" in the settings draft.");
                                 }
-                                builder.push(" If both players agree, you can use ");
-                                builder.push_mono("lite: true");
-                                builder.push(" to use RSL-Lite weights.");
+                                if self.settings.get("lite_ok").map(|lite_ok| &**lite_ok).unwrap_or("no") == "ok" {
+                                    builder.push(" Please consult with your opponent and specify whether you would like to use RSL-Lite weights using the ");
+                                    builder.push_mono("lite");
+                                    builder.push(" parameter.");
+                                }
                                 builder.build()
                             }
                             MessageContext::RaceTime { high_seed_name, .. } => format!("{high_seed_name}, you have the higher seed. Choose whether you want to go !first or !second"),
@@ -2603,14 +2612,21 @@ impl Draft {
                             self.went_first = Some(first);
                             Ok(match msg_ctx {
                                 MessageContext::None | MessageContext::RaceTime { .. } => String::default(),
-                                MessageContext::Discord { transaction, guild_id, team, .. } => MessageBuilder::default()
-                                    .mention_team(transaction, Some(*guild_id), team).await?
-                                    .push(if team.name_is_plural() { " have" } else { " has" })
-                                    .push(" chosen to go ")
-                                    .push(if first { "first" } else { "second" })
-                                    .push(" in the weights draft and selected ")
-                                    .push(if self.settings.get("preset").map(|preset| &**preset).unwrap_or("league") == "lite" { "RSL-Lite weights." } else { "RSL weights." })
-                                    .build(),
+                                MessageContext::Discord { transaction, guild_id, team, .. } => {
+                                    let mut content = MessageBuilder::default();
+                                    content.mention_team(transaction, Some(*guild_id), team).await?;
+                                    content.push(if team.name_is_plural() { " have" } else { " has" });
+                                    content.push(" chosen to go ");
+                                    content.push(if first { "first" } else { "second" });
+                                    content.push(" in the weights draft");
+                                    if self.settings.get("lite_ok").map(|lite_ok| &**lite_ok).unwrap_or("no") == "ok" {
+                                        content.push(" and selected ");
+                                        content.push(if self.settings.get("preset").map(|preset| &**preset).unwrap_or("league") == "lite" { "RSL-Lite weights" } else { "RSL weights" });
+                                    }
+                                    content
+                                        .push('.')
+                                        .build()
+                                }
                             })
                         }
                         StepKind::Ban { .. } | StepKind::Pick { .. } => Err(match msg_ctx {

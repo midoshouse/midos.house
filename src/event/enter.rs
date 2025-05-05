@@ -107,6 +107,8 @@ pub(crate) enum Requirement {
     HardSettingsOk,
     /// For Tournoi Francophone-style settings drafts, opt in to or out of Master Quest
     MqOk,
+    /// For RSL-style weights drafts, opt into RSL-Lite weights
+    LiteOk,
     /// Must agree to be restreamed
     RestreamConsent {
         #[serde(default)]
@@ -179,6 +181,7 @@ impl Requirement {
             Self::Rules { .. } => Some(false),
             Self::HardSettingsOk { .. } => Some(false),
             Self::MqOk { .. } => Some(false),
+            Self::LiteOk { .. } => Some(false),
             Self::RestreamConsent { .. } => Some(false),
             Self::Qualifier { .. } => Some(false),
             Self::TripleQualifier { .. } => Some(false),
@@ -461,6 +464,23 @@ impl Requirement {
                     }),
                 }
             }
+            Self::LiteOk => {
+                let yes_checked = defaults.field_value("lite_ok").is_some_and(|value| value == "yes");
+                let no_checked = defaults.field_value("lite_ok").is_some_and(|value| value == "no");
+                RequirementStatus {
+                    blocks_submit: false,
+                    html_content: Box::new(move |errors| html! {
+                        : form_field("lite_ok", errors, html! {
+                            label(for = "lite_ok") : "Allow RSL-Lite?";
+                            br;
+                            input(id = "lite_ok-yes", type = "radio", name = "lite_ok", value = "yes", checked? = yes_checked);
+                            label(for = "lite_ok-yes") : "Yes";
+                            input(id = "lite_ok-no", type = "radio", name = "lite_ok", value = "no", checked? = no_checked);
+                            label(for = "lite_ok-no") : "No";
+                        });
+                    }),
+                }
+            }
             Self::RestreamConsent { optional: false, note } => {
                 let checked = defaults.field_value("restream_consent").is_some_and(|value| value == "on");
                 let team_config = data.team_config;
@@ -668,6 +688,9 @@ impl Requirement {
             Self::MqOk => if value.mq_ok.is_none() {
                 form_ctx.push_error(form::Error::validation("Please select one of the options.").with_name("mq_ok"));
             },
+            Self::LiteOk => if value.lite_ok.is_none() {
+                form_ctx.push_error(form::Error::validation("Please select one of the options.").with_name("lite_ok"));
+            },
             Self::RestreamConsent { optional: false, .. } => if !value.restream_consent {
                 form_ctx.push_error(form::Error::validation("Restream consent is required to enter this event.").with_name("restream_consent"));
             },
@@ -719,6 +742,7 @@ impl Requirement {
                     | Self::Rules { .. }
                     | Self::HardSettingsOk
                     | Self::MqOk
+                    | Self::LiteOk
                     | Self::RestreamConsent { .. }
                     | Self::Qualifier { .. }
                     | Self::TripleQualifier { .. }
@@ -782,6 +806,7 @@ pub(crate) struct EnterForm {
     yes_no: Option<BoolRadio>,
     hard_settings_ok: Option<BoolRadio>,
     mq_ok: Option<BoolRadio>,
+    lite_ok: Option<BoolRadio>,
     #[field(default = String::new())]
     text_field: String,
     #[field(default = String::new())]
@@ -1130,7 +1155,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                 if form.context.errors().next().is_none() {
                     let id = Id::<Teams>::new(&mut transaction).await?;
                     sqlx::query!(
-                        "INSERT INTO teams (id, series, event, plural_name, restream_consent, text_field, text_field2, yes_no, hard_settings_ok, mq_ok, mw_impl) VALUES ($1, $2, $3, FALSE, $4, $5, $6, $7, $8, $9, $10)",
+                        "INSERT INTO teams (id, series, event, plural_name, restream_consent, text_field, text_field2, yes_no, hard_settings_ok, mq_ok, lite_ok, mw_impl) VALUES ($1, $2, $3, FALSE, $4, $5, $6, $7, $8, $9, $10, $11)",
                         id as _,
                         series as _,
                         event,
@@ -1140,6 +1165,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                         value.yes_no == Some(BoolRadio::Yes),
                         value.hard_settings_ok == Some(BoolRadio::Yes),
                         value.mq_ok == Some(BoolRadio::Yes),
+                        value.lite_ok == Some(BoolRadio::Yes),
                         value.mw_impl as _,
                     ).execute(&mut *transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', 'none')", id as _, me.id as _).execute(&mut *transaction).await?;
@@ -1264,7 +1290,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                 if form.context.errors().next().is_none() {
                     let id = Id::<Teams>::new(&mut transaction).await?;
                     sqlx::query!(
-                        "INSERT INTO teams (id, series, event, name, restream_consent, text_field, text_field2, yes_no, hard_settings_ok, mq_ok, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+                        "INSERT INTO teams (id, series, event, name, restream_consent, text_field, text_field2, yes_no, hard_settings_ok, mq_ok, lite_ok, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
                         id as _,
                         series as _,
                         event,
@@ -1275,6 +1301,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                         value.yes_no == Some(BoolRadio::Yes),
                         value.hard_settings_ok == Some(BoolRadio::Yes),
                         value.mq_ok == Some(BoolRadio::Yes),
+                        value.lite_ok == Some(BoolRadio::Yes),
                         value.mw_impl as _,
                     ).execute(&mut *transaction).await?;
                     sqlx::query!("INSERT INTO team_members (team, member, status, role) VALUES ($1, $2, 'created', $3)", id as _, me.id as _, Role::from(my_role.expect("validated")) as _).execute(&mut *transaction).await?;
@@ -1432,7 +1459,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                     return Ok(if value.step2 {
                         let id = Id::<Teams>::new(&mut transaction).await?;
                         sqlx::query!(
-                            "INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent, text_field, text_field2, yes_no, hard_settings_ok, mq_ok, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
+                            "INSERT INTO teams (id, series, event, name, racetime_slug, restream_consent, text_field, text_field2, yes_no, hard_settings_ok, mq_ok, lite_ok, mw_impl) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
                             id as _,
                             series as _,
                             event,
@@ -1444,6 +1471,7 @@ pub(crate) async fn post(pool: &State<PgPool>, http_client: &State<reqwest::Clie
                             value.yes_no == Some(BoolRadio::Yes),
                             value.hard_settings_ok == Some(BoolRadio::Yes),
                             value.mq_ok == Some(BoolRadio::Yes),
+                            value.lite_ok == Some(BoolRadio::Yes),
                             value.mw_impl as _,
                         ).execute(&mut *transaction).await?;
                         for ((user, role), startgg_id) in users.into_iter().zip_eq(roles).zip_eq(startgg_ids) {
