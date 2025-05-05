@@ -466,6 +466,83 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
             }
         }),
+        "7" => Some(html! {
+            article {
+                p {
+                    : "Welcome to the 7th season of RSL, organized by ";
+                    : English.join_html_opt(data.organizers(transaction).await?);
+                    : "!";
+                }
+                h2 : "Signing up";
+                p : "Deadline for signing up is June 7th! The first round will start on Monday the 9th of June.";
+                h2 : "Tournament format";
+                p : "The tournament structure will begin with swiss rounds followed by a single elimination top 8 bracket. Semifinals and finals will be best of 3.";
+                p : "The number of swiss rounds will be determined by the number of entrants. We are aiming for 5-6 rounds.";
+                p : "To incorporate the leaderboard for this season, the higher seeded person will get the option to ban first. More on bans/blocks see below.";
+                h2 : "RSL vs. RSL-Lite";
+                p {
+                    : "New to this year is the introduction of RSL-Lite! On sign-up, players will have the option to opt in for RSL-Lite, a version of RSL with a simpler set of setting weights. If both players have opted in for RSL-Lite, Mido will offer an option to play with the RSL-Lite weights instead of normal RSL weights. For more information about the weights for RLS and RSL-Lite please check ";
+                    a(href = "https://rsl.one/weights") : "https://rsl.one/weights";
+                }
+                : "Bans and Blocks";
+                p : "This year we will be implementing a draft feature for the matches. Players can ban and block settings. The blocking and banning will be handled by Mido. Mido will open up scheduling threads where you can put in commands to ban and block.For more information on bans and blocks please check the references at the bottom.";
+                p {
+                    : "For RSL the following structure will be used:";
+                    br;
+                    : "Player 1 ban";
+                    br;
+                    : "Player 2 ban and block";
+                    br;
+                    : "Player 1 block and ban";
+                    br;
+                    : "Player 2 ban";
+                }
+                p {
+                    : "For RSL-Lite it will be as followed:";
+                    br;
+                    : "Player 1 ban";
+                    br;
+                    : "Player 2 ban";
+                }
+                h2 : "Gameplay Rules";
+                p {
+                    : "All races will be completed abiding by the Standard ruleset (";
+                    a(href = "https://docs.google.com/document/d/1BbvHJF8vtyrte76jpoCVQBTy9MYStpN3vr2PLdiCIMk/edit") : "https://zsr.link/rsls6fpa";
+                    : "), with a single exception:";
+                }
+                ul {
+                    li : "Crossing the Gerudo Valley bridge as a child shall be banned unless it is from back to front.";
+                }
+                p : "Timing will end differently based on the gamemode:";
+                ul {
+                    li : "If it is a “Beat Ganon” seed, standard timing rules apply; .done is on the first frame of the cutscene that plays after beating Ganon.";
+                    li : "If it is a “Triforce Hunt” seed, .done will be on the first frame the game fades completely to black after obtaining the last required piece.";
+                }
+                h2 : "Scheduling";
+                p : "This year the scheduling will be handled by Mido. Mido will open up scheduling threads where players can pick their blocks/bans and players can schedule their matches. Mido will also open up a raceroom, post them in the thread, and roll the seed for players with the blocks/bans the players used.";
+                h2 : "Breaks";
+                p : "While breaks are not required, we encourage racers to organize mid-race breaks every 2 hours or so.";
+                p : "If all players agree to a break, the players must pause their game when their timer reaches the agreed upon time and must remain paused until the break is over.";
+                p : "If a player misses the start of the break, they must pause for the same duration as the agreed upon break, as soon as it becomes apparent.";
+                p : "In the case you forgot a break, the time will be added to your final time. Do not intentionally do this and repeated instances may result in disciplinary action or removing your break privileges.";
+                p {
+                    : "You can use the following command in the raceroom before the race begins to get a reminder when to pause your game: ";
+                    code : "!breaks 5 every 2h30";
+                    : ", where you can set your own agreed upon length and interval.";
+                }
+                p : "Huge thank you to Fenhl for helping with the bans/blocks and making it possible to run this on Midos House. You are the best!";
+                h2 : "References";
+                p {
+                    : "For more information about bans and blocks please check ";
+                    a(href = "ttps://docs.google.com/document/d/1lJk1KzRG3gRhDr1oRZq-N81UbJ1e2nISICb8o2G2A_A/edit") : "https://zsr.link/RSLs7";
+                    : " at the bottom of the page";
+                }
+                p {
+                    : "For current standings and amount of seed completed check ";
+                    a(href = "https://rsl.one/") : "https://rsl.one/";
+                }
+            }
+        }),
         _ => None,
     })
 }
