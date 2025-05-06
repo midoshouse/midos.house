@@ -196,7 +196,7 @@ impl WeeklyKind {
 }
 
 // Make sure to keep the following in sync with each other and the rando_version and single_settings database entries:
-pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevFenhl, 8, 2, 76, 1) };
+pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned { version: ootr_utils::Version::from_branch(ootr_utils::Branch::DevFenhl, 8, 2, 76, 6) };
 pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Medium;
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
     static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/s/chests-w-8.2.76-fenhl.5.json")).expect("failed to parse chest weights"));
@@ -218,15 +218,25 @@ fn long_weekly_settings() -> RawHtml<String> {
                 a(href = uri!(event::info(Series::Standard, "8"))) : "S8";
                 : " Base";
             }
-            li : "6 Medallion Bridge (remove GBK)";
+            li : "6 Medallion Bridge (GBK removed)";
             li : "Dungeon ER + Boss ER";
             li : "Open Deku";
             li : "Random Spawns (both ages)";
+            li : "Start with Lens + FW";
             li : "Start with Max Rupees";
             li : "Free Scarecrow's Song";
             li : "Preplanted Beans";
             li : "Ruto on F1";
-            li : "Key Appearance Matches Dungeons";
+            li : "Fast Shadow Boat";
+            li : "TCG requires Lens + Magic";
+            li : "Key Appearance Matches Dungeons (cosmetic)";
+            li {
+                : "Additional Tricks Enabled:";
+                ul {
+                    li : "DC Armos Push for Gold Skulltula";
+                    li : "Deku Basement Web with Bow";
+                }
+            }
             li {
                 : "Hint Distribution:";
                 ul {
@@ -234,10 +244,12 @@ fn long_weekly_settings() -> RawHtml<String> {
                     li : "5 Always";
                     li : "5 Path";
                     li : "3 Important Check";
+                    li : "3 Entrance";
+                    li : "2 Sometimes";
                     li : "2 Dual";
-                    li : "4 Sometimes";
-                    li : "HC3 & HF3 disabled";
                 }
+                strong : "Note:";
+                : " Boss Entrances have been added into the hintable entrance pool.";
             }
         }
     }
@@ -294,6 +306,8 @@ pub(crate) fn weekly_settings() -> seed::Settings {
         ]),
         format!("starting_inventory") => json!([
             "ocarina",
+            "farores_wind",
+            "lens",
             "zeldas_letter",
         ]),
         format!("start_with_consumables") => json!(true),
