@@ -232,7 +232,7 @@ pub(crate) struct ExtraData {
     spoiler_status: SpoilerStatus,
     pub(crate) file_hash: Option<[HashIcon; 5]>,
     pub(crate) password: Option<[OcarinaNote; 6]>,
-    pub(crate) world_count: Option<NonZeroU8>,
+    pub(crate) world_count: Option<NonZero<u8>>,
     chests: ChestAppearances,
 }
 

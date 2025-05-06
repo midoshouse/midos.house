@@ -233,6 +233,32 @@ pub(crate) struct Weights {
     pub(crate) weights: HashMap<String, HashMap<String, usize>>,
 }
 
+#[derive(Deserialize)]
+pub(crate) struct Leaderboard {
+    pub(crate) metadata: LeaderboardMetadata,
+    pub(crate) qualified: Vec<LeaderboardPlayer>,
+}
+
+impl Leaderboard {
+    pub(crate) async fn get(http_client: &reqwest::Client) -> wheel::Result<Self> {
+        http_client.get("https://rsl.one/api/leaderboard")
+            .send().await?
+            .detailed_error_for_status().await?
+            .json_with_text_in_error().await
+    }
+}
+
+#[derive(Deserialize)]
+pub(crate) struct LeaderboardMetadata {
+    pub(crate) required_races: u32,
+    pub(crate) season: String,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct LeaderboardPlayer {
+    pub(crate) userid: String,
+}
+
 pub(crate) struct ForceOffSetting {
     pub(crate) name: &'static str,
     pub(crate) display: &'static str,

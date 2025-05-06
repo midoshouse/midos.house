@@ -21,7 +21,7 @@ pub(crate) use {
         iter,
         marker::PhantomData,
         mem,
-        num::NonZeroU8,
+        num::NonZero,
         path::{
             Path,
             PathBuf,

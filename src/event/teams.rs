@@ -1101,6 +1101,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                                                                 }
                                                             }
                                                         };
+                                                        enter::Requirement::RslLeaderboard => {}
                                                         enter::Requirement::External { .. } => {}
                                                     }
                                                 }

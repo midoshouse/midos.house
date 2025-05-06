@@ -1770,7 +1770,7 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
         html! {
             article {
                 p {
-                    a(href = uri!(auth::login(Some(uri!(create_race(event.series, &*event.event, Some(NonZeroU8::new(if ctx.field_value("team3").is_some() { 3 } else { 2 }).unwrap()))))))) : "Sign in or create a Mido's House account";
+                    a(href = uri!(auth::login(Some(uri!(create_race(event.series, &*event.event, Some(NonZero::<u8>::new(if ctx.field_value("team3").is_some() { 3 } else { 2 }).unwrap()))))))) : "Sign in or create a Mido's House account";
                     : " to create a race.";
                 }
             }
@@ -1784,8 +1784,8 @@ pub(crate) async fn create_race_form(mut transaction: Transaction<'_, Postgres>,
 }
 
 #[rocket::get("/event/<series>/<event>/races/new?<players>")]
-pub(crate) async fn create_race(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String, players: Option<NonZeroU8>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
-    let is_3p = match players.unwrap_or_else(|| NonZeroU8::new(2).unwrap()).get() {
+pub(crate) async fn create_race(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String, players: Option<NonZero<u8>>) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+    let is_3p = match players.unwrap_or_else(|| NonZero::<u8>::new(2).unwrap()).get() {
         2 => false,
         3 => true,
         _ => return Err(StatusOrError::Status(Status::NotImplemented)),

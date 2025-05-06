@@ -143,6 +143,8 @@ pub(crate) enum Requirement {
         #[serde(default)]
         exclude_players: usize,
     },
+    /// Must finish at least 3 races on the RSL leaderboard for this season
+    RslLeaderboard,
     /// A signup requirement that cannot be checked automatically
     External {
         text: String,
@@ -218,11 +220,18 @@ impl Requirement {
                     false
                 }
             }),
+            Self::RslLeaderboard => Some(if let Some(racetime) = &me.racetime {
+                let rsl::Leaderboard { metadata, qualified, .. } = rsl::Leaderboard::get(http_client).await?;
+                if metadata.season != data.event { return Ok(None) }
+                qualified.iter().any(|iter_player| iter_player.userid == racetime.id)
+            } else {
+                false
+            }),
             Self::External { .. } => None,
         })
     }
 
-    fn check_get(&self, data: &Data<'_>, is_checked: Option<bool>, redirect_uri: rocket::http::uri::Origin<'_>, defaults: &pic::EnterFormDefaults<'_>) -> Result<RequirementStatus, Error> {
+    async fn check_get(&self, http_client: &reqwest::Client, data: &Data<'_>, is_checked: Option<bool>, redirect_uri: rocket::http::uri::Origin<'_>, defaults: &pic::EnterFormDefaults<'_>) -> Result<RequirementStatus, Error> {
         Ok(match self {
             Self::RaceTime => {
                 let mut html_content = html! {
@@ -636,6 +645,18 @@ impl Requirement {
                     }),
                 }
             }
+            Self::RslLeaderboard => {
+                let rsl::Leaderboard { metadata: rsl::LeaderboardMetadata { required_races, .. }, .. } = rsl::Leaderboard::get(http_client).await?;
+                RequirementStatus {
+                    blocks_submit: is_checked.is_none_or(|is_checked| !is_checked),
+                    html_content: Box::new(move |_| html! {
+                        : "Have ";
+                        : required_races;
+                        : " finishes on ";
+                        a(href = "https://rsl.one/") : "the RSL leaderboard";
+                    }),
+                }
+            }
             Self::External { text } => {
                 let text = text.clone();
                 RequirementStatus {
@@ -735,6 +756,7 @@ impl Requirement {
                     Self::DiscordGuild { .. } => Cow::Borrowed("You must join the event's Discord server to enter."), //TODO invite link?
                     Self::Challonge => Cow::Borrowed("A Challonge account is required to enter this event."), //TODO link to /login/challonge
                     Self::QualifierPlacement { .. } => Cow::Borrowed("You have not secured a qualifying placement."), //TODO different message if the player has overqualified or overqualifying due to opt-outs is still possible
+                    Self::RslLeaderboard => Cow::Borrowed("You have not finished the required number of races on the RSL leaderboard."), //TODO link to rsl.one
                     | Self::StartGG { .. }
                     | Self::TextField { .. }
                     | Self::TextField2 { .. }
@@ -880,7 +902,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, http_
                             let mut requirements_display = Vec::with_capacity(requirements.len());
                             for requirement in requirements {
                                 let is_checked = requirement.is_checked(&mut transaction, http_client, discord_ctx, me, &data).await?;
-                                let status = requirement.check_get(&data, is_checked, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults)?;
+                                let status = requirement.check_get(http_client, &data, is_checked, uri!(get(data.series, &*data.event, defaults.my_role(), defaults.teammate())), &defaults).await?;
                                 if status.blocks_submit { can_submit = false }
                                 requirements_display.push((is_checked, status.html_content));
                             }
