@@ -534,7 +534,7 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 h2 : "References";
                 p {
                     : "For more information about bans and blocks please check ";
-                    a(href = "ttps://docs.google.com/document/d/1lJk1KzRG3gRhDr1oRZq-N81UbJ1e2nISICb8o2G2A_A/edit") : "https://zsr.link/RSLs7";
+                    a(href = "https://docs.google.com/document/d/1lJk1KzRG3gRhDr1oRZq-N81UbJ1e2nISICb8o2G2A_A/edit") : "https://zsr.link/RSLs7";
                     : " at the bottom of the page";
                 }
                 p {
