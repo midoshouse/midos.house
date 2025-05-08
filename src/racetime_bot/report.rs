@@ -303,10 +303,10 @@ async fn report_1v1<'a, S: Score>(mut transaction: Transaction<'a, Postgres>, ct
                     "loser" => loser,
                 ];
                 if let Some(winning_time) = winning_time {
-                    form.insert("winningTime", league::format_duration(winning_time));
+                    form.insert("winningTime", winning_time.as_secs().to_string());
                 }
                 if let Some(losing_time) = losing_time {
-                    form.insert("losingTime", league::format_duration(losing_time));
+                    form.insert("losingTime", losing_time.as_secs().to_string());
                 }
                 let request = ctx.global_state.http_client.post("https://league.ootrandomizer.com/reportResultFromMidoHouse")
                     .bearer_auth(&ctx.global_state.league_api_key)
