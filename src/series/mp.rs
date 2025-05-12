@@ -203,8 +203,8 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                     p : "Scheduling and seed rolling will be handled through Mido's House.";
                     p : "Prerolling a seed by Mido is set up to reduce waiting time on generating a seed. Matches that are scheduled on short notice might have to wait a bit, please be patient.";
                     p {
-                        : "Seeds can also be generated on Fenhl's branch v8.2.69-7 with the 4th Mixed Pools Tournament preset: ";
-                        a(href = "https://ootrandomizer.com/generatorDev?version=devFenhl_8.2.69-7") : "https://ootrandomizer.com/generatorDev?version=devFenhl_8.2.69-7";
+                        : "Seeds can also be generated on Fenhl's branch v8.2.76-10 with the 4th Mixed Pools Tournament preset: ";
+                        a(href = "https://ootrandomizer.com/generatorDev?version=devFenhl_8.2.76-10") : "https://ootrandomizer.com/generatorDev?version=devFenhl_8.2.76-10";
                     }
                     p : "We are looking to get through this tournament quickly and efficiently. Thus, all matchmaking should honor the following time constraints:";
                     ul {
