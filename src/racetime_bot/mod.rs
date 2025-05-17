@@ -5015,20 +5015,26 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                                     }
                                 }
                             } else {
-                                if let Some(channel) = event.discord_race_room_channel {
-                                    if let Some(thread) = cal_event.race.scheduling_thread {
-                                        thread.say(&*ctx, &msg).await?;
-                                        channel.send_message(&*ctx, CreateMessage::default().content(msg).allowed_mentions(CreateAllowedMentions::default())).await?;
+                                if_chain! {
+                                    if !cal_event.is_private_async_part();
+                                    if let Some(channel) = event.discord_race_room_channel;
+                                    then {
+                                        if let Some(thread) = cal_event.race.scheduling_thread {
+                                            thread.say(&*ctx, &msg).await?;
+                                            channel.send_message(&*ctx, CreateMessage::default().content(msg).allowed_mentions(CreateAllowedMentions::default())).await?;
+                                        } else {
+                                            channel.say(&*ctx, msg).await?;
+                                        }
                                     } else {
-                                        channel.say(&*ctx, msg).await?;
+                                        if let Some(thread) = cal_event.race.scheduling_thread {
+                                            thread.say(&*ctx, msg).await?;
+                                        } else if let Some(channel) = event.discord_organizer_channel {
+                                            channel.say(&*ctx, msg).await?;
+                                        } else {
+                                            // DM Fenhl
+                                            FENHL.create_dm_channel(&*ctx).await?.say(&*ctx, msg).await?;
+                                        }
                                     }
-                                } else if let Some(thread) = cal_event.race.scheduling_thread {
-                                    thread.say(&*ctx, msg).await?;
-                                } else if let Some(channel) = event.discord_organizer_channel {
-                                    channel.say(&*ctx, msg).await?;
-                                } else {
-                                    // DM Fenhl
-                                    FENHL.create_dm_channel(&*ctx).await?.say(&*ctx, msg).await?;
                                 }
                             }
                         }
