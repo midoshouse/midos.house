@@ -1367,7 +1367,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     )
                                                 };
                                                 lock!(new_room_lock = new_room_lock; {
-                                                    if let Some(msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &cal_event, &event).await? {
+                                                    if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &cal_event, &event).await? {
                                                         if let Some(channel) = event.discord_race_room_channel {
                                                             channel.say(ctx, &msg).await?;
                                                         }
@@ -1550,8 +1550,8 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     )
                                                 };
                                                 lock!(new_room_lock = new_room_lock; {
-                                                    if let Some(mut msg) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &cal_event, &event).await? {
-                                                        if cal_event.is_private_async_part() {
+                                                    let should_post_regular_response = if let Some((is_room_url, mut msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &cal_event, &event).await? {
+                                                        if is_room_url && cal_event.is_private_async_part() {
                                                             msg = match cal_event.race.entrants {
                                                                 Entrants::Two(_) => format!("unlisted room for first async half: {msg}"),
                                                                 Entrants::Three(_) => format!("unlisted room for first/second async part: {msg}"),
@@ -1572,7 +1572,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .ephemeral(cal_event.is_private_async_part()) //TODO create public response without room link
                                                             .content(msg)
                                                         )).await?;
+                                                        cal_event.is_private_async_part()
                                                     } else {
+                                                        true
+                                                    };
+                                                    if should_post_regular_response {
                                                         let mut response_content = MessageBuilder::default();
                                                         response_content.push(if let Entrants::Two(_) = cal_event.race.entrants { "Your half of " } else { "Your part of " });
                                                         response_content.push(if let Some(game) = cal_event.race.game { format!("game {game}") } else { format!("this race") });

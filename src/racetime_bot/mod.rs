@@ -4482,7 +4482,7 @@ impl RaceHandler<GlobalState> for Handler {
     }
 }
 
-pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, host_info: &racetime::HostInfo, client_id: &str, client_secret: &str, extra_room_tx: &RwLock<mpsc::Sender<String>>, http_client: &reqwest::Client, clean_shutdown: Arc<Mutex<CleanShutdown>>, cal_event: &cal::Event, event: &event::Data<'_>) -> Result<Option<String>, Error> {
+pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, host_info: &racetime::HostInfo, client_id: &str, client_secret: &str, extra_room_tx: &RwLock<mpsc::Sender<String>>, http_client: &reqwest::Client, clean_shutdown: Arc<Mutex<CleanShutdown>>, cal_event: &cal::Event, event: &event::Data<'_>) -> Result<Option<(bool, String)>, Error> {
     let room_url = match cal_event.should_create_room(&mut *transaction, event).await.to_racetime()? {
         cal::RaceHandleMode::None => return Ok(None),
         cal::RaceHandleMode::Notify => Err("please get your equipment and report to the tournament room"),
@@ -4645,6 +4645,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             Err("remember to send your video to an organizer once you're done") //TODO “please check your direct messages” for private async parts, “will be handled here in the match thread” for public async parts
         }
     };
+    let is_room_url = room_url.is_ok();
     let msg = if_chain! {
         if let French = event.language;
         if let Ok(ref room_url_fr) = room_url;
@@ -4718,24 +4719,79 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
                 Entrants::Two([ref team1, ref team2]) => {
                     if let Some(prefix) = info_prefix {
                         msg.push_safe(prefix);
+                        match cal_event.kind {
+                            cal::EventKind::Normal => {
+                                msg.push(": ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
+                            }
+                            cal::EventKind::Async1 => {
+                                msg.push(" (async): ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
+                            }
+                            cal::EventKind::Async2 => {
+                                msg.push(" (async): ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                            }
+                            cal::EventKind::Async3 => unreachable!(),
+                        }
+                    } else {
                         //TODO adjust for asyncs
-                        msg.push(": ");
+                        msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                        msg.push(" vs ");
+                        msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
                     }
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                    msg.push(" vs ");
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
                 }
                 Entrants::Three([ref team1, ref team2, ref team3]) => {
                     if let Some(prefix) = info_prefix {
                         msg.push_safe(prefix);
+                        match cal_event.kind {
+                            cal::EventKind::Normal => {
+                                msg.push(": ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
+                            }
+                            cal::EventKind::Async1 => {
+                                msg.push(" (async): ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
+                            }
+                            cal::EventKind::Async2 => {
+                                msg.push(" (async): ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
+                            }
+                            cal::EventKind::Async3 => {
+                                msg.push(" (async): ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                                msg.push(" vs ");
+                                msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
+                            }
+                        }
+                    } else {
                         //TODO adjust for asyncs
-                        msg.push(": ");
+                        msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
+                        msg.push(" vs ");
+                        msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
+                        msg.push(" vs ");
+                        msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
                     }
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team1).await.to_racetime()?;
-                    msg.push(" vs ");
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team2).await.to_racetime()?;
-                    msg.push(" vs ");
-                    msg.mention_entrant(&mut *transaction, event.discord_guild, team3).await.to_racetime()?;
                 }
             }
             if let Some(game) = cal_event.race.game {
@@ -4764,7 +4820,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             msg.build()
         }
     };
-    Ok(Some(msg))
+    Ok(Some((is_room_url, msg)))
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -4937,9 +4993,9 @@ async fn create_rooms(global_state: Arc<GlobalState>, mut shutdown: rocket::Shut
                     let mut transaction = global_state.db_pool.begin().await?;
                     for cal_event in cal::Event::rooms_to_open(&mut transaction, &global_state.http_client).await? {
                         let event = cal_event.race.event(&mut transaction).await?;
-                        if let Some(msg) = create_room(&mut transaction, &*global_state.discord_ctx.read().await, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.extra_room_tx, &global_state.http_client, global_state.clean_shutdown.clone(), &cal_event, &event).await? {
+                        if let Some((is_room_url, msg)) = create_room(&mut transaction, &*global_state.discord_ctx.read().await, &global_state.host_info, &global_state.racetime_config.client_id, &global_state.racetime_config.client_secret, &global_state.extra_room_tx, &global_state.http_client, global_state.clean_shutdown.clone(), &cal_event, &event).await? {
                             let ctx = global_state.discord_ctx.read().await;
-                            if cal_event.is_private_async_part() {
+                            if is_room_url && cal_event.is_private_async_part() {
                                 let msg = match cal_event.race.entrants {
                                     Entrants::Two(_) => format!("unlisted room for first async half: {msg}"),
                                     Entrants::Three(_) => format!("unlisted room for first/second async part: {msg}"),
