@@ -161,7 +161,7 @@ impl Data {
             };
             if let Some((spoiler_path, spoiler_file_name)) = match self.files {
                 Some(Files::MidosHouse { locked_spoiler_log_path: Some(ref spoiler_path), .. }) if fs::exists(spoiler_path).await? => Some((PathBuf::from(spoiler_path), None)),
-                Some(Files::MidosHouse { locked_spoiler_log_path: None, ref file_stem } | Files::OotrWeb { ref file_stem, .. }) => {
+                Some(Files::MidosHouse { ref file_stem, .. } | Files::OotrWeb { ref file_stem, .. }) => {
                     let spoiler_file_name = format!("{file_stem}_Spoiler.json");
                     Some((Path::new(DIR).join(&spoiler_file_name).to_owned(), Some(spoiler_file_name)))
                 }
