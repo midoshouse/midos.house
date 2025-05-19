@@ -13,7 +13,7 @@ document.querySelectorAll('.daterange').forEach(function(dateRange) {
 });
 
 document.querySelectorAll('.timezone').forEach(function(timezone) {
-    timezone.textContent = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    timezone.textContent = Intl.DateTimeFormat([], {timeZoneName: 'longGeneric'}).formatToParts().find(part => part.type == 'timeZoneName').value;
 });
 
 document.querySelectorAll('.timezone-wrapper').forEach(function(timezoneWrapper) {
