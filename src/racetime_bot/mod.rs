@@ -4445,16 +4445,27 @@ impl RaceHandler<GlobalState> for Handler {
                     });
                     self.password_sent = true;
                 }
-                if let Some(OfficialRaceData { ref event, .. }) = self.official_data {
-                    if let Some(organizer_channel) = event.discord_organizer_channel {
-                        organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
-                            //TODO mention organizer role
-                            .push("race cancelled: <https://")
-                            .push(racetime_host())
-                            .push(&ctx.data().await.url)
-                            .push('>')
-                            .build()
-                        ).await.to_racetime()?;
+                if let Some(OfficialRaceData { ref cal_event, ref event, .. }) = self.official_data {
+                    if let cal::Source::League { id } = cal_event.race.source {
+                        let form = collect![as HashMap<_, _>:
+                            "id" => id.to_string(),
+                        ];
+                        let request = ctx.global_state.http_client.post("https://league.ootrandomizer.com/reportCancelFromMidoHouse")
+                            .bearer_auth(&ctx.global_state.league_api_key)
+                            .form(&form);
+                        println!("reporting cancel to League website: {:?}", serde_urlencoded::to_string(&form));
+                        request.send().await?.detailed_error_for_status().await.to_racetime()?;
+                    } else {
+                        if let Some(organizer_channel) = event.discord_organizer_channel {
+                            organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
+                                //TODO mention organizer role
+                                .push("race cancelled: <https://")
+                                .push(racetime_host())
+                                .push(&ctx.data().await.url)
+                                .push('>')
+                                .build()
+                            ).await.to_racetime()?;
+                        }
                     }
                 }
                 self.unlock_spoiler_log(ctx, goal).await?;
