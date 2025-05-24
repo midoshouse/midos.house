@@ -2161,9 +2161,9 @@ impl SeedRollUpdate {
                 lock!(@write state = state; *state = RaceState::Init);
             }
             Self::Error(e) => {
-                eprintln!("seed roll error: {e} ({e:?})");
+                eprintln!("seed roll error in https://{}{}: {e} ({e:?})", racetime_host(), ctx.data().await.url);
                 if let Environment::Production = Environment::default() {
-                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("seed roll error: {e} ({e:?})"))).await.to_racetime()?;
+                    wheel::night_report(&format!("{}/error", night_path()), Some(&format!("seed roll error in https://{}{}: {e} ({e:?})", racetime_host(), ctx.data().await.url))).await.to_racetime()?;
                 }
                 ctx.say("Sorry @entrants, something went wrong while rolling the seed. Please report this error to Fenhl and if necessary roll the seed manually.").await?;
             }
