@@ -2333,7 +2333,7 @@ impl Handler {
                         return true
                     }
                 }
-                if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return !existing_state.cleaned_up }
+                if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return !existing_state.cleaned_up && race_data.ended_at.is_none_or(|ended_at| Utc::now() - ended_at < TimeDelta::hours(1)) }
             } else {
                 if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
             }
