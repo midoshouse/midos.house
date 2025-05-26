@@ -812,6 +812,7 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> seed::Settings 
     let triforce_count = rng().random_range(50..=100);
     collect![
         format!("user_message") => json!("Tournoi Francophone Saison 5"),
+        format!("password_lock") => json!(true),
         format!("reachable_locations") => match reachable {
             "all" => json!("all"),
             "required" => json!("beatable"),
