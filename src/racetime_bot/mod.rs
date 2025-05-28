@@ -1768,9 +1768,9 @@ async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: Versione
         }
     };
     #[cfg(unix)] {
-        settings.insert(format!("rom"), json!(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join("oot-ntscu-1.0.z64")).ok_or(RollError::RomPath)?));
+        settings.insert(format!("rom"), json!(BaseDirectories::new().find_data_file(Path::new("midos-house").join("oot-ntscu-1.0.z64")).ok_or(RollError::RomPath)?));
         if settings.get("language").and_then(|language| language.as_str()).is_some_and(|language| matches!(language, "french" | "german")) {
-            settings.insert(format!("pal_rom"), json!(BaseDirectories::new()?.find_data_file(Path::new("midos-house").join("oot-pal-1.0.z64")).ok_or(RollError::RomPath)?));
+            settings.insert(format!("pal_rom"), json!(BaseDirectories::new().find_data_file(Path::new("midos-house").join("oot-pal-1.0.z64")).ok_or(RollError::RomPath)?));
         }
     }
     settings.insert(format!("create_patch_file"), json!(true));
@@ -1848,7 +1848,6 @@ pub(crate) enum RollError {
     #[cfg(unix)] #[error(transparent)] Sql(#[from] sqlx::Error),
     #[error(transparent)] Utf8(#[from] std::string::FromUtf8Error),
     #[error(transparent)] Wheel(#[from] wheel::Error),
-    #[cfg(unix)] #[error(transparent)] Xdg(#[from] xdg::BaseDirectoriesError),
     #[error("{display}")]
     Cloned {
         debug: String,
