@@ -5067,7 +5067,13 @@ async fn handle_rooms(global_state: Arc<GlobalState>, racetime_config: &ConfigRa
     let mut last_crash = Instant::now();
     let mut wait_time = Duration::from_secs(1);
     loop {
-        match racetime::Bot::new_with_host(global_state.host_info.clone(), CATEGORY, &racetime_config.client_id, &racetime_config.client_secret, global_state.clone()).await {
+        match racetime::BotBuilder::new(CATEGORY, &racetime_config.client_id, &racetime_config.client_secret)
+            .state(global_state.clone())
+            .host(global_state.host_info.clone())
+            .user_agent(concat!("MidosHouse/", env!("CARGO_PKG_VERSION"), " (https://github.com/midoshouse/midos.house)"))
+            .scan_races_every(Duration::from_secs(5))
+            .build().await
+        {
             Ok(bot) => {
                 lock!(@write extra_room_tx = global_state.extra_room_tx; *extra_room_tx = bot.extra_room_sender());
                 let () = bot.run_until::<Handler, _, _>(shutdown).await?;
