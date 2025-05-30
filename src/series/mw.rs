@@ -1704,8 +1704,8 @@ pub(crate) struct RaceTimeTeamMember {
 pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, data: Data<'_>, ctx: Context<'_>, http_client: &reqwest::Client) -> Result<RawHtml<String>, Error> {
     let header = data.header(&mut transaction, me.as_ref(), Tab::Enter, false).await?;
     Ok(page(transaction, &me, &uri, PageStyle { chests: data.chests().await?, ..PageStyle::default() }, &format!("Enter — {}", data.display_name), if let Some(ref me) = me {
-        if let Some(ref racetime) = me.racetime {
-            if let Some(racetime_user) = racetime_bot::user_data(http_client, &racetime.id).await? {
+        match me.racetime_user_data(http_client).await? {
+            Some(Some(racetime_user)) => {
                 let mut errors = ctx.errors().collect_vec();
                 if racetime_user.teams.is_empty() {
                     html! {
@@ -1737,20 +1737,18 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
                         }, errors, "Next");
                     }
                 }
-            } else {
-                html! {
-                    : header;
-                    article {
-                        p {
-                            : "Your racetime.gg profile is not public. Please ";
-                            a(href = format!("https://{}/account/connections", racetime_host())) : "connect a Twitch or Patreon account to your racetime.gg account";
-                            : " or participate in a recorded race.";
-                        }
+            }
+            Some(None) => html! {
+                : header;
+                article {
+                    p {
+                        : "Your racetime.gg profile is not public. Please ";
+                        a(href = format!("https://{}/account/connections", racetime_host())) : "connect a Twitch or Patreon account to your racetime.gg account";
+                        : " or participate in a recorded race.";
                     }
                 }
-            }
-        } else {
-            html! {
+            },
+            None => html! {
                 : header;
                 article {
                     p {
@@ -1758,7 +1756,7 @@ pub(crate) async fn enter_form(mut transaction: Transaction<'_, Postgres>, me: O
                         : " to enter this event.";
                     }
                 }
-            }
+            },
         }
     } else {
         html! {

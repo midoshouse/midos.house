@@ -903,7 +903,7 @@ impl Race {
             match entrant {
                 Entrant::MidosHouseTeam(team) => for (member, role) in team.members_roles(&mut *transaction).await? {
                     if event.team_config.role_is_racing(role) {
-                        if let Some(twitch_name) = member.racetime_user_data(http_client).await?.and_then(|racetime_user_data| racetime_user_data.twitch_name) {
+                        if let Some(twitch_name) = member.racetime_user_data(http_client).await?.and_then(identity).and_then(|racetime_user_data| racetime_user_data.twitch_name) {
                             channels.push(Cow::Owned(twitch_name));
                         } else {
                             return Ok(None)
@@ -921,7 +921,7 @@ impl Race {
                 }
                 Entrant::Discord { twitch_username: None, racetime_id: None, id } => if_chain! {
                     if let Some(user) = User::from_discord(&mut **transaction, *id).await?;
-                    if let Some(racetime_user_data) = user.racetime_user_data(http_client).await?;
+                    if let Some(Some(racetime_user_data)) = user.racetime_user_data(http_client).await?;
                     if let Some(twitch_name) = racetime_user_data.twitch_name;
                     then {
                         channels.push(Cow::Owned(twitch_name));
