@@ -829,7 +829,7 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> seed::Settings 
     if mixed_dungeons == "mixed" {
         mix_entrance_pools.push("Dungeon");
     }
-    let triforce_count = rng().random_range(50..=100);
+    let triforce_count = 30;
     collect![
         format!("user_message") => json!("Tournoi Francophone Saison 5"),
         format!("password_lock") => json!(true),
