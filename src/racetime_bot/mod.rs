@@ -485,7 +485,11 @@ impl Goal {
             Self::Mq => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 0) },
             Self::MultiworldS3 => VersionedBranch::Pinned { version: rando::Version::from_dev(6, 2, 205) },
             Self::MultiworldS4 => VersionedBranch::Pinned { version: rando::Version::from_dev(7, 1, 199) },
-            Self::MultiworldS5 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 2, 76) },
+            Self::MultiworldS5 => VersionedBranch::Pinned { version: if Utc::now() >= Utc.with_ymd_and_hms(2025, 6, 4, 16, 0, 0).single().expect("wrong hardcoded datetime") {
+                rando::Version::from_dev(8, 3, 0)
+            } else {
+                rando::Version::from_dev(8, 2, 76)
+            } },
             Self::NineDaysOfSaws => VersionedBranch::Pinned { version: rando::Version::from_branch(rando::Branch::DevFenhl, 6, 9, 14, 2) },
             Self::Pic7 => VersionedBranch::Custom { github_username: Cow::Borrowed("fenhl"), branch: Cow::Borrowed("frogs2-melody") },
             Self::Sgl2023 => VersionedBranch::Latest { branch: rando::Branch::Sgl2023 },
