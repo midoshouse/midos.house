@@ -1559,11 +1559,11 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                         ),
                     },
                 };
-                cal_event.push(Summary::new(if let Some(game) = race.game {
+                cal_event.push(Summary::new(ics::escape_text(if let Some(game) = race.game {
                     format!("{summary_prefix}, game {game}")
                 } else {
                     summary_prefix
-                }));
+                })));
                 cal_event.push(dtstart(start));
                 cal_event.push(dtend(race_event.end().unwrap_or_else(|| start + match event.series {
                     Series::TriforceBlitz => TimeDelta::hours(2),
