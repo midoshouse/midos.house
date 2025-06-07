@@ -81,7 +81,7 @@ pub(crate) enum MatchSource<'a> {
         community: Option<&'a str>,
         tournament: &'a str,
     },
-    League, //TODO automatically scan for new matches and create scheduling threads
+    League,
     StartGG(&'a str),
 }
 
@@ -565,7 +565,7 @@ impl<'a> Data<'a> {
                 @let practice_seed_url = self.single_settings.is_some().then(|| uri!(practice_seed(self.series, &*self.event)));
                 @let practice_race_url = if_chain! {
                     if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event);
-                    if goal.is_custom(); //TODO also support non-custom goals, needs either a list of the internal goal IDs or an adjustment to the startrace page's GET parameter parsing
+                    if goal.is_custom(); //TODO also support non-custom goals, see https://github.com/racetimeGG/racetime-app/issues/215
                     then {
                         let mut practice_url = Url::parse(&format!("https://{}/{}/startrace", racetime_host(), racetime_bot::CATEGORY))?;
                         practice_url

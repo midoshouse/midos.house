@@ -383,7 +383,7 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                         }
                     }
                 }
-                //TODO if this may be outdated, link to racetime.gg login page for refreshing
+                //TODO if this may be outdated, link to Discord login page for refreshing
             }
         }
     } else if me.as_ref().is_some_and(|me| me.id == user.id) {

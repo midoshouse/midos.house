@@ -2873,7 +2873,7 @@ impl RaceHandler<GlobalState> for Handler {
                             let id = seed_id.parse().to_racetime()?;
                             race_state = RaceState::Rolled(seed::Data {
                                 file_hash: None,
-                                password: None,
+                                password: None, //TODO get from API
                                 files: Some(seed::Files::OotrWeb {
                                     gen_time: Utc::now(),
                                     file_stem: Cow::Owned(ctx.global_state.ootr_api_client.patch_file_stem(id).await.to_racetime()?),
@@ -2970,7 +2970,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 vec![
                                     ("Roll seed", ActionButton::Message {
                                         message: format!("!seed"),
-                                        help_text: Some(format!("Create a seed with the current practice settings.")), //TODO update when league/8 settings are final
+                                        help_text: Some(format!("Create a seed with the settings used for the season.")),
                                         survey: None,
                                         submit: None,
                                     }),
