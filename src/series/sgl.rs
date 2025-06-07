@@ -57,6 +57,16 @@ impl RestreamMatch {
     }
 }
 
+impl fmt::Display for RestreamMatch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.title.is_empty() {
+            write!(f, "{}", self.players.iter().map(|player| &player.streaming_from).format(" vs "))
+        } else {
+            self.title.fmt(f)
+        }
+    }
+}
+
 #[derive(Clone, Deserialize)]
 pub(crate) struct RestreamChannel {
     pub(crate) language: Language,

@@ -2589,7 +2589,9 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                             let msg = MessageBuilder::default()
                                                 .push("could not find any races matching SpeedGaming match ")
                                                 .push_mono(restream_match.id.to_string())
-                                                //TODO describe match
+                                                .push(" (")
+                                                .push_safe(restream_match.to_string())
+                                                .push(')')
                                                 //TODO instructions for how to fix?
                                                 .build();
                                             let notification = organizer_channel.say(&*discord_ctx.read().await, msg).await?;
@@ -2609,8 +2611,9 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                             let msg = MessageBuilder::default()
                                                 .push("found multiple races matching SpeedGaming match ")
                                                 .push_mono(restream_match.id.to_string())
-                                                //TODO describe match
-                                                .push(", please select one to assign it to:")
+                                                .push(" (")
+                                                .push_safe(restream_match.to_string())
+                                                .push("), please select one to assign it to:")
                                                 .build();
                                             let mut options = Vec::with_capacity(races.size_hint().0);
                                             for (_, race) in races {
