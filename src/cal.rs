@@ -1565,7 +1565,7 @@ async fn add_event_races(transaction: &mut Transaction<'_, Postgres>, discord_ct
                     summary_prefix
                 })));
                 cal_event.push(dtstart(start));
-                cal_event.push(dtend(race_event.end().unwrap_or_else(|| start + match event.series {
+                cal_event.push(dtend(race_event.end().filter(|_| !race_event.is_private_async_part() || race.cal_events().all(|event| event.end().is_some())).unwrap_or_else(|| start + match event.series {
                     Series::TriforceBlitz => TimeDelta::hours(2),
                     Series::BattleRoyale => TimeDelta::hours(2) + TimeDelta::minutes(30),
                     Series::CoOp | Series::MixedPools | Series::Scrubs | Series::SpeedGaming | Series::WeTryToBeBetter => TimeDelta::hours(3),
