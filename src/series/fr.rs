@@ -829,7 +829,24 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> seed::Settings 
     if mixed_dungeons == "mixed" {
         mix_entrance_pools.push("Dungeon");
     }
-    let triforce_count = 30;
+    let mut triforce_count = 30;
+    if one_major == "on" { triforce_count -= 10 }
+    if keysanity == "on" { triforce_count -= 5 }
+    if keysy == "on" { triforce_count += 5 }
+    if let "overworld" | "all" = skulls { triforce_count += 5 }
+    if cows == "on" { triforce_count += 5 }
+    if shops == "4" { triforce_count += 10 }
+    if scrubs == "affordable" { triforce_count += 10 }
+    if let "minimal" | "scarce" = itempool { triforce_count += 10 }
+    if pots == "all" { triforce_count += 15 }
+    if crates == "all" { triforce_count += 10 }
+    match souls {
+        "bosses" => triforce_count -= 5,
+        "all-regional" => triforce_count -= 10,
+        "all-anywhere" => triforce_count -= 25,
+        _ => {}
+    }
+    let triforce_count = triforce_count.clamp(1, 45);
     collect![
         format!("user_message") => json!("Tournoi Francophone Saison 5"),
         format!("password_lock") => json!(true),
@@ -843,13 +860,13 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> seed::Settings 
             "off" => json!(false),
             _ => unreachable!(),
         },
-        format!("triforce_count_per_world") => json!((triforce_count as f32 * match itempool {
+        format!("triforce_count_per_world") => json!(triforce_count),
+        format!("triforce_goal_per_world") => json!((triforce_count as f32 / match itempool {
             "balanced" => 1.5,
             "scarce" => 1.25,
             "minimal" => 1.0,
             _ => unreachable!(),
-        }).round() as u8),
-        format!("triforce_goal_per_world") => json!(triforce_count),
+        }).round().max(1.0) as u8),
         format!("bridge") => match bridge {
             "4meds-meds" | "4meds-dungeons" | "5meds-meds" | "5meds-dungeons" | "6meds" => json!("medallions"),
             "1stones" | "2stones" | "3stones" => json!("stones"),
