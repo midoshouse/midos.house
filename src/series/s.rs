@@ -218,7 +218,7 @@ fn long_weekly_settings() -> RawHtml<String> {
                 a(href = uri!(event::info(Series::Standard, "8"))) : "S8";
                 : " Base";
             }
-            li : "AD Bridge (9 Dungeon Rewards)";
+            li : "AD Bridge (9 Dungeon Rewards; Gbk removed)";
             li : "2 Precompleted Dungeons (Shadow/Spirit medallion)";
             li : "Start with Light medallion";
             li : "Random Spawns (both ages)";
@@ -264,7 +264,7 @@ pub(crate) fn weekly_settings() -> seed::Settings {
         format!("user_message") => json!("Standard Weekly (2025-06-07)"),
         format!("bridge") => json!("dungeons"),
         format!("trials") => json!(0),
-        format!("shuffle_ganon_bosskey") => json!("medallions"),
+        format!("shuffle_ganon_bosskey") => json!("remove"),
         format!("open_forest") => json!("closed_deku"),
         format!("open_kakariko") => json!("open"),
         format!("open_door_of_time") => json!(true),
