@@ -532,7 +532,7 @@ impl Draft {
                                     } else {
                                         weights.weights.get_mut(setting.name).unwrap().remove(*name);
                                     }
-                                    if !weights.weights.into_values().any(|weight| weight.into_values().any(|value| value > 0)) {
+                                    if weights.weights.into_values().all(|weight| weight.into_values().any(|value| value > 0)) {
                                         options.push((name, display));
                                     }
                                 }
