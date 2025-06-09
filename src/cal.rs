@@ -2473,7 +2473,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                 .detailed_error_for_status().await?
                                 .json_with_text_in_error::<league::Schedule>().await?;
                             for match_data in schedule.matches {
-                                if match_data.id <= 502 { continue } // seasons 5 to 7
+                                if match_data.id <= 938 { continue } // seasons 5 to 8
                                 let mut new_race = Race {
                                     id: Id::dummy(),
                                     series: event.series,
