@@ -287,8 +287,7 @@ impl PartialEq for User {
 impl Eq for User {}
 
 #[rocket::get("/user/<id>")]
-pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, racetime_user: Option<RaceTimeUser>, discord_user: Option<DiscordUser>, id: Result<Id<Users>, <Id<Users> as FromParam<'_>>::Error>) -> Result<RawHtml<String>, StatusOrError<PageError>> {
-    let Ok(id) = id else { return Err(StatusOrError::Status(Status::NotFound)) }; // https://github.com/rwf2/Rocket/issues/2880
+pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, racetime_user: Option<RaceTimeUser>, discord_user: Option<DiscordUser>, id: Id<Users>) -> Result<RawHtml<String>, StatusOrError<PageError>> {
     let mut transaction = pool.begin().await?;
     let user = if let Some(user) = User::from_id(&mut *transaction, id).await? {
         user
