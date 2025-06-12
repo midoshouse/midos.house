@@ -1303,6 +1303,9 @@ impl Draft {
                                 let (hard_settings, classic_settings) = all_settings.iter()
                                     .filter(|&&fr::Setting { name, .. }| !self.settings.contains_key(name) && match name {
                                         "keysy" => self.settings.get("keysanity").is_none_or(|keysanity| keysanity == "off"),
+                                        "1major" if kind == Kind::TournoiFrancoS5 => self.settings.get("th").is_none_or(|th| th == "off") && self.settings.get("souls").is_none_or(|souls| souls == "off"),
+                                        "souls" if kind == Kind::TournoiFrancoS5 => self.settings.get("1major").is_none_or(|one_major| one_major == "off"),
+                                        "th" if kind == Kind::TournoiFrancoS5 => self.settings.get("1major").is_none_or(|one_major| one_major == "off"),
                                         "keysanity" => self.settings.get("keysy").is_none_or(|keysy| keysy == "off"),
                                         _ => true,
                                     })
