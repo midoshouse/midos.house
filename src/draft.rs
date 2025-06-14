@@ -540,7 +540,7 @@ impl Draft {
                                     multi_options_settings.push(DraftSetting {
                                         name: setting.name,
                                         display: setting.display,
-                                        options: options.iter().map(|(name, display)| DraftSettingChoice { name, display }).collect(),
+                                        options: options.iter().map(|(name, display)| DraftSettingChoice { name, display /*TODO include setting name (see DMs with TJ) */ }).collect(),
                                         description: Cow::Owned(format!("{}: {}", setting.name, English.join_str_with("or", options.into_nonempty_iter().map(|(name, _)| name)))),
                                     });
                                 }
