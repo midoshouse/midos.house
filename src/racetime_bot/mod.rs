@@ -4,6 +4,7 @@ use {
         process::Stdio,
         sync::atomic::{
             self,
+            AtomicBool,
             AtomicUsize,
         },
     },
@@ -2323,7 +2324,8 @@ struct Handler {
     locked: bool,
     password_sent: bool,
     race_state: ArcRwLock<RaceState>,
-    cleaned_up: bool,
+    cleaned_up: Arc<AtomicBool>,
+    cleanup_timeout: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Handler {
@@ -2340,7 +2342,7 @@ impl Handler {
                         return true
                     }
                 }
-                if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return !existing_state.cleaned_up && race_data.ended_at.is_none_or(|ended_at| Utc::now() - ended_at < TimeDelta::hours(1)) }
+                if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return !existing_state.cleaned_up.load(atomic::Ordering::SeqCst) && race_data.ended_at.is_none_or(|ended_at| Utc::now() - ended_at < TimeDelta::hours(1)) }
             } else {
                 if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
             }
@@ -3622,7 +3624,8 @@ impl RaceHandler<GlobalState> for Handler {
             locked: false,
             password_sent: false,
             race_state: ArcRwLock::new(race_state),
-            cleaned_up: false,
+            cleaned_up: Arc::default(),
+            cleanup_timeout: None,
             official_data, high_seed_name, low_seed_name, fpa_enabled,
         };
         if let Some(OfficialRaceData { ref event, ref restreams, .. }) = this.official_data {
@@ -4118,7 +4121,10 @@ impl RaceHandler<GlobalState> for Handler {
                                         format!("Score reported: {new_score}")
                                     }).await?;
                                     if self.check_tfb_finish(ctx).await? {
-                                        self.cleaned_up = true;
+                                        self.cleaned_up.store(true, atomic::Ordering::SeqCst);
+                                        if let Some(task) = self.cleanup_timeout.take() {
+                                            task.abort();
+                                        }
                                     }
                                 } else {
                                     ctx.send_message(
@@ -4432,10 +4438,32 @@ impl RaceHandler<GlobalState> for Handler {
             RaceStatusValue::Finished => if self.unlock_spoiler_log(ctx, goal).await? {
                 if let Goal::TriforceBlitz | Goal::TriforceBlitzProgressionSpoiler = goal {
                     if self.check_tfb_finish(ctx).await? {
-                        self.cleaned_up = true;
+                        self.cleaned_up.store(true, atomic::Ordering::SeqCst);
+                    } else {
+                        let cleaned_up = self.cleaned_up.clone();
+                        let organizer_channel = if let Some(OfficialRaceData { ref event, .. }) = self.official_data {
+                            event.discord_organizer_channel
+                        } else {
+                            None
+                        };
+                        let ctx = ctx.clone();
+                        self.cleanup_timeout = Some(tokio::spawn(async move {
+                            sleep(Duration::from_secs(60 * 60)).await;
+                            if cleaned_up.load(atomic::Ordering::SeqCst) {
+                                if let Some(organizer_channel) = organizer_channel {
+                                    let _ = organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
+                                        .push("race chat closed with incomplete score reports: <https://")
+                                        .push(racetime_host())
+                                        .push(&ctx.data().await.url)
+                                        .push('>')
+                                        .build()
+                                    ).await;
+                                }
+                            }
+                        }));
                     }
                 } else {
-                    self.cleaned_up = true;
+                    self.cleaned_up.store(true, atomic::Ordering::SeqCst);
                     if let Some(OfficialRaceData { ref cal_event, ref event, fpa_invoked, breaks_used, .. }) = self.official_data {
                         self.official_race_finished(ctx, data, cal_event, event, fpa_invoked, breaks_used || self.breaks.is_some(), None).await?;
                     }
@@ -4465,7 +4493,6 @@ impl RaceHandler<GlobalState> for Handler {
                     } else {
                         if let Some(organizer_channel) = event.discord_organizer_channel {
                             organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
-                                //TODO mention organizer role
                                 .push("race cancelled: <https://")
                                 .push(racetime_host())
                                 .push(&ctx.data().await.url)
@@ -4479,7 +4506,7 @@ impl RaceHandler<GlobalState> for Handler {
                 if let Goal::Rsl = goal {
                     sqlx::query!("DELETE FROM rsl_seeds WHERE room = $1", format!("https://{}{}", racetime_host(), ctx.data().await.url)).execute(&ctx.global_state.db_pool).await.to_racetime()?;
                 }
-                self.cleaned_up = true;
+                self.cleaned_up.store(true, atomic::Ordering::SeqCst);
             }
             _ => {}
         }
