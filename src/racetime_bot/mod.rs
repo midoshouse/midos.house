@@ -4441,23 +4441,43 @@ impl RaceHandler<GlobalState> for Handler {
                         self.cleaned_up.store(true, atomic::Ordering::SeqCst);
                     } else {
                         let cleaned_up = self.cleaned_up.clone();
-                        let organizer_channel = if let Some(OfficialRaceData { ref event, .. }) = self.official_data {
-                            event.discord_organizer_channel
-                        } else {
-                            None
-                        };
+                        let official_data = self.official_data.as_ref().map(|OfficialRaceData { event, cal_event, .. }| (event.clone(), cal_event.clone()));
                         let ctx = ctx.clone();
                         self.cleanup_timeout = Some(tokio::spawn(async move {
                             sleep(Duration::from_secs(60 * 60)).await;
                             if cleaned_up.load(atomic::Ordering::SeqCst) {
-                                if let Some(organizer_channel) = organizer_channel {
-                                    let _ = organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, MessageBuilder::default()
-                                        .push("race chat closed with incomplete score reports: <https://")
-                                        .push(racetime_host())
-                                        .push(&ctx.data().await.url)
-                                        .push('>')
-                                        .build()
-                                    ).await;
+                                if let Some((event, cal_event)) = official_data {
+                                    if let Some(organizer_channel) = event.discord_organizer_channel {
+                                        let mut msg = MessageBuilder::default();
+                                        msg.push("race chat closed with incomplete score reports: <https://");
+                                        msg.push(racetime_host());
+                                        msg.push(&ctx.data().await.url);
+                                        msg.push('>');
+                                        if event.discord_race_results_channel.is_some() || matches!(cal_event.race.source, cal::Source::StartGG { .. }) {
+                                            msg.push(" — please manually ");
+                                            if let Some(results_channel) = event.discord_race_results_channel {
+                                                msg.push("post the announcement in ");
+                                                msg.mention(&results_channel);
+                                            }
+                                            match cal_event.race.startgg_set_url() {
+                                                Ok(Some(startgg_set_url)) => {
+                                                    if event.discord_race_results_channel.is_some() {
+                                                        msg.push(" and ");
+                                                    }
+                                                    msg.push_named_link_no_preview("report the result on start.gg", startgg_set_url);
+                                                }
+                                                Ok(None) => {}
+                                                Err(_) => {
+                                                    if event.discord_race_results_channel.is_some() {
+                                                        msg.push(" and ");
+                                                    }
+                                                    msg.push("report the result on start.gg");
+                                                }
+                                            }
+                                            msg.push(" after adjusting the times");
+                                        }
+                                        let _ = organizer_channel.say(&*ctx.global_state.discord_ctx.read().await, msg.build()).await;
+                                    }
                                 }
                             }
                         }));
