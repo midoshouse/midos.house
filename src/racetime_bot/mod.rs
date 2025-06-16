@@ -701,7 +701,7 @@ impl Goal {
         }
     }
 
-    pub(crate) async fn parse_seed_command(&self, transaction: &mut Transaction<'_, Postgres>, global_state: &GlobalState, is_official: bool, spoiler_seed: bool, args: &[String]) -> Result<SeedCommandParseResult, Error> {
+    pub(crate) async fn parse_seed_command(&self, transaction: &mut Transaction<'_, Postgres>, global_state: &GlobalState, is_official: bool, spoiler_seed: bool, no_password: bool, args: &[String]) -> Result<SeedCommandParseResult, Error> {
         let unlock_spoiler_log = self.unlock_spoiler_log(is_official, spoiler_seed);
         Ok(match self {
             | Self::CoOpS3
@@ -723,7 +723,7 @@ impl Goal {
                         French => ("une", format!("seed")),
                         _ => ("a", format!("seed")),
                     };
-                    if let Some(row) = sqlx::query!(r#"DELETE FROM prerolled_seeds WHERE ctid IN (SELECT ctid FROM prerolled_seeds WHERE goal_name = $1 ORDER BY timestamp ASC NULLS FIRST LIMIT 1) RETURNING
+                    if let Some(row) = sqlx::query!(r#"DELETE FROM prerolled_seeds WHERE ctid IN (SELECT ctid FROM prerolled_seeds WHERE goal_name = $1 AND (seed_password IS NULL OR NOT $2) ORDER BY timestamp ASC NULLS FIRST LIMIT 1) RETURNING
                         goal_name,
                         file_stem,
                         locked_spoiler_log_path,
@@ -734,7 +734,7 @@ impl Goal {
                         hash5 AS "hash5: HashIcon",
                         seed_password,
                         progression_spoiler
-                    "#, self.as_str()).fetch_optional(&mut **transaction).await.to_racetime()? {
+                    "#, self.as_str(), no_password).fetch_optional(&mut **transaction).await.to_racetime()? {
                         let _ = global_state.seed_cache_tx.send(());
                         SeedCommandParseResult::QueueExisting {
                             data: seed::Data::from_db(
@@ -4154,7 +4154,7 @@ impl RaceHandler<GlobalState> for Handler {
                         }).await?;
                     } else {
                         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                        match goal.parse_seed_command(&mut transaction, &ctx.global_state, self.is_official(), cmd_name.to_ascii_lowercase() == "spoilerseed", &args).await.to_racetime()? {
+                        match goal.parse_seed_command(&mut transaction, &ctx.global_state, self.is_official(), cmd_name.to_ascii_lowercase() == "spoilerseed", false, &args).await.to_racetime()? {
                             SeedCommandParseResult::Regular { settings, unlock_spoiler_log, language, article, description } => {
                                 let event_id = self.official_data.as_ref().map(|OfficialRaceData { event, .. }| (event.series, &*event.event));
                                 self.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(event_id), settings, unlock_spoiler_log, language, article, description).await
