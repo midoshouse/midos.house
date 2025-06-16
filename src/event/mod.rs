@@ -1076,6 +1076,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                                     }
                                     @match data.series {
                                         Series::CoOp => : coop::async_rules(async_kind);
+                                        Series::MixedPools => : mp::async_rules(&data);
                                         Series::Multiworld => : mw::async_rules(&data, async_kind);
                                         _ => {}
                                     }
