@@ -196,7 +196,7 @@ impl WeeklyKind {
 }
 
 // Make sure to keep the following in sync with each other and the rando_version and single_settings database entries:
-pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(8, 3, 12) };
+pub(crate) const WEEKLY_RANDO_VERSION: VersionedBranch = VersionedBranch::Pinned { version: ootr_utils::Version::from_dev(8, 3, 15) };
 pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Medium;
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
     static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/s/chests-w-8.3.12.json")).expect("failed to parse chest weights"));
