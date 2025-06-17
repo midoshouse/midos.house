@@ -1060,7 +1060,7 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> seed::Settings 
             "add_locations":         [
                 { "location": "Sheik in Kakariko", "types": ["always"] },
                 { "location": "Deku Tree GS Basement Back Room", "types": ["always"] },
-                { "location": "Deku Theater Skull Mask", "types": ["always"] },
+                { "location": "DMC Deku Scrub", "types": ["always"] },
             ],
             "remove_locations":      [
                 { "location": "Song from Royal Familys Tomb", "types": ["sometimes"] },
@@ -1069,15 +1069,11 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> seed::Settings 
                 { "location": "Sheik in Crater", "types": ["sometimes"] },
                 { "location": "Sheik at Colossus", "types": ["sometimes"] },
                 { "location": "Ice Cavern Iron Boots Chest", "types": ["sometimes"] },
-                { "location": "GF HBA 1500 Points", "types": ["sometimes"] },
                 { "location": "GC Maze Left Chest", "types": ["sometimes"] },
                 { "location": "GV Chest", "types": ["sometimes"] },
                 { "location": "HC Great Fairy Reward", "types": ["sometimes"] },
                 { "location": "OGC Great Fairy Reward", "types": ["sometimes"] },
-                { "location": "Water Temple River Chest", "types": ["sometimes"] },
                 { "location": "Gerudo Training Ground Maze Path Final Chest", "types": ["sometimes"] },
-                { "location": "Spirit Temple Silver Gauntlets Chest", "types": ["sometimes"] },
-                { "location": "Spirit Temple Mirror Shield Chest", "types": ["sometimes"] },
             ],
             "add_items":             [],
             "remove_items":          [
@@ -1091,7 +1087,7 @@ pub(crate) fn resolve_s5_draft_settings(picks: &draft::Picks) -> seed::Settings 
             "use_default_goals":     true,
             "distribution":          {
                 "trial":      {"order":  1, "weight": 0.0, "fixed":   0, "copies": 2},
-                "entrance":   {"order":  2, "weight": 0.0, "fixed":   0, "copies": 2},
+                "entrance":   {"order":  2, "weight": 0.0, "fixed":   4, "copies": 2},
                 "always":     {"order":  3, "weight": 0.0, "fixed":   0, "copies": 2},
                 "barren":     {"order":  4, "weight": 0.0, "fixed":   3, "copies": 2},
                 "goal":       {"order":  5, "weight": 0.0, "fixed":   5, "copies": 2},
