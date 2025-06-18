@@ -1998,29 +1998,38 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                     if let Some(sum) = times.iter().take(players.len()).try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
                         message.push(" finished with a time of ");
                         message.push(English.format_duration(sum / u32::try_from(players.len()).expect("too many players in team"), true));
-                        message.push_line('!');
+                        message.push('!');
                     } else {
-                        message.push_line(" did not finish.");
+                        message.push(" did not finish.");
                     }
-                    if players.len() > 1 {
-                        for (i, ((player, time), vod)) in players.into_iter().zip(&times).zip(&vods).enumerate() {
-                            if let Some(player) = User::from_id(&mut *transaction, player).await? {
-                                message.mention_user(&player);
-                            } else {
-                                message.push("player ");
-                                message.push((i + 1).to_string());
-                            }
-                            message.push(": ");
-                            if let Some(time) = *time {
-                                message.push(English.format_duration(time, false));
-                            } else {
-                                message.push("DNF");
-                            }
-                            if vod.is_empty() {
-                                message.push_line("");
-                            } else {
-                                message.push(' ');
-                                message.push_line_safe(vod);
+                    match players.into_iter().zip(&times).zip(&vods).exactly_one() {
+                        Ok(((_, _), vod)) => if vod.is_empty() {
+                            message.push_line("");
+                        } else {
+                            message.push(' ');
+                            message.push_line_safe(vod);
+                        },
+                        Err(data) => {
+                            message.push_line("");
+                            for (i, ((player, time), vod)) in data.enumerate() {
+                                if let Some(player) = User::from_id(&mut *transaction, player).await? {
+                                    message.mention_user(&player);
+                                } else {
+                                    message.push("player ");
+                                    message.push((i + 1).to_string());
+                                }
+                                message.push(": ");
+                                if let Some(time) = *time {
+                                    message.push(English.format_duration(time, false));
+                                } else {
+                                    message.push("DNF");
+                                }
+                                if vod.is_empty() {
+                                    message.push_line("");
+                                } else {
+                                    message.push(' ');
+                                    message.push_line_safe(vod);
+                                }
                             }
                         }
                     }
