@@ -138,7 +138,7 @@ impl Guard for ShowRestreamConsent<'_> {
             if event.organizers(&mut *db).await?.contains(me) || event.restreamers(&mut *db).await?.contains(me) {
                 Ok(())
             } else {
-                Err("Only event organizers and restreamers can view restream consent info.".into())
+                Err("Only event organizers and restream coordinators can view restream consent info.".into())
             }
         })
     }
@@ -161,7 +161,7 @@ impl Guard for EditRace {
             if event.organizers(&mut *db).await?.contains(me) || event.restreamers(&mut *db).await?.contains(me) {
                 Ok(())
             } else {
-                Err("Only archivists, event organizers, and restreamers can edit races.".into())
+                Err("Only archivists, event organizers, and restream coordinators can edit races.".into())
             }
         })
     }
