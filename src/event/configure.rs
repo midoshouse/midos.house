@@ -82,10 +82,10 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, me: Option<U
 }
 
 #[rocket::get("/event/<series>/<event>/configure")]
-pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(RedirectOrContent::Content(configure_form(transaction, me, uri, csrf.as_ref(), data, Context::default()).await?))
+    Ok(configure_form(transaction, me, uri, csrf.as_ref(), data, Context::default()).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
@@ -255,10 +255,10 @@ async fn restreamers_form(mut transaction: Transaction<'_, Postgres>, me: Option
 }
 
 #[rocket::get("/event/<series>/<event>/configure/restreamers")]
-pub(crate) async fn restreamers_get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RedirectOrContent, StatusOrError<event::Error>> {
+pub(crate) async fn restreamers_get(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>, csrf: Option<CsrfToken>, series: Series, event: String) -> Result<RawHtml<String>, StatusOrError<event::Error>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
-    Ok(RedirectOrContent::Content(restreamers_form(transaction, me, uri, csrf.as_ref(), data, RestreamersFormDefaults::None).await?))
+    Ok(restreamers_form(transaction, me, uri, csrf.as_ref(), data, RestreamersFormDefaults::None).await?)
 }
 
 #[derive(FromForm, CsrfForm)]
