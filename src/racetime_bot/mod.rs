@@ -165,7 +165,7 @@ impl VersionedBranch {
 ///    This is not an issue for seeds rolled locally, so the local generator will always be started immediately after the room is opened.
 ///
 /// How early we should start rolling seeds therefore depends on how long seed generation is expected to take, which depends on the settings.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum PrerollMode {
     /// Do not preroll seeds.
     None,
