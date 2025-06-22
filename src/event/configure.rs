@@ -4,6 +4,7 @@ use crate::{
         Tab,
     },
     prelude::*,
+    racetime_bot::VersionedBranch,
 };
 
 async fn configure_form(mut transaction: Transaction<'_, Postgres>, me: Option<User>, uri: Origin<'_>, csrf: Option<&CsrfToken>, event: Data<'_>, ctx: Context<'_>) -> Result<RawHtml<String>, event::Error> {
@@ -29,7 +30,21 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, me: Option<U
                     }
                     p {
                         : "Randomizer version: ";
-                        : format!("{:?}", event.rando_version.as_ref().expect("no randomizer version configured for weeklies"));
+                        @match event.rando_version.as_ref().expect("no randomizer version configured for weeklies") {
+                            VersionedBranch::Pinned { version } => : version.to_string();
+                            VersionedBranch::Latest { branch } => {
+                                : "latest ";
+                                : branch.to_string();
+                                : " branch (updates automatically)";
+                            }
+                            VersionedBranch::Custom { github_username, branch } => {
+                                : "custom (GitHub user/organization name: ";
+                                : github_username;
+                                : ", branch: ";
+                                : branch;
+                                : ")";
+                            }
+                        }
                     }
                     p : "Settings:";
                     pre : serde_json::to_string_pretty(event.single_settings.as_ref().expect("no settings configured for weeklies"))?;
