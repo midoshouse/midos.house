@@ -265,7 +265,16 @@ impl Draft {
                         Id::from(592664405695569367_u64), // The Jhegsons
                         Id::from(14405144517033747435_u64), // Pandora's Brot
                     ],
-                    Kind::MultiworldS5 => unimplemented!("top 8 seeding for mw/5"),
+                    Kind::MultiworldS5 => [
+                        Id::from(15744003931430480727_u64), // Schulzer, Jay and Bobby are here
+                        Id::from(1129367405239208119_u64), // Pandora's Brot
+                        Id::from(17104756766000096702_u64), // Moeko Appreciation Society
+                        Id::from(32215927528820085_u64), // Captain Levi's Fish and Chimp Shop
+                        Id::from(4924230698541822293_u64), // Trois clampins et une chaussette
+                        Id::from(17175023655531815569_u64), // SariasObjects
+                        Id::from(5779097592179749366_u64), // Clube Athletico Paranaense
+                        Id::from(3033012543915648585_u64), // DAChuck
+                    ],
                     _ => unreachable!("checked by outer match"),
                 };
                 let mut team_ids = [team1.id, team2.id];
