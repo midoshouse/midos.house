@@ -690,9 +690,9 @@ impl Goal {
                 [..] => DraftCommandParseResult::Error {
                     language: self.language(),
                     msg: Cow::Borrowed(if let French = self.language() {
-                        "vous ne pouvez pick qu'un setting à la fois. Veuillez seulement utiliser “!draft <setting> <configuration>”"
+                        "vous ne pouvez pick qu'un setting à la fois. Veuillez seulement utiliser “!pick <setting> <configuration>”"
                     } else {
-                        "only one setting can be drafted at a time. Use “!draft <setting> <value>”"
+                        "only one setting can be drafted at a time. Use “!pick <setting> <value>”"
                     }),
                 },
             },

@@ -186,9 +186,10 @@ impl TypeMapKey for ExtraRoomTx {
 pub(crate) struct CommandIds {
     pub(crate) ban: Option<CommandId>,
     delete_after: CommandId,
-    pub(crate) draft: Option<CommandId>,
+    draft: Option<CommandId>,
     pub(crate) first: Option<CommandId>,
     pub(crate) no: Option<CommandId>,
+    pub(crate) pick: Option<CommandId>,
     post_status: CommandId,
     pronoun_roles: CommandId,
     racing_role: CommandId,
@@ -610,25 +611,22 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 );
                 idx
             };
-            let draft = draft_kind.map(|draft_kind| {
+            let draft = draft_kind.and_then(|draft_kind| {
                 let idx = commands.len();
                 commands.push(match draft_kind {
                     draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
-                        .description("Chooses a setting for this race."),
-                    draft::Kind::RslS7 => CreateCommand::new("ban")
-                        .kind(CommandType::ChatInput)
-                        .add_context(InteractionContext::Guild)
-                        .description("Sets a weight of a setting to 0."),
+                        .description("Chooses a setting for this race (same as /pick)."),
+                    draft::Kind::RslS7 => return None, // command is called /ban, no alias necessary
                     draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("draft")
                         .kind(CommandType::ChatInput)
                         .add_context(InteractionContext::Guild)
-                        .description("Choisit un setting pour la race.")
-                        .description_localized("en-GB", "Chooses a setting for this race.")
-                        .description_localized("en-US", "Chooses a setting for this race."),
+                        .description("Choisit un setting pour la race (identique à /pick).")
+                        .description_localized("en-GB", "Chooses a setting for this race (same as /pick).")
+                        .description_localized("en-US", "Chooses a setting for this race (same as /pick)."),
                 });
-                idx
+                Some(idx)
             });
             let first = draft_kind.map(|draft_kind| {
                 let idx = commands.len();
@@ -680,6 +678,26 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                         .description_localized("en-US", "Answers no to a yes/no question in the settings draft."),
                 });
                 Some(idx)
+            });
+            let pick = draft_kind.map(|draft_kind| {
+                let idx = commands.len();
+                commands.push(match draft_kind {
+                    draft::Kind::S7 | draft::Kind::MultiworldS3 | draft::Kind::MultiworldS4 | draft::Kind::MultiworldS5 => CreateCommand::new("pick")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Chooses a setting for this race."),
+                    draft::Kind::RslS7 => CreateCommand::new("ban")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Sets a weight of a setting to 0."),
+                    draft::Kind::TournoiFrancoS3 | draft::Kind::TournoiFrancoS4 | draft::Kind::TournoiFrancoS5 => CreateCommand::new("pick")
+                        .kind(CommandType::ChatInput)
+                        .add_context(InteractionContext::Guild)
+                        .description("Choisit un setting pour la race.")
+                        .description_localized("en-GB", "Chooses a setting for this race.")
+                        .description_localized("en-US", "Chooses a setting for this race."),
+                });
+                idx
             });
             let post_status = {
                 let idx = commands.len();
@@ -939,6 +957,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                 draft: draft.map(|idx| commands[idx].id),
                 first: first.map(|idx| commands[idx].id),
                 no: no.map(|idx| commands[idx].id),
+                pick: pick.map(|idx| commands[idx].id),
                 post_status: commands[post_status].id,
                 pronoun_roles: commands[pronoun_roles].id,
                 racing_role: commands[racing_role].id,
