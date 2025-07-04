@@ -2353,6 +2353,7 @@ impl Handler {
                 if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
             }
         } else {
+            if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
             lock!(clean_shutdown = global_state.clean_shutdown; {
                 if !clean_shutdown.should_handle_new() {
                     unlock!();
@@ -2365,7 +2366,6 @@ impl Handler {
                 assert!(clean_shutdown.open_rooms.insert(room.clone()), "should_handle_inner called for new race room {} but clean_shutdown.open_rooms already contained this room", race_data.url);
                 clean_shutdown.updates.send(CleanShutdownUpdate::RoomOpened(room)).allow_unreceived();
             });
-            if let RaceStatusValue::Finished | RaceStatusValue::Cancelled = race_data.status.value { return false }
         }
         true
     }
