@@ -193,65 +193,23 @@ impl WeeklyKind {
 }
 
 // Make sure to keep the following in sync with each other and the rando_version and single_settings database entries:
-pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::Medium;
+pub(crate) const WEEKLY_PREROLL_MODE: PrerollMode = PrerollMode::None;
 pub(crate) fn weekly_chest_appearances() -> ChestAppearances {
-    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/s/chests-w-8.3.12.json")).expect("failed to parse chest weights"));
+    static WEIGHTS: LazyLock<Vec<(ChestAppearances, usize)>> = LazyLock::new(|| serde_json::from_str(include_str!("../../assets/event/sgl/chests-2025-8.3.21.json")).expect("failed to parse chest weights"));
 
     WEIGHTS.choose_weighted(&mut rng(), |(_, weight)| *weight).expect("failed to choose random chest textures").0
 }
-pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "variety";
+pub(crate) const SHORT_WEEKLY_SETTINGS: &str = "SGL";
 fn long_weekly_settings() -> RawHtml<String> {
     html! {
         p {
             : "Settings are typically changed once every 2 or 4 weeks and posted in ";
             a(href = "https://discord.com/channels/274180765816848384/512053754015645696") : "#standard-announcements";
             : " on Discord. Current settings starting with the Kokiri weekly on ";
-            : format_datetime(Utc.with_ymd_and_hms(2025, 6, 7, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
-            : " are as follows:";
-        }
-        ul {
-            li {
-                a(href = uri!(event::info(Series::Standard, "8"))) : "S8";
-                : " Base";
-            }
-            li : "AD Bridge (9 Dungeon Rewards; Gbk removed)";
-            li : "2 Precompleted Dungeons (Shadow/Spirit medallion)";
-            li : "Start with Light medallion";
-            li : "Random Spawns (both ages)";
-            li : "Free Scarecrow's Song";
-            li : "Preplanted Beans";
-            li : "Ruto on F1";
-            li : "Fast Shadow Boat";
-            li : "TCG requires Lens + Magic";
-            li : "Key Appearance Matches Dungeons (cosmetic)";
-            li {
-                : "Hint Distribution:";
-                ul {
-                    li : "30/40/50 Skull House";
-                    li : "5 Always";
-                    li : "5 Path";
-                    li : "3 Important Check";
-                    li : "2 Dual";
-                    li : "4 Sometimes";
-                    li : "HC Storms & HF Cow disabled";
-                }
-            }
-            li {
-                : "Sometimes Hints added back into pool:";
-                ul {
-                    li : "Royal Family Tomb (dual)";
-                    li : "Ice Cavern (dual)";
-                }
-            }
-            li {
-                : "Sometimes Hints removed from pool:";
-                ul {
-                    li : "Royal Family Tomb Torches";
-                    li : "Ice Cavern Final Chest";
-                    li : "IGC Shadow Trial 2";
-                    li : "IGC Spirit Trial (dual)";
-                }
-            }
+            : format_datetime(Utc.with_ymd_and_hms(2025, 7, 19, 22, 00, 00).single().expect("wrong hardcoded datetime"), DateTimeFormat { long: false, running_text: true });
+            : " are ";
+            a(href = "https://docs.google.com/document/d/1SFmkuknmCqfO9EmTwMVKmKdema5OQ1InUlbuy16zsy8/edit?tab=t.0#heading=h.mb6de78kyah") : "the SGL 2025 settings";
+            : ".";
         }
     }
 }
