@@ -1080,6 +1080,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, me: Option<User
                                         Series::CoOp => : coop::async_rules(async_kind);
                                         Series::MixedPools => : mp::async_rules(&data);
                                         Series::Multiworld => : mw::async_rules(&data, async_kind);
+                                        Series::Rsl => : rsl::async_rules(async_kind);
                                         _ => {}
                                     }
                                     : full_form(uri!(event::request_async(data.series, &*data.event)), csrf, html! {
