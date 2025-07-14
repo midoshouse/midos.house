@@ -206,6 +206,7 @@ pub(crate) enum Goal {
     Rsl,
     Sgl2023,
     Sgl2024,
+    Sgl2025,
     SongsOfHope,
     StandardRuleset,
     TournoiFrancoS3,
@@ -252,6 +253,7 @@ impl Goal {
             Self::Rsl => series == Series::Rsl,
             Self::Sgl2023 => series == Series::SpeedGaming && event.starts_with("2023"),
             Self::Sgl2024 => series == Series::SpeedGaming && event.starts_with("2024"),
+            Self::Sgl2025 => series == Series::SpeedGaming && event.starts_with("2025"),
             Self::SongsOfHope => series == Series::SongsOfHope && event == "1",
             Self::StandardRuleset => series == Series::Standard && matches!(event, "w" | "8" | "8cc"),
             Self::TournoiFrancoS3 => series == Series::TournoiFrancophone && event == "3",
@@ -286,6 +288,7 @@ impl Goal {
             | Self::PicRs2
             | Self::Sgl2023
             | Self::Sgl2024
+            | Self::Sgl2025
             | Self::SongsOfHope
             | Self::TournoiFrancoS3
             | Self::TournoiFrancoS4
@@ -316,6 +319,7 @@ impl Goal {
             Self::Rsl => "Random settings league",
             Self::Sgl2023 => "SGL 2023",
             Self::Sgl2024 => "SGL 2024",
+            Self::Sgl2025 => "SGL 2025",
             Self::SongsOfHope => "Songs of Hope",
             Self::StandardRuleset => "Standard Ruleset",
             Self::TournoiFrancoS3 => "Tournoi Francophone Saison 3",
@@ -346,6 +350,7 @@ impl Goal {
             | Self::Rsl
             | Self::Sgl2023
             | Self::Sgl2024
+            | Self::Sgl2025
             | Self::SongsOfHope
             | Self::StandardRuleset
             | Self::TriforceBlitz
@@ -385,6 +390,7 @@ impl Goal {
             | Self::PicRs2
             | Self::Sgl2023
             | Self::Sgl2024
+            | Self::Sgl2025
             | Self::SongsOfHope
             | Self::StandardRuleset
             | Self::TriforceBlitz
@@ -400,6 +406,7 @@ impl Goal {
         match self {
             | Self::Sgl2023
             | Self::Sgl2024
+            | Self::Sgl2025
             | Self::TriforceBlitz
                 => PrerollMode::None,
             | Self::Cc7
@@ -458,6 +465,7 @@ impl Goal {
                 | Self::Rsl
                 | Self::Sgl2023
                 | Self::Sgl2024
+                | Self::Sgl2025
                 | Self::SongsOfHope
                 | Self::TournoiFrancoS3
                 | Self::TournoiFrancoS4
@@ -495,6 +503,7 @@ impl Goal {
             Self::Pic7 => VersionedBranch::Custom { github_username: Cow::Borrowed("fenhl"), branch: Cow::Borrowed("frogs2-melody") },
             Self::Sgl2023 => VersionedBranch::Latest { branch: rando::Branch::Sgl2023 },
             Self::Sgl2024 => VersionedBranch::Latest { branch: rando::Branch::Sgl2024 },
+            Self::Sgl2025 => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 3, 0) },
             Self::SongsOfHope => VersionedBranch::Pinned { version: rando::Version::from_dev(8, 1, 0) },
             Self::StandardRuleset => if_chain! {
                 if let Some(event) = event;
@@ -536,6 +545,7 @@ impl Goal {
             Self::Rsl => None, // random settings
             Self::Sgl2023 => Some(sgl::settings_2023()),
             Self::Sgl2024 => Some(sgl::settings_2024()),
+            Self::Sgl2025 => Some(sgl::settings_2025()),
             Self::SongsOfHope => Some(soh::settings()),
             Self::StandardRuleset => None, // per-event settings
             Self::TournoiFrancoS3 => None, // settings draft
@@ -564,6 +574,7 @@ impl Goal {
             | Self::Mq
             | Self::Sgl2023
             | Self::Sgl2024
+            | Self::Sgl2025
             | Self::SongsOfHope
                 => ctx.say("!seed: The settings used for the tournament").await?,
             | Self::WeTryToBeBetterS1
@@ -718,6 +729,7 @@ impl Goal {
             | Self::Pic7
             | Self::Sgl2023
             | Self::Sgl2024
+            | Self::Sgl2025
             | Self::SongsOfHope
             | Self::TriforceBlitzProgressionSpoiler
             | Self::WeTryToBeBetterS1
@@ -3227,6 +3239,18 @@ impl RaceHandler<GlobalState> for Handler {
                                     }),
                                 ],
                             ).await?,
+                            Goal::Sgl2025 => ctx.send_message(
+                                "Welcome! This is a practice room for SpeedGaming Live 2025. Learn more about the tournaments at https://docs.google.com/document/d/1SFmkuknmCqfO9EmTwMVKmKdema5OQ1InUlbuy16zsy8/edit",
+                                true,
+                                vec![
+                                    ("Roll seed", ActionButton::Message {
+                                        message: format!("!seed"),
+                                        help_text: Some(format!("Create a seed with the settings used for the tournaments.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
+                                ],
+                            ).await?,
                             Goal::SongsOfHope => ctx.send_message(
                                 "Welcome! This is a practice room for Songs of Hope, a charity tournament for the Autism of Society of America. Learn more about the tournament at https://midos.house/event/soh/1",
                                 true,
@@ -3707,6 +3731,7 @@ impl RaceHandler<GlobalState> for Handler {
                             | Goal::Pic7
                             | Goal::Sgl2023
                             | Goal::Sgl2024
+                            | Goal::Sgl2025
                             | Goal::SongsOfHope
                             | Goal::TriforceBlitzProgressionSpoiler
                                 => this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), goal.single_settings().expect("goal has no single settings"), goal.unlock_spoiler_log(true, false), English, "a", format!("seed")).await,
@@ -4433,6 +4458,7 @@ impl RaceHandler<GlobalState> for Handler {
                     | Goal::Rsl
                     | Goal::Sgl2023
                     | Goal::Sgl2024
+                    | Goal::Sgl2025
                     | Goal::SongsOfHope
                     | Goal::StandardRuleset
                     | Goal::TournoiFrancoS3
