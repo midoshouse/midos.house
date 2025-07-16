@@ -113,7 +113,7 @@ impl Restream {
     }
 
     pub(crate) async fn update_race<'a>(&self, db_pool: &PgPool, mut transaction: Transaction<'a, Postgres>, discord_ctx: &DiscordCtx, event: &Data<'_>, cal_event: &mut cal::Event, id: i64) -> Result<Transaction<'a, Postgres>, event::Error> {
-        if !cal_event.race.cal_events().any(|cal_event| cal_event.room().is_some()) { // don't mess with starting time if room already open
+        if !cal_event.race.schedule_locked && !cal_event.race.has_any_room() { // don't mess with starting time if room already open; allow configuring vod URLs after the end of a restream
             assert!(matches!(mem::replace(&mut cal_event.race.source, cal::Source::SpeedGaming { id }), cal::Source::Manual | cal::Source::SpeedGaming { id: _ }));
             let schedule_changed = match cal_event.race.schedule {
                 RaceSchedule::Live { start, .. } => (start != self.when_countdown).then_some(true),
@@ -204,8 +204,6 @@ impl Restream {
                     }
                 }
             }
-        }
-        if !cal_event.race.schedule_locked {
             for channel in &self.channels {
                 if let hash_map::Entry::Vacant(entry) = cal_event.race.video_urls.entry(channel.language) {
                     let video_url = Url::parse(&format!("https://twitch.tv/{}", channel.slug))?;

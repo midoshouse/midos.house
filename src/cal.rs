@@ -2780,10 +2780,15 @@ pub(crate) async fn edit_race_form(mut transaction: Transaction<'_, Postgres>, d
                     }
                 }
             }
-            @if race.series == Series::League && !race.has_any_room() {
+            @if matches!(event.match_source(), MatchSource::League) && !race.has_any_room() {
                 // restream data entered here would be automatically overwritten
                 fieldset {
                     label : "To edit restream data, please use the League website.";
+                }
+            } else if event.speedgaming_slug.is_some() && !race.has_any_room() {
+                // restream data entered here would be automatically overwritten
+                fieldset {
+                    label : "To edit restream data, please use the SpeedGaming website.";
                 }
             } else {
                 table {
