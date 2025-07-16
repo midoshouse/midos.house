@@ -4187,7 +4187,7 @@ impl RaceHandler<GlobalState> for Handler {
                         }).await?;
                     } else {
                         let mut transaction = ctx.global_state.db_pool.begin().await.to_racetime()?;
-                        match goal.parse_seed_command(&mut transaction, &ctx.global_state, self.is_official(), cmd_name.to_ascii_lowercase() == "spoilerseed", false, &args).await.to_racetime()? {
+                        match goal.parse_seed_command(&mut transaction, &ctx.global_state, self.is_official(), cmd_name.eq_ignore_ascii_case("spoilerseed"), false, &args).await.to_racetime()? {
                             SeedCommandParseResult::Regular { settings, unlock_spoiler_log, language, article, description } => {
                                 let event = self.official_data.as_ref().map(|OfficialRaceData { event, .. }| event);
                                 self.roll_seed(ctx, goal.preroll_seeds(event.map(|event| (event.series, &*event.event))), goal.rando_version(event), settings, unlock_spoiler_log, language, article, description).await
