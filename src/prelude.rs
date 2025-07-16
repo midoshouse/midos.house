@@ -200,7 +200,10 @@ pub(crate) use {
             RaceSchedule,
         },
         challonge,
-        config::Config,
+        config::{
+            Config,
+            ConfigRaceTime,
+        },
         discord_bot::{
             CommandIds,
             MessageBuilderExt as _,
@@ -252,6 +255,7 @@ pub(crate) use {
         ootr_web,
         racetime_bot::{
             self,
+            CleanShutdown,
             UnlockSpoilerLog,
         },
         racetime_host,

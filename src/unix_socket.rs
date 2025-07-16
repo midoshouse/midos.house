@@ -78,7 +78,7 @@ pub(crate) enum ClientMessage {
     },
 }
 
-pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<Mutex<racetime_bot::CleanShutdown>>, global_state: Arc<racetime_bot::GlobalState>) -> wheel::Result<()> {
+pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<Mutex<CleanShutdown>>, global_state: Arc<racetime_bot::GlobalState>) -> wheel::Result<()> {
     fs::remove_file(PATH).await.missing_ok()?;
     let listener = UnixListener::bind(PATH).at(PATH)?;
     loop {

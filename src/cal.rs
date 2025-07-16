@@ -1318,6 +1318,19 @@ impl Event {
         }
     }
 
+    pub(crate) fn room_mut(&mut self) -> Option<&mut Option<Url>> {
+        match &mut self.race.schedule {
+            RaceSchedule::Unscheduled => None,
+            RaceSchedule::Live { room, .. } => Some(room),
+            RaceSchedule::Async { room1, room2, room3, .. } => match self.kind {
+                EventKind::Normal => unreachable!(),
+                EventKind::Async1 => Some(room1),
+                EventKind::Async2 => Some(room2),
+                EventKind::Async3 => Some(room3),
+            },
+        }
+    }
+
     pub(crate) fn start(&self) -> Option<DateTime<Utc>> {
         match self.race.schedule {
             RaceSchedule::Unscheduled => None,
@@ -2554,10 +2567,10 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                 }
                 if let Some(ref speedgaming_slug) = event.speedgaming_slug {
                     let schedule = sgl::schedule(&http_client, speedgaming_slug).await?;
-                    let races = Race::for_event(&mut transaction, &http_client, &event).await?;
-                    let (mut existing_races, mut unassigned_races) = races.into_iter().partition::<Vec<_>, _>(|race| matches!(race.source, Source::SpeedGaming { .. }));
-                    existing_races.sort_unstable_by_key(|race| {
-                        let Source::SpeedGaming { id } = race.source else { unreachable!("partitioned above") };
+                    let races = Race::for_event(&mut transaction, &http_client, &event).await?.into_iter().map(|race| Event { race, kind: EventKind::Normal });
+                    let (mut existing_races, mut unassigned_races) = races.partition::<Vec<_>, _>(|cal_event| matches!(cal_event.race.source, Source::SpeedGaming { .. }));
+                    existing_races.sort_unstable_by_key(|cal_event| {
+                        let Source::SpeedGaming { id } = cal_event.race.source else { unreachable!("partitioned above") };
                         id
                     });
                     let disambiguation_messages = sqlx::query_scalar!(
@@ -2566,21 +2579,21 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                     ).fetch_all(&mut *transaction).await?;
                     for restream in schedule {
                         for restream_match in restream.matches() {
-                            if let Ok(idx) = existing_races.binary_search_by_key(&restream_match.id, |race| {
-                                let Source::SpeedGaming { id } = race.source else { unreachable!("partitioned above") };
+                            if let Ok(idx) = existing_races.binary_search_by_key(&restream_match.id, |cal_event| {
+                                let Source::SpeedGaming { id } = cal_event.race.source else { unreachable!("partitioned above") };
                                 id
                             }) {
                                 // this match is already assigned to a race, update it in case it got rescheduled or its restream info got changed
-                                let race = &mut existing_races[idx];
-                                restream.update_race(race, restream_match.id)?;
-                                race.save(&mut transaction).await?;
+                                let cal_event = &mut existing_races[idx];
+                                transaction = restream.update_race(&db_pool, transaction, &*discord_ctx.read().await, &event, cal_event, restream_match.id).await?;
+                                cal_event.race.save(&mut transaction).await?;
                             } else if disambiguation_messages.binary_search(&restream_match.id).is_ok() {
                                 // this match is pending manual assignment, ignore it for now
                             } else {
                                 let mut matching_races = Vec::default();
-                                for (idx, race) in unassigned_races.iter().enumerate() {
-                                    if restream_match.matches(&mut transaction, &http_client, race).await? {
-                                        matching_races.push((idx, race));
+                                for (idx, cal_event) in unassigned_races.iter().enumerate() {
+                                    if restream_match.matches(&mut transaction, &http_client, &cal_event.race).await? {
+                                        matching_races.push((idx, cal_event));
                                     }
                                 }
                                 match matching_races.into_iter().at_most_one() {
@@ -2602,9 +2615,9 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                         }
                                     }
                                     Ok(Some((idx, _))) => {
-                                        let mut race = unassigned_races.swap_remove(idx);
-                                        restream.update_race(&mut race, restream_match.id)?;
-                                        race.save(&mut transaction).await?;
+                                        let mut cal_event = unassigned_races.swap_remove(idx);
+                                        transaction = restream.update_race(&db_pool, transaction, &*discord_ctx.read().await, &event, &mut cal_event, restream_match.id).await?;
+                                        cal_event.race.save(&mut transaction).await?;
                                     }
                                     Err(races) => {
                                         if let Some(organizer_channel) = event.discord_organizer_channel {
@@ -2616,13 +2629,13 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                                 .push("), please select one to assign it to:")
                                                 .build();
                                             let mut options = Vec::with_capacity(races.size_hint().0);
-                                            for (_, race) in races {
+                                            for (_, cal_event) in races {
                                                 let info_prefix = format!("{}{}{}",
-                                                    race.phase.as_deref().unwrap_or(""),
-                                                    if race.phase.is_none() || race.round.is_none() { "" } else { " " },
-                                                    race.round.as_deref().unwrap_or(""),
+                                                    cal_event.race.phase.as_deref().unwrap_or(""),
+                                                    if cal_event.race.phase.is_none() || cal_event.race.round.is_none() { "" } else { " " },
+                                                    cal_event.race.round.as_deref().unwrap_or(""),
                                                 );
-                                                let summary = match race.entrants {
+                                                let summary = match cal_event.race.entrants {
                                                     Entrants::Open | Entrants::Count { .. } => if info_prefix.is_empty() { format!("Untitled Race") } else { info_prefix },
                                                     Entrants::Named(ref entrants) => format!("{info_prefix}{}{entrants}", if info_prefix.is_empty() { "" } else { ": " }),
                                                     Entrants::Two([ref team1, ref team2]) => format!(
@@ -2639,11 +2652,11 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                                         team3.name(&mut transaction, &*discord_ctx.read().await).await?.unwrap_or(Cow::Borrowed("(unnamed)")),
                                                     ),
                                                 };
-                                                options.push(CreateSelectMenuOption::new(if let Some(game) = race.game {
+                                                options.push(CreateSelectMenuOption::new(if let Some(game) = cal_event.race.game {
                                                     format!("{summary}, game {game}")
                                                 } else {
                                                     summary
-                                                }, race.id.to_string()));
+                                                }, cal_event.race.id.to_string()));
                                             }
                                             let notification = organizer_channel.send_message(&*discord_ctx.read().await, CreateMessage::default()
                                                 .content(msg)

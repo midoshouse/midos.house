@@ -112,22 +112,109 @@ impl Restream {
         self.match1.iter().chain(&self.match2)
     }
 
-    pub(crate) fn update_race(&self, race: &mut Race, id: i64) -> Result<(), url::ParseError> {
-        if !race.cal_events().any(|cal_event| cal_event.room().is_some()) { // don't mess with starting time if room already open
-            assert!(matches!(mem::replace(&mut race.source, cal::Source::SpeedGaming { id }), cal::Source::Manual | cal::Source::SpeedGaming { id: _ }));
-            race.schedule.set_live_start(self.when_countdown);
-            //TODO if schedule changed, post notice in scheduling thread, open room if short notice
+    pub(crate) async fn update_race<'a>(&self, db_pool: &PgPool, mut transaction: Transaction<'a, Postgres>, discord_ctx: &DiscordCtx, event: &Data<'_>, cal_event: &mut cal::Event, id: i64) -> Result<Transaction<'a, Postgres>, event::Error> {
+        if !cal_event.race.cal_events().any(|cal_event| cal_event.room().is_some()) { // don't mess with starting time if room already open
+            assert!(matches!(mem::replace(&mut cal_event.race.source, cal::Source::SpeedGaming { id }), cal::Source::Manual | cal::Source::SpeedGaming { id: _ }));
+            let schedule_changed = match cal_event.race.schedule {
+                RaceSchedule::Live { start, .. } => (start != self.when_countdown).then_some(true),
+                _ => Some(false),
+            };
+            cal_event.race.schedule.set_live_start(self.when_countdown);
+            if let Some(was_scheduled) = schedule_changed {
+                use {
+                    serenity::all::{
+                        CreateAllowedMentions,
+                        CreateMessage,
+                    },
+                    crate::discord_bot::*,
+                };
+
+                if self.when_countdown - Utc::now() < TimeDelta::minutes(30) {
+                    let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
+                        let data = discord_ctx.data.read().await;
+                        (
+                            data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
+                            data.get::<NewRoomLock>().expect("new room lock missing from Discord context").clone(),
+                            data.get::<RacetimeHost>().expect("racetime.gg host missing from Discord context").clone(),
+                            data.get::<ConfigRaceTime>().expect("racetime.gg config missing from Discord context").clone(),
+                            data.get::<ExtraRoomTx>().expect("extra room sender missing from Discord context").clone(),
+                            data.get::<CleanShutdown>().expect("clean shutdown state missing from Discord context").clone(),
+                        )
+                    };
+                    lock!(new_room_lock = new_room_lock; {
+                        if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, discord_ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, cal_event, &event).await? {
+                            if let Some(channel) = event.discord_race_room_channel {
+                                if let Some(thread) = cal_event.race.scheduling_thread {
+                                    thread.say(discord_ctx, &msg).await?;
+                                    channel.send_message(discord_ctx, CreateMessage::default().content(msg).allowed_mentions(CreateAllowedMentions::default())).await?;
+                                } else {
+                                    channel.say(discord_ctx, msg).await?;
+                                }
+                            } else if let Some(thread) = cal_event.race.scheduling_thread {
+                                thread.say(discord_ctx, msg).await?;
+                            } else if let Some(channel) = event.discord_organizer_channel {
+                                channel.say(discord_ctx, msg).await?;
+                            } else {
+                                FENHL.create_dm_channel(discord_ctx).await?.say(discord_ctx, msg).await?;
+                            }
+                        } else {
+                            let mut response_content = MessageBuilder::default();
+                            response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
+                            response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                            response_content.push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
+                            let msg = response_content
+                                .push(". The race room will be opened momentarily.")
+                                .build();
+                            if let Some(thread) = cal_event.race.scheduling_thread {
+                                thread.say(discord_ctx, msg).await?;
+                            } else if let Some(channel) = event.discord_organizer_channel {
+                                channel.say(discord_ctx, msg).await?;
+                            } else {
+                                FENHL.create_dm_channel(discord_ctx).await?.say(discord_ctx, msg).await?;
+                            }
+                        }
+                        cal_event.race.save(&mut transaction).await?;
+                        transaction.commit().await?;
+                        transaction = db_pool.begin().await?;
+                    })
+                } else {
+                    cal_event.race.save(&mut transaction).await?;
+                    transaction.commit().await?;
+                    transaction = db_pool.begin().await?;
+                    if let Some(thread) = cal_event.race.scheduling_thread {
+                        let msg = if_chain! {
+                            if let French = event.language;
+                            if cal_event.race.game.is_none();
+                            then {
+                                MessageBuilder::default()
+                                    .push("Votre race a été planifiée pour le ")
+                                    .push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime)
+                                    .push('.')
+                                    .build()
+                            } else {
+                                let mut response_content = MessageBuilder::default();
+                                response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
+                                response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
+                                response_content.push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
+                                response_content.push('.');
+                                response_content.build()
+                            }
+                        };
+                        thread.say(discord_ctx, msg).await?;
+                    }
+                }
+            }
         }
-        if !race.schedule_locked {
+        if !cal_event.race.schedule_locked {
             for channel in &self.channels {
-                if let hash_map::Entry::Vacant(entry) = race.video_urls.entry(channel.language) {
+                if let hash_map::Entry::Vacant(entry) = cal_event.race.video_urls.entry(channel.language) {
                     let video_url = Url::parse(&format!("https://twitch.tv/{}", channel.slug))?;
                     entry.insert(video_url);
                 }
                 //TODO register restreamer, if any
             }
         }
-        Ok(())
+        Ok(transaction)
     }
 }
 

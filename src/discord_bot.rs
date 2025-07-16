@@ -23,11 +23,7 @@ use {
         Encode,
         types::Json,
     },
-    crate::{
-        config::ConfigRaceTime,
-        prelude::*,
-        racetime_bot::CleanShutdown,
-    },
+    crate::prelude::*,
 };
 
 pub(crate) const FENHL: UserId = UserId::new(86841168427495424);
@@ -152,13 +148,13 @@ impl TypeMapKey for DbPool {
     type Value = PgPool;
 }
 
-enum HttpClient {}
+pub(crate) enum HttpClient {}
 
 impl TypeMapKey for HttpClient {
     type Value = reqwest::Client;
 }
 
-enum RacetimeHost {}
+pub(crate) enum RacetimeHost {}
 
 impl TypeMapKey for RacetimeHost {
     type Value = racetime::HostInfo;
@@ -170,13 +166,13 @@ impl TypeMapKey for StartggToken {
     type Value = String;
 }
 
-enum NewRoomLock {}
+pub(crate) enum NewRoomLock {}
 
 impl TypeMapKey for NewRoomLock {
     type Value = Arc<Mutex<()>>;
 }
 
-enum ExtraRoomTx {}
+pub(crate) enum ExtraRoomTx {}
 
 impl TypeMapKey for ExtraRoomTx {
     type Value = Arc<RwLock<mpsc::Sender<String>>>;
@@ -1383,8 +1379,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                         } else {
                                             race.schedule.set_live_start(start);
                                             race.schedule_updated_at = Some(Utc::now());
-                                            race.save(&mut transaction).await?;
-                                            let cal_event = cal::Event { kind: cal::EventKind::Normal, race };
+                                            let mut cal_event = cal::Event { kind: cal::EventKind::Normal, race };
                                             if start - Utc::now() < TimeDelta::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
                                                     let data = ctx.data.read().await;
@@ -1398,7 +1393,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     )
                                                 };
                                                 lock!(new_room_lock = new_room_lock; {
-                                                    if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &cal_event, &event).await? {
+                                                    if let Some((_, msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &mut cal_event, &event).await? {
                                                         if let Some(channel) = event.discord_race_room_channel {
                                                             channel.say(ctx, &msg).await?;
                                                         }
@@ -1419,9 +1414,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .content(response_content)
                                                         )).await?;
                                                     }
+                                                    cal_event.race.save(&mut transaction).await?;
                                                     transaction.commit().await?;
                                                 })
                                             } else {
+                                                cal_event.race.save(&mut transaction).await?;
                                                 transaction.commit().await?;
                                                 let response_content = if_chain! {
                                                     if let French = event.language;
@@ -1524,12 +1521,10 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     if team.as_ref().is_some_and(|team| team1 == team) {
                                                         let was_scheduled = race.schedule.set_async_start1(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
-                                                        race.save(&mut transaction).await?;
                                                         (cal::EventKind::Async1, was_scheduled)
                                                     } else if team.as_ref().is_some_and(|team| team2 == team) {
                                                         let was_scheduled = race.schedule.set_async_start2(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
-                                                        race.save(&mut transaction).await?;
                                                         (cal::EventKind::Async2, was_scheduled)
                                                     } else {
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1544,17 +1539,14 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     if team.as_ref().is_some_and(|team| team1 == team) {
                                                         let was_scheduled = race.schedule.set_async_start1(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
-                                                        race.save(&mut transaction).await?;
                                                         (cal::EventKind::Async1, was_scheduled)
                                                     } else if team.as_ref().is_some_and(|team| team2 == team) {
                                                         let was_scheduled = race.schedule.set_async_start2(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
-                                                        race.save(&mut transaction).await?;
                                                         (cal::EventKind::Async2, was_scheduled)
                                                     } else if team.as_ref().is_some_and(|team| team3 == team) {
                                                         let was_scheduled = race.schedule.set_async_start3(start).is_some();
                                                         race.schedule_updated_at = Some(Utc::now());
-                                                        race.save(&mut transaction).await?;
                                                         (cal::EventKind::Async3, was_scheduled)
                                                     } else {
                                                         interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new()
@@ -1567,7 +1559,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                 }
                                                 _ => panic!("tried to schedule race with not 2 or 3 MH teams as async"),
                                             };
-                                            let cal_event = cal::Event { race, kind };
+                                            let mut cal_event = cal::Event { race, kind };
                                             if start - Utc::now() < TimeDelta::minutes(30) {
                                                 let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
                                                     let data = ctx.data.read().await;
@@ -1581,7 +1573,7 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                     )
                                                 };
                                                 lock!(new_room_lock = new_room_lock; {
-                                                    let should_post_regular_response = if let Some((is_room_url, mut msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &cal_event, &event).await? {
+                                                    let should_post_regular_response = if let Some((is_room_url, mut msg)) = racetime_bot::create_room(&mut transaction, ctx, &racetime_host, &racetime_config.client_id, &racetime_config.client_secret, &extra_room_tx, &http_client, clean_shutdown, &mut cal_event, &event).await? {
                                                         if is_room_url && cal_event.is_private_async_part() {
                                                             msg = match cal_event.race.entrants {
                                                                 Entrants::Two(_) => format!("unlisted room for first async half: {msg}"),
@@ -1591,7 +1583,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             if let Some(channel) = event.discord_organizer_channel {
                                                                 channel.say(ctx, &msg).await?;
                                                             } else {
-                                                                // DM Fenhl
                                                                 FENHL.create_dm_channel(ctx).await?.say(ctx, &msg).await?;
                                                             }
                                                         } else {
@@ -1621,9 +1612,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                                             .content(response_content)
                                                         )).await?;
                                                     }
+                                                    cal_event.race.save(&mut transaction).await?;
                                                     transaction.commit().await?;
                                                 });
                                             } else {
+                                                cal_event.race.save(&mut transaction).await?;
                                                 transaction.commit().await?;
                                                 let response_content = if_chain! {
                                                     if let French = event.language;
@@ -2115,22 +2108,24 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                     } else if let Some((setting, value)) = custom_id.strip_prefix("draft_option_").and_then(|setting_value| setting_value.split_once("__")) {
                         draft_action(ctx, interaction, draft::Action::Pick { setting: setting.to_owned(), value: value.to_owned() }).await?;
                     } else if let Some(speedgaming_id) = custom_id.strip_prefix("sgdisambig_") {
-                        let (mut transaction, http_client) = {
+                        let (db_pool, http_client) = {
                             let data = ctx.data.read().await;
                             (
-                                data.get::<DbPool>().expect("database connection pool missing from Discord context").begin().await?,
+                                data.get::<DbPool>().expect("database connection pool missing from Discord context").clone(),
                                 data.get::<HttpClient>().expect("HTTP client missing from Discord context").clone(),
                             )
                         };
+                        let mut transaction = db_pool.begin().await?;
                         let speedgaming_id = speedgaming_id.parse()?;
                         let ComponentInteractionDataKind::StringSelect { ref values } = interaction.data.kind else { panic!("sgdisambig interaction with unexpected payload") };
                         let race_id = values.iter().exactly_one().expect("sgdisambig interaction with unexpected payload").parse()?;
-                        let mut race = Race::from_id(&mut transaction, &http_client, race_id).await?;
-                        let Some(speedgaming_slug) = race.event(&mut transaction).await?.speedgaming_slug else { panic!("sgdisambig interaction for race from non-SpeedGaming event") };
-                        let schedule = sgl::schedule(&http_client, &speedgaming_slug).await?;
+                        let mut cal_event = cal::Event { race: Race::from_id(&mut transaction, &http_client, race_id).await?, kind: cal::EventKind::Normal };
+                        let event = cal_event.race.event(&mut transaction).await?;
+                        let Some(ref speedgaming_slug) = event.speedgaming_slug else { panic!("sgdisambig interaction for race from non-SpeedGaming event") };
+                        let schedule = sgl::schedule(&http_client, speedgaming_slug).await?;
                         let restream = schedule.into_iter().find(|restream| restream.matches().any(|restream_match| restream_match.id == speedgaming_id)).expect("no such SpeedGaming match ID");
-                        restream.update_race(&mut race, speedgaming_id)?;
-                        race.save(&mut transaction).await?;
+                        transaction = restream.update_race(&db_pool, transaction, ctx, &event, &mut cal_event, speedgaming_id).await?;
+                        cal_event.race.save(&mut transaction).await?;
                         transaction.commit().await?;
                     } else {
                         panic!("received message component interaction with unknown custom ID {custom_id:?}")
