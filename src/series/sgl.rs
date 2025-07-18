@@ -563,6 +563,7 @@ pub(crate) fn settings_2024() -> seed::Settings {
 pub(crate) fn settings_2025() -> seed::Settings {
     collect![
         format!("user_message") => json!("SGL 2025 Tournament"),
+        format!("password_lock") => json!(true),
         format!("triforce_count_per_world") => json!(28),
         format!("triforce_goal_per_world") => json!(24),
         format!("bridge") => json!("stones"),
