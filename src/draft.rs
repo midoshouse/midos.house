@@ -239,7 +239,7 @@ pub(crate) struct Draft {
 impl Draft {
     pub(crate) async fn for_game1(transaction: &mut Transaction<'_, Postgres>, http_client: &reqwest::Client, kind: Kind, event: &event::Data<'_>, phase: Option<&str>, [team1, team2]: [&team::Team; 2]) -> Result<Self, cal::Error> {
         let [high_seed, low_seed] = match kind {
-            Kind::S7 | Kind::RslS7 => [
+            Kind::S7 => [
                 min_by_key(team1, team2, |team| team.qualifier_rank).id,
                 max_by_key(team1, team2, |team| team.qualifier_rank).id,
             ],
@@ -301,6 +301,29 @@ impl Draft {
                         team_ids
                     }
                 }
+            },
+            Kind::RslS7 => if phase.is_some_and(|phase| phase == "Top 8") {
+                let seeding = match kind {
+                    Kind::RslS7 => [
+                        Id::from(12639002222577844011_u64), // Alexis
+                        Id::from(16373589663560160707_u64), // Schulzer
+                        Id::from(18251410877395917313_u64), // Chimpanreeve
+                        Id::from(7664769147612623797_u64), // Aranaut
+                        Id::from(2933860891811564156_u64), // Flouche
+                        Id::from(6739931103991450481_u64), // Nopons
+                        Id::from(5480028145623953067_u64), // Rafa
+                        Id::from(17375662428578904933_u64), // Cola
+                    ],
+                    _ => unreachable!("checked by outer match"),
+                };
+                let mut team_ids = [team1.id, team2.id];
+                team_ids.sort_unstable_by_key(|team| seeding.iter().position(|iter_team| iter_team == team));
+                team_ids
+            } else {
+                [
+                    min_by_key(team1, team2, |team| team.qualifier_rank).id,
+                    max_by_key(team1, team2, |team| team.qualifier_rank).id,
+                ]
             },
             Kind::TournoiFrancoS3 | Kind::TournoiFrancoS4 | Kind::TournoiFrancoS5 => {
                 let mut team_ids = [team1.id, team2.id];
