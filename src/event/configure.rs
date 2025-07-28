@@ -50,7 +50,7 @@ async fn configure_form(mut transaction: Transaction<'_, Postgres>, me: Option<U
                     pre : serde_json::to_string_pretty(event.single_settings.as_ref().expect("no settings configured for weeklies"))?;
                     p {
                         : "The data above is currently not editable for technical reasons. Please contact ";
-                        : User::from_id(&mut *transaction, Id::<Users>::from(14571800683221815449_u64)).await?.ok_or(PageError::FenhlUserData)?; // Fenhl
+                        : User::from_id(&mut *transaction, crate::id::FENHL).await?.ok_or(PageError::FenhlUserData)?; // Fenhl
                         : " if you've spotted an error in it.";
                     } //TODO make editable
                 } else {

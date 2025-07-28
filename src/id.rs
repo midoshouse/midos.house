@@ -19,6 +19,8 @@ use {
     crate::prelude::*,
 };
 
+pub(crate) const FENHL: Id<Users> = Id { inner: 14571800683221815449, _table: PhantomData };
+
 pub(crate) trait Table {
     fn query_exists(id: i64) -> sqlx::query::QueryScalar<'static, Postgres, bool, <Postgres as Database>::Arguments<'static>>;
 }
