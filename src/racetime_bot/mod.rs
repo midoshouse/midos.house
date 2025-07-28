@@ -464,7 +464,6 @@ impl Goal {
                 | Self::Rsl
                 | Self::Sgl2023
                 | Self::Sgl2024
-                | Self::Sgl2025
                 | Self::SongsOfHope
                 | Self::TournoiFrancoS3
                 | Self::TournoiFrancoS4
@@ -475,6 +474,7 @@ impl Goal {
                     => UnlockSpoilerLog::After,
                 | Self::Cc7
                 | Self::CoOpS3
+                | Self::Sgl2025
                 | Self::StandardRuleset
                     => if official_race { UnlockSpoilerLog::Never } else { UnlockSpoilerLog::After },
             }
