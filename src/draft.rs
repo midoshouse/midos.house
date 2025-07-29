@@ -371,7 +371,7 @@ impl Draft {
             Kind::S7 => self.skipped_bans + u8::try_from(self.settings.len()).unwrap(),
             Kind::RslS7 => self.skipped_bans
                 + u8::try_from(rsl::FORCE_OFF_SETTINGS.into_iter().filter(|&rsl::ForceOffSetting { name, .. }| self.settings.contains_key(name)).count()).unwrap()
-                + u8::try_from(rsl::FIFTY_FIFTY_SETTINGS.into_iter().chain(rsl::MULTI_OPTION_SETTINGS).filter(|&rsl::MultiOptionSetting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
+                + u8::try_from(rsl::FIFTY_FIFTY_SETTINGS.into_iter().chain(rsl::MULTI_OPTION_SETTINGS).map(|rsl::MultiOptionSetting { name, .. }| self.settings.get(name).map(|value| 1 + value.chars().filter(|c| *c == ',').count()).unwrap_or_default()).sum::<usize>()).unwrap(),
             Kind::MultiworldS3 => self.skipped_bans + u8::try_from(mw::S3_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::MultiworldS4 => self.skipped_bans + u8::try_from(mw::S4_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
             Kind::MultiworldS5 => self.skipped_bans + u8::try_from(mw::S5_SETTINGS.iter().copied().filter(|&mw::Setting { name, .. }| self.settings.contains_key(name)).count()).unwrap(),
