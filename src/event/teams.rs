@@ -757,10 +757,12 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
     let qualifier_kind = match (data.series, &*data.event) {
         (Series::SongsOfHope, "1") => QualifierKind::SongsOfHope,
         (Series::SpeedGaming, "2023onl" | "2024onl" | "2025onl") | (Series::Standard, "8") => {
-            if is_organizer || me.as_ref().is_some_and(|me| me.id == crate::id::FENHL) { //TODO debug detailed status display, then show to everyone
-                show_status = ShowStatus::Detailed;
-            } else if !data.is_started(&mut transaction).await? && Race::for_event(&mut transaction, http_client, &data).await?.into_iter().all(|race| race.phase.as_ref().is_none_or(|phase| phase != "Qualifier") || race.is_ended()) {
-                show_status = ShowStatus::Confirmed;
+            if !data.is_started(&mut transaction).await? {
+                if Race::for_event(&mut transaction, http_client, &data).await?.into_iter().all(|race| race.phase.as_ref().is_none_or(|phase| phase != "Qualifier") || race.is_ended()) {
+                    show_status = ShowStatus::Confirmed;
+                } else if is_organizer || me.as_ref().is_some_and(|me| me.id == crate::id::FENHL) { //TODO debug detailed status display showing weird-looking data when viewed during a qualifier, then show to everyone
+                    show_status = ShowStatus::Detailed;
+                }
             }
             QualifierKind::Score(match (data.series, &*data.event) {
                 (Series::SpeedGaming, "2023onl") => QualifierScoreKind::Sgl2023Online,
