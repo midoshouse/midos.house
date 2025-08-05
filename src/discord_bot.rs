@@ -205,6 +205,7 @@ impl TypeMapKey for CommandIds {
 }
 
 pub(crate) const MULTIWORLD_GUILD: GuildId = GuildId::new(826935332867276820);
+#[cfg(unix)] pub(crate) const COMMUNITY_MULTIWORLD_ROLE: RoleId = RoleId::new(1086960717749559306);
 
 #[cfg_attr(not(unix), allow(unused))] // only constructed in UNIX socket handler
 #[derive(Clone, Copy, PartialEq, Eq, Sequence)]

@@ -8,6 +8,7 @@ use {
     tokio::net::UnixListener,
     crate::{
         discord_bot::{
+            COMMUNITY_MULTIWORLD_ROLE,
             Element,
             MULTIWORLD_GUILD,
         },
@@ -75,6 +76,9 @@ pub(crate) enum ClientMessage {
     UpdateRegionalVc {
         user_id: Id<Users>,
         scene: u8,
+    },
+    CheckEosmwAccess {
+        user_id: Id<Users>,
     },
 }
 
@@ -335,6 +339,21 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                     }
                                 }
                                 0u8.write(&mut sock).await.expect("error writing to UNIX socket");
+                                break
+                            }
+                            Ok(ClientMessage::CheckEosmwAccess { user_id }) => {
+                                if_chain! {
+                                    if let Ok(Some(user)) = User::from_id(&global_state.db_pool, user_id).await;
+                                    if let Some(discord_user) = user.discord;
+                                    let discord_ctx = global_state.discord_ctx.read().await;
+                                    if let Ok(member) = MULTIWORLD_GUILD.member(&*discord_ctx, discord_user.id).await;
+                                    if member.roles.contains(&COMMUNITY_MULTIWORLD_ROLE);
+                                    then {
+                                        true
+                                    } else {
+                                        false
+                                    }
+                                }.write(&mut sock).await.expect("error writing to UNIX socket");
                                 break
                             }
                             Err(ReadError { kind: ReadErrorKind::Io(e), .. }) if e.kind() == io::ErrorKind::UnexpectedEof => break,

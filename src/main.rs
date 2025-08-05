@@ -150,7 +150,7 @@ enum Error {
 }
 
 #[wheel::main(rocket)]
-async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
+async fn main(Args { port, subcommand }: Args) -> Result<bool, Error> {
     if let Some(subcommand) = subcommand {
         #[cfg(unix)] let mut sock = UnixStream::connect(unix_socket::PATH).await?;
         #[cfg(unix)] subcommand.write(&mut sock).await?;
@@ -178,6 +178,12 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
                 println!("{} Mido's House: updating regional voice chat", Utc::now().format("%Y-%m-%d %H:%M:%S"));
                 u8::read(&mut sock).await?;
                 println!("{} Mido's House: done updating regional voice chat", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+            }
+            #[cfg(unix)] Subcommand::CheckEosmwAccess { .. } => {
+                println!("{} Mido's House: checking end-of-season multiworld access", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                let authorized = bool::read(&mut sock).await?;
+                println!("{} Mido's House: done checking end-of-season multiworld access", Utc::now().format("%Y-%m-%d %H:%M:%S"));
+                return Ok(authorized)
             }
         }
     } else {
@@ -275,5 +281,5 @@ async fn main(Args { port, subcommand }: Args) -> Result<(), Error> {
         #[cfg(not(unix))] let unix_socket_task = future::ok(());
         let ((), (), (), (), ()) = tokio::try_join!(discord_task, import_task, racetime_task, rocket_task, unix_socket_task)?;
     }
-    Ok(())
+    Ok(true)
 }
