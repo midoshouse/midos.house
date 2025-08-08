@@ -25,6 +25,7 @@ use {
 pub(crate) mod br;
 pub(crate) mod coop;
 pub(crate) mod fr;
+pub(crate) mod latam;
 pub(crate) mod league;
 pub(crate) mod mp;
 pub(crate) mod mq;
@@ -45,6 +46,7 @@ pub(crate) enum Series {
     BattleRoyale,
     CoOp,
     CopaDoBrasil,
+    CopaLatinoamerica,
     League,
     MixedPools,
     Mq,
@@ -67,6 +69,7 @@ impl Series {
             Self::BattleRoyale => "ohko",
             Self::CoOp => "coop",
             Self::CopaDoBrasil => "br",
+            Self::CopaLatinoamerica => "latam",
             Self::League => "league",
             Self::MixedPools => "mp",
             Self::Mq => "mq",
@@ -89,6 +92,7 @@ impl Series {
             Self::BattleRoyale => "Battle Royale",
             Self::CoOp => "Co-op Tournaments",
             Self::CopaDoBrasil => "Copa do Brasil",
+            Self::CopaLatinoamerica => "Copa Latinoamerica",
             Self::League => "League",
             Self::MixedPools => "Mixed Pools Tournaments",
             Self::Mq => "12 MQ Tournaments",

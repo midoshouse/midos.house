@@ -21,6 +21,10 @@ pub(crate) enum Language {
     #[sqlx(rename = "pt")]
     #[field(value = "pt")]
     Portuguese,
+    #[serde(rename = "es", alias = "Spanish")]
+    #[sqlx(rename = "es")]
+    #[field(value = "es")]
+    Spanish,
 }
 
 impl Language {
@@ -30,6 +34,7 @@ impl Language {
             French => "fr",
             German => "de",
             Portuguese => "pt",
+            Spanish => "es",
         }
     }
 
@@ -60,7 +65,7 @@ impl Language {
 
     pub(crate) fn join_html<T: ToHtml>(&self, elts: impl IntoNonEmptyIterator<Item = T>) -> RawHtml<String> {
         match self {
-            French | German | Portuguese => {
+            French | German | Portuguese | Spanish => {
                 let (first, rest) = elts.into_nonempty_iter().next();
                 let mut rest = rest.fuse();
                 if let Some(second) = rest.next() {
@@ -76,6 +81,7 @@ impl Language {
                             French => : " et ";
                             German => : " und ";
                             Portuguese => : " e ";
+                            Spanish => : " y ";
                             _ => @unreachable
                         }
                         : last;
@@ -121,6 +127,7 @@ impl Language {
             French => French.join_str_with("et", elts),
             German => German.join_str_with("und", elts),
             Portuguese => Portuguese.join_str_with("e", elts),
+            Spanish => Spanish.join_str_with("y", elts),
             _ => English.join_str_with("and", elts),
         }
     }
@@ -131,7 +138,7 @@ impl Language {
 
     pub(crate) fn join_str_with<T: fmt::Display>(&self, conjunction: &str, elts: impl IntoNonEmptyIterator<Item = T>) -> String {
         match self {
-            French | German | Portuguese => {
+            French | German | Portuguese | Spanish => {
                 let (first, rest) = elts.into_nonempty_iter().next();
                 let mut rest = rest.fuse();
                 if let Some(second) = rest.next() {
@@ -170,6 +177,7 @@ impl fmt::Display for Language {
             French => write!(f, "French"),
             German => write!(f, "German"),
             Portuguese => write!(f, "Portuguese"),
+            Spanish => write!(f, "Spanish"),
         }
     }
 }
@@ -187,6 +195,7 @@ impl ToHtml for Language {
             French => write!(&mut buf.0, "French"),
             German => write!(&mut buf.0, "German"),
             Portuguese => write!(&mut buf.0, "Portuguese"),
+            Spanish => write!(&mut buf.0, "Spanish"),
         }.unwrap();
     }
 }
