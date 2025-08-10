@@ -2097,7 +2097,10 @@ pub(crate) async fn volunteer(pool: &State<PgPool>, me: Option<User>, uri: Origi
             article {
                 p {
                     : "If you are interested in restreaming, commentating, or tracking a race for this tournament, please contact ";
-                    : User::from_id(&mut *transaction, Id::from(13528320435736334110_u64)).await?.ok_or(Error::OrganizerUserData)?;
+                    : User::from_id(&mut *transaction, Id::from(match &*data.event {
+                        "2" | "3" | "4coop" => 13528320435736334110_u64, // Maera/Miraba
+                        _ => 7361280298646579337_u64, // baseball
+                    })).await?.ok_or(Error::OrganizerUserData)?;
                     : ".";
                 }
                 p : "If a race already has a restream, you can volunteer through that channel's Discord.";

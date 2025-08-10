@@ -189,7 +189,7 @@ impl Requirement {
             Self::LiteOk { .. } => Some(false),
             Self::RestreamConsent { .. } => Some(false),
             Self::Qualifier { .. } => Some(false),
-            Self::TripleQualifier { .. } => Some(false),
+            Self::TripleQualifier { .. } => Some(false), //TODO check if live qualifier completed, allow confirming signup in that case
             Self::QualifierPlacement { num_players, min_races, need_finish, event, exclude_players } => Some(if_chain! {
                 let data = if let Some(event) = event {
                     &Data::new(&mut *transaction, data.series, event).await?.ok_or(Error::NoSuchEvent)?
