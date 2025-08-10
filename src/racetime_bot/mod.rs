@@ -1188,9 +1188,9 @@ impl Goal {
                 }
                 [arg] if arg == "jr" => SeedCommandParseResult::Tfb { version: "v7.1.143-blitz-0.43", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz: Jabu's Revenge seed") },
                 [arg] if arg == "s2" => SeedCommandParseResult::Tfb { version: "v7.1.3-blitz-0.42", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S2 seed") },
-                [arg] if arg == "s3" => SeedCommandParseResult::Tfb { version: "LATEST", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S3 seed") },
+                [arg] if arg == "s3" => SeedCommandParseResult::Tfb { version: "v8.1.37-blitz-0.59", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S3 seed") },
                 [arg] if arg == "s4coop" => SeedCommandParseResult::TfbDev { coop: true, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 co-op seed") },
-                [arg] if arg == "s4" => SeedCommandParseResult::TfbDev { coop: false, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 1v1 seed") },
+                [arg] if arg == "s4" => SeedCommandParseResult::Tfb { version: "LATEST", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 1v1 seed") },
                 [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
             },
         })
