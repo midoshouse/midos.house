@@ -565,7 +565,13 @@ impl<'a> Data<'a> {
                         }
                     }
                 }
-                @let practice_seed_url = self.single_settings.is_some().then(|| uri!(practice_seed(self.series, &*self.event)));
+                @let practice_seed_url = match (self.series, &*self.event) {
+                    (Series::TriforceBlitz, "2") => Some((Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v7.1.3-blitz-0.42")))?, None)),
+                    (Series::TriforceBlitz, "3") => Some((Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v8.1.37-blitz-0.59")))?, None)),
+                    (Series::TriforceBlitz, "4coop") => Some((Url::parse("https://dev.triforceblitz.com/seeds/generate")?, None)),
+                    (Series::TriforceBlitz, "4") => Some((Url::parse("https://www.triforceblitz.com/generator")?, None)),
+                    (_, _) => self.single_settings.is_some().then(|| Ok::<_, Error>((Url::parse(&uri!(practice_seed(self.series, &*self.event)).to_string())?, Some(Url::parse("https://ootrandomizer.com/")?)))).transpose()?,
+                };
                 @let practice_race_url = if_chain! {
                     if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event);
                     if goal.is_custom(); //TODO also support non-custom goals, see https://github.com/racetimeGG/racetime-app/issues/215
@@ -582,9 +588,9 @@ impl<'a> Data<'a> {
                         None
                     }
                 };
-                @let practice_seed_button = practice_seed_url.map(|url| html! {
-                    a(class = "button", href = url) {
-                        : favicon(&Url::parse("https://ootrandomizer.com/").unwrap()); //TODO adjust based on seed host
+                @let practice_seed_button = practice_seed_url.map(|(url, favicon_url)| html! {
+                    a(class = "button", href = url.to_string()) {
+                        : favicon(&favicon_url.as_ref().unwrap_or(&url));
                         @if practice_race_url.is_some() {
                             : "Roll Seed";
                         } else {
