@@ -647,6 +647,7 @@ impl Goal {
                 ctx.say("Enable Master Quest using e.g. “!seed base 6mq” or “!seed draft advanced 12mq” / Activez les donjons Master Quest en utilisant par exemple : “!seed base 6mq” ou “!seed draft advanced 12mq”").await?;
             }
             Self::TriforceBlitz => {
+                ctx.say("!seed s4: Triforce Blitz season 4 1v1 settings").await?;
                 ctx.say("!seed s4coop: Triforce Blitz season 4 co-op settings").await?;
                 ctx.say("!seed s3: Triforce Blitz season 3 settings").await?;
                 ctx.say("!seed jr: Jabu's Revenge").await?;
@@ -1189,6 +1190,7 @@ impl Goal {
                 [arg] if arg == "s2" => SeedCommandParseResult::Tfb { version: "v7.1.3-blitz-0.42", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S2 seed") },
                 [arg] if arg == "s3" => SeedCommandParseResult::Tfb { version: "LATEST", unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S3 seed") },
                 [arg] if arg == "s4coop" => SeedCommandParseResult::TfbDev { coop: true, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 co-op seed") },
+                [arg] if arg == "s4" => SeedCommandParseResult::TfbDev { coop: false, unlock_spoiler_log, language: English, article: "a", description: format!("Triforce Blitz S4 1v1 seed") },
                 [..] => SeedCommandParseResult::SendPresets { language: English, msg: "I didn't quite understand that" },
             },
         })
@@ -3558,6 +3560,12 @@ impl RaceHandler<GlobalState> for Handler {
                                 "Welcome to Triforce Blitz! Learn more at https://triforceblitz.com/",
                                 true,
                                 vec![
+                                    ("Roll S4 1v1 seed", ActionButton::Message {
+                                        message: format!("!seed s4"),
+                                        help_text: Some(format!("Create a Triforce Blitz season 4 1v1 seed.")),
+                                        survey: None,
+                                        submit: None,
+                                    }),
                                     ("Roll S4 co-op seed", ActionButton::Message {
                                         message: format!("!seed s4coop"),
                                         help_text: Some(format!("Create a Triforce Blitz season 4 co-op seed.")),
@@ -3760,7 +3768,7 @@ impl RaceHandler<GlobalState> for Handler {
                                 settings.insert(format!("password_lock"), json!(true));
                                 this.roll_seed(ctx, goal.preroll_seeds(event_id), goal.rando_version(Some(event)), settings, goal.unlock_spoiler_log(true, false), English, "a", format!("weekly seed")).await
                             },
-                            Goal::TriforceBlitz => this.roll_tfb_dev_seed(ctx, true, goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S4 co-op seed")).await,
+                            Goal::TriforceBlitz => this.roll_tfb_dev_seed(ctx, false, goal.unlock_spoiler_log(true, false), English, "a", format!("Triforce Blitz S4 1v1 seed")).await,
                         },
                         RaceState::Draft { .. } => this.advance_draft(ctx, &state).await?,
                         RaceState::Rolling | RaceState::Rolled(_) | RaceState::SpoilerSent => {}
