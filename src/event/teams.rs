@@ -238,12 +238,18 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
                     RaceStatusValue::Cancelled => {}
                     RaceStatusValue::Invitational | RaceStatusValue::Pending | RaceStatusValue::InProgress | RaceStatusValue::Finished => {
                         let mut entrants = room_data.entrants.clone();
-                        if let QualifierScoreKind::Sgl2023Online = score_kind {
-                            entrants.retain(|entrant| entrant.user.id != "yMewn83Vj3405Jv7"); // user was banned
-                            entrants.iter_mut().for_each(|entrant| if entrant.user.id == "raP6yoaGaNBlV4zN" { entrant.user.id = format!("JrM6PoY8Pd3Rdm5v") }); // racetime.gg account change
-                            if race.id == Id::from(17171498007470059483_u64) {
-                                entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
+                        match score_kind {
+                            QualifierScoreKind::Sgl2023Online => {
+                                entrants.retain(|entrant| entrant.user.id != "yMewn83Vj3405Jv7"); // user was banned
+                                entrants.iter_mut().for_each(|entrant| if entrant.user.id == "raP6yoaGaNBlV4zN" { entrant.user.id = format!("JrM6PoY8Pd3Rdm5v") }); // racetime.gg account change
+                                if race.id == Id::from(17171498007470059483_u64) {
+                                    entrants.retain(|entrant| entrant.user.id != "JrM6PoY6LQWRdm5v"); // result was annulled
+                                }
                             }
+                            QualifierScoreKind::Sgl2025Online => if race.id == Id::from(16334934270025688062_u64) {
+                                entrants.retain(|entrant| !matches!(&*entrant.user.id, "jZ2EGWbRqRWYlM65" | "5JlzyB7eDzoV4GED" | "aGklxjWzqboLPdye")); // results were annulled
+                            },
+                            _ => {}
                         }
                         for entrant in &mut entrants {
                             match entrant.status.value {
