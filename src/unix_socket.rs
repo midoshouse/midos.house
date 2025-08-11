@@ -151,7 +151,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                 break
                             }
                             Ok(ClientMessage::Roll { version, settings, spoiler_log }) => if let Json::Object(settings) = settings {
-                                let mut rx = global_state.clone().roll_seed(PrerollMode::Medium, true, None, VersionedBranch::Pinned { version }, settings, if spoiler_log { UnlockSpoilerLog::Now } else { UnlockSpoilerLog::Never });
+                                let mut rx = global_state.clone().roll_seed(PrerollMode::Medium, true, None, VersionedBranch::Pinned { version }, settings, serde_json::Map::default(), if spoiler_log { UnlockSpoilerLog::Now } else { UnlockSpoilerLog::Never });
                                 loop {
                                     let update = rx.recv().await;
                                     update.write(&mut sock).await.expect("error writing to UNIX socket");
@@ -196,7 +196,7 @@ pub(crate) async fn listen(mut shutdown: rocket::Shutdown, clean_shutdown: Arc<M
                                             settings.remove("password_lock");
                                         }
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");
-                                        global_state.clone().roll_seed(goal.preroll_seeds(None /*TODO replace is_official parameter with optional series and event */), !no_web, None, goal.rando_version(None /*TODO replace is_official parameter with optional series and event */), settings, unlock_spoiler_log)
+                                        global_state.clone().roll_seed(goal.preroll_seeds(None /*TODO replace is_official parameter with optional series and event */), !no_web, None, goal.rando_version(None /*TODO replace is_official parameter with optional series and event */), settings, serde_json::Map::default(), unlock_spoiler_log)
                                     }
                                     Ok(SeedCommandParseResult::Rsl { preset, world_count, unlock_spoiler_log, description, .. }) => {
                                         Some(SeedRollUpdate::Message(description)).write(&mut sock).await.expect("error writing to UNIX socket");

@@ -2733,7 +2733,7 @@ pub(crate) async fn auto_import_races(db_pool: PgPool, http_client: reqwest::Cli
     }
 }
 
-#[rocket::get("/event/<series>/<event>/races/<id>/practice")]
+#[rocket::get("/event/<series>/<event>/races/<id>/practice")] //TODO this should probably be POST, need to turn tab bar links pointing here into buttons to support that
 pub(crate) async fn practice_seed(pool: &State<PgPool>, http_client: &State<reqwest::Client>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, series: Series, event: &str, id: Id<Races>) -> Result<Redirect, StatusOrError<Error>> {
     let _ = (series, event);
     let mut transaction = pool.begin().await?;
@@ -2742,7 +2742,7 @@ pub(crate) async fn practice_seed(pool: &State<PgPool>, http_client: &State<reqw
     let settings = race.single_settings(&mut transaction).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     transaction.commit().await?;
     let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-    let web_version = ootr_api_client.can_roll_on_web(None, &rando_version, world_count, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
+    let web_version = ootr_api_client.can_roll_on_web(None, &rando_version, world_count, false, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
     let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, false, settings).await?;
     Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
 }

@@ -4811,6 +4811,7 @@ dependencies = [
  "serenity-utils",
  "smart-default",
  "sqlx",
+ "tempfile",
  "thiserror 2.0.12",
  "tokio",
  "tokio-util",

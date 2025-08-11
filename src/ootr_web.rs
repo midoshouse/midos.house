@@ -233,8 +233,9 @@ impl ApiClient {
     }
 
     /// Checks if the given randomizer branch/version is available on web, and if so, which version to use.
-    pub(crate) async fn can_roll_on_web(&self, rsl_preset: Option<&rsl::VersionedPreset>, version: &VersionedBranch, world_count: u8, unlock_spoiler_log: UnlockSpoilerLog) -> Option<ootr_utils::Version> {
+    pub(crate) async fn can_roll_on_web(&self, rsl_preset: Option<&rsl::VersionedPreset>, version: &VersionedBranch, world_count: u8, plando: bool, unlock_spoiler_log: UnlockSpoilerLog) -> Option<ootr_utils::Version> {
         if world_count > 3 { return None }
+        if plando { return None }
         if let UnlockSpoilerLog::Progression = unlock_spoiler_log { return None }
         if rsl_preset.is_some() && version.branch().is_none_or(|branch| branch.latest_web_name_random_settings().is_none()) { return None }
         match version {
