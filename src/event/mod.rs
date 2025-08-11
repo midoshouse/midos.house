@@ -566,11 +566,23 @@ impl<'a> Data<'a> {
                     }
                 }
                 @let practice_seed_url = match (self.series, &*self.event) {
-                    (Series::TriforceBlitz, "2") => Some((Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v7.1.3-blitz-0.42")))?, None)),
-                    (Series::TriforceBlitz, "3") => Some((Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v8.1.37-blitz-0.59")))?, None)),
-                    (Series::TriforceBlitz, "4coop") => Some((Url::parse("https://dev.triforceblitz.com/seeds/generate")?, None)),
-                    (Series::TriforceBlitz, "4") => Some((Url::parse("https://www.triforceblitz.com/generator")?, None)),
-                    (_, _) => self.single_settings.is_some().then(|| Ok::<_, Error>((Url::parse(&uri!(practice_seed(self.series, &*self.event)).to_string())?, Some(Url::parse("https://ootrandomizer.com/")?)))).transpose()?,
+                    (Series::TriforceBlitz, "2") => {
+                        let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v7.1.3-blitz-0.42")))?;
+                        Some((url.to_string(), url))
+                    }
+                    (Series::TriforceBlitz, "3") => {
+                        let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v8.1.37-blitz-0.59")))?;
+                        Some((url.to_string(), url))
+                    }
+                    (Series::TriforceBlitz, "4coop") => {
+                        let url = Url::parse("https://dev.triforceblitz.com/seeds/generate")?;
+                        Some((url.to_string(), url))
+                    }
+                    (Series::TriforceBlitz, "4") => {
+                        let url = Url::parse("https://www.triforceblitz.com/generator")?;
+                        Some((url.to_string(), url))
+                    }
+                    (_, _) => self.single_settings.is_some().then(|| Ok::<_, Error>((uri!(practice_seed(self.series, &*self.event)).to_string(), Url::parse("https://ootrandomizer.com/")?))).transpose()?,
                 };
                 @let practice_race_url = if_chain! {
                     if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event);
@@ -590,7 +602,7 @@ impl<'a> Data<'a> {
                 };
                 @let practice_seed_button = practice_seed_url.map(|(url, favicon_url)| html! {
                     a(class = "button", href = url.to_string()) {
-                        : favicon(&favicon_url.as_ref().unwrap_or(&url));
+                        : favicon(&favicon_url);
                         @if practice_race_url.is_some() {
                             : "Roll Seed";
                         } else {
