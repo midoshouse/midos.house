@@ -766,7 +766,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
             if !data.is_started(&mut transaction).await? {
                 if Race::for_event(&mut transaction, http_client, &data).await?.into_iter().all(|race| race.phase.as_ref().is_none_or(|phase| phase != "Qualifier") || race.is_ended()) {
                     show_status = ShowStatus::Confirmed;
-                } else if is_organizer || me.as_ref().is_some_and(|me| me.id == crate::id::FENHL) { //TODO debug detailed status display showing weird-looking data when viewed during a qualifier, then show to everyone
+                } else if is_organizer || me.as_ref().is_some_and(|me| me.id == crate::id::FENHL) { //TODO debug detailed status display showing weird-looking data (e.g. sgl/2025onl after qualifier 11), then show to everyone
                     show_status = ShowStatus::Detailed;
                 }
             }

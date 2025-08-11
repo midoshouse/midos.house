@@ -291,6 +291,7 @@ impl<'a> Data<'a> {
             (Series::BattleRoyale, "1") => from_file!("../../assets/event/ohko/chests-1-8.0.json"), //TODO reroll with the plando
             (Series::CoOp, "3") => ChestAppearances::VANILLA,
             (Series::CopaDoBrasil, "1") => from_file!("../../assets/event/br/chests-1-7.1.143.json"),
+            (Series::CopaLatinoamerica, "2025") => from_file!("../../assets/event/latam/chests-2025-8.3.17-rob.1.json"),
             (Series::League, "4") => from_file!("../../assets/event/league/chests-4-7.1.94.json"),
             (Series::League, "5") => from_file!("../../assets/event/league/chests-4-7.1.94.json"), //TODO S5 was generated on Dev versions between 7.1.184 and 7.1.200
             (Series::League, "6") => from_file!("../../assets/event/league/chests-6-8.0.22.json"),
