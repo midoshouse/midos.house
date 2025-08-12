@@ -41,7 +41,7 @@ pub(crate) mod soh;
 pub(crate) mod tfb;
 pub(crate) mod wttbb;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Sequence)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Sequence)]
 pub(crate) enum Series {
     BattleRoyale,
     CoOp,

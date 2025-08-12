@@ -260,6 +260,24 @@ impl User {
             None
         })
     }
+
+    async fn events_organized(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<event::Data<'_>>, event::DataError> {
+        let ids = sqlx::query!(r#"SELECT series AS "series: Series", event FROM organizers WHERE organizer = $1"#, self.id as _).fetch_all(&mut **transaction).await?;
+        let mut buf = Vec::with_capacity(ids.len());
+        for row in ids {
+            buf.push(event::Data::new(&mut *transaction, row.series, row.event).await?.expect("event disappeared during transaction"));
+        }
+        Ok(buf)
+    }
+
+    async fn events_participated(&self, transaction: &mut Transaction<'_, Postgres>) -> Result<Vec<event::Data<'static>>, event::DataError> {
+        let teams = Team::for_member(&mut *transaction, self.id).await?;
+        let mut buf = Vec::with_capacity(teams.len());
+        for team in teams {
+            buf.push(team.into_event(&mut *transaction).await?);
+        }
+        Ok(buf)
+    }
 }
 
 impl fmt::Display for User {
@@ -453,10 +471,24 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
     } else {
         html! {}
     };
-    Ok(page(transaction, &me, &uri, PageStyle { kind: if me.as_ref().is_some_and(|me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
+    let events_organized = user.events_organized(&mut transaction).await?;
+    let events_participated = user.events_participated(&mut transaction).await?;
+    let mut chests_events = events_organized.clone();
+    chests_events.extend_from_slice(&events_participated);
+    chests_events.sort_unstable_by(|e1, e2| e1.series.cmp(&e2.series).then_with(|| e1.event.cmp(&e2.event)));
+    chests_events.dedup_by(|e1, e2| e1.series == e2.series && e1.event == e2.event);
+    let chests_event = chests_events.choose(&mut rng());
+    let chests = if let Some(event) = chests_event { event.chests().await? } else { ChestAppearances::random() };
+    Ok(page(transaction, &me, &uri, PageStyle { kind: if me.as_ref().is_some_and(|me| *me == user) { PageKind::MyProfile } else { PageKind::Other }, chests, ..PageStyle::default() }, &format!("{} — Mido's House", user.display_name()), html! {
         h1 {
             bdi : user.display_name();
         }
+        p {
+            : "Mido's House user ID: ";
+            code : user.id.to_string();
+        }
+        : racetime;
+        : discord;
         @if user.is_archivist {
             p {
                 : "This user is an archivist: ";
@@ -469,11 +501,21 @@ pub(crate) async fn profile(pool: &State<PgPool>, me: Option<User>, uri: Origin<
                 : " with adding data like race room and restream links to past races.";
             }
         }
-        p {
-            : "Mido's House user ID: ";
-            code : user.id.to_string();
+        @if !events_organized.is_empty() {
+            p : "This user has organized the following events:";
+            ul {
+                @for event in events_organized {
+                    li : event;
+                }
+            }
         }
-        : racetime;
-        : discord;
+        @if !events_participated.is_empty() {
+            p : "This user has participated in the following events:";
+            ul {
+                @for event in events_participated {
+                    li : event;
+                }
+            }
+        }
     }).await?)
 }
