@@ -1115,7 +1115,7 @@ fn enter_form_step2<'a, 'b: 'a, 'c: 'a, 'd: 'a>(mut transaction: Transaction<'a,
                             @match data.series {
                                 Series::CoOp => {
                                     : "Do you consent to your matches being restreamed by our restream partners (see ";
-                                    a(href = "https://zsr.link/coops3rules") : "rules document";
+                                    a(href = "https://docs.google.com/document/d/1hzTrwpKKfgCxtMnRC32xaF390zkAnT01Fr-jS5ummR0/edit") : "rules document";
                                     : ")? If you change your mind later, please let organizers know.";
                                 }
                                 Series::Multiworld => {
