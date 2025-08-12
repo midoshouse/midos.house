@@ -180,6 +180,7 @@ pub(crate) struct Data<'a> {
     pub(crate) auto_import: bool,
     pub(crate) manual_reporting_with_breaks: bool,
     pub(crate) language: Language,
+    pub(crate) listed: bool,
 }
 
 #[derive(Debug, thiserror::Error, rocket_util::Error)]
@@ -228,7 +229,8 @@ impl<'a> Data<'a> {
             retime_window,
             auto_import,
             manual_reporting_with_breaks,
-            language AS "language: Language"
+            language AS "language: Language",
+            listed
         FROM events WHERE series = $1 AND event = $2"#, series as _, &event).fetch_optional(&mut **transaction).await?
             .map(|row| Ok::<_, DataError>(Self {
                 display_name: row.display_name,
@@ -268,6 +270,7 @@ impl<'a> Data<'a> {
                 manual_reporting_with_breaks: row.manual_reporting_with_breaks,
                 language: row.language,
                 series, event,
+                listed: row.listed,
             }))
             .transpose()
     }
