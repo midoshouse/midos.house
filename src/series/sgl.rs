@@ -348,6 +348,9 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                         h2 : "See also";
                         ul {
                             li {
+                                a(href = "https://docs.google.com/document/d/1SFmkuknmCqfO9EmTwMVKmKdema5OQ1InUlbuy16zsy8/edit") : "Rules document";
+                            }
+                            li {
                                 a(href = "https://sglive.speedgaming.org/") : "Main SGL event page";
                             }
                             li {
