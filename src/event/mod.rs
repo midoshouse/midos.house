@@ -2045,7 +2045,13 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
                         message.push(" who");
                     }
                     if let Some(sum) = times.iter().take(players.len()).try_fold(Duration::default(), |acc, &time| Some(acc + time?)) {
-                        message.push(" finished with a time of ");
+                        if let Some(pieces) = value.pieces {
+                            message.push(" finished with a score of ");
+                            message.push(pieces.to_string());
+                            message.push(if pieces == 1 { " piece at " } else { " pieces at " });
+                        } else {
+                            message.push(" finished with a time of ");
+                        }
                         message.push(English.format_duration(sum / u32::try_from(players.len()).expect("too many players in team"), true));
                         message.push('!');
                     } else {
