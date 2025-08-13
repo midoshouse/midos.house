@@ -2785,7 +2785,7 @@ impl RaceHandler<GlobalState> for Handler {
                     } else {
                         if let (true, Some(weekly_name)) = (cal_event.race.phase.is_none(), cal_event.race.round.as_deref().and_then(|round| round.strip_suffix(" Weekly"))) {
                             format!(
-                                "Welcome to the {weekly_name} weekly! Current settings: {}. See {} for details.",
+                                "Welcome to the {weekly_name} Weekly! Current settings: {}. See {} for details.",
                                 s::SHORT_WEEKLY_SETTINGS,
                                 uri!(base_uri(), event::info(event.series, &*event.event)),
                             )
