@@ -59,10 +59,11 @@ impl RestreamMatch {
 
 impl fmt::Display for RestreamMatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.title.is_empty() {
-            write!(f, "{}", self.players.iter().map(|player| &player.streaming_from).format(" vs "))
-        } else {
-            self.title.fmt(f)
+        match (self.title.is_empty(), self.players.is_empty()) {
+            (false, false) => write!(f, "{}, {}", self.title, self.players.iter().map(|player| &player.streaming_from).format(" vs ")),
+            (false, true) => self.title.fmt(f),
+            (true, false) => write!(f, "{}", self.players.iter().map(|player| &player.streaming_from).format(" vs ")),
+            (true, true) => write!(f, "no info"),
         }
     }
 }
