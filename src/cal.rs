@@ -2599,8 +2599,6 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                 let cal_event = &mut existing_races[idx];
                                 transaction = restream.update_race(&db_pool, transaction, &*discord_ctx.read().await, &event, cal_event, restream_match.id).await?;
                                 cal_event.race.save(&mut transaction).await?;
-                            } else if disambiguation_messages.binary_search(&restream_match.id).is_ok() {
-                                // this match is pending manual assignment, ignore it for now
                             } else {
                                 let mut matching_races = Vec::default();
                                 for (idx, cal_event) in unassigned_races.iter().enumerate() {
@@ -2609,7 +2607,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                     }
                                 }
                                 match matching_races.into_iter().at_most_one() {
-                                    Ok(None) => {
+                                    Ok(None) => if disambiguation_messages.binary_search(&restream_match.id).is_err() {
                                         if let Some(organizer_channel) = event.discord_organizer_channel {
                                             let msg = MessageBuilder::default()
                                                 .push("could not find any races matching SpeedGaming match ")
@@ -2625,13 +2623,13 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                                 restream_match.id, PgSnowflake(notification.id) as _,
                                             ).execute(&mut *transaction).await?;
                                         }
-                                    }
+                                    },
                                     Ok(Some((idx, _))) => {
                                         let mut cal_event = unassigned_races.swap_remove(idx);
                                         transaction = restream.update_race(&db_pool, transaction, &*discord_ctx.read().await, &event, &mut cal_event, restream_match.id).await?;
                                         cal_event.race.save(&mut transaction).await?;
                                     }
-                                    Err(races) => {
+                                    Err(races) => if disambiguation_messages.binary_search(&restream_match.id).is_err() {
                                         if let Some(organizer_channel) = event.discord_organizer_channel {
                                             let msg = MessageBuilder::default()
                                                 .push("found multiple races matching SpeedGaming match ")
@@ -2682,7 +2680,7 @@ async fn auto_import_races_inner(db_pool: PgPool, http_client: reqwest::Client, 
                                                 restream_match.id, PgSnowflake(notification.id) as _,
                                             ).execute(&mut *transaction).await?;
                                         }
-                                    }
+                                    },
                                 }
                             }
                         }
