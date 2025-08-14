@@ -28,10 +28,10 @@ impl RestreamMatch {
                 Entrants::Open | Entrants::Count { .. } | Entrants::Named(_) => false,
                 Entrants::Two(entrants) => {
                     if self.players.len() == 2 {
-                        for players in self.players.iter().permutations(2) {
+                        'permutations: for players in self.players.iter().permutations(2) {
                             for (entrant, player) in entrants.iter().zip_eq(players) {
                                 if !player.matches(&mut *transaction, http_client, entrant).await? {
-                                    return Ok(false)
+                                    continue 'permutations
                                 }
                             }
                             return Ok(true)
@@ -40,11 +40,11 @@ impl RestreamMatch {
                     false
                 }
                 Entrants::Three(entrants) => {
-                    if self.players.len() == 2 {
-                        for players in self.players.iter().permutations(3) {
+                    if self.players.len() == 3 {
+                        'permutations: for players in self.players.iter().permutations(3) {
                             for (entrant, player) in entrants.iter().zip_eq(players) {
                                 if !player.matches(&mut *transaction, http_client, entrant).await? {
-                                    return Ok(false)
+                                    continue 'permutations
                                 }
                             }
                             return Ok(true)
