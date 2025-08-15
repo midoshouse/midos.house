@@ -100,13 +100,12 @@ impl Player {
 }
 
 #[derive(Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub(crate) struct Restream {
     match1: Option<RestreamMatch>,
     match2: Option<RestreamMatch>,
     channels: Vec<RestreamChannel>,
     timezone: String,
-    when_countdown: DateTime<Utc>,
+    when: DateTime<Utc>,
 }
 
 impl Restream {
@@ -117,14 +116,14 @@ impl Restream {
     pub(crate) async fn update_race<'a>(&self, db_pool: &PgPool, mut transaction: Transaction<'a, Postgres>, discord_ctx: &DiscordCtx, event: &Data<'_>, cal_event: &mut cal::Event, id: i64) -> Result<Transaction<'a, Postgres>, event::Error> {
         if !cal_event.race.schedule_locked
             && !cal_event.race.has_any_room() // don't mess with starting time if room already open; allow configuring vod URLs after the end of a restream
-            && self.timezone.is_empty() // timezone is a freeform text field. When non-empty, the when_countdown timestamp is essentially meaningless (it is the timestamp entered by the user, reinterpreted as America/New_York and then converted to UTC). A tournament organizer will later fix the timestamp and clear the timezone field
+            && self.timezone.is_empty() // timezone is a freeform text field. When non-empty, the when timestamp is essentially meaningless (it is the timestamp entered by the user, reinterpreted as America/New_York and then converted to UTC). A tournament organizer will later fix the timestamp and clear the timezone field
         {
             assert!(matches!(mem::replace(&mut cal_event.race.source, cal::Source::SpeedGaming { id }), cal::Source::Manual | cal::Source::SpeedGaming { id: _ }));
             let schedule_changed = match cal_event.race.schedule {
-                RaceSchedule::Live { start, .. } => (start != self.when_countdown).then_some(true),
+                RaceSchedule::Live { start, .. } => (start != self.when).then_some(true),
                 _ => Some(false),
             };
-            cal_event.race.schedule.set_live_start(self.when_countdown);
+            cal_event.race.schedule.set_live_start(self.when);
             if let Some(was_scheduled) = schedule_changed {
                 use {
                     serenity::all::{
@@ -134,7 +133,7 @@ impl Restream {
                     crate::discord_bot::*,
                 };
 
-                if self.when_countdown - Utc::now() < TimeDelta::minutes(30) {
+                if self.when - Utc::now() < TimeDelta::minutes(30) {
                     let (http_client, new_room_lock, racetime_host, racetime_config, extra_room_tx, clean_shutdown) = {
                         let data = discord_ctx.data.read().await;
                         (
@@ -166,7 +165,7 @@ impl Restream {
                             let mut response_content = MessageBuilder::default();
                             response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
                             response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                            response_content.push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
+                            response_content.push_timestamp(self.when, serenity_utils::message::TimestampStyle::LongDateTime);
                             let msg = response_content
                                 .push(". The race room will be opened momentarily.")
                                 .build();
@@ -193,14 +192,14 @@ impl Restream {
                             then {
                                 MessageBuilder::default()
                                     .push("Votre race a été planifiée pour le ")
-                                    .push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime)
+                                    .push_timestamp(self.when, serenity_utils::message::TimestampStyle::LongDateTime)
                                     .push('.')
                                     .build()
                             } else {
                                 let mut response_content = MessageBuilder::default();
                                 response_content.push(if let Some(game) = cal_event.race.game { format!("Game {game}") } else { format!("This race") });
                                 response_content.push(if was_scheduled { " has been rescheduled for " } else { " is now scheduled for " });
-                                response_content.push_timestamp(self.when_countdown, serenity_utils::message::TimestampStyle::LongDateTime);
+                                response_content.push_timestamp(self.when, serenity_utils::message::TimestampStyle::LongDateTime);
                                 response_content.push('.');
                                 response_content.build()
                             }
