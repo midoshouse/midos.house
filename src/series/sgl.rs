@@ -15,7 +15,7 @@ static CACHE: LazyLock<Mutex<(Instant, Schedule)>> = LazyLock::new(|| Mutex::new
 pub(crate) struct RestreamMatch {
     players: Vec<Player>,
     pub(crate) id: i64,
-    pub(crate) title: String,
+    title: String,
 }
 
 impl RestreamMatch {
@@ -69,9 +69,9 @@ impl fmt::Display for RestreamMatch {
 }
 
 #[derive(Clone, Deserialize)]
-pub(crate) struct RestreamChannel {
-    pub(crate) language: Language,
-    pub(crate) slug: String,
+struct RestreamChannel {
+    language: Language,
+    slug: String,
 }
 
 #[derive(Clone, Deserialize)]
@@ -102,10 +102,11 @@ impl Player {
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Restream {
-    pub(crate) match1: Option<RestreamMatch>,
-    pub(crate) match2: Option<RestreamMatch>,
-    pub(crate) channels: Vec<RestreamChannel>,
-    pub(crate) when_countdown: DateTime<Utc>,
+    match1: Option<RestreamMatch>,
+    match2: Option<RestreamMatch>,
+    channels: Vec<RestreamChannel>,
+    timezone: String,
+    when_countdown: DateTime<Utc>,
 }
 
 impl Restream {
@@ -114,7 +115,10 @@ impl Restream {
     }
 
     pub(crate) async fn update_race<'a>(&self, db_pool: &PgPool, mut transaction: Transaction<'a, Postgres>, discord_ctx: &DiscordCtx, event: &Data<'_>, cal_event: &mut cal::Event, id: i64) -> Result<Transaction<'a, Postgres>, event::Error> {
-        if !cal_event.race.schedule_locked && !cal_event.race.has_any_room() { // don't mess with starting time if room already open; allow configuring vod URLs after the end of a restream
+        if !cal_event.race.schedule_locked
+            && !cal_event.race.has_any_room() // don't mess with starting time if room already open; allow configuring vod URLs after the end of a restream
+            && self.timezone.is_empty() // timezone is a freeform text field. When non-empty, the when_countdown timestamp is essentially meaningless (it is the timestamp entered by the user, reinterpreted as America/New_York and then converted to UTC). A tournament organizer will later fix the timestamp and clear the timezone field
+        {
             assert!(matches!(mem::replace(&mut cal_event.race.source, cal::Source::SpeedGaming { id }), cal::Source::Manual | cal::Source::SpeedGaming { id: _ }));
             let schedule_changed = match cal_event.race.schedule {
                 RaceSchedule::Live { start, .. } => (start != self.when_countdown).then_some(true),
@@ -219,7 +223,7 @@ impl Restream {
     }
 }
 
-pub(crate) type Schedule = Vec<Restream>;
+type Schedule = Vec<Restream>;
 
 pub(crate) async fn schedule(http_client: &reqwest::Client, event_slug: &str) -> wheel::Result<Schedule> {
     let now = Utc::now();
