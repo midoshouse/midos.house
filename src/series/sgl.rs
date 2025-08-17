@@ -209,15 +209,16 @@ impl Restream {
                     }
                 }
             }
-            for channel in &self.channels {
-                if channel.slug != "norestream" {
-                    if let hash_map::Entry::Vacant(entry) = cal_event.race.video_urls.entry(channel.language) {
-                        let video_url = Url::parse(&format!("https://twitch.tv/{}", channel.slug))?;
-                        entry.insert(video_url);
+            let mut video_urls = HashMap::default();
+            for lang in all() {
+                if let Some(channel) = self.channels.iter().find(|channel| channel.language == lang) {
+                    if channel.slug != "norestream" {
+                        video_urls.insert(lang, Url::parse(&format!("https://twitch.tv/{}", channel.slug))?);
+                        //TODO register restreamer, if any
                     }
-                    //TODO register restreamer, if any
                 }
             }
+            cal_event.race.video_urls = video_urls;
         }
         Ok(transaction)
     }
