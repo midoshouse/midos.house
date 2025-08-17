@@ -336,6 +336,7 @@ impl<'a> Data<'a> {
             (Series::Rsl, "7") => from_file!("../../assets/event/rsl/chests-7-104253e.json"), //TODO include RSL-Lite, adjust for simulated drafts
             (Series::Scrubs, "5") => from_file!("../../assets/event/scrubs/chests-5-7.1.198.json"),
             (Series::Scrubs, "6") => from_file!("../../assets/event/scrubs/chests-6-8.1.73.json"),
+            (Series::Scrubs, "7") => from_file!("../../assets/event/scrubs/chests-7-8.3.30.json"),
             (Series::SongsOfHope, "1") => from_file!("../../assets/event/soh/chests-1-8.1.json"),
             (Series::SpeedGaming, "2023onl" | "2023live") => from_file!("../../assets/event/sgl/chests-2023-42da4aa.json"),
             (Series::SpeedGaming, "2024onl" | "2024live") => from_file!("../../assets/event/sgl/chests-2024-ee4d35b.json"),
