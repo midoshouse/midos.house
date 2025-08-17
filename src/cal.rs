@@ -668,6 +668,7 @@ impl Race {
             Series::Scrubs => match &*event.event {
                 "5" => {}
                 "6" => {}
+                "7" => {} //TODO get from Google sheet 1w1AS87VMB7jE-qiFmSYPlCiLh8pf6F5fdYz_I0I8aE8 (configure when the first race is added)
                 _ => unimplemented!(),
             },
             Series::Standard => match &*event.event {

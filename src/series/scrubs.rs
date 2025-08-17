@@ -75,6 +75,17 @@ pub(crate) async fn info(transaction: &mut Transaction<'_, Postgres>, data: &Dat
                 }
             }
         }),
+        "7" => Some(html! {
+            article {
+                p {
+                    : "Season 6 of the Scrubs tournament is organized by Froppy, picks, ";
+                    : English.join_html_opt(data.organizers(transaction).await?);
+                    : ". ";
+                    a(href = "https://discord.gg/hpHngEY") : "Join the Discord server";
+                    : " for details.";
+                }
+            }
+        }),
         _ => None,
     })
 }
