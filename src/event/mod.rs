@@ -11,7 +11,10 @@ use {
     crate::{
         notification::SimpleNotificationKind,
         prelude::*,
-        racetime_bot::VersionedBranch,
+        racetime_bot::{
+            VersionedBranch,
+            roll_seed_locally,
+        },
     },
 };
 
@@ -577,23 +580,27 @@ impl<'a> Data<'a> {
                     }
                 }
                 @let practice_seed_url = match (self.series, &*self.event) {
+                    (Series::CopaLatinoamerica, "2025") => {
+                        let url = uri!(practice_seed(self.series, &*self.event));
+                        Some((url.to_string(), None))
+                    }
                     (Series::TriforceBlitz, "2") => {
                         let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v7.1.3-blitz-0.42")))?;
-                        Some((url.to_string(), url))
+                        Some((url.to_string(), Some(url)))
                     }
                     (Series::TriforceBlitz, "3") => {
                         let url = Url::parse_with_params("https://www.triforceblitz.com/generator", iter::once(("version", "v8.1.37-blitz-0.59")))?;
-                        Some((url.to_string(), url))
+                        Some((url.to_string(), Some(url)))
                     }
                     (Series::TriforceBlitz, "4coop") => {
                         let url = Url::parse("https://dev.triforceblitz.com/seeds/generate")?;
-                        Some((url.to_string(), url))
+                        Some((url.to_string(), Some(url)))
                     }
                     (Series::TriforceBlitz, "4") => {
                         let url = Url::parse("https://www.triforceblitz.com/generator")?;
-                        Some((url.to_string(), url))
+                        Some((url.to_string(), Some(url)))
                     }
-                    (_, _) => self.single_settings.is_some().then(|| Ok::<_, Error>((uri!(practice_seed(self.series, &*self.event)).to_string(), Url::parse("https://ootrandomizer.com/")?))).transpose()?,
+                    (_, _) => self.single_settings.is_some().then(|| Ok::<_, Error>((uri!(practice_seed(self.series, &*self.event)).to_string(), Some(Url::parse("https://ootrandomizer.com/")?)))).transpose()?,
                 };
                 @let practice_race_url = if_chain! {
                     if let Some(goal) = racetime_bot::Goal::for_event(self.series, &self.event);
@@ -613,7 +620,9 @@ impl<'a> Data<'a> {
                 };
                 @let practice_seed_button = practice_seed_url.map(|(url, favicon_url)| html! {
                     a(class = "button", href = url.to_string()) {
-                        : favicon(&favicon_url);
+                        @if let Some(favicon_url) = favicon_url {
+                            : favicon(&favicon_url);
+                        }
                         @if practice_race_url.is_some() {
                             : "Roll Seed";
                         } else {
@@ -712,9 +721,7 @@ pub(crate) enum Error {
     #[error(transparent)] Calendar(#[from] cal::Error),
     #[error(transparent)] Data(#[from] DataError),
     #[error(transparent)] Discord(#[from] crate::discord_bot::Error),
-    #[error(transparent)] Io(#[from] io::Error),
     #[error(transparent)] Json(#[from] serde_json::Error),
-    #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
     #[error(transparent)] Page(#[from] PageError),
     #[error(transparent)] RaceTime(#[from] racetime::Error),
     #[error(transparent)] Reqwest(#[from] reqwest::Error),
@@ -741,9 +748,7 @@ impl IsNetworkError for Error {
             Self::Calendar(e) => e.is_network_error(),
             Self::Data(_) => false,
             Self::Discord(_) => false,
-            Self::Io(e) => e.is_network_error(),
             Self::Json(_) => false,
-            Self::OotrWeb(e) => e.is_network_error(),
             Self::Page(e) => e.is_network_error(),
             Self::RaceTime(e) => e.is_network_error(),
             Self::Reqwest(e) => e.is_network_error(),
@@ -2118,17 +2123,43 @@ pub(crate) async fn submit_async(pool: &State<PgPool>, discord_ctx: &State<RwFut
     })
 }
 
+#[derive(Debug, thiserror::Error, rocket_util::Error)]
+pub(crate) enum PracticeError {
+    #[error(transparent)] Data(#[from] DataError),
+    #[error(transparent)] OotrWeb(#[from] ootr_web::Error),
+    #[error(transparent)] Roll(#[from] racetime_bot::RollError),
+    #[error(transparent)] Sql(#[from] sqlx::Error),
+    #[error(transparent)] Wheel(#[from] wheel::Error),
+}
+
+impl<E: Into<PracticeError>> From<E> for StatusOrError<PracticeError> {
+    fn from(e: E) -> Self {
+        Self::Err(e.into())
+    }
+}
+
 #[rocket::get("/event/<series>/<event>/practice")]
-pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, series: Series, event: &str) -> Result<Redirect, StatusOrError<Error>> {
+pub(crate) async fn practice_seed(pool: &State<PgPool>, ootr_api_client: &State<Arc<ootr_web::ApiClient>>, series: Series, event: &str) -> Result<Redirect, StatusOrError<PracticeError>> {
     let mut transaction = pool.begin().await?;
     let data = Data::new(&mut transaction, series, event).await?.ok_or(StatusOrError::Status(Status::NotFound))?;
     transaction.commit().await?;
-    let version = data.rando_version.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let settings = data.single_settings.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
-    let web_version = ootr_api_client.can_roll_on_web(None, &version, world_count, false, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
-    let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, false, settings).await?;
-    Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
+    if series == Series::CopaLatinoamerica && event == "2025" {
+        let rando_version = data.rando_version.ok_or(StatusOrError::Status(Status::NotFound))?;
+        let (settings, plando) = latam::settings_2025();
+        let (patch_filename, spoiler_log_path) = roll_seed_locally(None, rando_version, true, settings, plando).await?;
+        let (_, file_stem) = regex_captures!(r"^(.+)\.zpfz?$", &patch_filename).ok_or(StatusOrError::Status(Status::NotFound))?;
+        if let Some(spoiler_log_path) = spoiler_log_path {
+            fs::rename(spoiler_log_path, Path::new(seed::DIR).join(format!("{file_stem}_Spoiler.json"))).await?;
+        }
+        Ok(Redirect::to(format!("/seed/{file_stem}")))
+    } else {
+        let version = data.rando_version.ok_or(StatusOrError::Status(Status::NotFound))?;
+        let settings = data.single_settings.ok_or(StatusOrError::Status(Status::NotFound))?;
+        let world_count = settings.get("world_count").map_or(1, |world_count| world_count.as_u64().expect("world_count setting wasn't valid u64").try_into().expect("too many worlds"));
+        let web_version = ootr_api_client.can_roll_on_web(None, &version, world_count, false, UnlockSpoilerLog::Now).await.ok_or(StatusOrError::Status(Status::NotFound))?;
+        let id = Arc::clone(ootr_api_client).roll_practice_seed(web_version, false, settings).await?;
+        Ok(Redirect::to(format!("https://ootrandomizer.com/seed/get?id={id}")))
+    }
 }
 
 #[rocket::get("/event/<series>/<event>/volunteer")]

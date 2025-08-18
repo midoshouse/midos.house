@@ -1778,7 +1778,7 @@ impl GlobalState {
     }
 }
 
-async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: VersionedBranch, unlock_spoiler_log: bool, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>) -> Result<(String, Option<PathBuf>), RollError> {
+pub(crate) async fn roll_seed_locally(delay_until: Option<DateTime<Utc>>, version: VersionedBranch, unlock_spoiler_log: bool, mut settings: seed::Settings, plando: serde_json::Map<String, serde_json::Value>) -> Result<(String, Option<PathBuf>), RollError> {
     let allow_riir = match version {
         VersionedBranch::Pinned { ref version } => version.branch() == rando::Branch::DevFenhl && (version.base(), version.supplementary()) >= (&Version::new(8, 3, 25), Some(1)), // some versions older than this generate corrupted patch files
         VersionedBranch::Latest { branch } => branch == rando::Branch::DevFenhl,
