@@ -1267,6 +1267,11 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                     }
                                     Ok(Some(race)) => {
                                         let race = Race {
+                                            source: if let cal::Source::SpeedGaming { id: _ } = race.source {
+                                                if reset_schedule { cal::Source::Manual } else { race.source }
+                                            } else {
+                                                race.source
+                                            },
                                             schedule: if reset_schedule { RaceSchedule::Unscheduled } else { race.schedule },
                                             schedule_updated_at: if reset_schedule { Some(Utc::now()) } else { race.schedule_updated_at },
                                             fpa_invoked: if reset_schedule { false } else { race.fpa_invoked },
@@ -1295,7 +1300,6 @@ pub(crate) fn configure_builder(discord_builder: serenity_utils::Builder, db_poo
                                             id: race.id,
                                             series: race.series,
                                             event: race.event,
-                                            source: race.source,
                                             entrants: race.entrants,
                                             phase: race.phase,
                                             round: race.round,
