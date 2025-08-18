@@ -424,6 +424,8 @@ impl<'a> Data<'a> {
             }
             (_, _) => if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM teams WHERE series = $1 AND event = $2 AND qualifier_rank IS NOT NULL) AS "exists!""#, self.series as _, &*self.event).fetch_one(&mut **transaction).await? {
                 QualifierKind::Rank
+            } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier3') AS "exists!""#, self.series as _, &*self.event).fetch_one(&mut **transaction).await? {
+                QualifierKind::Triple
             } else if sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM asyncs WHERE series = $1 AND event = $2 AND kind = 'qualifier') AS "exists!""#, self.series as _, &*self.event).fetch_one(&mut **transaction).await? {
                 QualifierKind::Single {
                     show_times: self.show_qualifier_times && (

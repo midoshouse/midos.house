@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1 AND submitted IS NOT NULL AND (kind = 'qualifier' OR kind = 'qualifier2' OR kind = 'qualifier3')) AS \"exists!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "ece6d89344bd17e3cdca3131c08857df75206f68006bff4b9004797242a6b21a"
+}

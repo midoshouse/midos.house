@@ -25,6 +25,7 @@ pub(crate) enum QualifierKind {
     Single {
         show_times: bool,
     },
+    Triple,
     Score(QualifierScoreKind),
     SongsOfHope,
 }
@@ -46,6 +47,16 @@ pub(crate) enum MemberUser {
     },
     /// A user who represents someone new joining future qualifiers, for worst-case placement calculation.
     Newcomer,
+}
+
+impl MemberUser {
+    fn racetime_id(&self) -> Option<&str> {
+        match self {
+            Self::MidosHouse(user) => user.racetime.as_ref().map(|racetime| &*racetime.id),
+            Self::RaceTime { id, .. } => Some(id),
+            Self::Newcomer => None,
+        }
+    }
 }
 
 impl PartialEq for MemberUser {
@@ -643,10 +654,80 @@ pub(crate) async fn signups_sorted(transaction: &mut Transaction<'_, Postgres>, 
             }
             signups
         }
+        QualifierKind::Triple => {
+            // teams may qualifier via live races so include ones that haven't submitted qualifier asyncs
+            let rows = sqlx::query!(r#"SELECT id AS "id: Id<Teams>", name, racetime_slug, startgg_id AS "startgg_id: startgg::ID", plural_name, hard_settings_ok, mq_ok, lite_ok, restream_consent, mw_impl AS "mw_impl: mw::Impl", qualifier_rank FROM teams WHERE
+                series = $1
+                AND event = $2
+                AND NOT resigned
+                AND (
+                    EXISTS (SELECT 1 FROM team_members WHERE team = id AND member = $3)
+                    OR NOT EXISTS (SELECT 1 FROM team_members WHERE team = id AND status = 'unconfirmed')
+                )
+            "#, data.series as _, &data.event, me.as_ref().map(|me| PgSnowflake(me.id)) as _).fetch_all(&mut **transaction).await?;
+            let roles = data.team_config.roles();
+            let mut signups = Vec::with_capacity(rows.len());
+            for row in rows {
+                let mut members = Vec::with_capacity(roles.len());
+                for &(role, _) in roles {
+                    let row = sqlx::query!(r#"
+                        SELECT member AS "id: Id<Users>", status AS "status: SignupStatus"
+                        FROM team_members
+                        WHERE team = $1 AND role = $2
+                    "#, row.id as _, role as _).fetch_one(&mut **transaction).await?;
+                    let is_confirmed = row.status.is_confirmed();
+                    let user = User::from_id(&mut **transaction, row.id).await?.ok_or(DataError::NonexistentUser)?;
+                    members.push(SignupsMember {
+                        user: MemberUser::MidosHouse(user),
+                        qualifier_time: None,
+                        qualifier_vod: None,
+                        role, is_confirmed,
+                    });
+                }
+                signups.push(SignupsTeam {
+                    team: Some(Team {
+                        id: row.id,
+                        series: data.series,
+                        event: data.event.to_string(),
+                        name: row.name,
+                        racetime_slug: row.racetime_slug,
+                        startgg_id: row.startgg_id,
+                        plural_name: row.plural_name,
+                        restream_consent: row.restream_consent,
+                        mw_impl: row.mw_impl,
+                        qualifier_rank: row.qualifier_rank,
+                    }),
+                    qualification: Qualification::Single {
+                        qualified: sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM async_teams WHERE team = $1 AND submitted IS NOT NULL AND (kind = 'qualifier' OR kind = 'qualifier2' OR kind = 'qualifier3')) AS "exists!""#, row.id as _).fetch_one(&mut **transaction).await? || 'qualified: {
+                            for member in &members {
+                                if let Some(racetime_id) = member.user.racetime_id() {
+                                    for race in Race::for_event(&mut *transaction, &cache.http_client, data).await? {
+                                        if race.phase.as_ref().is_some_and(|phase| phase == "Live Qualifier") {
+                                            if let Ok(room) = race.rooms().exactly_one() {
+                                                let room_data = cache.race_data(&room).await?;
+                                                if room_data.entrants.iter().any(|entrant| entrant.status.value == EntrantStatusValue::Done && entrant.user.id == racetime_id) {
+                                                    break 'qualified true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            false
+                        },
+                    },
+                    hard_settings_ok: row.hard_settings_ok,
+                    mq_ok: row.mq_ok,
+                    lite_ok: row.lite_ok,
+                    members,
+                });
+            }
+            signups
+        }
     };
     signups.sort_unstable_by(|SignupsTeam { team: team1, members: members1, qualification: qualification1, .. }, SignupsTeam { team: team2, members: members2, qualification: qualification2, .. }| {
         match qualifier_kind {
-            QualifierKind::None | QualifierKind::Single { show_times: false } | QualifierKind::SongsOfHope => {
+            QualifierKind::None | QualifierKind::Single { show_times: false } | QualifierKind::Triple | QualifierKind::SongsOfHope => {
                 let qualified1 = match qualification1 {
                     Qualification::Single { qualified } | Qualification::TriforceBlitz { qualified, .. } => qualified,
                     Qualification::Multiple { .. } => unreachable!("Qualification::Multiple in QualifierKind::{{None, Single}}"),
@@ -797,7 +878,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
     }
     match qualifier_kind {
         QualifierKind::None | QualifierKind::Rank => {}
-        QualifierKind::Single { show_times: false } | QualifierKind::SongsOfHope => column_headers.push(html! {
+        QualifierKind::Single { show_times: false } | QualifierKind::Triple | QualifierKind::SongsOfHope => column_headers.push(html! {
             th : "Qualified";
         }),
         QualifierKind::Single { show_times: true } => if series == Series::TriforceBlitz {
@@ -881,6 +962,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                             QualifierKind::None => false,
                             QualifierKind::Rank => false, // unknown cutoff
                             QualifierKind::Single { .. } => false, // need to be qualified to be listed
+                            QualifierKind::Triple => false, // no cutoff
                             QualifierKind::Score(QualifierScoreKind::Standard) => {
                                 let Qualification::Multiple { num_finished, .. } = qualification else { unreachable!("qualification kind mismatch") };
                                 num_finished < 5
@@ -979,7 +1061,7 @@ pub(crate) async fn list(pool: &PgPool, http_client: &reqwest::Client, me: Optio
                             }
                             @match (qualifier_kind, qualification) {
                                 (QualifierKind::None, _) | (QualifierKind::Rank, _) | (QualifierKind::Single { show_times: true }, Qualification::Single { .. }) => {}
-                                (QualifierKind::Single { show_times: false } | QualifierKind::SongsOfHope, Qualification::Single { qualified } | Qualification::TriforceBlitz { qualified, .. }) => td {
+                                (QualifierKind::Single { show_times: false } | QualifierKind::Triple | QualifierKind::SongsOfHope, Qualification::Single { qualified } | Qualification::TriforceBlitz { qualified, .. }) => td {
                                     @if qualified {
                                         : "✓";
                                     }
