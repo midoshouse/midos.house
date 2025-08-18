@@ -22,6 +22,7 @@ pub(crate) use {
         marker::PhantomData,
         mem,
         num::NonZero,
+        ops::Range,
         path::{
             Path,
             PathBuf,
@@ -197,6 +198,7 @@ pub(crate) use {
             Entrant,
             Entrants,
             Race,
+            RaceHandleMode,
             RaceSchedule,
         },
         challonge,

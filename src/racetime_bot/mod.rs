@@ -4647,9 +4647,9 @@ impl RaceHandler<GlobalState> for Handler {
 
 pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, discord_ctx: &DiscordCtx, host_info: &racetime::HostInfo, client_id: &str, client_secret: &str, extra_room_tx: &RwLock<mpsc::Sender<String>>, http_client: &reqwest::Client, clean_shutdown: Arc<Mutex<CleanShutdown>>, cal_event: &mut cal::Event, event: &event::Data<'_>) -> Result<Option<(bool, String)>, Error> {
     let room_url = match cal_event.should_create_room(&mut *transaction, event).await.to_racetime()? {
-        cal::RaceHandleMode::None => return Ok(None),
-        cal::RaceHandleMode::Notify => Err("please get your equipment and report to the tournament room"),
-        cal::RaceHandleMode::RaceTime => match racetime::authorize_with_host(host_info, client_id, client_secret, http_client).await {
+        RaceHandleMode::None => return Ok(None),
+        RaceHandleMode::Notify => Err("please get your equipment and report to the tournament room"),
+        RaceHandleMode::RaceTime => match racetime::authorize_with_host(host_info, client_id, client_secret, http_client).await {
             Ok((access_token, _)) => {
                 let info_user = if_chain! {
                     if let French = event.language;
@@ -4770,7 +4770,7 @@ pub(crate) async fn create_room(transaction: &mut Transaction<'_, Postgres>, dis
             }
             Err(e) => return Err(e),
         },
-        cal::RaceHandleMode::Discord => {
+        RaceHandleMode::Discord => {
             let task_clean_shutdown = clean_shutdown.clone();
             lock!(clean_shutdown = clean_shutdown; {
                 if clean_shutdown.should_handle_new() {
