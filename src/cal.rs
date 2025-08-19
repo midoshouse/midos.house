@@ -711,6 +711,7 @@ impl Race {
             | Series::CopaLatinoamerica
             | Series::MixedPools
             | Series::Mq
+            | Series::PotsOfTime
             | Series::SongsOfHope
             | Series::SpeedGaming
             | Series::TournoiFrancophone

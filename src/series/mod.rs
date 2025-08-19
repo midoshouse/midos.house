@@ -53,6 +53,7 @@ pub(crate) enum Series {
     Multiworld,
     NineDaysOfSaws,
     Pictionary,
+    PotsOfTime,
     Rsl,
     Scrubs,
     SongsOfHope,
@@ -76,6 +77,7 @@ impl Series {
             Self::Multiworld => "mw",
             Self::NineDaysOfSaws => "9dos",
             Self::Pictionary => "pic",
+            Self::PotsOfTime => "pot",
             Self::Rsl => "rsl",
             Self::Scrubs => "scrubs",
             Self::SongsOfHope => "soh",
@@ -99,6 +101,7 @@ impl Series {
             Self::Multiworld => "Multiworld Tournaments",
             Self::NineDaysOfSaws => "9 Days of SAWS",
             Self::Pictionary => "Pictionary Spoiler Log Races",
+            Self::PotsOfTime => "Pots Of Time",
             Self::Rsl => "Random Settings League",
             Self::Scrubs => "Scrubs Tournaments",
             Self::SongsOfHope => "Songs of Hope",
@@ -117,7 +120,7 @@ impl Series {
             Self::CoOp | Self::MixedPools | Self::Scrubs | Self::SpeedGaming | Self::WeTryToBeBetter => TimeDelta::hours(3),
             Self::CopaDoBrasil | Self::CopaLatinoamerica | Self::League | Self::NineDaysOfSaws | Self::SongsOfHope | Self::Standard | Self::TournoiFrancophone => TimeDelta::hours(3) + TimeDelta::minutes(30),
             Self::Mq | Self::Multiworld | Self::Pictionary => TimeDelta::hours(4),
-            Self::Rsl => TimeDelta::hours(4) + TimeDelta::minutes(30),
+            Self::PotsOfTime | Self::Rsl => TimeDelta::hours(4) + TimeDelta::minutes(30),
         }
     }
 }

@@ -383,6 +383,7 @@ impl<'a> Data<'a> {
             Series::Multiworld => false,
             Series::NineDaysOfSaws => true,
             Series::Pictionary => true,
+            Series::PotsOfTime => false,
             Series::Rsl => false,
             Series::Scrubs => false,
             Series::SongsOfHope => false,
@@ -838,6 +839,7 @@ pub(crate) async fn info(pool: &State<PgPool>, me: Option<User>, uri: Origin<'_>
         Series::Multiworld => mw::info(&mut transaction, &data).await?,
         Series::NineDaysOfSaws => Some(ndos::info(&mut transaction, &data).await?),
         Series::Pictionary => pic::info(&mut transaction, &data).await?,
+        Series::PotsOfTime => None,
         Series::Rsl => rsl::info(&mut transaction, &data).await?,
         Series::Scrubs => scrubs::info(&mut transaction, &data).await?,
         Series::SongsOfHope => soh::info(&mut transaction, &data).await?,
@@ -1213,6 +1215,7 @@ async fn status_page(mut transaction: Transaction<'_, Postgres>, http_client: &r
                             | Series::CopaLatinoamerica
                             | Series::MixedPools
                             | Series::Mq
+                            | Series::PotsOfTime
                             | Series::Rsl
                             | Series::Standard
                             | Series::TournoiFrancophone
